@@ -701,4 +701,87 @@ public partial class PowerPointHandler
             _                       => (10, null)
         };
     }
+
+    // ==================== Media Timing ====================
+
+    /// <summary>
+    /// Add a video/audio timing node to the slide's timing tree.
+    /// This makes the media playable in PowerPoint (click or auto-play).
+    ///
+    /// Two nodes are required:
+    /// 1. p:video/p:audio — media player node (in root childTnLst)
+    /// 2. p:cmd cmd="playFrom(0)" — playback trigger (in main sequence, for autoplay)
+    /// </summary>
+    private static void AddMediaTimingNode(Slide slide, uint shapeId, bool isVideo, int volume, bool autoPlay)
+    {
+        EnsureTimingTree(slide, out var mainSeqCTn, out _);
+        var timing = slide.GetFirstChild<Timing>()!;
+        var rootCTn = timing.TimeNodeList!.GetFirstChild<ParallelTimeNode>()!.CommonTimeNode!;
+        var rootChildList = rootCTn.ChildTimeNodeList!;
+
+        var nextId = GetMaxTimingId(timing) + 1;
+
+        // 1. Add playback command in the main sequence (triggers actual playback)
+        var cmdCTn = new CommonTimeNode
+        {
+            Id = nextId++,
+            PresetId = 1,
+            PresetClass = TimeNodePresetClassValues.MediaCall,
+            PresetSubtype = 0,
+            Fill = TimeNodeFillValues.Hold,
+            NodeType = autoPlay ? TimeNodeValues.AfterEffect : TimeNodeValues.ClickEffect
+        };
+        cmdCTn.StartConditionList = new StartConditionList(
+            new Condition { Delay = "0" }
+        );
+        cmdCTn.ChildTimeNodeList = new ChildTimeNodeList(
+            new Command
+            {
+                Type = CommandValues.Call,
+                CommandName = "playFrom(0)",
+                CommonBehavior = new CommonBehavior(
+                    new CommonTimeNode { Id = nextId++, Duration = "1", Fill = TimeNodeFillValues.Hold },
+                    new TargetElement(new ShapeTarget { ShapeId = shapeId.ToString() })
+                )
+            }
+        );
+
+        // Wrap in par → par → par structure for main sequence
+        var innerPar = new ParallelTimeNode(new CommonTimeNode(
+            new StartConditionList(new Condition { Delay = "0" }),
+            new ChildTimeNodeList(new ParallelTimeNode(cmdCTn))
+        ) { Id = nextId++, Fill = TimeNodeFillValues.Hold });
+
+        var seqEntryPar = new ParallelTimeNode(new CommonTimeNode(
+            new StartConditionList(new Condition { Delay = autoPlay ? "0" : "indefinite" }),
+            new ChildTimeNodeList(innerPar)
+        ) { Id = nextId++, Fill = TimeNodeFillValues.Hold });
+
+        mainSeqCTn.ChildTimeNodeList ??= new ChildTimeNodeList();
+        mainSeqCTn.ChildTimeNodeList.AppendChild(seqEntryPar);
+
+        // 2. Add media player node (in root childTnLst, controls the player itself)
+        var cMediaNode = new CommonMediaNode { Volume = volume };
+        var mediaCTn = new CommonTimeNode
+        {
+            Id = nextId++,
+            Fill = TimeNodeFillValues.Hold,
+            Display = false
+        };
+        mediaCTn.StartConditionList = new StartConditionList(
+            new Condition { Delay = "indefinite" }
+        );
+        cMediaNode.CommonTimeNode = mediaCTn;
+        cMediaNode.TargetElement = new TargetElement(
+            new ShapeTarget { ShapeId = shapeId.ToString() }
+        );
+
+        OpenXmlElement mediaNode;
+        if (isVideo)
+            mediaNode = new Video(cMediaNode) { FullScreen = false };
+        else
+            mediaNode = new Audio(cMediaNode) { IsNarration = false };
+
+        rootChildList.AppendChild(mediaNode);
+    }
 }

@@ -634,6 +634,10 @@ Format keys returned by Get:
     x, y, width, height    Position and size
     (depth>0: children = series nodes with name + values)
 
+  Video/Audio (/slide[N]/picture[M] with type=video or type=audio):
+    name, volume, autoplay, trimStart, trimEnd
+    x, y, width, height    Position and size
+
   Table cell (/slide[N]/table[M]/tr[R]/tc[C]):
     text, fill, font, size, bold, italic, color
 
@@ -726,6 +730,7 @@ Shape properties (/slide[N]/shape[M]) -- applies to all runs:
   list       List style: bullet/numbered/alpha/roman/none or a custom character (e.g. ✓)
   rotation   Rotation angle in degrees (e.g. 45) (alias: rotate)
   opacity    Fill opacity 0.0-1.0 (e.g. 0.5 for 50%)
+  textWarp   WordArt text effect (alias: wordart): textWave1, textChevron, textArchUp, etc. or "none"
   autoFit    Text auto-fit: true/normal, shape, false/none
   x          Horizontal position (EMU or cm/in/pt/px, e.g. 2cm)
   y          Vertical position (EMU or cm/in/pt/px, e.g. 3cm)
@@ -738,13 +743,42 @@ Chart properties (/slide[N]/chart[M]):
   categories   Update category labels (comma-separated)
   data         Replace all series: "S1:1,2;S2:3,4"
   series1..N   Update individual series: "NewName:1,2,3" or just "1,2,3"
+  colors       Series colors (comma-separated hex/theme): "FF0000,00FF00,accent3"
+  dataLabels   Data labels: value, category, series, percent, all, none
+  axisTitle    Value axis title (alias: vtitle)
+  catTitle     Category axis title (alias: htitle)
+  axisMin, axisMax  Value axis scale bounds
+  majorUnit, minorUnit  Tick mark spacing
+  axisNumFmt   Value axis number format (e.g. "0.0", "$#,##0")
   x, y, width, height  Chart position and size (EMU or cm/in/pt/px)
   name         Chart name
+
+Picture properties (/slide[N]/picture[M]):
+  alt          Alternative text
+  path         Replace image source (file path)
+  crop         Crop (percentage): "left,top,right,bottom" (e.g. "10,10,10,10")
+  cropLeft, cropTop, cropRight, cropBottom  Individual crop sides (percentage)
+  x, y, width, height  Position and size
+
+Video/Audio properties (/slide[N]/video[M] or /slide[N]/audio[M]):
+  volume       Playback volume 0-100
+  autoplay     true/false — auto-play on slide enter
+  trimStart    Start time in ms (e.g. 5000)
+  trimEnd      End time in ms
+  x, y, width, height  Position and size
+
+Master/Layout editing (/slideMaster[N] or /slideLayout[N]):
+  name         Change layout/master name
+  /slideMaster[N]/shape[M] or /slideLayout[N]/shape[M]  — set shape properties
 
 Presentation properties (/ or /presentation):
   slideSize    Preset: 16:9, 4:3, 16:10, a4
   slideWidth   Custom width (EMU or cm/in/pt/px)
   slideHeight  Custom height (EMU or cm/in/pt/px)
+
+Table properties (/slide[N]/table[M]):
+  tableStyle   Built-in style: medium1..4, light1..3, dark1..2, none, or GUID
+  x, y, width, height, name
 
 Notes properties (/slide[N]/notes):
   text         Speaker notes text (multi-line supported with \n)
@@ -845,7 +879,9 @@ Types and properties:
     x, y, width, height (EMU or cm/in/pt/px, default: full-width text box)
 
   chart  -- parent: /slide[N]
-    chartType (column|bar|line|pie|doughnut|area|scatter), title, legend (top|bottom|left|right|none),
+    chartType (column|bar|line|pie|doughnut|area|scatter|combo), title, legend (top|bottom|left|right|none),
+    colors (comma-separated series colors, e.g. "FF0000,00FF00,0000FF"),
+    comboSplit (for combo: how many series are columns, default 1),
     categories (comma-separated labels, e.g. "Q1,Q2,Q3,Q4"),
     Data format (choose one):
       data = "Series1:1,2,3;Series2:4,5,6"  (compact: all series in one prop)
@@ -871,6 +907,13 @@ Types and properties:
   group  -- parent: /slide[N]
     shapes (required) — comma-separated shape indices to group (e.g. shapes=2,3)
     name (optional)
+
+  video (audio, media)  -- parent: /slide[N]
+    path (required), name, x, y, width, height,
+    poster (cover image path, optional),
+    volume (0-100, default 80), autoplay (true|false, default false),
+    trimStart (start time in ms, e.g. 5000), trimEnd (end time in ms)
+    Formats: .mp4, .avi, .wmv, .mpg, .mov, .mp3, .wav, .wma, .m4a
 
   equation (formula, math)  -- parent: /slide[N]
     formula (required, LaTeX subset), name

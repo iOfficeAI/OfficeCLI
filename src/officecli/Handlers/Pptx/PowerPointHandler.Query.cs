@@ -329,7 +329,7 @@ public partial class PowerPointHandler
             var pics = shapeTreeEl.Elements<Picture>().ToList();
             if (elementIdx < 1 || elementIdx > pics.Count)
                 throw new ArgumentException($"Picture {elementIdx} not found (total: {pics.Count})");
-            return PictureToNode(pics[elementIdx - 1], slideIdx, elementIdx);
+            return PictureToNode(pics[elementIdx - 1], slideIdx, elementIdx, targetSlidePart);
         }
 
         // Generic fallback for unknown element types
@@ -357,6 +357,7 @@ public partial class PowerPointHandler
         var rawType = typeMatch.Success ? typeMatch.Groups[1].Value.ToLowerInvariant() : "";
         bool isKnownType = string.IsNullOrEmpty(rawType)
             || rawType is "shape" or "textbox" or "title" or "picture" or "pic"
+                or "video" or "audio"
                 or "equation" or "math" or "formula"
                 or "table" or "chart" or "placeholder" or "notes";
         if (!isKnownType)
@@ -433,14 +434,23 @@ public partial class PowerPointHandler
                 shapeIdx++;
             }
 
-            if (parsed.ElementType == "picture" || parsed.ElementType == "pic" || parsed.ElementType == null)
+            if (parsed.ElementType is "picture" or "pic" or "video" or "audio" or null)
             {
                 int picIdx = 0;
                 foreach (var pic in shapeTree.Elements<Picture>())
                 {
+                    var picNvPr = pic.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties;
+                    var picIsVideo = picNvPr?.GetFirstChild<Drawing.VideoFromFile>() != null;
+                    var picIsAudio = picNvPr?.GetFirstChild<Drawing.AudioFromFile>() != null;
+
+                    // Filter by media type
+                    if (parsed.ElementType == "video" && !picIsVideo) { picIdx++; continue; }
+                    if (parsed.ElementType == "audio" && !picIsAudio) { picIdx++; continue; }
+                    if (parsed.ElementType is "picture" or "pic" && (picIsVideo || picIsAudio)) { picIdx++; continue; }
+
                     if (MatchesPictureSelector(pic, parsed))
                     {
-                        results.Add(PictureToNode(pic, slideNum, picIdx + 1));
+                        results.Add(PictureToNode(pic, slideNum, picIdx + 1, slidePart));
                     }
                     picIdx++;
                 }

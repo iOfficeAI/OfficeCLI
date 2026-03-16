@@ -678,7 +678,160 @@ public partial class PowerPointHandler
                 return $"/slide[{notesSlideIdx}]/notes";
             }
 
-            case "connector" or "connection" or "line":
+            case "video" or "audio" or "media":
+            {
+                var mediaSlideMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]$");
+                if (!mediaSlideMatch.Success)
+                    throw new ArgumentException("Media must be added to a slide: /slide[N]");
+
+                if (!properties.TryGetValue("path", out var mediaPath))
+                    throw new ArgumentException("'path' property required for media type");
+                if (!File.Exists(mediaPath))
+                    throw new FileNotFoundException($"Media file not found: {mediaPath}");
+
+                var mediaSlideIdx = int.Parse(mediaSlideMatch.Groups[1].Value);
+                var mediaSlideParts = GetSlideParts().ToList();
+                if (mediaSlideIdx < 1 || mediaSlideIdx > mediaSlideParts.Count)
+                    throw new ArgumentException($"Slide {mediaSlideIdx} not found");
+
+                var mediaSlidePart = mediaSlideParts[mediaSlideIdx - 1];
+                var mediaShapeTree = GetSlide(mediaSlidePart).CommonSlideData?.ShapeTree
+                    ?? throw new InvalidOperationException("Slide has no shape tree");
+
+                var ext = Path.GetExtension(mediaPath).ToLowerInvariant();
+                var isVideo = type.ToLowerInvariant() == "video" ||
+                    (type.ToLowerInvariant() == "media" && ext is ".mp4" or ".avi" or ".wmv" or ".mpg" or ".mov");
+
+                var contentType = ext switch
+                {
+                    ".mp4" => "video/mp4", ".avi" => "video/x-msvideo", ".wmv" => "video/x-ms-wmv",
+                    ".mpg" or ".mpeg" => "video/mpeg", ".mov" => "video/quicktime",
+                    ".mp3" => "audio/mpeg", ".wav" => "audio/wav", ".wma" => "audio/x-ms-wma",
+                    ".m4a" => "audio/mp4", _ => isVideo ? "video/mp4" : "audio/mpeg"
+                };
+
+                // 1. Create MediaDataPart and feed binary data
+                var mediaDataPart = _doc.CreateMediaDataPart(contentType, ext);
+                using (var mediaStream = File.OpenRead(mediaPath))
+                    mediaDataPart.FeedData(mediaStream);
+
+                // 2. Create relationships: Video/Audio + Media
+                string videoRelId, mediaRelId;
+                if (isVideo)
+                {
+                    videoRelId = mediaSlidePart.AddVideoReferenceRelationship(mediaDataPart).Id;
+                    mediaRelId = mediaSlidePart.AddMediaReferenceRelationship(mediaDataPart).Id;
+                }
+                else
+                {
+                    videoRelId = mediaSlidePart.AddAudioReferenceRelationship(mediaDataPart).Id;
+                    mediaRelId = mediaSlidePart.AddMediaReferenceRelationship(mediaDataPart).Id;
+                }
+
+                // 3. Add poster/thumbnail image
+                var posterPart = mediaSlidePart.AddImagePart(ImagePartType.Png);
+                if (properties.TryGetValue("poster", out var posterPath) && File.Exists(posterPath))
+                {
+                    using var posterStream = File.OpenRead(posterPath);
+                    posterPart.FeedData(posterStream);
+                }
+                else
+                {
+                    // Minimal 1x1 transparent PNG placeholder
+                    var posterPng = new byte[]
+                    {
+                        0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,
+                        0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52,
+                        0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x01,0x08,0x06,0x00,0x00,0x00,0x1F,0x15,0xC4,0x89,
+                        0x00,0x00,0x00,0x0D,0x49,0x44,0x41,0x54,
+                        0x08,0xD7,0x63,0x60,0x60,0x60,0x60,0x00,0x00,0x00,0x05,0x00,0x01,0x87,0xA1,0x4E,0xD4,
+                        0x00,0x00,0x00,0x00,0x49,0x45,0x4E,0x44,0xAE,0x42,0x60,0x82
+                    };
+                    using var ms = new MemoryStream(posterPng);
+                    posterPart.FeedData(ms);
+                }
+                var posterRelId = mediaSlidePart.GetIdOfPart(posterPart);
+
+                // Position
+                long mX = properties.TryGetValue("x", out var mxv) ? ParseEmu(mxv) : 1524000;
+                long mY = properties.TryGetValue("y", out var myv) ? ParseEmu(myv) : 857250;
+                long mCx = properties.TryGetValue("width", out var mwv) ? ParseEmu(mwv) : 9144000;
+                long mCy = properties.TryGetValue("height", out var mhv) ? ParseEmu(mhv) : 5143500;
+
+                var mediaId = (uint)(mediaShapeTree.ChildElements.Count + 2);
+                var mediaName = properties.GetValueOrDefault("name", isVideo ? "video" : "audio");
+
+                // 4. Build Picture element with proper video/audio structure
+                // cNvPr with hlinkClick action="ppaction://media"
+                var cNvPr = new NonVisualDrawingProperties { Id = mediaId, Name = mediaName };
+                cNvPr.AppendChild(new Drawing.HyperlinkOnClick { Id = "", Action = "ppaction://media" });
+
+                // nvPr with VideoFromFile/AudioFromFile + p14:media extension
+                var appNvPr = new ApplicationNonVisualDrawingProperties();
+                if (isVideo)
+                    appNvPr.AppendChild(new Drawing.VideoFromFile { Link = videoRelId });
+                else
+                    appNvPr.AppendChild(new Drawing.AudioFromFile { Link = videoRelId });
+
+                // p14:media extension (PowerPoint 2010+)
+                var p14Media = new DocumentFormat.OpenXml.Office2010.PowerPoint.Media { Embed = mediaRelId };
+                p14Media.AddNamespaceDeclaration("p14", "http://schemas.microsoft.com/office/powerpoint/2010/main");
+
+                var extList = new ApplicationNonVisualDrawingPropertiesExtensionList();
+                var appExt = new ApplicationNonVisualDrawingPropertiesExtension
+                    { Uri = "{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}" };
+                appExt.AppendChild(p14Media);
+                extList.AppendChild(appExt);
+                appNvPr.AppendChild(extList);
+
+                var mediaPic = new Picture();
+                mediaPic.NonVisualPictureProperties = new NonVisualPictureProperties(
+                    cNvPr,
+                    new NonVisualPictureDrawingProperties(new Drawing.PictureLocks { NoChangeAspect = true }),
+                    appNvPr
+                );
+                mediaPic.BlipFill = new BlipFill(
+                    new Drawing.Blip { Embed = posterRelId },
+                    new Drawing.Stretch(new Drawing.FillRectangle())
+                );
+                mediaPic.ShapeProperties = new ShapeProperties(
+                    new Drawing.Transform2D(
+                        new Drawing.Offset { X = mX, Y = mY },
+                        new Drawing.Extents { Cx = mCx, Cy = mCy }
+                    ),
+                    new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = Drawing.ShapeTypeValues.Rectangle }
+                );
+
+                // p14:trim (optional start/end trim in milliseconds)
+                properties.TryGetValue("trimstart", out var trimStart);
+                properties.TryGetValue("trimend", out var trimEnd);
+                if (trimStart != null || trimEnd != null)
+                {
+                    var trim = new DocumentFormat.OpenXml.Office2010.PowerPoint.MediaTrim();
+                    if (trimStart != null) trim.Start = trimStart;
+                    if (trimEnd != null) trim.End = trimEnd;
+                    p14Media.MediaTrim = trim;
+                }
+
+                mediaShapeTree.AppendChild(mediaPic);
+
+                // 5. Add media timing node (controls playback behavior)
+                var mediaSlide = GetSlide(mediaSlidePart);
+                var vol = properties.TryGetValue("volume", out var volStr)
+                    ? (int)(double.Parse(volStr) * 1000) // 0-100 → 0-100000
+                    : 80000; // default 80%
+                var autoPlay = properties.GetValueOrDefault("autoplay", "false")
+                    .Equals("true", StringComparison.OrdinalIgnoreCase);
+
+                AddMediaTimingNode(mediaSlide, mediaId, isVideo, vol, autoPlay);
+
+                mediaSlide.Save();
+
+                var picCount = mediaShapeTree.Elements<Picture>().Count();
+                return $"/slide[{mediaSlideIdx}]/picture[{picCount}]";
+            }
+
+            case "connector" or "connection":
             {
                 var cxnSlideMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]$");
                 if (!cxnSlideMatch.Success)
@@ -910,7 +1063,7 @@ public partial class PowerPointHandler
             return;
         }
 
-        // Remove shape or picture from slide
+        // Remove element from slide
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found");
@@ -929,16 +1082,77 @@ public partial class PowerPointHandler
                 throw new ArgumentException($"Shape {elementIdx} not found");
             shapes[elementIdx - 1].Remove();
         }
-        else if (elementType is "picture" or "pic")
+        else if (elementType is "picture" or "pic" or "video" or "audio")
         {
-            var pics = shapeTree.Elements<Picture>().ToList();
+            List<Picture> pics;
+            if (elementType is "video")
+                pics = shapeTree.Elements<Picture>()
+                    .Where(p => p.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties
+                        ?.GetFirstChild<Drawing.VideoFromFile>() != null).ToList();
+            else if (elementType is "audio")
+                pics = shapeTree.Elements<Picture>()
+                    .Where(p => p.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties
+                        ?.GetFirstChild<Drawing.AudioFromFile>() != null).ToList();
+            else
+                pics = shapeTree.Elements<Picture>().ToList();
+
             if (elementIdx < 1 || elementIdx > pics.Count)
-                throw new ArgumentException($"Picture {elementIdx} not found");
-            pics[elementIdx - 1].Remove();
+                throw new ArgumentException($"{elementType} {elementIdx} not found (total: {pics.Count})");
+
+            var pic = pics[elementIdx - 1];
+            RemovePictureWithCleanup(slidePart, shapeTree, pic);
+        }
+        else if (elementType == "table")
+        {
+            var tables = shapeTree.Elements<GraphicFrame>()
+                .Where(gf => gf.Descendants<Drawing.Table>().Any()).ToList();
+            if (elementIdx < 1 || elementIdx > tables.Count)
+                throw new ArgumentException($"Table {elementIdx} not found");
+            tables[elementIdx - 1].Remove();
+        }
+        else if (elementType == "chart")
+        {
+            var charts = shapeTree.Elements<GraphicFrame>()
+                .Where(gf => gf.Descendants<C.ChartReference>().Any()).ToList();
+            if (elementIdx < 1 || elementIdx > charts.Count)
+                throw new ArgumentException($"Chart {elementIdx} not found");
+            var chartGf = charts[elementIdx - 1];
+            // Clean up ChartPart
+            var chartRef = chartGf.Descendants<C.ChartReference>().FirstOrDefault();
+            if (chartRef?.Id?.Value != null)
+            {
+                try { slidePart.DeletePart(chartRef.Id.Value); } catch { }
+            }
+            chartGf.Remove();
+        }
+        else if (elementType == "connector")
+        {
+            var connectors = shapeTree.Elements<ConnectionShape>().ToList();
+            if (elementIdx < 1 || elementIdx > connectors.Count)
+                throw new ArgumentException($"Connector {elementIdx} not found");
+            connectors[elementIdx - 1].Remove();
+        }
+        else if (elementType == "group")
+        {
+            // Ungroup: move children back to parent shape tree, then remove group
+            var groups = shapeTree.Elements<GroupShape>().ToList();
+            if (elementIdx < 1 || elementIdx > groups.Count)
+                throw new ArgumentException($"Group {elementIdx} not found");
+            var group = groups[elementIdx - 1];
+            // Recursively clean up any pictures inside the group before ungrouping
+            var children = group.ChildElements
+                .Where(e => e is Shape or Picture or ConnectionShape or GraphicFrame or GroupShape)
+                .ToList();
+            foreach (var child in children)
+            {
+                child.Remove();
+                shapeTree.AppendChild(child);
+            }
+            group.Remove();
         }
         else
         {
-            throw new ArgumentException($"Unknown element type: {elementType}");
+            throw new ArgumentException($"Unknown element type: {elementType}. Supported: shape, picture, video, audio, table, chart, connector, group");
         }
 
         GetSlide(slidePart).Save();

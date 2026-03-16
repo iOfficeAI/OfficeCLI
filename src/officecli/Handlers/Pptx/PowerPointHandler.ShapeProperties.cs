@@ -351,6 +351,21 @@ public partial class PowerPointHandler
                     break;
                 }
 
+                case "textwarp" or "wordart":
+                {
+                    var bodyPr = shape.TextBody?.Elements<Drawing.BodyProperties>().FirstOrDefault();
+                    if (bodyPr == null) { unsupported.Add(key); break; }
+                    bodyPr.RemoveAllChildren<Drawing.PresetTextWarp>();
+                    if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var warpName = value.StartsWith("text") ? value : $"text{char.ToUpper(value[0])}{value[1..]}";
+                        bodyPr.AppendChild(new Drawing.PresetTextWarp(
+                            new Drawing.AdjustValueList()
+                        ) { Preset = new Drawing.TextShapeValues(warpName) });
+                    }
+                    break;
+                }
+
                 case "autofit":
                 {
                     var bodyPr = shape.TextBody?.Elements<Drawing.BodyProperties>().FirstOrDefault();

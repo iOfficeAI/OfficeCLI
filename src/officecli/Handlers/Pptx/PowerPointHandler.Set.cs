@@ -71,6 +71,74 @@ public partial class PowerPointHandler
             return unsupported;
         }
 
+        // Try slideMaster/slideLayout editing: /slideMaster[N]/shape[M] or /slideLayout[N]/shape[M]
+        var masterShapeMatch = Regex.Match(path, @"^/(slideMaster|slideLayout)\[(\d+)\](?:/(\w+)\[(\d+)\])?$");
+        if (masterShapeMatch.Success)
+        {
+            var partType = masterShapeMatch.Groups[1].Value;
+            var partIdx = int.Parse(masterShapeMatch.Groups[2].Value);
+            var presentationPart = _doc.PresentationPart!;
+
+            OpenXmlPartRootElement rootEl;
+            if (partType == "slideMaster")
+            {
+                var masters = presentationPart.SlideMasterParts.ToList();
+                if (partIdx < 1 || partIdx > masters.Count)
+                    throw new ArgumentException($"SlideMaster {partIdx} not found");
+                rootEl = masters[partIdx - 1].SlideMaster
+                    ?? throw new InvalidOperationException("Corrupt slide master");
+            }
+            else
+            {
+                var layouts = presentationPart.SlideMasterParts
+                    .SelectMany(m => m.SlideLayoutParts).ToList();
+                if (partIdx < 1 || partIdx > layouts.Count)
+                    throw new ArgumentException($"SlideLayout {partIdx} not found");
+                rootEl = layouts[partIdx - 1].SlideLayout
+                    ?? throw new InvalidOperationException("Corrupt slide layout");
+            }
+
+            if (!masterShapeMatch.Groups[3].Success)
+            {
+                // Set properties on the master/layout itself
+                var unsupported = new List<string>();
+                foreach (var (key, value) in properties)
+                {
+                    if (key.Equals("name", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var csd = rootEl.GetFirstChild<CommonSlideData>();
+                        if (csd != null) csd.Name = value;
+                    }
+                    else
+                    {
+                        unsupported.Add(key);
+                    }
+                }
+                rootEl.Save();
+                return unsupported;
+            }
+
+            // Set on a specific shape within master/layout
+            var elType = masterShapeMatch.Groups[3].Value;
+            var elIdx = int.Parse(masterShapeMatch.Groups[4].Value);
+            var shapeTree = rootEl.Descendants<ShapeTree>().FirstOrDefault()
+                ?? throw new ArgumentException("No shape tree found");
+
+            if (elType == "shape")
+            {
+                var shapes = shapeTree.Elements<Shape>().ToList();
+                if (elIdx < 1 || elIdx > shapes.Count)
+                    throw new ArgumentException($"Shape {elIdx} not found");
+                var shape = shapes[elIdx - 1];
+                var allRuns = shape.Descendants<Drawing.Run>().ToList();
+                var unsupported = SetRunOrShapeProperties(properties, allRuns, shape);
+                rootEl.Save();
+                return unsupported;
+            }
+
+            throw new ArgumentException($"Unsupported element type: {elType}");
+        }
+
         // Try notes path: /slide[N]/notes
         var notesSetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/notes$");
         if (notesSetMatch.Success)
@@ -297,6 +365,34 @@ public partial class PowerPointHandler
                         var nvPr = gf.NonVisualGraphicFrameProperties?.NonVisualDrawingProperties;
                         if (nvPr != null) nvPr.Name = value;
                         break;
+                    case "tablestyle" or "style":
+                    {
+                        var table = gf.Descendants<Drawing.Table>().FirstOrDefault();
+                        if (table != null)
+                        {
+                            var tblPr = table.GetFirstChild<Drawing.TableProperties>()
+                                ?? table.PrependChild(new Drawing.TableProperties());
+                            // Well-known style names → GUIDs
+                            var styleId = value.ToLowerInvariant() switch
+                            {
+                                "medium1" or "mediumstyle1" => "{073A0DAA-6AF3-43AB-8588-CEC1D06C72B9}",
+                                "medium2" or "mediumstyle2" => "{F5AB1C69-6EDB-4FF4-983F-18BD219EF322}",
+                                "medium3" or "mediumstyle3" => "{3B4B98B0-60AC-42C2-AFA5-B58CD77FA1E5}",
+                                "medium4" or "mediumstyle4" => "{D7AC3CCA-C797-4891-BE02-D94E43425B78}",
+                                "light1" or "lightstyle1" => "{9D7B26C5-4107-4FEC-AEDC-1716B250A1EF}",
+                                "light2" or "lightstyle2" => "{ED083AE6-46FA-4A59-8FB0-9F97EB10719F}",
+                                "light3" or "lightstyle3" => "{3B4B98B0-60AC-42C2-AFA5-B58CD77FA1E5}",
+                                "dark1" or "darkstyle1" => "{E8034E78-7F5D-4C2E-B375-FC64B27BC917}",
+                                "dark2" or "darkstyle2" => "{125E5076-3810-47DD-B79F-674D7AD40C01}",
+                                "none" => "{2D5ABB26-0587-4C30-8999-92F81FD0307C}",
+                                _ when value.StartsWith("{") => value, // Direct GUID
+                                _ => value // Pass through
+                            };
+                            tblPr.RemoveAllChildren<Drawing.TableStyleId>();
+                            tblPr.AppendChild(new Drawing.TableStyleId(styleId));
+                        }
+                        break;
+                    }
                     default:
                         if (!GenericXmlQuery.SetGenericAttribute(gf, key, value))
                             unsupported.Add(key);
@@ -360,6 +456,223 @@ public partial class PowerPointHandler
 
             var allRuns = shape.Descendants<Drawing.Run>().ToList();
             var unsupported = SetRunOrShapeProperties(properties, allRuns, shape, slidePart);
+            GetSlide(slidePart).Save();
+            return unsupported;
+        }
+
+        // Try video/audio path: /slide[N]/video[M] or /slide[N]/audio[M]
+        var mediaSetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/(video|audio)\[(\d+)\]$");
+        if (mediaSetMatch.Success)
+        {
+            var slideIdx = int.Parse(mediaSetMatch.Groups[1].Value);
+            var mediaType = mediaSetMatch.Groups[2].Value;
+            var mediaIdx = int.Parse(mediaSetMatch.Groups[3].Value);
+
+            var slideParts4 = GetSlideParts().ToList();
+            if (slideIdx < 1 || slideIdx > slideParts4.Count)
+                throw new ArgumentException($"Slide {slideIdx} not found");
+
+            var slidePart = slideParts4[slideIdx - 1];
+            var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
+                ?? throw new ArgumentException("Slide has no shape tree");
+
+            var mediaPics = shapeTree.Elements<Picture>()
+                .Where(p =>
+                {
+                    var nvPr = p.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties;
+                    return mediaType == "video"
+                        ? nvPr?.GetFirstChild<Drawing.VideoFromFile>() != null
+                        : nvPr?.GetFirstChild<Drawing.AudioFromFile>() != null;
+                }).ToList();
+            if (mediaIdx < 1 || mediaIdx > mediaPics.Count)
+                throw new ArgumentException($"{mediaType} {mediaIdx} not found (total: {mediaPics.Count})");
+
+            var pic = mediaPics[mediaIdx - 1];
+            var shapeId = pic.NonVisualPictureProperties?.NonVisualDrawingProperties?.Id?.Value;
+            var unsupported = new List<string>();
+
+            foreach (var (key, value) in properties)
+            {
+                switch (key.ToLowerInvariant())
+                {
+                    case "volume":
+                    {
+                        if (shapeId == null) { unsupported.Add(key); break; }
+                        var vol = (int)(double.Parse(value) * 1000); // 0-100 → 0-100000
+                        var mediaNode = FindMediaTimingNode(slidePart, shapeId.Value);
+                        if (mediaNode != null) mediaNode.Volume = vol;
+                        break;
+                    }
+                    case "autoplay":
+                    {
+                        if (shapeId == null) { unsupported.Add(key); break; }
+                        var mediaNode = FindMediaTimingNode(slidePart, shapeId.Value);
+                        var cTn = mediaNode?.CommonTimeNode;
+                        var startCond = cTn?.StartConditionList?.GetFirstChild<Condition>();
+                        if (startCond != null)
+                            startCond.Delay = bool.Parse(value) ? "0" : "indefinite";
+                        break;
+                    }
+                    case "trimstart":
+                    {
+                        var nvPr = pic.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties;
+                        var p14Media = nvPr?.Descendants<DocumentFormat.OpenXml.Office2010.PowerPoint.Media>().FirstOrDefault();
+                        if (p14Media != null)
+                        {
+                            var trim = p14Media.MediaTrim ?? (p14Media.MediaTrim = new DocumentFormat.OpenXml.Office2010.PowerPoint.MediaTrim());
+                            trim.Start = value;
+                        }
+                        break;
+                    }
+                    case "trimend":
+                    {
+                        var nvPr = pic.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties;
+                        var p14Media = nvPr?.Descendants<DocumentFormat.OpenXml.Office2010.PowerPoint.Media>().FirstOrDefault();
+                        if (p14Media != null)
+                        {
+                            var trim = p14Media.MediaTrim ?? (p14Media.MediaTrim = new DocumentFormat.OpenXml.Office2010.PowerPoint.MediaTrim());
+                            trim.End = value;
+                        }
+                        break;
+                    }
+                    case "x" or "y" or "width" or "height":
+                    {
+                        var spPr = pic.ShapeProperties ?? (pic.ShapeProperties = new ShapeProperties());
+                        var xfrm = spPr.Transform2D ?? (spPr.Transform2D = new Drawing.Transform2D());
+                        var offset = xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset());
+                        var extents = xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents());
+                        var emu = ParseEmu(value);
+                        switch (key.ToLowerInvariant())
+                        {
+                            case "x": offset.X = emu; break;
+                            case "y": offset.Y = emu; break;
+                            case "width": extents.Cx = emu; break;
+                            case "height": extents.Cy = emu; break;
+                        }
+                        break;
+                    }
+                    default:
+                        unsupported.Add(key);
+                        break;
+                }
+            }
+            GetSlide(slidePart).Save();
+            return unsupported;
+        }
+
+        // Try picture path: /slide[N]/picture[M]
+        var picSetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/picture\[(\d+)\]$");
+        if (picSetMatch.Success)
+        {
+            var slideIdx = int.Parse(picSetMatch.Groups[1].Value);
+            var picIdx = int.Parse(picSetMatch.Groups[2].Value);
+
+            var slideParts3 = GetSlideParts().ToList();
+            if (slideIdx < 1 || slideIdx > slideParts3.Count)
+                throw new ArgumentException($"Slide {slideIdx} not found");
+
+            var slidePart = slideParts3[slideIdx - 1];
+            var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
+                ?? throw new ArgumentException("Slide has no shape tree");
+            var pics = shapeTree.Elements<Picture>().ToList();
+            if (picIdx < 1 || picIdx > pics.Count)
+                throw new ArgumentException($"Picture {picIdx} not found (total: {pics.Count})");
+
+            var pic = pics[picIdx - 1];
+            var unsupported = new List<string>();
+            foreach (var (key, value) in properties)
+            {
+                switch (key.ToLowerInvariant())
+                {
+                    case "alt":
+                        var nvPicPr = pic.NonVisualPictureProperties?.NonVisualDrawingProperties;
+                        if (nvPicPr != null) nvPicPr.Description = value;
+                        break;
+                    case "x" or "y" or "width" or "height":
+                    {
+                        var spPr = pic.ShapeProperties ?? (pic.ShapeProperties = new ShapeProperties());
+                        var xfrm = spPr.Transform2D ?? (spPr.Transform2D = new Drawing.Transform2D());
+                        var offset = xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset());
+                        var extents = xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents());
+                        var emu = ParseEmu(value);
+                        switch (key.ToLowerInvariant())
+                        {
+                            case "x": offset.X = emu; break;
+                            case "y": offset.Y = emu; break;
+                            case "width": extents.Cx = emu; break;
+                            case "height": extents.Cy = emu; break;
+                        }
+                        break;
+                    }
+                    case "path" or "src":
+                    {
+                        // Replace image source
+                        var blipFill = pic.BlipFill;
+                        var blip = blipFill?.GetFirstChild<Drawing.Blip>();
+                        if (blip == null) { unsupported.Add(key); break; }
+                        if (!File.Exists(value))
+                            throw new FileNotFoundException($"Image file not found: {value}");
+
+                        var imgExt = Path.GetExtension(value).ToLowerInvariant();
+                        var imgType = imgExt switch
+                        {
+                            ".png" => ImagePartType.Png,
+                            ".jpg" or ".jpeg" => ImagePartType.Jpeg,
+                            ".gif" => ImagePartType.Gif,
+                            ".bmp" => ImagePartType.Bmp,
+                            ".tif" or ".tiff" => ImagePartType.Tiff,
+                            ".emf" => ImagePartType.Emf,
+                            ".wmf" => ImagePartType.Wmf,
+                            _ => ImagePartType.Png
+                        };
+                        var newImgPart = slidePart.AddImagePart(imgType);
+                        using (var stream = File.OpenRead(value))
+                            newImgPart.FeedData(stream);
+                        blip.Embed = slidePart.GetIdOfPart(newImgPart);
+                        break;
+                    }
+                    case "crop" or "cropleft" or "cropright" or "croptop" or "cropbottom":
+                    {
+                        var blipFill = pic.BlipFill;
+                        if (blipFill == null) { unsupported.Add(key); break; }
+                        var srcRect = blipFill.GetFirstChild<Drawing.SourceRectangle>()
+                            ?? blipFill.AppendChild(new Drawing.SourceRectangle());
+
+                        if (key.Equals("crop", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Single value: "left,top,right,bottom" as percentages (0-100)
+                            var parts = value.Split(',');
+                            if (parts.Length == 4)
+                            {
+                                srcRect.Left = (int)(double.Parse(parts[0].Trim()) * 1000);
+                                srcRect.Top = (int)(double.Parse(parts[1].Trim()) * 1000);
+                                srcRect.Right = (int)(double.Parse(parts[2].Trim()) * 1000);
+                                srcRect.Bottom = (int)(double.Parse(parts[3].Trim()) * 1000);
+                            }
+                            else if (parts.Length == 1)
+                            {
+                                var pct = (int)(double.Parse(value) * 1000);
+                                srcRect.Left = pct; srcRect.Top = pct; srcRect.Right = pct; srcRect.Bottom = pct;
+                            }
+                        }
+                        else
+                        {
+                            var pct = (int)(double.Parse(value) * 1000); // percent (0-100) → 1/1000ths
+                            switch (key.ToLowerInvariant())
+                            {
+                                case "cropleft": srcRect.Left = pct; break;
+                                case "croptop": srcRect.Top = pct; break;
+                                case "cropright": srcRect.Right = pct; break;
+                                case "cropbottom": srcRect.Bottom = pct; break;
+                            }
+                        }
+                        break;
+                    }
+                    default:
+                        unsupported.Add(key);
+                        break;
+                }
+            }
             GetSlide(slidePart).Save();
             return unsupported;
         }

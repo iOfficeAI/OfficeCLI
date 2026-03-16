@@ -35,7 +35,9 @@ public partial class PowerPointHandler
         if (typeMatch.Success)
         {
             var t = typeMatch.Groups[1].Value.ToLowerInvariant();
-            if (t is "shape" or "textbox" or "title" or "picture" or "pic" or "equation" or "math" or "formula"
+            if (t is "shape" or "textbox" or "title" or "picture" or "pic"
+                or "video" or "audio"
+                or "equation" or "math" or "formula"
                 or "table" or "chart" or "placeholder")
                 elementType = t;
         }
@@ -72,7 +74,7 @@ public partial class PowerPointHandler
     private static bool MatchesShapeSelector(Shape shape, ShapeSelector selector)
     {
         // Element type filter
-        if (selector.ElementType is "picture" or "pic" or "table" or "chart" or "placeholder")
+        if (selector.ElementType is "picture" or "pic" or "video" or "audio" or "table" or "chart" or "placeholder")
             return false;
 
         // Title filter
@@ -118,8 +120,9 @@ public partial class PowerPointHandler
 
     private static bool MatchesPictureSelector(Picture pic, ShapeSelector selector)
     {
-        // Only match if looking for pictures specifically or no type specified
-        if (selector.ElementType != null && selector.ElementType != "picture" && selector.ElementType != "pic")
+        // Only match if looking for pictures/video/audio or no type specified
+        if (selector.ElementType != null &&
+            selector.ElementType is not ("picture" or "pic" or "video" or "audio"))
             return false;
 
         if (selector.IsTitle.HasValue) return false; // Pictures can't be titles

@@ -256,6 +256,91 @@ public partial class PowerPointHandler : IDocumentHandler
         if (ph.Index?.HasValue == true) node.Format["phIndex"] = ph.Index.Value;
         return node;
     }
+    // ==================== Media Timing Lookup ====================
+
+    /// <summary>
+    /// Find the CommonMediaNode in the timing tree for a given shape ID.
+    /// </summary>
+    private static CommonMediaNode? FindMediaTimingNode(SlidePart slidePart, uint shapeId)
+    {
+        var timing = GetSlide(slidePart).GetFirstChild<Timing>();
+        if (timing == null) return null;
+
+        foreach (var mediaNode in timing.Descendants<CommonMediaNode>())
+        {
+            var target = mediaNode.TargetElement?.GetFirstChild<ShapeTarget>();
+            if (target?.ShapeId?.Value == shapeId.ToString())
+                return mediaNode;
+        }
+        return null;
+    }
+
+    // ==================== Cleanup (POI-style reference counting) ====================
+
+    /// <summary>
+    /// Remove a Picture element with proper cleanup of relationships and media parts.
+    /// Follows Apache POI's pattern: reference-count blipIds, only delete parts when
+    /// no other shapes reference the same media.
+    /// </summary>
+    private static void RemovePictureWithCleanup(SlidePart slidePart, ShapeTree shapeTree, Picture pic)
+    {
+        // Collect all relationship IDs referenced by this picture
+        var relIdsToClean = new HashSet<string>();
+
+        // BlipFill → Blip.Embed (poster/image)
+        var blipEmbed = pic.BlipFill?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Blip>()?.Embed?.Value;
+        if (blipEmbed != null) relIdsToClean.Add(blipEmbed);
+
+        // VideoFromFile.Link or AudioFromFile.Link
+        var nvPr = pic.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties;
+        var videoLink = nvPr?.GetFirstChild<DocumentFormat.OpenXml.Drawing.VideoFromFile>()?.Link?.Value;
+        if (videoLink != null) relIdsToClean.Add(videoLink);
+        var audioLink = nvPr?.GetFirstChild<DocumentFormat.OpenXml.Drawing.AudioFromFile>()?.Link?.Value;
+        if (audioLink != null) relIdsToClean.Add(audioLink);
+
+        // p14:media.Embed (MediaReferenceRelationship)
+        var p14Media = nvPr?.Descendants<DocumentFormat.OpenXml.Office2010.PowerPoint.Media>().FirstOrDefault();
+        var mediaEmbed = p14Media?.Embed?.Value;
+        if (mediaEmbed != null) relIdsToClean.Add(mediaEmbed);
+
+        // Reference count: check all OTHER pictures on the same slide for shared relIds
+        var sharedRelIds = new HashSet<string>();
+        foreach (var otherPic in shapeTree.Elements<Picture>())
+        {
+            if (otherPic == pic) continue; // skip the one being removed
+
+            var otherBlip = otherPic.BlipFill?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Blip>()?.Embed?.Value;
+            if (otherBlip != null && relIdsToClean.Contains(otherBlip)) sharedRelIds.Add(otherBlip);
+
+            var otherNvPr = otherPic.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties;
+            var otherVid = otherNvPr?.GetFirstChild<DocumentFormat.OpenXml.Drawing.VideoFromFile>()?.Link?.Value;
+            if (otherVid != null && relIdsToClean.Contains(otherVid)) sharedRelIds.Add(otherVid);
+            var otherAud = otherNvPr?.GetFirstChild<DocumentFormat.OpenXml.Drawing.AudioFromFile>()?.Link?.Value;
+            if (otherAud != null && relIdsToClean.Contains(otherAud)) sharedRelIds.Add(otherAud);
+
+            var otherMedia = otherNvPr?.Descendants<DocumentFormat.OpenXml.Office2010.PowerPoint.Media>().FirstOrDefault()?.Embed?.Value;
+            if (otherMedia != null && relIdsToClean.Contains(otherMedia)) sharedRelIds.Add(otherMedia);
+        }
+
+        // Remove the XML element first
+        pic.Remove();
+
+        // Clean up relationships that are no longer referenced
+        foreach (var relId in relIdsToClean)
+        {
+            if (sharedRelIds.Contains(relId)) continue; // still referenced by another shape
+
+            try { slidePart.DeletePart(relId); } catch { }
+            // Also try removing data part relationships (video/audio/media)
+            try
+            {
+                foreach (var dpr in slidePart.DataPartReferenceRelationships.Where(r => r.Id == relId).ToList())
+                    slidePart.DeleteReferenceRelationship(dpr);
+            }
+            catch { }
+        }
+    }
+
     // ==================== Layout ====================
 
     /// <summary>

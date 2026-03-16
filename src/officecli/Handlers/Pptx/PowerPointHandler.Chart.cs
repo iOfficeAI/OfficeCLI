@@ -136,23 +136,25 @@ public partial class PowerPointHandler
         OpenXmlCompositeElement chartElement;
         bool needsAxes = true;
 
+        var colors = ParseSeriesColors(properties);
+
         switch (kind)
         {
             case "bar":
                 chartElement = BuildBarChart(C.BarDirectionValues.Bar, stacked, percentStacked,
-                    categories, seriesData, catAxisId, valAxisId);
+                    categories, seriesData, catAxisId, valAxisId, colors);
                 break;
             case "column":
                 chartElement = BuildBarChart(C.BarDirectionValues.Column, stacked, percentStacked,
-                    categories, seriesData, catAxisId, valAxisId);
+                    categories, seriesData, catAxisId, valAxisId, colors);
                 break;
             case "line":
                 chartElement = BuildLineChart(stacked, percentStacked,
-                    categories, seriesData, catAxisId, valAxisId);
+                    categories, seriesData, catAxisId, valAxisId, colors);
                 break;
             case "area":
                 chartElement = BuildAreaChart(stacked, percentStacked,
-                    categories, seriesData, catAxisId, valAxisId);
+                    categories, seriesData, catAxisId, valAxisId, colors);
                 break;
             case "pie":
                 chartElement = BuildPieChart(categories, seriesData);
@@ -165,14 +167,61 @@ public partial class PowerPointHandler
             case "scatter":
                 chartElement = BuildScatterChart(categories, seriesData, catAxisId, valAxisId);
                 break;
+            case "combo":
+            {
+                // Combo: first N series as columns, rest as lines
+                int splitAt = 1;
+                if (properties.TryGetValue("combosplit", out var splitStr))
+                    splitAt = int.Parse(splitStr);
+                splitAt = Math.Min(splitAt, seriesData.Count);
+
+                var barData = seriesData.Take(splitAt).ToList();
+                var lineData = seriesData.Skip(splitAt).ToList();
+
+                var comboBar = new C.BarChart(
+                    new C.BarDirection { Val = C.BarDirectionValues.Column },
+                    new C.BarGrouping { Val = C.BarGroupingValues.Clustered },
+                    new C.VaryColors { Val = false }
+                );
+                for (int ci = 0; ci < barData.Count; ci++)
+                {
+                    var clr = colors != null && ci < colors.Length ? colors[ci] : DefaultSeriesColors[ci % DefaultSeriesColors.Length];
+                    comboBar.AppendChild(BuildBarSeries((uint)ci, barData[ci].name, categories, barData[ci].values, clr));
+                }
+                comboBar.AppendChild(new C.AxisId { Val = catAxisId });
+                comboBar.AppendChild(new C.AxisId { Val = valAxisId });
+                plotArea.AppendChild(comboBar);
+
+                if (lineData.Count > 0)
+                {
+                    var comboLine = new C.LineChart(
+                        new C.Grouping { Val = C.GroupingValues.Standard },
+                        new C.VaryColors { Val = false }
+                    );
+                    for (int ci = 0; ci < lineData.Count; ci++)
+                    {
+                        var sIdx = (uint)(splitAt + ci);
+                        var cIdx = splitAt + ci;
+                        var clr = colors != null && cIdx < colors.Length ? colors[cIdx] : DefaultSeriesColors[cIdx % DefaultSeriesColors.Length];
+                        comboLine.AppendChild(BuildLineSeries(sIdx, lineData[ci].name, categories, lineData[ci].values, clr));
+                    }
+                    comboLine.AppendChild(new C.ShowMarker { Val = true });
+                    comboLine.AppendChild(new C.AxisId { Val = catAxisId });
+                    comboLine.AppendChild(new C.AxisId { Val = valAxisId });
+                    plotArea.AppendChild(comboLine);
+                }
+                chartElement = null; // already added
+                break;
+            }
             default:
                 // Default to column chart
                 chartElement = BuildBarChart(C.BarDirectionValues.Column, false, false,
-                    categories, seriesData, catAxisId, valAxisId);
+                    categories, seriesData, catAxisId, valAxisId, colors);
                 break;
         }
 
-        plotArea.AppendChild(chartElement);
+        if (chartElement != null)
+            plotArea.AppendChild(chartElement);
 
         // Add axes for chart types that need them
         if (needsAxes)
@@ -223,7 +272,7 @@ public partial class PowerPointHandler
     private static C.BarChart BuildBarChart(
         C.BarDirectionValues direction, bool stacked, bool percentStacked,
         string[]? categories, List<(string name, double[] values)> seriesData,
-        uint catAxisId, uint valAxisId)
+        uint catAxisId, uint valAxisId, string[]? colors = null)
     {
         var grouping = percentStacked ? C.BarGroupingValues.PercentStacked
             : stacked ? C.BarGroupingValues.Stacked
@@ -237,8 +286,9 @@ public partial class PowerPointHandler
 
         for (int i = 0; i < seriesData.Count; i++)
         {
+            var color = colors != null && i < colors.Length ? colors[i] : DefaultSeriesColors[i % DefaultSeriesColors.Length];
             barChart.AppendChild(BuildBarSeries((uint)i, seriesData[i].name,
-                categories, seriesData[i].values));
+                categories, seriesData[i].values, color));
         }
 
         barChart.AppendChild(new C.GapWidth { Val = (ushort)150 });
@@ -252,7 +302,7 @@ public partial class PowerPointHandler
     private static C.LineChart BuildLineChart(
         bool stacked, bool percentStacked,
         string[]? categories, List<(string name, double[] values)> seriesData,
-        uint catAxisId, uint valAxisId)
+        uint catAxisId, uint valAxisId, string[]? colors = null)
     {
         var grouping = percentStacked ? C.GroupingValues.PercentStacked
             : stacked ? C.GroupingValues.Stacked
@@ -265,8 +315,9 @@ public partial class PowerPointHandler
 
         for (int i = 0; i < seriesData.Count; i++)
         {
+            var color = colors != null && i < colors.Length ? colors[i] : DefaultSeriesColors[i % DefaultSeriesColors.Length];
             lineChart.AppendChild(BuildLineSeries((uint)i, seriesData[i].name,
-                categories, seriesData[i].values));
+                categories, seriesData[i].values, color));
         }
 
         lineChart.AppendChild(new C.ShowMarker { Val = true });
@@ -278,7 +329,7 @@ public partial class PowerPointHandler
     private static C.AreaChart BuildAreaChart(
         bool stacked, bool percentStacked,
         string[]? categories, List<(string name, double[] values)> seriesData,
-        uint catAxisId, uint valAxisId)
+        uint catAxisId, uint valAxisId, string[]? colors = null)
     {
         var grouping = percentStacked ? C.GroupingValues.PercentStacked
             : stacked ? C.GroupingValues.Stacked
@@ -291,8 +342,9 @@ public partial class PowerPointHandler
 
         for (int i = 0; i < seriesData.Count; i++)
         {
+            var color = colors != null && i < colors.Length ? colors[i] : DefaultSeriesColors[i % DefaultSeriesColors.Length];
             areaChart.AppendChild(BuildAreaSeries((uint)i, seriesData[i].name,
-                categories, seriesData[i].values));
+                categories, seriesData[i].values, color));
         }
 
         areaChart.AppendChild(new C.AxisId { Val = catAxisId });
@@ -347,10 +399,44 @@ public partial class PowerPointHandler
         return scatterChart;
     }
 
+    // ==================== Default Series Colors ====================
+
+    private static readonly string[] DefaultSeriesColors =
+    {
+        "4472C4", "ED7D31", "A5A5A5", "FFC000", "5B9BD5", "70AD47",
+        "264478", "9B4A22", "636363", "BF8F00", "3A75A8", "4E8538"
+    };
+
+    /// <summary>
+    /// Apply a color to a series via ChartShapeProperties.
+    /// </summary>
+    private static void ApplySeriesColor(OpenXmlCompositeElement series, string color)
+    {
+        series.RemoveAllChildren<C.ChartShapeProperties>();
+        var spPr = new C.ChartShapeProperties();
+        spPr.AppendChild(BuildSolidFill(color));
+        // Insert after SeriesText (schema order: idx, order, tx, spPr, ...)
+        var serText = series.GetFirstChild<C.SeriesText>();
+        if (serText != null)
+            serText.InsertAfterSelf(spPr);
+        else
+            series.PrependChild(spPr);
+    }
+
+    /// <summary>
+    /// Parse series colors from properties. Format: "colors=FF0000,00FF00,0000FF" or "color1=FF0000"
+    /// </summary>
+    private static string[]? ParseSeriesColors(Dictionary<string, string> properties)
+    {
+        if (properties.TryGetValue("colors", out var colorsStr))
+            return colorsStr.Split(',').Select(c => c.Trim()).ToArray();
+        return null;
+    }
+
     // ==================== Series Builders ====================
 
     private static C.BarChartSeries BuildBarSeries(uint idx, string name,
-        string[]? categories, double[] values)
+        string[]? categories, double[] values, string? color = null)
     {
         var series = new C.BarChartSeries(
             new C.Index { Val = idx },
@@ -360,13 +446,14 @@ public partial class PowerPointHandler
                 new C.StringPoint(new C.NumericValue(name)) { Index = 0 }
             ))
         );
+        if (color != null) ApplySeriesColor(series, color);
         if (categories != null) series.AppendChild(BuildCategoryData(categories));
         series.AppendChild(BuildValues(values));
         return series;
     }
 
     private static C.LineChartSeries BuildLineSeries(uint idx, string name,
-        string[]? categories, double[] values)
+        string[]? categories, double[] values, string? color = null)
     {
         var series = new C.LineChartSeries(
             new C.Index { Val = idx },
@@ -376,13 +463,14 @@ public partial class PowerPointHandler
                 new C.StringPoint(new C.NumericValue(name)) { Index = 0 }
             ))
         );
+        if (color != null) ApplySeriesColor(series, color);
         if (categories != null) series.AppendChild(BuildCategoryData(categories));
         series.AppendChild(BuildValues(values));
         return series;
     }
 
     private static C.AreaChartSeries BuildAreaSeries(uint idx, string name,
-        string[]? categories, double[] values)
+        string[]? categories, double[] values, string? color = null)
     {
         var series = new C.AreaChartSeries(
             new C.Index { Val = idx },
@@ -392,13 +480,14 @@ public partial class PowerPointHandler
                 new C.StringPoint(new C.NumericValue(name)) { Index = 0 }
             ))
         );
+        if (color != null) ApplySeriesColor(series, color);
         if (categories != null) series.AppendChild(BuildCategoryData(categories));
         series.AppendChild(BuildValues(values));
         return series;
     }
 
     private static C.PieChartSeries BuildPieSeries(uint idx, string name,
-        string[]? categories, double[] values)
+        string[]? categories, double[] values, string? color = null)
     {
         var series = new C.PieChartSeries(
             new C.Index { Val = idx },
@@ -408,6 +497,7 @@ public partial class PowerPointHandler
                 new C.StringPoint(new C.NumericValue(name)) { Index = 0 }
             ))
         );
+        if (color != null) ApplySeriesColor(series, color);
         if (categories != null) series.AppendChild(BuildCategoryData(categories));
         series.AppendChild(BuildValues(values));
         return series;
@@ -635,6 +725,18 @@ public partial class PowerPointHandler
             node.Format["legend"] = pos;
         }
 
+        // Data labels
+        var dataLabels = plotArea.Descendants<C.DataLabels>().FirstOrDefault();
+        if (dataLabels != null)
+        {
+            var parts = new List<string>();
+            if (dataLabels.GetFirstChild<C.ShowValue>()?.Val?.Value == true) parts.Add("value");
+            if (dataLabels.GetFirstChild<C.ShowCategoryName>()?.Val?.Value == true) parts.Add("category");
+            if (dataLabels.GetFirstChild<C.ShowSeriesName>()?.Val?.Value == true) parts.Add("series");
+            if (dataLabels.GetFirstChild<C.ShowPercent>()?.Val?.Value == true) parts.Add("percent");
+            if (parts.Count > 0) node.Format["dataLabels"] = string.Join(",", parts);
+        }
+
         // Series count
         var seriesCount = CountSeries(plotArea);
         node.Format["seriesCount"] = seriesCount;
@@ -658,6 +760,16 @@ public partial class PowerPointHandler
                 };
                 seriesNode.Format["name"] = sName;
                 seriesNode.Format["values"] = string.Join(",", sValues.Select(v => v.ToString("G")));
+                // Series color
+                var serEl = plotArea.Descendants<OpenXmlCompositeElement>()
+                    .Where(e => e.LocalName == "ser").ElementAtOrDefault(i);
+                var serColor = serEl?.GetFirstChild<C.ChartShapeProperties>()
+                    ?.GetFirstChild<Drawing.SolidFill>();
+                if (serColor != null)
+                {
+                    var colorVal = ReadColorFromFill(serColor);
+                    if (colorVal != null) seriesNode.Format["color"] = colorVal;
+                }
                 node.Children.Add(seriesNode);
             }
             node.ChildCount = seriesList.Count;
@@ -670,6 +782,12 @@ public partial class PowerPointHandler
 
     private static string? DetectChartType(C.PlotArea plotArea)
     {
+        // Combo detection: multiple chart type elements
+        var chartTypeCount = plotArea.ChildElements
+            .Count(e => e is C.BarChart or C.LineChart or C.PieChart or C.AreaChart
+                or C.ScatterChart or C.DoughnutChart or C.Bar3DChart or C.Line3DChart or C.Pie3DChart);
+        if (chartTypeCount > 1) return "combo";
+
         if (plotArea.GetFirstChild<C.BarChart>() is C.BarChart bar)
         {
             var dir = bar.GetFirstChild<C.BarDirection>()?.Val?.Value;
@@ -853,6 +971,117 @@ public partial class PowerPointHandler
                         ), insertBefore);
                     }
                     break;
+
+                case "datalabels" or "labels":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    // Apply to each chart type element's DataLabels
+                    foreach (var chartTypeEl in plotArea2.ChildElements
+                        .Where(e => e.LocalName.Contains("Chart") || e.LocalName.Contains("chart")))
+                    {
+                        chartTypeEl.RemoveAllChildren<C.DataLabels>();
+                        if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var dl = new C.DataLabels();
+                            var parts = value.ToLowerInvariant().Split(',').Select(s => s.Trim()).ToHashSet();
+                            dl.AppendChild(new C.ShowValue { Val = parts.Contains("value") || parts.Contains("true") || parts.Contains("all") });
+                            dl.AppendChild(new C.ShowCategoryName { Val = parts.Contains("category") || parts.Contains("all") });
+                            dl.AppendChild(new C.ShowSeriesName { Val = parts.Contains("series") || parts.Contains("all") });
+                            dl.AppendChild(new C.ShowPercent { Val = parts.Contains("percent") || parts.Contains("all") });
+                            dl.AppendChild(new C.ShowLegendKey { Val = false });
+                            chartTypeEl.AppendChild(dl);
+                        }
+                    }
+                    break;
+                }
+
+                case "colors":
+                {
+                    // Set series colors: "FF0000,00FF00,0000FF"
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    var colorList = value.Split(',').Select(c => c.Trim()).ToArray();
+                    var allSer = plotArea2.Descendants<OpenXmlCompositeElement>()
+                        .Where(e => e.LocalName == "ser").ToList();
+                    for (int ci = 0; ci < Math.Min(colorList.Length, allSer.Count); ci++)
+                        ApplySeriesColor(allSer[ci], colorList[ci]);
+                    break;
+                }
+
+                case "axistitle" or "vtitle":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var valAxis = plotArea2?.GetFirstChild<C.ValueAxis>();
+                    if (valAxis == null) { unsupported.Add(key); break; }
+                    valAxis.RemoveAllChildren<C.Title>();
+                    if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                        valAxis.InsertAfter(BuildChartTitle(value), valAxis.GetFirstChild<C.Scaling>());
+                    break;
+                }
+
+                case "cattitle" or "htitle":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var catAxis = plotArea2?.GetFirstChild<C.CategoryAxis>();
+                    if (catAxis == null) { unsupported.Add(key); break; }
+                    catAxis.RemoveAllChildren<C.Title>();
+                    if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                        catAxis.InsertAfter(BuildChartTitle(value), catAxis.GetFirstChild<C.Scaling>());
+                    break;
+                }
+
+                case "axismin" or "min":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var valAxis = plotArea2?.GetFirstChild<C.ValueAxis>();
+                    var scaling = valAxis?.GetFirstChild<C.Scaling>();
+                    if (scaling == null) { unsupported.Add(key); break; }
+                    scaling.RemoveAllChildren<C.MinAxisValue>();
+                    scaling.AppendChild(new C.MinAxisValue { Val = double.Parse(value) });
+                    break;
+                }
+
+                case "axismax" or "max":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var valAxis = plotArea2?.GetFirstChild<C.ValueAxis>();
+                    var scaling = valAxis?.GetFirstChild<C.Scaling>();
+                    if (scaling == null) { unsupported.Add(key); break; }
+                    scaling.RemoveAllChildren<C.MaxAxisValue>();
+                    scaling.AppendChild(new C.MaxAxisValue { Val = double.Parse(value) });
+                    break;
+                }
+
+                case "majorunit":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var valAxis = plotArea2?.GetFirstChild<C.ValueAxis>();
+                    if (valAxis == null) { unsupported.Add(key); break; }
+                    valAxis.RemoveAllChildren<C.MajorUnit>();
+                    valAxis.AppendChild(new C.MajorUnit { Val = double.Parse(value) });
+                    break;
+                }
+
+                case "minorunit":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var valAxis = plotArea2?.GetFirstChild<C.ValueAxis>();
+                    if (valAxis == null) { unsupported.Add(key); break; }
+                    valAxis.RemoveAllChildren<C.MinorUnit>();
+                    valAxis.AppendChild(new C.MinorUnit { Val = double.Parse(value) });
+                    break;
+                }
+
+                case "axisnumfmt" or "axisnumberformat":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var valAxis = plotArea2?.GetFirstChild<C.ValueAxis>();
+                    if (valAxis == null) { unsupported.Add(key); break; }
+                    valAxis.RemoveAllChildren<C.NumberingFormat>();
+                    valAxis.AppendChild(new C.NumberingFormat { FormatCode = value, SourceLinked = false });
+                    break;
+                }
 
                 case "categories":
                 {

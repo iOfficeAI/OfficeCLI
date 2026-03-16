@@ -45,7 +45,7 @@ public partial class PowerPointHandler
         int picIdx = 0;
         foreach (var pic in shapeTree.Elements<Picture>())
         {
-            children.Add(PictureToNode(pic, slideNum, picIdx + 1));
+            children.Add(PictureToNode(pic, slideNum, picIdx + 1, slidePart));
             picIdx++;
         }
 
@@ -324,6 +324,11 @@ public partial class PowerPointHandler
             if (bodyPr.Anchor?.HasValue == true)
                 node.Format["valign"] = bodyPr.Anchor.InnerText;
 
+            // TextWarp (WordArt)
+            var prstTxWarp = bodyPr.GetFirstChild<Drawing.PresetTextWarp>();
+            if (prstTxWarp?.Preset?.HasValue == true)
+                node.Format["textWarp"] = prstTxWarp.Preset.InnerText;
+
             // AutoFit
             if (bodyPr.GetFirstChild<Drawing.NormalAutoFit>() != null) node.Format["autoFit"] = "normal";
             else if (bodyPr.GetFirstChild<Drawing.ShapeAutoFit>() != null) node.Format["autoFit"] = "shape";
@@ -432,23 +437,112 @@ public partial class PowerPointHandler
         return node;
     }
 
-    private static DocumentNode PictureToNode(Picture pic, int slideNum, int picIdx)
+    private static DocumentNode PictureToNode(Picture pic, int slideNum, int picIdx, SlidePart? slidePart = null)
     {
         var name = pic.NonVisualPictureProperties?.NonVisualDrawingProperties?.Name?.Value ?? "Picture";
         var alt = pic.NonVisualPictureProperties?.NonVisualDrawingProperties?.Description?.Value;
 
+        // Detect video/audio
+        var nvPr = pic.NonVisualPictureProperties?.ApplicationNonVisualDrawingProperties;
+        var isVideo = nvPr?.GetFirstChild<Drawing.VideoFromFile>() != null;
+        var isAudio = nvPr?.GetFirstChild<Drawing.AudioFromFile>() != null;
+        var mediaType = isVideo ? "video" : isAudio ? "audio" : "picture";
+
         var node = new DocumentNode
         {
             Path = $"/slide[{slideNum}]/picture[{picIdx}]",
-            Type = "picture",
+            Type = mediaType,
             Preview = name
         };
 
         node.Format["name"] = name;
-        if (!string.IsNullOrEmpty(alt)) node.Format["alt"] = alt;
-        else node.Format["alt"] = "(missing)";
+        if (!isVideo && !isAudio)
+        {
+            if (!string.IsNullOrEmpty(alt)) node.Format["alt"] = alt;
+            else node.Format["alt"] = "(missing)";
+        }
+
+        // Read media timing (volume, autoplay) from slide Timing tree
+        if ((isVideo || isAudio) && slidePart != null)
+        {
+            var shapeId = pic.NonVisualPictureProperties?.NonVisualDrawingProperties?.Id?.Value;
+            if (shapeId != null)
+                ReadMediaTimingProperties(slidePart, shapeId.Value, node);
+
+            // p14:trim
+            var p14Media = nvPr?.Descendants<DocumentFormat.OpenXml.Office2010.PowerPoint.Media>().FirstOrDefault();
+            var trim = p14Media?.MediaTrim;
+            if (trim != null)
+            {
+                if (trim.Start?.Value != null) node.Format["trimStart"] = trim.Start.Value;
+                if (trim.End?.Value != null) node.Format["trimEnd"] = trim.End.Value;
+            }
+        }
+
+        // Position and size
+        var picXfrm = pic.ShapeProperties?.Transform2D;
+        if (picXfrm?.Offset != null)
+        {
+            if (picXfrm.Offset.X is not null) node.Format["x"] = FormatEmu(picXfrm.Offset.X!);
+            if (picXfrm.Offset.Y is not null) node.Format["y"] = FormatEmu(picXfrm.Offset.Y!);
+        }
+        if (picXfrm?.Extents != null)
+        {
+            if (picXfrm.Extents.Cx is not null) node.Format["width"] = FormatEmu(picXfrm.Extents.Cx!);
+            if (picXfrm.Extents.Cy is not null) node.Format["height"] = FormatEmu(picXfrm.Extents.Cy!);
+        }
+
+        // Crop
+        var srcRect = pic.BlipFill?.GetFirstChild<Drawing.SourceRectangle>();
+        if (srcRect != null)
+        {
+            var cl = srcRect.Left?.Value ?? 0;
+            var ct = srcRect.Top?.Value ?? 0;
+            var cr = srcRect.Right?.Value ?? 0;
+            var cb = srcRect.Bottom?.Value ?? 0;
+            if (cl != 0 || ct != 0 || cr != 0 || cb != 0)
+                node.Format["crop"] = $"{cl / 1000.0:0.##},{ct / 1000.0:0.##},{cr / 1000.0:0.##},{cb / 1000.0:0.##}";
+        }
 
         return node;
+    }
+
+    /// <summary>
+    /// Read volume and autoplay from the slide timing tree for a media shape.
+    /// </summary>
+    private static void ReadMediaTimingProperties(SlidePart slidePart, uint shapeId, DocumentNode node)
+    {
+        var timing = slidePart.Slide?.GetFirstChild<Timing>();
+        if (timing == null) return;
+
+        var shapeIdStr = shapeId.ToString();
+
+        // Read volume from p:video/p:audio → cMediaNode
+        foreach (var mediaNode in timing.Descendants<CommonMediaNode>())
+        {
+            var target = mediaNode.TargetElement?.GetFirstChild<ShapeTarget>();
+            if (target?.ShapeId?.Value != shapeIdStr) continue;
+
+            if (mediaNode.Volume?.HasValue == true)
+                node.Format["volume"] = (int)(mediaNode.Volume.Value / 1000.0);
+            break;
+        }
+
+        // Read autoplay from main sequence: look for cmd="playFrom(0)" targeting this shape
+        // with nodeType="afterEffect" (autoplay) vs "clickEffect" (click-to-play)
+        foreach (var cmd in timing.Descendants<Command>())
+        {
+            if (cmd.CommandName?.Value != "playFrom(0)") continue;
+            var cmdTarget = cmd.CommonBehavior?.TargetElement?.GetFirstChild<ShapeTarget>();
+            if (cmdTarget?.ShapeId?.Value != shapeIdStr) continue;
+
+            // Found the playback command — check its parent cTn for nodeType
+            var parentCTn = cmd.Parent as CommonTimeNode
+                ?? cmd.Ancestors<CommonTimeNode>().FirstOrDefault();
+            if (parentCTn?.NodeType?.Value == TimeNodeValues.AfterEffect)
+                node.Format["autoplay"] = true;
+            break;
+        }
     }
 
     private static Shape CreateTextShape(uint id, string name, string text, bool isTitle)
