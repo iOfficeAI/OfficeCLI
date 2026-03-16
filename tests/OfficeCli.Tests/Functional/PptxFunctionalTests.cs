@@ -1062,4 +1062,233 @@ public class PptxFunctionalTests : IDisposable
         slide.Children.Should().Contain(c => c.Type == "chart");
         slide.Children.Should().Contain(c => c.Type == "textbox" || c.Type == "title");
     }
+
+    // ==================== Theme Colors ====================
+
+    [Fact]
+    public void ThemeColor_Fill_Lifecycle()
+    {
+        // 1. Add slide + shape with theme color fill
+        _handler.Add("/", "slide", null, new() { ["title"] = "Theme Test" });
+        _handler.Add("/slide[1]", "shape", null, new() { ["text"] = "Accent", ["fill"] = "accent1" });
+
+        // 2. Get + Verify
+        var node = _handler.Get("/slide[1]/shape[2]");
+        ((string)node.Format["fill"]).Should().Be("accent1");
+
+        // 3. Set to different theme color
+        _handler.Set("/slide[1]/shape[2]", new() { ["fill"] = "accent3" });
+        node = _handler.Get("/slide[1]/shape[2]");
+        ((string)node.Format["fill"]).Should().Be("accent3");
+
+        // 4. Persist + Verify
+        Reopen();
+        node = _handler.Get("/slide[1]/shape[2]");
+        ((string)node.Format["fill"]).Should().Be("accent3");
+    }
+
+    [Fact]
+    public void ThemeColor_TextAndLine_Lifecycle()
+    {
+        _handler.Add("/", "slide", null, new() { ["title"] = "Theme" });
+        _handler.Add("/slide[1]", "shape", null, new() { ["text"] = "Styled" });
+
+        // Set theme colors for text and line
+        _handler.Set("/slide[1]/shape[2]", new()
+        {
+            ["color"] = "dk1",
+            ["line"] = "accent2"
+        });
+
+        var node = _handler.Get("/slide[1]/shape[2]");
+        ((string)node.Format["color"]).Should().Be("dk1");
+        ((string)node.Format["line"]).Should().Be("accent2");
+
+        Reopen();
+        node = _handler.Get("/slide[1]/shape[2]");
+        ((string)node.Format["color"]).Should().Be("dk1");
+    }
+
+    // ==================== Connectors ====================
+
+    [Fact]
+    public void Connector_Lifecycle()
+    {
+        // 1. Add slide + connector
+        _handler.Add("/", "slide", null, new() { ["title"] = "Flow" });
+        var path = _handler.Add("/slide[1]", "connector", null, new()
+        {
+            ["x"] = "2cm",
+            ["y"] = "5cm",
+            ["width"] = "6cm",
+            ["height"] = "0cm",
+            ["line"] = "000000",
+            ["linewidth"] = "2pt"
+        });
+        path.Should().StartWith("/slide[1]/connector[");
+
+        // 2. Persist + Verify (connector should survive reopen)
+        Reopen();
+        // Connectors are GraphicFrame-less, they're direct children
+        var slide = _handler.Get("/slide[1]");
+        slide.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void Connector_Elbow_Lifecycle()
+    {
+        _handler.Add("/", "slide", null, new() { ["title"] = "Elbow" });
+        _handler.Add("/slide[1]", "connector", null, new()
+        {
+            ["preset"] = "elbow",
+            ["x"] = "1cm",
+            ["y"] = "2cm",
+            ["width"] = "5cm",
+            ["height"] = "3cm",
+            ["line"] = "accent1"
+        });
+
+        Reopen();
+        var slide = _handler.Get("/slide[1]");
+        slide.Should().NotBeNull();
+    }
+
+    // ==================== Group Shapes ====================
+
+    [Fact]
+    public void Group_Lifecycle()
+    {
+        // 1. Add slide + 3 shapes
+        _handler.Add("/", "slide", null, new() { ["title"] = "Group Test" });
+        _handler.Add("/slide[1]", "shape", null, new()
+        {
+            ["text"] = "A", ["x"] = "1cm", ["y"] = "1cm", ["width"] = "3cm", ["height"] = "2cm"
+        });
+        _handler.Add("/slide[1]", "shape", null, new()
+        {
+            ["text"] = "B", ["x"] = "5cm", ["y"] = "1cm", ["width"] = "3cm", ["height"] = "2cm"
+        });
+
+        // Shapes 2 and 3 (title is shape 1)
+        var slide = _handler.Get("/slide[1]");
+        var shapesBeforeGroup = slide.Children.Count(c => c.Type == "textbox" || c.Type == "title");
+        shapesBeforeGroup.Should().BeGreaterThanOrEqualTo(3);
+
+        // 2. Group shapes 2 and 3
+        var groupPath = _handler.Add("/slide[1]", "group", null, new() { ["shapes"] = "2,3" });
+        groupPath.Should().StartWith("/slide[1]/group[");
+
+        // 3. Persist + Verify
+        Reopen();
+        var root = _handler.Get("/slide[1]");
+        root.Should().NotBeNull();
+    }
+
+    // ==================== Chart Data Modification ====================
+
+    [Fact]
+    public void Chart_SetData_Lifecycle()
+    {
+        // 1. Add chart
+        _handler.Add("/", "slide", null, new() { ["title"] = "Data Mod" });
+        _handler.Add("/slide[1]", "chart", null, new()
+        {
+            ["charttype"] = "column",
+            ["categories"] = "A,B",
+            ["series1"] = "S1:10,20",
+            ["series2"] = "S2:30,40"
+        });
+
+        // 2. Verify original data
+        var node = _handler.Get("/slide[1]/chart[1]", 1);
+        ((string)node.Children[0].Format["values"]).Should().Be("10,20");
+
+        // 3. Set — modify series1 data
+        _handler.Set("/slide[1]/chart[1]", new() { ["series1"] = "S1:100,200" });
+
+        // 4. Get + Verify
+        node = _handler.Get("/slide[1]/chart[1]", 1);
+        ((string)node.Children[0].Format["values"]).Should().Be("100,200");
+        node.Children[0].Text.Should().Be("S1");
+
+        // 5. Set — modify all data at once via data property
+        _handler.Set("/slide[1]/chart[1]", new() { ["data"] = "X:1,2;Y:3,4" });
+        node = _handler.Get("/slide[1]/chart[1]", 1);
+        ((string)node.Children[0].Format["values"]).Should().Be("1,2");
+        ((string)node.Children[1].Format["values"]).Should().Be("3,4");
+
+        // 6. Persist + Verify
+        Reopen();
+        node = _handler.Get("/slide[1]/chart[1]", 1);
+        ((string)node.Children[0].Format["values"]).Should().Be("1,2");
+    }
+
+    [Fact]
+    public void Chart_SetCategories_Lifecycle()
+    {
+        _handler.Add("/", "slide", null, new() { ["title"] = "Cat Mod" });
+        _handler.Add("/slide[1]", "chart", null, new()
+        {
+            ["charttype"] = "column",
+            ["categories"] = "A,B,C",
+            ["series1"] = "D:1,2,3"
+        });
+
+        // Change categories
+        _handler.Set("/slide[1]/chart[1]", new() { ["categories"] = "X,Y,Z" });
+
+        var node = _handler.Get("/slide[1]/chart[1]");
+        ((string)node.Format["categories"]).Should().Be("X,Y,Z");
+
+        Reopen();
+        node = _handler.Get("/slide[1]/chart[1]");
+        ((string)node.Format["categories"]).Should().Be("X,Y,Z");
+    }
+
+    // ==================== Slide Size ====================
+
+    [Fact]
+    public void SlideSize_GetDefault()
+    {
+        // Blank doc should have default slide size
+        var root = _handler.Get("/");
+        root.Format.Should().ContainKey("slideWidth");
+        root.Format.Should().ContainKey("slideHeight");
+    }
+
+    [Fact]
+    public void SlideSize_SetPreset_Lifecycle()
+    {
+        // 1. Set to 4:3
+        _handler.Set("/", new() { ["slidesize"] = "4:3" });
+
+        // 2. Get + Verify
+        var root = _handler.Get("/");
+        ((string)root.Format["slideSize"]).Should().Be("screen4x3");
+
+        // 3. Set to 16:9
+        _handler.Set("/", new() { ["slidesize"] = "16:9" });
+        root = _handler.Get("/");
+        ((string)root.Format["slideSize"]).Should().Be("screen16x9");
+
+        // 4. Persist + Verify
+        Reopen();
+        root = _handler.Get("/");
+        ((string)root.Format["slideSize"]).Should().Be("screen16x9");
+    }
+
+    [Fact]
+    public void SlideSize_SetCustom_Lifecycle()
+    {
+        // Set custom dimensions
+        _handler.Set("/", new() { ["slidewidth"] = "30cm", ["slideheight"] = "20cm" });
+
+        var root = _handler.Get("/");
+        ((string)root.Format["slideWidth"]).Should().Contain("cm");
+        ((string)root.Format["slideSize"]).Should().Be("custom");
+
+        Reopen();
+        root = _handler.Get("/");
+        ((string)root.Format["slideSize"]).Should().Be("custom");
+    }
 }

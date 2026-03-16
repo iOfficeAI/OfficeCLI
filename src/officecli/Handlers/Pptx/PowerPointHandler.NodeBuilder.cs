@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
+using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
 using OfficeCli.Core;
@@ -161,13 +162,14 @@ public partial class PowerPointHandler
 
         // Shape fill
         var shapeFill = shape.ShapeProperties?.GetFirstChild<Drawing.SolidFill>();
-        var shapeFillHex = shapeFill?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
-        if (shapeFillHex != null) node.Format["fill"] = shapeFillHex;
+        var shapeFillColor = ReadColorFromFill(shapeFill);
+        if (shapeFillColor != null) node.Format["fill"] = shapeFillColor;
         if (shape.ShapeProperties?.GetFirstChild<Drawing.NoFill>() != null) node.Format["fill"] = "none";
 
-        // Opacity (Alpha on SolidFill)
-        var alphaVal = shapeFill?.GetFirstChild<Drawing.RgbColorModelHex>()
-            ?.GetFirstChild<Drawing.Alpha>()?.Val?.Value;
+        // Opacity (Alpha on SolidFill color element)
+        var fillColorEl = shapeFill?.GetFirstChild<Drawing.RgbColorModelHex>() as OpenXmlElement
+            ?? shapeFill?.GetFirstChild<Drawing.SchemeColor>();
+        var alphaVal = fillColorEl?.GetFirstChild<Drawing.Alpha>()?.Val?.Value;
         if (alphaVal.HasValue) node.Format["opacity"] = $"{alphaVal.Value / 100000.0:0.##}";
 
         // Shape preset
@@ -249,9 +251,8 @@ public partial class PowerPointHandler
                 node.Format["strikethrough"] = firstRun.RunProperties.Strike.InnerText;
 
             // Text color (from first run)
-            var runColorHex = firstRun.RunProperties.GetFirstChild<Drawing.SolidFill>()
-                ?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
-            if (runColorHex != null) node.Format["color"] = runColorHex;
+            var runColor = ReadColorFromFill(firstRun.RunProperties.GetFirstChild<Drawing.SolidFill>());
+            if (runColor != null) node.Format["color"] = runColor;
 
             // Hyperlink on first run
             if (part != null)
@@ -265,14 +266,16 @@ public partial class PowerPointHandler
         var outline = shape.ShapeProperties?.GetFirstChild<Drawing.Outline>();
         if (outline != null)
         {
-            var lineColorNode = outline.GetFirstChild<Drawing.SolidFill>()?.GetFirstChild<Drawing.RgbColorModelHex>();
-            var lineFill = lineColorNode?.Val?.Value;
-            if (lineFill != null) node.Format["line"] = lineFill;
+            var lineSolidFill = outline.GetFirstChild<Drawing.SolidFill>();
+            var lineColor = ReadColorFromFill(lineSolidFill);
+            if (lineColor != null) node.Format["line"] = lineColor;
             if (outline.GetFirstChild<Drawing.NoFill>() != null) node.Format["line"] = "none";
             if (outline.Width?.HasValue == true) node.Format["lineWidth"] = FormatEmu(outline.Width.Value);
             var dash = outline.GetFirstChild<Drawing.PresetDash>();
             if (dash?.Val?.HasValue == true) node.Format["lineDash"] = dash.Val.InnerText.ToLowerInvariant();
-            var lineAlpha = lineColorNode?.GetFirstChild<Drawing.Alpha>()?.Val?.Value;
+            var lineColorEl = lineSolidFill?.GetFirstChild<Drawing.RgbColorModelHex>() as OpenXmlElement
+                ?? lineSolidFill?.GetFirstChild<Drawing.SchemeColor>();
+            var lineAlpha = lineColorEl?.GetFirstChild<Drawing.Alpha>()?.Val?.Value;
             if (lineAlpha.HasValue) node.Format["lineOpacity"] = $"{lineAlpha.Value / 100000.0:0.##}";
         }
 
@@ -283,14 +286,14 @@ public partial class PowerPointHandler
             var outerShadow = effectList.GetFirstChild<Drawing.OuterShadow>();
             if (outerShadow != null)
             {
-                var colorHex = outerShadow.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "000000";
-                node.Format["shadow"] = colorHex;
+                var shadowColor = ReadColorFromElement(outerShadow) ?? "000000";
+                node.Format["shadow"] = shadowColor;
             }
             var glow = effectList.GetFirstChild<Drawing.Glow>();
             if (glow != null)
             {
-                var colorHex = glow.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "000000";
-                node.Format["glow"] = colorHex;
+                var glowColor = ReadColorFromElement(glow) ?? "000000";
+                node.Format["glow"] = glowColor;
             }
             if (effectList.GetFirstChild<Drawing.Reflection>() != null)
                 node.Format["reflection"] = "true";
@@ -416,9 +419,8 @@ public partial class PowerPointHandler
             if (run.RunProperties.Bold?.Value == true) node.Format["bold"] = true;
             if (run.RunProperties.Italic?.Value == true) node.Format["italic"] = true;
             // Color
-            var solidFill = run.RunProperties.GetFirstChild<Drawing.SolidFill>();
-            var rgbHex = solidFill?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
-            if (rgbHex != null) node.Format["color"] = rgbHex;
+            var runFillColor = ReadColorFromFill(run.RunProperties.GetFirstChild<Drawing.SolidFill>());
+            if (runFillColor != null) node.Format["color"] = runFillColor;
             // Hyperlink
             if (part != null)
             {

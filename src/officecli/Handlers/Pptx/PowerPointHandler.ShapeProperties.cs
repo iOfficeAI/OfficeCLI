@@ -105,16 +105,15 @@ public partial class PowerPointHandler
                     {
                         var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
                         rProps.RemoveAllChildren<Drawing.SolidFill>();
-                        var solidFill = new Drawing.SolidFill();
-                        solidFill.Append(new Drawing.RgbColorModelHex { Val = value.ToUpperInvariant() });
+                        var colorFill = BuildSolidFill(value);
                         if (rProps is OpenXmlCompositeElement composite)
                         {
-                            if (!composite.AddChild(solidFill, throwOnError: false))
-                                rProps.AppendChild(solidFill);
+                            if (!composite.AddChild(colorFill, throwOnError: false))
+                                rProps.AppendChild(colorFill);
                         }
                         else
                         {
-                            rProps.AppendChild(solidFill);
+                            rProps.AppendChild(colorFill);
                         }
                     }
                     break;
@@ -232,7 +231,7 @@ public partial class PowerPointHandler
                     if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
                         outline.AppendChild(new Drawing.NoFill());
                     else
-                        outline.AppendChild(new Drawing.SolidFill(new Drawing.RgbColorModelHex { Val = value.TrimStart('#').ToUpperInvariant() }));
+                        outline.AppendChild(BuildSolidFill(value));
                     break;
                 }
 

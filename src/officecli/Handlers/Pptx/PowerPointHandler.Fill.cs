@@ -26,6 +26,83 @@ public partial class PowerPointHandler
         }
     }
 
+    // ==================== Color Helpers ====================
+
+    /// <summary>
+    /// Parse a color string and return the appropriate OpenXML color element.
+    /// Supports: hex RGB ("FF0000"), theme colors ("accent1", "dk1", "lt1", etc.)
+    /// </summary>
+    private static OpenXmlElement BuildColorElement(string value)
+    {
+        var schemeColor = TryParseSchemeColor(value);
+        if (schemeColor.HasValue)
+            return new Drawing.SchemeColor { Val = schemeColor.Value };
+        return new Drawing.RgbColorModelHex { Val = value.TrimStart('#').ToUpperInvariant() };
+    }
+
+    /// <summary>
+    /// Build a SolidFill element with the appropriate color type.
+    /// </summary>
+    private static Drawing.SolidFill BuildSolidFill(string colorValue)
+    {
+        var solidFill = new Drawing.SolidFill();
+        solidFill.Append(BuildColorElement(colorValue));
+        return solidFill;
+    }
+
+    /// <summary>
+    /// Try to parse a theme/scheme color name. Returns null if it's a hex RGB value.
+    /// </summary>
+    private static Drawing.SchemeColorValues? TryParseSchemeColor(string value)
+    {
+        return value.ToLowerInvariant().TrimStart('#') switch
+        {
+            "accent1" => Drawing.SchemeColorValues.Accent1,
+            "accent2" => Drawing.SchemeColorValues.Accent2,
+            "accent3" => Drawing.SchemeColorValues.Accent3,
+            "accent4" => Drawing.SchemeColorValues.Accent4,
+            "accent5" => Drawing.SchemeColorValues.Accent5,
+            "accent6" => Drawing.SchemeColorValues.Accent6,
+            "dk1" or "dark1" => Drawing.SchemeColorValues.Dark1,
+            "dk2" or "dark2" => Drawing.SchemeColorValues.Dark2,
+            "lt1" or "light1" => Drawing.SchemeColorValues.Light1,
+            "lt2" or "light2" => Drawing.SchemeColorValues.Light2,
+            "tx1" or "text1" => Drawing.SchemeColorValues.Text1,
+            "tx2" or "text2" => Drawing.SchemeColorValues.Text2,
+            "bg1" or "background1" => Drawing.SchemeColorValues.Background1,
+            "bg2" or "background2" => Drawing.SchemeColorValues.Background2,
+            "hlink" or "hyperlink" => Drawing.SchemeColorValues.Hyperlink,
+            "folhlink" or "followedhyperlink" => Drawing.SchemeColorValues.FollowedHyperlink,
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// Read a color value from a SolidFill element, returning either hex RGB or scheme color name.
+    /// </summary>
+    internal static string? ReadColorFromFill(Drawing.SolidFill? solidFill)
+    {
+        if (solidFill == null) return null;
+        var rgb = solidFill.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+        if (rgb != null) return rgb;
+        var scheme = solidFill.GetFirstChild<Drawing.SchemeColor>()?.Val;
+        if (scheme?.HasValue == true) return scheme.InnerText;
+        return null;
+    }
+
+    /// <summary>
+    /// Read a color value from any element that may contain RgbColorModelHex or SchemeColor.
+    /// </summary>
+    internal static string? ReadColorFromElement(OpenXmlElement? parent)
+    {
+        if (parent == null) return null;
+        var rgb = parent.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+        if (rgb != null) return rgb;
+        var scheme = parent.GetFirstChild<Drawing.SchemeColor>()?.Val;
+        if (scheme?.HasValue == true) return scheme.InnerText;
+        return null;
+    }
+
     private static void ApplyShapeFill(ShapeProperties spPr, string value)
     {
         spPr.RemoveAllChildren<Drawing.SolidFill>();
@@ -36,11 +113,7 @@ public partial class PowerPointHandler
         if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
             InsertFillElement(spPr, new Drawing.NoFill());
         else
-        {
-            var solidFill = new Drawing.SolidFill();
-            solidFill.Append(new Drawing.RgbColorModelHex { Val = value.TrimStart('#').ToUpperInvariant() });
-            InsertFillElement(spPr, solidFill);
-        }
+            InsertFillElement(spPr, BuildSolidFill(value));
     }
 
     /// <summary>

@@ -51,9 +51,7 @@ public partial class PowerPointHandler
         }
         else
         {
-            bgPr.Append(new Drawing.SolidFill(
-                new Drawing.RgbColorModelHex { Val = value.TrimStart('#').ToUpperInvariant() }
-            ));
+            bgPr.Append(BuildSolidFill(value));
         }
 
         bg.Append(bgPr);
@@ -114,8 +112,8 @@ public partial class PowerPointHandler
 
         if (solidFill != null)
         {
-            var hex = solidFill.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
-            if (hex != null) node.Format["background"] = hex;
+            var bgColor = ReadColorFromFill(solidFill);
+            if (bgColor != null) node.Format["background"] = bgColor;
         }
         else if (gradFill != null)
         {

@@ -678,6 +678,158 @@ public partial class PowerPointHandler
                 return $"/slide[{notesSlideIdx}]/notes";
             }
 
+            case "connector" or "connection" or "line":
+            {
+                var cxnSlideMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]$");
+                if (!cxnSlideMatch.Success)
+                    throw new ArgumentException("Connectors must be added to a slide: /slide[N]");
+
+                var cxnSlideIdx = int.Parse(cxnSlideMatch.Groups[1].Value);
+                var cxnSlideParts = GetSlideParts().ToList();
+                if (cxnSlideIdx < 1 || cxnSlideIdx > cxnSlideParts.Count)
+                    throw new ArgumentException($"Slide {cxnSlideIdx} not found");
+
+                var cxnSlidePart = cxnSlideParts[cxnSlideIdx - 1];
+                var cxnShapeTree = GetSlide(cxnSlidePart).CommonSlideData?.ShapeTree
+                    ?? throw new InvalidOperationException("Slide has no shape tree");
+
+                var cxnId = (uint)(cxnShapeTree.ChildElements.Count + 2);
+                var cxnName = properties.GetValueOrDefault("name", $"Connector {cxnId}");
+
+                // Position: x1,y1 → x2,y2 or x,y,width,height
+                long cxnX = properties.TryGetValue("x", out var cx1) ? ParseEmu(cx1) : 2000000;
+                long cxnY = properties.TryGetValue("y", out var cy1) ? ParseEmu(cy1) : 3000000;
+                long cxnCx = properties.TryGetValue("width", out var cw) ? ParseEmu(cw) : 4000000;
+                long cxnCy = properties.TryGetValue("height", out var ch) ? ParseEmu(ch) : 0;
+
+                var connector = new ConnectionShape();
+                var cxnNvProps = new NonVisualConnectionShapeProperties(
+                    new NonVisualDrawingProperties { Id = cxnId, Name = cxnName },
+                    new NonVisualConnectorShapeDrawingProperties(),
+                    new ApplicationNonVisualDrawingProperties()
+                );
+
+                // Connect to shapes if specified
+                var cxnDrawProps = cxnNvProps.NonVisualConnectorShapeDrawingProperties!;
+                if (properties.TryGetValue("startshape", out var startId))
+                    cxnDrawProps.StartConnection = new Drawing.StartConnection { Id = uint.Parse(startId), Index = 0 };
+                if (properties.TryGetValue("endshape", out var endId))
+                    cxnDrawProps.EndConnection = new Drawing.EndConnection { Id = uint.Parse(endId), Index = 0 };
+
+                connector.NonVisualConnectionShapeProperties = cxnNvProps;
+                connector.ShapeProperties = new ShapeProperties(
+                    new Drawing.Transform2D(
+                        new Drawing.Offset { X = cxnX, Y = cxnY },
+                        new Drawing.Extents { Cx = cxnCx, Cy = cxnCy }
+                    ),
+                    new Drawing.PresetGeometry(new Drawing.AdjustValueList())
+                    {
+                        Preset = properties.GetValueOrDefault("preset", "straightConnector1").ToLowerInvariant() switch
+                        {
+                            "straight" or "straightconnector1" => Drawing.ShapeTypeValues.StraightConnector1,
+                            "elbow" or "bentconnector3" => Drawing.ShapeTypeValues.BentConnector3,
+                            "curve" or "curvedconnector3" => Drawing.ShapeTypeValues.CurvedConnector3,
+                            _ => Drawing.ShapeTypeValues.StraightConnector1
+                        }
+                    }
+                );
+
+                // Line style
+                var cxnOutline = new Drawing.Outline { Width = 12700 }; // 1pt default
+                if (properties.TryGetValue("line", out var cxnColor))
+                    cxnOutline.AppendChild(BuildSolidFill(cxnColor));
+                else
+                    cxnOutline.AppendChild(BuildSolidFill("000000"));
+                if (properties.TryGetValue("linewidth", out var lwVal))
+                    cxnOutline.Width = (int)ParseEmu(lwVal);
+                connector.ShapeProperties.AppendChild(cxnOutline);
+
+                cxnShapeTree.AppendChild(connector);
+                GetSlide(cxnSlidePart).Save();
+
+                var cxnCount = cxnShapeTree.Elements<ConnectionShape>().Count();
+                return $"/slide[{cxnSlideIdx}]/connector[{cxnCount}]";
+            }
+
+            case "group":
+            {
+                var grpSlideMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]$");
+                if (!grpSlideMatch.Success)
+                    throw new ArgumentException("Groups must be added to a slide: /slide[N]");
+
+                var grpSlideIdx = int.Parse(grpSlideMatch.Groups[1].Value);
+                var grpSlideParts = GetSlideParts().ToList();
+                if (grpSlideIdx < 1 || grpSlideIdx > grpSlideParts.Count)
+                    throw new ArgumentException($"Slide {grpSlideIdx} not found");
+
+                var grpSlidePart = grpSlideParts[grpSlideIdx - 1];
+                var grpShapeTree = GetSlide(grpSlidePart).CommonSlideData?.ShapeTree
+                    ?? throw new InvalidOperationException("Slide has no shape tree");
+
+                var grpId = (uint)(grpShapeTree.ChildElements.Count + 2);
+                var grpName = properties.GetValueOrDefault("name", $"Group {grpId}");
+
+                // Parse shape paths to group: shapes="1,2,3" (shape indices)
+                if (!properties.TryGetValue("shapes", out var shapesStr))
+                    throw new ArgumentException("'shapes' property required: comma-separated shape indices to group (e.g. shapes=1,2,3)");
+
+                var shapeIndices = shapesStr.Split(',').Select(s => int.Parse(s.Trim())).ToList();
+                var allShapes = grpShapeTree.Elements<Shape>().ToList();
+
+                // Collect shapes to group (in reverse order to maintain indices during removal)
+                var toGroup = new List<Shape>();
+                foreach (var si in shapeIndices.OrderBy(i => i))
+                {
+                    if (si < 1 || si > allShapes.Count)
+                        throw new ArgumentException($"Shape {si} not found (total: {allShapes.Count})");
+                    toGroup.Add(allShapes[si - 1]);
+                }
+
+                // Calculate bounding box
+                long minX = long.MaxValue, minY = long.MaxValue, maxX = 0, maxY = 0;
+                foreach (var s in toGroup)
+                {
+                    var xfrm = s.ShapeProperties?.Transform2D;
+                    if (xfrm?.Offset == null || xfrm.Extents == null) continue;
+                    long sx = xfrm.Offset.X ?? 0;
+                    long sy = xfrm.Offset.Y ?? 0;
+                    long scx = xfrm.Extents.Cx ?? 0;
+                    long scy = xfrm.Extents.Cy ?? 0;
+                    if (sx < minX) minX = sx;
+                    if (sy < minY) minY = sy;
+                    if (sx + scx > maxX) maxX = sx + scx;
+                    if (sy + scy > maxY) maxY = sy + scy;
+                }
+
+                var groupShape = new GroupShape();
+                groupShape.NonVisualGroupShapeProperties = new NonVisualGroupShapeProperties(
+                    new NonVisualDrawingProperties { Id = grpId, Name = grpName },
+                    new NonVisualGroupShapeDrawingProperties(),
+                    new ApplicationNonVisualDrawingProperties()
+                );
+                groupShape.GroupShapeProperties = new GroupShapeProperties(
+                    new Drawing.TransformGroup(
+                        new Drawing.Offset { X = minX, Y = minY },
+                        new Drawing.Extents { Cx = maxX - minX, Cy = maxY - minY },
+                        new Drawing.ChildOffset { X = minX, Y = minY },
+                        new Drawing.ChildExtents { Cx = maxX - minX, Cy = maxY - minY }
+                    )
+                );
+
+                // Move shapes into group
+                foreach (var s in toGroup)
+                {
+                    s.Remove();
+                    groupShape.AppendChild(s);
+                }
+
+                grpShapeTree.AppendChild(groupShape);
+                GetSlide(grpSlidePart).Save();
+
+                var grpCount = grpShapeTree.Elements<GroupShape>().Count();
+                return $"/slide[{grpSlideIdx}]/group[{grpCount}]";
+            }
+
             default:
             {
                 // Try resolving logical paths (table/placeholder) first

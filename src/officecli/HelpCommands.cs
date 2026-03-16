@@ -697,6 +697,9 @@ PowerPoint (.pptx) — set
 
 Usage: officecli set <file> <path> --prop key=value [--prop ...]
 
+Colors: hex RGB (e.g. FF0000) or theme color names:
+  accent1..accent6, dk1, dk2, lt1, lt2, tx1, tx2, bg1, bg2, hyperlink, followedhyperlink
+
 Shape properties (/slide[N]/shape[M]) -- applies to all runs:
   text       Replace all text content (supports \n for line breaks, preserves first run's formatting)
   font       Font typeface
@@ -732,8 +735,16 @@ Shape properties (/slide[N]/shape[M]) -- applies to all runs:
 Chart properties (/slide[N]/chart[M]):
   title        Chart title text (or "none" to remove)
   legend       Legend position: top/bottom/left/right or "none" to remove
+  categories   Update category labels (comma-separated)
+  data         Replace all series: "S1:1,2;S2:3,4"
+  series1..N   Update individual series: "NewName:1,2,3" or just "1,2,3"
   x, y, width, height  Chart position and size (EMU or cm/in/pt/px)
   name         Chart name
+
+Presentation properties (/ or /presentation):
+  slideSize    Preset: 16:9, 4:3, 16:10, a4
+  slideWidth   Custom width (EMU or cm/in/pt/px)
+  slideHeight  Custom height (EMU or cm/in/pt/px)
 
 Notes properties (/slide[N]/notes):
   text         Speaker notes text (multi-line supported with \n)
@@ -850,6 +861,16 @@ Types and properties:
     path (required), name, alt, width, height, x, y
     Formats: .png, .jpg, .jpeg, .gif, .bmp, .tif, .tiff, .emf, .wmf, .svg
     Default position: centered. Default size: ~6x4 inches.
+
+  connector (connection, line)  -- parent: /slide[N]
+    x, y, width, height (position and extent), name,
+    preset (straight|elbow|curve, default: straight),
+    line (color: hex or theme), lineWidth,
+    startShape, endShape (shape IDs to connect to)
+
+  group  -- parent: /slide[N]
+    shapes (required) — comma-separated shape indices to group (e.g. shapes=2,3)
+    name (optional)
 
   equation (formula, math)  -- parent: /slide[N]
     formula (required, LaTeX subset), name

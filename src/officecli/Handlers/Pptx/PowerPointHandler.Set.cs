@@ -14,6 +14,63 @@ public partial class PowerPointHandler
 {
     public List<string> Set(string path, Dictionary<string, string> properties)
     {
+        // Presentation-level properties: / or /presentation
+        if (path is "/" or "" or "/presentation")
+        {
+            var presentation = _doc.PresentationPart?.Presentation
+                ?? throw new InvalidOperationException("No presentation");
+            var unsupported = new List<string>();
+            foreach (var (key, value) in properties)
+            {
+                switch (key.ToLowerInvariant())
+                {
+                    case "slidewidth" or "width":
+                        var sldSz = presentation.GetFirstChild<SlideSize>()
+                            ?? presentation.AppendChild(new SlideSize());
+                        sldSz.Cx = (int)ParseEmu(value);
+                        sldSz.Type = SlideSizeValues.Custom;
+                        break;
+                    case "slideheight" or "height":
+                        var sldSz2 = presentation.GetFirstChild<SlideSize>()
+                            ?? presentation.AppendChild(new SlideSize());
+                        sldSz2.Cy = (int)ParseEmu(value);
+                        sldSz2.Type = SlideSizeValues.Custom;
+                        break;
+                    case "slidesize":
+                        var sz = presentation.GetFirstChild<SlideSize>()
+                            ?? presentation.AppendChild(new SlideSize());
+                        switch (value.ToLowerInvariant())
+                        {
+                            case "16:9" or "widescreen":
+                                sz.Cx = 12192000; sz.Cy = 6858000;
+                                sz.Type = SlideSizeValues.Screen16x9;
+                                break;
+                            case "4:3" or "standard":
+                                sz.Cx = 9144000; sz.Cy = 6858000;
+                                sz.Type = SlideSizeValues.Screen4x3;
+                                break;
+                            case "16:10":
+                                sz.Cx = 12192000; sz.Cy = 7620000;
+                                sz.Type = SlideSizeValues.Screen16x10;
+                                break;
+                            case "a4":
+                                sz.Cx = 10692000; sz.Cy = 7560000;
+                                sz.Type = SlideSizeValues.A4;
+                                break;
+                            default:
+                                unsupported.Add(key);
+                                break;
+                        }
+                        break;
+                    default:
+                        unsupported.Add(key);
+                        break;
+                }
+            }
+            presentation.Save();
+            return unsupported;
+        }
+
         // Try notes path: /slide[N]/notes
         var notesSetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/notes$");
         if (notesSetMatch.Success)

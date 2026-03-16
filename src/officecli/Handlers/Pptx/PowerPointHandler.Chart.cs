@@ -778,6 +778,42 @@ public partial class PowerPointHandler
     // ==================== Chart Set ====================
 
     /// <summary>
+    /// Update series data in a plot area, matching by index.
+    /// </summary>
+    private static void UpdateSeriesData(C.PlotArea plotArea, List<(string name, double[] values)> newData)
+    {
+        var allSer = plotArea.Descendants<OpenXmlCompositeElement>()
+            .Where(e => e.LocalName == "ser").ToList();
+
+        for (int i = 0; i < Math.Min(newData.Count, allSer.Count); i++)
+        {
+            var ser = allSer[i];
+            var (sName, sVals) = newData[i];
+
+            // Update name
+            var serText = ser.GetFirstChild<C.SeriesText>();
+            if (serText != null)
+            {
+                serText.RemoveAllChildren();
+                serText.AppendChild(new C.StringLiteral(
+                    new C.PointCount { Val = 1 },
+                    new C.StringPoint(new C.NumericValue(sName)) { Index = 0 }
+                ));
+            }
+
+            // Update values
+            var valEl = ser.GetFirstChild<C.Values>();
+            if (valEl != null)
+            {
+                valEl.RemoveAllChildren();
+                var builtVals = BuildValues(sVals);
+                foreach (var child in builtVals.ChildElements.ToList())
+                    valEl.AppendChild(child.CloneNode(true));
+            }
+        }
+    }
+
+    /// <summary>
     /// Modify chart properties. Supports: title, legend.
     /// </summary>
     private static List<string> SetChartProperties(ChartPart chartPart, Dictionary<string, string> properties)
@@ -818,8 +854,90 @@ public partial class PowerPointHandler
                     }
                     break;
 
+                case "categories":
+                {
+                    // Update categories across all series
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    var newCats = value.Split(',').Select(c => c.Trim()).ToArray();
+                    foreach (var catData in plotArea2.Descendants<C.CategoryAxisData>())
+                    {
+                        catData.RemoveAllChildren();
+                        catData.AppendChild(BuildCategoryData(newCats).FirstChild!.CloneNode(true));
+                    }
+                    break;
+                }
+
+                case "data":
+                {
+                    // Replace series data: "S1:1,2,3;S2:4,5,6"
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    var newSeries = ParseSeriesData(new Dictionary<string, string> { ["data"] = value });
+                    UpdateSeriesData(plotArea2, newSeries);
+                    break;
+                }
+
                 default:
-                    unsupported.Add(key);
+                    // Try numbered series: series1="Name:1,2,3"
+                    if (key.StartsWith("series", StringComparison.OrdinalIgnoreCase) &&
+                        int.TryParse(key[6..], out var seriesIdx))
+                    {
+                        var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                        if (plotArea2 == null) { unsupported.Add(key); break; }
+                        var allSer = plotArea2.Descendants<OpenXmlCompositeElement>()
+                            .Where(e => e.LocalName == "ser").ToList();
+                        if (seriesIdx < 1 || seriesIdx > allSer.Count) { unsupported.Add(key); break; }
+                        var ser = allSer[seriesIdx - 1];
+
+                        var colonIdx = value.IndexOf(':');
+                        double[] vals;
+                        if (colonIdx >= 0)
+                        {
+                            var sName = value[..colonIdx].Trim();
+                            vals = value[(colonIdx + 1)..].Split(',').Select(v => double.Parse(v.Trim())).ToArray();
+                            // Update series name
+                            var serText = ser.GetFirstChild<C.SeriesText>();
+                            if (serText != null)
+                            {
+                                serText.RemoveAllChildren();
+                                serText.AppendChild(new C.StringLiteral(
+                                    new C.PointCount { Val = 1 },
+                                    new C.StringPoint(new C.NumericValue(sName)) { Index = 0 }
+                                ));
+                            }
+                        }
+                        else
+                        {
+                            vals = value.Split(',').Select(v => double.Parse(v.Trim())).ToArray();
+                        }
+
+                        // Update values
+                        var valEl = ser.GetFirstChild<C.Values>();
+                        if (valEl != null)
+                        {
+                            valEl.RemoveAllChildren();
+                            var builtVals = BuildValues(vals);
+                            foreach (var child in builtVals.ChildElements.ToList())
+                                valEl.AppendChild(child.CloneNode(true));
+                        }
+                        // Also try YValues for scatter charts
+                        var yValEl = ser.Elements<OpenXmlCompositeElement>().FirstOrDefault(e => e.LocalName == "yVal");
+                        if (yValEl != null)
+                        {
+                            yValEl.RemoveAllChildren();
+                            var numLit = new C.NumberLiteral(
+                                new C.FormatCode("General"),
+                                new C.PointCount { Val = (uint)vals.Length });
+                            for (int vi = 0; vi < vals.Length; vi++)
+                                numLit.AppendChild(new C.NumericPoint(new C.NumericValue(vals[vi].ToString("G"))) { Index = (uint)vi });
+                            yValEl.AppendChild(numLit);
+                        }
+                    }
+                    else
+                    {
+                        unsupported.Add(key);
+                    }
                     break;
             }
         }

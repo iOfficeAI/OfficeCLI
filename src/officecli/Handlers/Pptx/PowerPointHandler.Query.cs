@@ -20,6 +20,16 @@ public partial class PowerPointHandler
         if (path == "/" || path == "")
         {
             var node = new DocumentNode { Path = "/", Type = "presentation" };
+
+            // Slide size
+            var sldSz = _doc.PresentationPart?.Presentation?.GetFirstChild<SlideSize>();
+            if (sldSz != null)
+            {
+                if (sldSz.Cx?.HasValue == true) node.Format["slideWidth"] = FormatEmu(sldSz.Cx.Value);
+                if (sldSz.Cy?.HasValue == true) node.Format["slideHeight"] = FormatEmu(sldSz.Cy.Value);
+                if (sldSz.Type?.HasValue == true) node.Format["slideSize"] = sldSz.Type.InnerText;
+            }
+
             int slideNum = 0;
             foreach (var slidePart in GetSlideParts())
             {
