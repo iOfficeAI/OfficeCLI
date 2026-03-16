@@ -234,7 +234,7 @@ public class ExcelStyleManager
         bool strike = fontProps.TryGetValue("strike", out var sVal)
             ? IsTruthy(sVal) : baseFont.Strike != null;
         string? underline = fontProps.TryGetValue("underline", out var uVal)
-            ? (IsTruthy(uVal) ? (uVal.ToLowerInvariant() is "double" ? "double" : "single") : null)
+            ? (uVal.ToLowerInvariant() is "double" ? "double" : (IsTruthy(uVal) ? "single" : null))
             : (baseFont.Underline != null ? "single" : null);
         double size = fontProps.TryGetValue("size", out var szVal) && double.TryParse(szVal, out var sz)
             ? sz : baseFont.FontSize?.Val?.Value ?? 11;
