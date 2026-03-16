@@ -7,6 +7,7 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
 using OfficeCli.Core;
 using Drawing = DocumentFormat.OpenXml.Drawing;
+using C = DocumentFormat.OpenXml.Drawing.Charts;
 using M = DocumentFormat.OpenXml.Math;
 
 namespace OfficeCli.Handlers;
@@ -425,6 +426,56 @@ public partial class PowerPointHandler
 
                 var picCount = imgShapeTree.Elements<Picture>().Count();
                 return $"/slide[{imgSlideIdx}]/picture[{picCount}]";
+            }
+
+            case "chart":
+            {
+                var chartSlideMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]$");
+                if (!chartSlideMatch.Success)
+                    throw new ArgumentException("Charts must be added to a slide: /slide[N]");
+
+                var chartSlideIdx = int.Parse(chartSlideMatch.Groups[1].Value);
+                var chartSlideParts = GetSlideParts().ToList();
+                if (chartSlideIdx < 1 || chartSlideIdx > chartSlideParts.Count)
+                    throw new ArgumentException($"Slide {chartSlideIdx} not found");
+
+                var chartSlidePart = chartSlideParts[chartSlideIdx - 1];
+                var chartShapeTree = GetSlide(chartSlidePart).CommonSlideData?.ShapeTree
+                    ?? throw new InvalidOperationException("Slide has no shape tree");
+
+                // Parse chart data
+                var chartType = properties.GetValueOrDefault("charttype",
+                    properties.GetValueOrDefault("type", "column"));
+                var chartTitle = properties.GetValueOrDefault("title");
+                var categories = ParseCategories(properties);
+                var seriesData = ParseSeriesData(properties);
+
+                if (seriesData.Count == 0)
+                    throw new ArgumentException("Chart requires data. Use: data=\"Series1:1,2,3;Series2:4,5,6\" " +
+                        "or series1=\"Revenue:100,200,300\"");
+
+                // Create ChartPart and build chart
+                var chartPart = chartSlidePart.AddNewPart<ChartPart>();
+                chartPart.ChartSpace = BuildChartSpace(chartType, chartTitle, categories, seriesData, properties);
+                chartPart.ChartSpace.Save();
+
+                // Position
+                long chartX = properties.TryGetValue("x", out var xv) ? ParseEmu(xv) : 838200;     // ~2.3cm
+                long chartY = properties.TryGetValue("y", out var yv) ? ParseEmu(yv) : 1825625;     // ~5cm
+                long chartCx = properties.TryGetValue("width", out var wv) ? ParseEmu(wv) : 8229600; // ~22.9cm
+                long chartCy = properties.TryGetValue("height", out var hv) ? ParseEmu(hv) : 4572000; // ~12.7cm
+
+                var chartId = (uint)(chartShapeTree.ChildElements.Count + 2);
+                var chartName = properties.GetValueOrDefault("name", chartTitle ?? $"Chart {chartId}");
+
+                var chartGf = BuildChartGraphicFrame(chartSlidePart, chartPart, chartId, chartName,
+                    chartX, chartY, chartCx, chartCy);
+                chartShapeTree.AppendChild(chartGf);
+                GetSlide(chartSlidePart).Save();
+
+                var chartCount = chartShapeTree.Elements<GraphicFrame>()
+                    .Count(gf => gf.Descendants<C.ChartReference>().Any());
+                return $"/slide[{chartSlideIdx}]/chart[{chartCount}]";
             }
 
             case "table":

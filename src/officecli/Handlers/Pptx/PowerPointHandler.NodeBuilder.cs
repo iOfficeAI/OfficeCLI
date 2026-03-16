@@ -6,6 +6,7 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
 using OfficeCli.Core;
 using Drawing = DocumentFormat.OpenXml.Drawing;
+using C = DocumentFormat.OpenXml.Drawing.Charts;
 
 namespace OfficeCli.Handlers;
 
@@ -25,12 +26,18 @@ public partial class PowerPointHandler
         }
 
         int tblIdx = 0;
+        int chartIdx = 0;
         foreach (var gf in shapeTree.Elements<GraphicFrame>())
         {
             if (gf.Descendants<Drawing.Table>().Any())
             {
                 tblIdx++;
                 children.Add(TableToNode(gf, slideNum, tblIdx, depth));
+            }
+            else if (gf.Descendants<C.ChartReference>().Any())
+            {
+                chartIdx++;
+                children.Add(ChartToNode(gf, slidePart, slideNum, chartIdx, depth));
             }
         }
 

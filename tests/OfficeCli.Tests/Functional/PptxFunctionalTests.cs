@@ -848,4 +848,218 @@ public class PptxFunctionalTests : IDisposable
         root.Children[0].Format.Should().ContainKey("layout");
         root.Children[1].Format.Should().ContainKey("layout");
     }
+
+    // ==================== Charts ====================
+
+    [Fact]
+    public void Chart_Column_Lifecycle()
+    {
+        // 1. Add slide + column chart
+        _handler.Add("/", "slide", null, new() { ["title"] = "Chart Test" });
+        var path = _handler.Add("/slide[1]", "chart", null, new()
+        {
+            ["charttype"] = "column",
+            ["title"] = "Q1 Sales",
+            ["categories"] = "Jan,Feb,Mar",
+            ["series1"] = "Revenue:100,200,300",
+            ["series2"] = "Cost:80,150,250"
+        });
+        path.Should().Be("/slide[1]/chart[1]");
+
+        // 2. Get + Verify
+        var node = _handler.Get("/slide[1]/chart[1]");
+        node.Type.Should().Be("chart");
+        node.Format.Should().ContainKey("chartType");
+        ((string)node.Format["chartType"]).Should().Be("column");
+        ((string)node.Format["title"]).Should().Be("Q1 Sales");
+        ((int)node.Format["seriesCount"]).Should().Be(2);
+        ((string)node.Format["categories"]).Should().Be("Jan,Feb,Mar");
+
+        // 3. Set — change title
+        _handler.Set("/slide[1]/chart[1]", new() { ["title"] = "Updated Sales" });
+
+        // 4. Get + Verify title changed
+        node = _handler.Get("/slide[1]/chart[1]");
+        ((string)node.Format["title"]).Should().Be("Updated Sales");
+
+        // 5. Persist + Verify
+        Reopen();
+        node = _handler.Get("/slide[1]/chart[1]");
+        ((string)node.Format["chartType"]).Should().Be("column");
+        ((string)node.Format["title"]).Should().Be("Updated Sales");
+        ((int)node.Format["seriesCount"]).Should().Be(2);
+    }
+
+    [Fact]
+    public void Chart_Bar_Lifecycle()
+    {
+        _handler.Add("/", "slide", null, new() { ["title"] = "Bar Chart" });
+        _handler.Add("/slide[1]", "chart", null, new()
+        {
+            ["charttype"] = "bar",
+            ["title"] = "Horizontal",
+            ["categories"] = "A,B,C",
+            ["series1"] = "Data:10,20,30"
+        });
+
+        var node = _handler.Get("/slide[1]/chart[1]");
+        ((string)node.Format["chartType"]).Should().Be("bar");
+
+        Reopen();
+        node = _handler.Get("/slide[1]/chart[1]");
+        ((string)node.Format["chartType"]).Should().Be("bar");
+    }
+
+    [Fact]
+    public void Chart_Line_Lifecycle()
+    {
+        _handler.Add("/", "slide", null, new() { ["title"] = "Line Chart" });
+        _handler.Add("/slide[1]", "chart", null, new()
+        {
+            ["charttype"] = "line",
+            ["title"] = "Trend",
+            ["categories"] = "Q1,Q2,Q3,Q4",
+            ["data"] = "Sales:10,25,30,45;Profit:5,12,18,30"
+        });
+
+        var node = _handler.Get("/slide[1]/chart[1]");
+        ((string)node.Format["chartType"]).Should().Be("line");
+        ((int)node.Format["seriesCount"]).Should().Be(2);
+
+        Reopen();
+        node = _handler.Get("/slide[1]/chart[1]");
+        ((string)node.Format["chartType"]).Should().Be("line");
+    }
+
+    [Fact]
+    public void Chart_Pie_Lifecycle()
+    {
+        _handler.Add("/", "slide", null, new() { ["title"] = "Pie Chart" });
+        _handler.Add("/slide[1]", "chart", null, new()
+        {
+            ["charttype"] = "pie",
+            ["title"] = "Market Share",
+            ["categories"] = "Apple,Google,Microsoft",
+            ["series1"] = "Share:40,30,30"
+        });
+
+        var node = _handler.Get("/slide[1]/chart[1]");
+        ((string)node.Format["chartType"]).Should().Be("pie");
+        ((string)node.Format["categories"]).Should().Be("Apple,Google,Microsoft");
+
+        Reopen();
+        node = _handler.Get("/slide[1]/chart[1]");
+        ((string)node.Format["chartType"]).Should().Be("pie");
+    }
+
+    [Fact]
+    public void Chart_SeriesData_ReadbackAtDepth()
+    {
+        _handler.Add("/", "slide", null, new() { ["title"] = "Data Test" });
+        _handler.Add("/slide[1]", "chart", null, new()
+        {
+            ["charttype"] = "column",
+            ["categories"] = "A,B",
+            ["series1"] = "S1:10,20",
+            ["series2"] = "S2:30,40"
+        });
+
+        // depth=0: just seriesCount
+        var node0 = _handler.Get("/slide[1]/chart[1]", 0);
+        ((int)node0.Format["seriesCount"]).Should().Be(2);
+        node0.Children.Should().BeEmpty();
+
+        // depth=1: series children with values
+        var node1 = _handler.Get("/slide[1]/chart[1]", 1);
+        node1.Children.Should().HaveCount(2);
+        node1.Children[0].Type.Should().Be("series");
+        node1.Children[0].Text.Should().Be("S1");
+        ((string)node1.Children[0].Format["values"]).Should().Be("10,20");
+        node1.Children[1].Text.Should().Be("S2");
+        ((string)node1.Children[1].Format["values"]).Should().Be("30,40");
+    }
+
+    [Fact]
+    public void Chart_Query_FindsCharts()
+    {
+        _handler.Add("/", "slide", null, new() { ["title"] = "Slide 1" });
+        _handler.Add("/slide[1]", "chart", null, new()
+        {
+            ["charttype"] = "column",
+            ["title"] = "Revenue",
+            ["series1"] = "Data:1,2,3"
+        });
+        _handler.Add("/slide[1]", "shape", null, new() { ["text"] = "Not a chart" });
+
+        var charts = _handler.Query("chart");
+        charts.Should().HaveCount(1);
+        charts[0].Type.Should().Be("chart");
+        ((string)charts[0].Format["title"]).Should().Be("Revenue");
+    }
+
+    [Fact]
+    public void Chart_SetLegend_Lifecycle()
+    {
+        _handler.Add("/", "slide", null, new() { ["title"] = "Legend Test" });
+        _handler.Add("/slide[1]", "chart", null, new()
+        {
+            ["charttype"] = "column",
+            ["series1"] = "A:1,2",
+            ["legend"] = "top"
+        });
+
+        var node = _handler.Get("/slide[1]/chart[1]");
+        node.Format.Should().ContainKey("legend");
+        ((string)node.Format["legend"]).Should().Be("t");
+
+        // Change legend to none
+        _handler.Set("/slide[1]/chart[1]", new() { ["legend"] = "none" });
+        node = _handler.Get("/slide[1]/chart[1]");
+        node.Format.Should().NotContainKey("legend");
+
+        // Set legend back
+        _handler.Set("/slide[1]/chart[1]", new() { ["legend"] = "right" });
+        node = _handler.Get("/slide[1]/chart[1]");
+        ((string)node.Format["legend"]).Should().Be("r");
+
+        Reopen();
+        node = _handler.Get("/slide[1]/chart[1]");
+        ((string)node.Format["legend"]).Should().Be("r");
+    }
+
+    [Fact]
+    public void Chart_Doughnut_Lifecycle()
+    {
+        _handler.Add("/", "slide", null, new() { ["title"] = "Donut" });
+        _handler.Add("/slide[1]", "chart", null, new()
+        {
+            ["charttype"] = "doughnut",
+            ["title"] = "Budget",
+            ["categories"] = "Rent,Food,Transport",
+            ["series1"] = "Spending:1200,800,400"
+        });
+
+        var node = _handler.Get("/slide[1]/chart[1]");
+        ((string)node.Format["chartType"]).Should().Be("doughnut");
+
+        Reopen();
+        node = _handler.Get("/slide[1]/chart[1]");
+        ((string)node.Format["chartType"]).Should().Be("doughnut");
+    }
+
+    [Fact]
+    public void Chart_SlideChildNodes_IncludesChart()
+    {
+        _handler.Add("/", "slide", null, new() { ["title"] = "Mixed" });
+        _handler.Add("/slide[1]", "shape", null, new() { ["text"] = "Hello" });
+        _handler.Add("/slide[1]", "chart", null, new()
+        {
+            ["charttype"] = "line",
+            ["series1"] = "Data:1,2,3"
+        });
+
+        var slide = _handler.Get("/slide[1]");
+        slide.Children.Should().Contain(c => c.Type == "chart");
+        slide.Children.Should().Contain(c => c.Type == "textbox" || c.Type == "title");
+    }
 }

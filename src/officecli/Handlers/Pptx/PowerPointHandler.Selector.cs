@@ -36,7 +36,7 @@ public partial class PowerPointHandler
         {
             var t = typeMatch.Groups[1].Value.ToLowerInvariant();
             if (t is "shape" or "textbox" or "title" or "picture" or "pic" or "equation" or "math" or "formula"
-                or "table" or "placeholder")
+                or "table" or "chart" or "placeholder")
                 elementType = t;
         }
 
@@ -72,7 +72,7 @@ public partial class PowerPointHandler
     private static bool MatchesShapeSelector(Shape shape, ShapeSelector selector)
     {
         // Element type filter
-        if (selector.ElementType is "picture" or "pic" or "table" or "placeholder")
+        if (selector.ElementType is "picture" or "pic" or "table" or "chart" or "placeholder")
             return false;
 
         // Title filter

@@ -123,6 +123,56 @@ public partial class PowerPointHandler
             return unsupported;
         }
 
+        // Try chart path: /slide[N]/chart[M]
+        var chartSetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/chart\[(\d+)\]$");
+        if (chartSetMatch.Success)
+        {
+            var slideIdx = int.Parse(chartSetMatch.Groups[1].Value);
+            var chartIdx = int.Parse(chartSetMatch.Groups[2].Value);
+
+            var (slidePart, chartGf, chartPart) = ResolveChart(slideIdx, chartIdx);
+
+            // Handle position/size properties on GraphicFrame
+            var chartProps = new Dictionary<string, string>();
+            var gfProps = new Dictionary<string, string>();
+            foreach (var (key, value) in properties)
+            {
+                if (key.ToLowerInvariant() is "x" or "y" or "width" or "height" or "name")
+                    gfProps[key] = value;
+                else
+                    chartProps[key] = value;
+            }
+
+            // Position/size
+            foreach (var (key, value) in gfProps)
+            {
+                switch (key.ToLowerInvariant())
+                {
+                    case "x" or "y" or "width" or "height":
+                        var xfrm = chartGf.Transform ?? (chartGf.Transform = new Transform());
+                        var offset = xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset());
+                        var extents = xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents());
+                        var emu = ParseEmu(value);
+                        switch (key.ToLowerInvariant())
+                        {
+                            case "x": offset.X = emu; break;
+                            case "y": offset.Y = emu; break;
+                            case "width": extents.Cx = emu; break;
+                            case "height": extents.Cy = emu; break;
+                        }
+                        break;
+                    case "name":
+                        var nvPr = chartGf.NonVisualGraphicFrameProperties?.NonVisualDrawingProperties;
+                        if (nvPr != null) nvPr.Name = value;
+                        break;
+                }
+            }
+
+            var unsupported = SetChartProperties(chartPart, chartProps);
+            GetSlide(slidePart).Save();
+            return unsupported;
+        }
+
         // Try table cell path: /slide[N]/table[M]/tr[R]/tc[C]
         var tblCellMatch = Regex.Match(path, @"^/slide\[(\d+)\]/table\[(\d+)\]/tr\[(\d+)\]/tc\[(\d+)\]$");
         if (tblCellMatch.Success)

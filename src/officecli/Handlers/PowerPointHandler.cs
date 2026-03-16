@@ -40,6 +40,28 @@ public partial class PowerPointHandler : IDocumentHandler
         return (slidePart, shapes[shapeIdx - 1]);
     }
 
+    private (SlidePart slidePart, GraphicFrame gf, ChartPart chartPart) ResolveChart(int slideIdx, int chartIdx)
+    {
+        var slideParts = GetSlideParts().ToList();
+        if (slideIdx < 1 || slideIdx > slideParts.Count)
+            throw new ArgumentException($"Slide {slideIdx} not found");
+
+        var slidePart = slideParts[slideIdx - 1];
+        var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
+            ?? throw new ArgumentException($"Slide {slideIdx} has no shapes");
+
+        var chartFrames = shapeTree.Elements<GraphicFrame>()
+            .Where(gf => gf.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().Any())
+            .ToList();
+        if (chartIdx < 1 || chartIdx > chartFrames.Count)
+            throw new ArgumentException($"Chart {chartIdx} not found (total: {chartFrames.Count})");
+
+        var gf = chartFrames[chartIdx - 1];
+        var chartRef = gf.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().First();
+        var chartPart = (ChartPart)slidePart.GetPartById(chartRef.Id!.Value!);
+        return (slidePart, gf, chartPart);
+    }
+
     private (SlidePart slidePart, Drawing.Table table) ResolveTable(int slideIdx, int tblIdx)
     {
         var slideParts = GetSlideParts().ToList();

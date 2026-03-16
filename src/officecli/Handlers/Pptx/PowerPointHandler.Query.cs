@@ -7,6 +7,7 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
 using OfficeCli.Core;
 using Drawing = DocumentFormat.OpenXml.Drawing;
+using C = DocumentFormat.OpenXml.Drawing.Charts;
 
 namespace OfficeCli.Handlers;
 
@@ -305,6 +306,14 @@ public partial class PowerPointHandler
         {
             return GetPlaceholderNode(targetSlidePart, slideIdx, elementIdx, depth);
         }
+        else if (elementType == "chart")
+        {
+            var charts = shapeTreeEl.Elements<GraphicFrame>()
+                .Where(gf => gf.Descendants<C.ChartReference>().Any()).ToList();
+            if (elementIdx < 1 || elementIdx > charts.Count)
+                throw new ArgumentException($"Chart {elementIdx} not found (total: {charts.Count})");
+            return ChartToNode(charts[elementIdx - 1], targetSlidePart, slideIdx, elementIdx, depth);
+        }
         else if (elementType == "picture" || elementType == "pic")
         {
             var pics = shapeTreeEl.Elements<Picture>().ToList();
@@ -339,7 +348,7 @@ public partial class PowerPointHandler
         bool isKnownType = string.IsNullOrEmpty(rawType)
             || rawType is "shape" or "textbox" or "title" or "picture" or "pic"
                 or "equation" or "math" or "formula"
-                or "table" or "placeholder" or "notes";
+                or "table" or "chart" or "placeholder" or "notes";
         if (!isKnownType)
         {
             var genericParsed = GenericXmlQuery.ParseSelector(selector);
@@ -446,6 +455,24 @@ public partial class PowerPointHandler
                             continue;
                     }
                     results.Add(tblNode);
+                }
+            }
+
+            if (parsed.ElementType == "chart" || (parsed.ElementType == null && !isEquationSelector))
+            {
+                int chartIdx = 0;
+                foreach (var gf in shapeTree.Elements<GraphicFrame>())
+                {
+                    if (!gf.Descendants<C.ChartReference>().Any()) continue;
+                    chartIdx++;
+                    var chartNode = ChartToNode(gf, slidePart, slideNum, chartIdx, 0);
+                    if (parsed.TextContains != null)
+                    {
+                        var titleVal = chartNode.Format.ContainsKey("title") ? (string)chartNode.Format["title"] : "";
+                        if (!titleVal.Contains(parsed.TextContains, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                    }
+                    results.Add(chartNode);
                 }
             }
 

@@ -625,6 +625,15 @@ Format keys returned by Get:
     reflection             "true" if reflection effect applied
     animation              "effectName-class-durationMs" (e.g. "fade-entrance-500")
 
+  Chart (/slide[N]/chart[M]):
+    chartType              column, bar, line, pie, doughnut, area, scatter
+    title                  Chart title text
+    legend                 Legend position (t/b/l/r)
+    seriesCount            Number of data series
+    categories             Comma-separated category labels
+    x, y, width, height    Position and size
+    (depth>0: children = series nodes with name + values)
+
   Table cell (/slide[N]/table[M]/tr[R]/tc[C]):
     text, fill, font, size, bold, italic, color
 
@@ -638,6 +647,7 @@ Examples:
   officecli get pres.pptx '/slide[1]' --depth 2
   officecli get pres.pptx '/slide[1]/shape[1]' --depth 3 --json
   officecli get pres.pptx '/slide[1]/table[1]' --depth 2
+  officecli get pres.pptx '/slide[1]/chart[1]' --depth 1
   officecli get pres.pptx '/slide[1]/placeholder[title]'
   officecli get pres.pptx '/slide[1]/notes'
   officecli get pres.pptx '/slide[1]/shape[1]/paragraph[1]/run[1]'
@@ -718,6 +728,12 @@ Shape properties (/slide[N]/shape[M]) -- applies to all runs:
   y          Vertical position (EMU or cm/in/pt/px, e.g. 3cm)
   width      Shape width (EMU or cm/in/pt/px, e.g. 10cm)
   height     Shape height (EMU or cm/in/pt/px, e.g. 2cm)
+
+Chart properties (/slide[N]/chart[M]):
+  title        Chart title text (or "none" to remove)
+  legend       Legend position: top/bottom/left/right or "none" to remove
+  x, y, width, height  Chart position and size (EMU or cm/in/pt/px)
+  name         Chart name
 
 Notes properties (/slide[N]/notes):
   text         Speaker notes text (multi-line supported with \n)
@@ -817,6 +833,15 @@ Types and properties:
             callout, process, decision, smiley, frame, gear6, ...),
     x, y, width, height (EMU or cm/in/pt/px, default: full-width text box)
 
+  chart  -- parent: /slide[N]
+    chartType (column|bar|line|pie|doughnut|area|scatter), title, legend (top|bottom|left|right|none),
+    categories (comma-separated labels, e.g. "Q1,Q2,Q3,Q4"),
+    Data format (choose one):
+      data = "Series1:1,2,3;Series2:4,5,6"  (compact: all series in one prop)
+      series1 = "Revenue:100,200,300"        (numbered: one prop per series)
+      series2 = "Cost:80,150,250"
+    x, y, width, height (EMU or cm/in/pt/px), name
+
   table  -- parent: /slide[N]
     rows (default 3), cols (default 3), name,
     x, y, width, height (EMU or cm/in/pt/px)
@@ -839,6 +864,9 @@ Examples:
   officecli add pres.pptx / --type slide --prop title="Dark Slide" --prop background=1F3864
   officecli add pres.pptx '/slide[1]' --type shape --prop text="Hello" --prop font=Arial --prop size=18
   officecli add pres.pptx '/slide[1]' --type shape --prop text="Go" --prop preset=rightArrow --prop fill=4472C4
+  officecli add pres.pptx '/slide[1]' --type chart --prop chartType=column --prop title="Q1 Sales" --prop categories="Q1,Q2,Q3,Q4" --prop data="Revenue:100,200,300,400;Cost:80,150,250,350"
+  officecli add pres.pptx '/slide[1]' --type chart --prop chartType=pie --prop title="Market Share" --prop categories="Apple,Google,MS" --prop series1="Share:40,30,30"
+  officecli add pres.pptx '/slide[1]' --type chart --prop chartType=line --prop series1="Trend:1,3,2,5" --prop legend=top
   officecli add pres.pptx '/slide[1]' --type table --prop rows=3 --prop cols=4
   officecli add pres.pptx '/slide[1]' --type picture --prop path=photo.jpg --prop width=8cm --prop alt="Team photo"
   officecli add pres.pptx '/slide[1]' --type equation --prop formula="\frac{-b \pm \sqrt{b^2-4ac}}{2a}"
