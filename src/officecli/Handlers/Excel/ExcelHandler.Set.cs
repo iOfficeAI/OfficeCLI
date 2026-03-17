@@ -146,7 +146,7 @@ public partial class ExcelHandler
                 }
             }
 
-            GetSheet(worksheet).Save();
+            SaveWorksheet(worksheet);
             return dvUnsupported;
         }
 
@@ -364,7 +364,7 @@ public partial class ExcelHandler
                         break;
                 }
             }
-            ws.Save();
+            ReorderWorksheetChildren(ws); ws.Save();
             return unsup;
         }
 
@@ -449,7 +449,7 @@ public partial class ExcelHandler
                 if (!GenericXmlQuery.SetGenericAttribute(target, key, value))
                     unsup.Add(key);
             }
-            GetSheet(worksheet).Save();
+            SaveWorksheet(worksheet);
             return unsup;
         }
 
@@ -544,7 +544,7 @@ public partial class ExcelHandler
             cell.StyleIndex = styleManager.ApplyStyle(cell, styleProps);
         }
 
-        GetSheet(worksheet).Save();
+        SaveWorksheet(worksheet);
         return unsupported;
     }
 
@@ -616,7 +616,7 @@ public partial class ExcelHandler
             }
         }
 
-        ws.Save();
+        ReorderWorksheetChildren(ws); ws.Save();
         return unsupported;
     }
 
@@ -677,55 +677,8 @@ public partial class ExcelHandler
         }
 
         ReorderWorksheetChildren(ws);
-        ws.Save();
+        ReorderWorksheetChildren(ws); ws.Save();
         return unsupported;
-    }
-
-    /// <summary>
-    /// Reorder worksheet children to match OpenXML schema sequence.
-    /// Fixes element ordering violations that occur when elements are inserted via DOM methods.
-    /// Schema order: sheetPr, dimension, sheetViews, sheetFormatPr, cols, sheetData,
-    ///   sheetCalcPr, sheetProtection, protectedRanges, scenarios, autoFilter, sortState,
-    ///   dataConsolidate, customSheetViews, mergeCells, phoneticPr, conditionalFormatting,
-    ///   dataValidations, hyperlinks, printOptions, pageMargins, pageSetup, headerFooter,
-    ///   rowBreaks, colBreaks, drawing, legacyDrawing, tableParts, extLst
-    /// </summary>
-    private static void ReorderWorksheetChildren(Worksheet ws)
-    {
-        // Define schema element order (only elements we care about)
-        var order = new Dictionary<string, int>
-        {
-            ["sheetPr"] = 0, ["dimension"] = 1, ["sheetViews"] = 2, ["sheetFormatPr"] = 3,
-            ["cols"] = 4, ["sheetData"] = 5, ["sheetCalcPr"] = 6, ["sheetProtection"] = 7,
-            ["protectedRanges"] = 8, ["scenarios"] = 9, ["autoFilter"] = 10, ["sortState"] = 11,
-            ["dataConsolidate"] = 12, ["customSheetViews"] = 13, ["mergeCells"] = 14,
-            ["phoneticPr"] = 15, ["conditionalFormatting"] = 16, ["dataValidations"] = 17,
-            ["hyperlinks"] = 18, ["printOptions"] = 19, ["pageMargins"] = 20,
-            ["pageSetup"] = 21, ["headerFooter"] = 22, ["rowBreaks"] = 23, ["colBreaks"] = 24,
-            ["drawing"] = 25, ["legacyDrawing"] = 26, ["tableParts"] = 27, ["extLst"] = 99
-        };
-
-        var children = ws.ChildElements.ToList();
-        var sorted = children
-            .OrderBy(c => order.TryGetValue(c.LocalName, out var idx) ? idx : 50)
-            .ToList();
-
-        // Check if already in order
-        bool needsReorder = false;
-        for (int i = 0; i < children.Count; i++)
-        {
-            if (!ReferenceEquals(children[i], sorted[i]))
-            {
-                needsReorder = true;
-                break;
-            }
-        }
-
-        if (needsReorder)
-        {
-            foreach (var child in children) child.Remove();
-            foreach (var child in sorted) ws.AppendChild(child);
-        }
     }
 
     // ==================== Column Set (width, hidden) ====================
@@ -774,7 +727,7 @@ public partial class ExcelHandler
             }
         }
 
-        ws.Save();
+        ReorderWorksheetChildren(ws); ws.Save();
         return unsupported;
     }
 
@@ -818,7 +771,7 @@ public partial class ExcelHandler
             }
         }
 
-        ws.Save();
+        ReorderWorksheetChildren(ws); ws.Save();
         return unsupported;
     }
 
@@ -858,7 +811,7 @@ public partial class ExcelHandler
             }
         }
 
-        ws.Save();
+        ReorderWorksheetChildren(ws); ws.Save();
         return unsupported;
     }
 }

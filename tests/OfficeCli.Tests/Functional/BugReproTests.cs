@@ -251,4 +251,177 @@ public class BugReproTests : IDisposable
         style.Format.Should().NotContainKey("bold",
             "After Set bold=false, bold should be removed from Format");
     }
+
+    // ==================== ORDERING BUGS: Excel element order violations ====================
+
+    [Fact]
+    public void Bug_ExcelOrder_AutoFilterThenCF()
+    {
+        // Schema: sheetData > autoFilter > mergeCells > conditionalFormatting
+        // If autoFilter is added first, then CF is InsertAfterSelf(sheetData),
+        // CF ends up BEFORE autoFilter = wrong
+        _excelHandler.Add("/Sheet1", "cell", null, new() { ["ref"] = "A1", ["value"] = "1" });
+        _excelHandler.Add("/Sheet1", "autofilter", null, new() { ["range"] = "A1:A10" });
+        _excelHandler.Add("/Sheet1", "databar", null, new() { ["sqref"] = "A1:A10" });
+
+        ReopenExcel();
+        var errors = _excelHandler.Validate();
+        errors.Should().BeEmpty("AutoFilter then CF should produce valid XML");
+    }
+
+    [Fact]
+    public void Bug_ExcelOrder_CFThenAutoFilter()
+    {
+        // CF added first, then autoFilter — autoFilter should be BEFORE CF
+        _excelHandler.Add("/Sheet1", "cell", null, new() { ["ref"] = "A1", ["value"] = "1" });
+        _excelHandler.Add("/Sheet1", "databar", null, new() { ["sqref"] = "A1:A10" });
+        _excelHandler.Add("/Sheet1", "autofilter", null, new() { ["range"] = "A1:A10" });
+
+        ReopenExcel();
+        var errors = _excelHandler.Validate();
+        errors.Should().BeEmpty("CF then AutoFilter should produce valid XML");
+    }
+
+    [Fact]
+    public void Bug_ExcelOrder_MergeThenAutoFilter()
+    {
+        // Merge first, then autoFilter — autoFilter should be BEFORE mergeCells
+        _excelHandler.Add("/Sheet1", "cell", null, new() { ["ref"] = "A1", ["value"] = "1" });
+        _excelHandler.Set("/Sheet1/A1:B1", new() { ["merge"] = "true" });
+        _excelHandler.Add("/Sheet1", "autofilter", null, new() { ["range"] = "A1:A10" });
+
+        ReopenExcel();
+        var errors = _excelHandler.Validate();
+        errors.Should().BeEmpty("Merge then AutoFilter should produce valid XML");
+    }
+
+    [Fact]
+    public void Bug_ExcelOrder_ValidationThenCFThenMerge()
+    {
+        // Full combo: validation + CF + merge — all must be in correct order
+        _excelHandler.Add("/Sheet1", "cell", null, new() { ["ref"] = "A1", ["value"] = "1" });
+        _excelHandler.Add("/Sheet1", "validation", null, new()
+        {
+            ["sqref"] = "B1:B10", ["type"] = "list", ["formula1"] = "Yes,No"
+        });
+        _excelHandler.Add("/Sheet1", "colorscale", null, new()
+        {
+            ["sqref"] = "A1:A10", ["mincolor"] = "FF0000", ["maxcolor"] = "00FF00"
+        });
+        _excelHandler.Set("/Sheet1/A1:C1", new() { ["merge"] = "true" });
+
+        ReopenExcel();
+        var errors = _excelHandler.Validate();
+        errors.Should().BeEmpty("Validation + CF + Merge combo should produce valid XML");
+    }
+
+    // ==================== EDGE CASE BUGS ====================
+
+    [Fact]
+    public void Bug_Excel_MergeSameRangeTwice()
+    {
+        // Merging the same range twice should not create duplicate entries
+        _excelHandler.Add("/Sheet1", "cell", null, new() { ["ref"] = "A1", ["value"] = "X" });
+        _excelHandler.Set("/Sheet1/A1:B1", new() { ["merge"] = "true" });
+        _excelHandler.Set("/Sheet1/A1:B1", new() { ["merge"] = "true" });
+
+        ReopenExcel();
+        var errors = _excelHandler.Validate();
+        errors.Should().BeEmpty("Merging same range twice should not cause errors");
+        var cell = _excelHandler.Get("/Sheet1/A1");
+        cell.Format.Should().ContainKey("merge");
+    }
+
+    [Fact]
+    public void Bug_Word_SetSuperscript_ThenBold_Preserves()
+    {
+        // Setting superscript then bold should preserve both
+        _wordHandler.Add("/body", "paragraph", null, new() { ["text"] = "x" });
+        _wordHandler.Add("/body/p[1]", "run", null, new() { ["text"] = "2", ["superscript"] = "true" });
+
+        _wordHandler.Set("/body/p[1]/r[2]", new() { ["bold"] = "true" });
+
+        var run = _wordHandler.Get("/body/p[1]/r[2]");
+        run.Format.Should().ContainKey("superscript", "Superscript should survive bold set");
+        run.Format.Should().ContainKey("bold", "Bold should be applied");
+    }
+
+    [Fact]
+    public void Bug_Word_AddTwoFootnotes_IndependentIds()
+    {
+        // Two footnotes should have different IDs
+        _wordHandler.Add("/body", "paragraph", null, new() { ["text"] = "Text" });
+        var fn1 = _wordHandler.Add("/body/p[1]", "footnote", null, new() { ["text"] = "First" });
+        var fn2 = _wordHandler.Add("/body/p[1]", "footnote", null, new() { ["text"] = "Second" });
+
+        fn1.Should().NotBe(fn2, "Two footnotes should have different paths");
+        _wordHandler.Get(fn1).Text.Should().Contain("First");
+        _wordHandler.Get(fn2).Text.Should().Contain("Second");
+    }
+
+    [Fact]
+    public void Bug_Word_HangingAndFirstLineExclusive()
+    {
+        // Hanging indent and first line indent are mutually exclusive
+        _wordHandler.Add("/body", "paragraph", null, new() { ["text"] = "Para" });
+
+        _wordHandler.Set("/body/p[1]", new() { ["firstlineindent"] = "2" });
+        var node = _wordHandler.Get("/body/p[1]");
+        node.Format.Should().ContainKey("firstLineIndent");
+
+        // Set hanging — should clear firstline
+        _wordHandler.Set("/body/p[1]", new() { ["hanging"] = "720" });
+        node = _wordHandler.Get("/body/p[1]");
+        node.Format.Should().ContainKey("hangingIndent");
+        node.Format.Should().NotContainKey("firstLineIndent",
+            "Hanging should clear firstLineIndent (mutually exclusive)");
+    }
+
+    [Fact]
+    public void Bug_Excel_ChartOnSheetWithNoData()
+    {
+        // Adding a chart to a sheet with no data should work
+        var path = _excelHandler.Add("/Sheet1", "chart", null, new()
+        {
+            ["chartType"] = "pie",
+            ["data"] = "Sales:40,30,30",
+            ["categories"] = "A,B,C"
+        });
+        path.Should().Be("/Sheet1/chart[1]");
+
+        ReopenExcel();
+        var chart = _excelHandler.Get("/Sheet1/chart[1]");
+        chart.Type.Should().Be("chart");
+    }
+
+    [Fact]
+    public void Bug_Pptx_AddRowMatchesTableColumnCount()
+    {
+        // Adding a row to a PPTX table should auto-match the existing column count
+        using var pptxPath = new DisposablePath(".pptx");
+        BlankDocCreator.Create(pptxPath.Path);
+        using var handler = new PowerPointHandler(pptxPath.Path, editable: true);
+
+        handler.Add("/", "slide", null, new());
+        handler.Add("/slide[1]", "table", null, new() { ["rows"] = "1", ["cols"] = "4" });
+
+        // Add row without specifying cols — should auto-detect 4 columns
+        var path = handler.Add("/slide[1]/table[1]", "row", null, new() { ["c1"] = "A" });
+
+        var table = handler.Get("/slide[1]/table[1]", depth: 2);
+        var rows = table.Children.Where(c => c.Type == "tr").ToList();
+        rows.Should().HaveCount(2);
+        rows[1].Children.Should().HaveCount(4, "New row should match table's 4 columns");
+    }
+
+    /// <summary>Helper for disposable temp files.</summary>
+    private class DisposablePath : IDisposable
+    {
+        public string Path { get; }
+        public DisposablePath(string ext)
+        {
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"test_{Guid.NewGuid():N}{ext}");
+        }
+        public void Dispose() { if (File.Exists(Path)) File.Delete(Path); }
+    }
 }

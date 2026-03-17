@@ -7,6 +7,7 @@ using DocumentFormat.OpenXml.Spreadsheet;
 using OfficeCli.Core;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using Drawing = DocumentFormat.OpenXml.Drawing;
+using XDR = DocumentFormat.OpenXml.Drawing.Spreadsheet;
 
 namespace OfficeCli.Handlers;
 
@@ -16,6 +17,59 @@ public partial class ExcelHandler
 
     private static Worksheet GetSheet(WorksheetPart part) =>
         part.Worksheet ?? throw new InvalidOperationException("Corrupt file: worksheet data missing");
+
+    /// <summary>
+    /// Save worksheet with automatic schema-order reorder.
+    /// Must be used instead of ws.Save() to prevent element ordering violations.
+    /// </summary>
+    private static void SaveWorksheet(WorksheetPart part)
+    {
+        ReorderWorksheetChildren(GetSheet(part));
+        GetSheet(part).Save();
+    }
+
+    /// <summary>
+    /// Reorder worksheet children to match OpenXML schema sequence.
+    /// Schema: sheetPr, dimension, sheetViews, sheetFormatPr, cols, sheetData,
+    ///   autoFilter, sortState, mergeCells, conditionalFormatting,
+    ///   dataValidations, hyperlinks, printOptions, pageMargins, pageSetup,
+    ///   headerFooter, drawing, legacyDrawing, tableParts, extLst
+    /// </summary>
+    private static void ReorderWorksheetChildren(Worksheet ws)
+    {
+        var order = new Dictionary<string, int>
+        {
+            ["sheetPr"] = 0, ["dimension"] = 1, ["sheetViews"] = 2, ["sheetFormatPr"] = 3,
+            ["cols"] = 4, ["sheetData"] = 5, ["sheetCalcPr"] = 6, ["sheetProtection"] = 7,
+            ["protectedRanges"] = 8, ["scenarios"] = 9, ["autoFilter"] = 10, ["sortState"] = 11,
+            ["dataConsolidate"] = 12, ["customSheetViews"] = 13, ["mergeCells"] = 14,
+            ["phoneticPr"] = 15, ["conditionalFormatting"] = 16, ["dataValidations"] = 17,
+            ["hyperlinks"] = 18, ["printOptions"] = 19, ["pageMargins"] = 20,
+            ["pageSetup"] = 21, ["headerFooter"] = 22, ["rowBreaks"] = 23, ["colBreaks"] = 24,
+            ["drawing"] = 25, ["legacyDrawing"] = 26, ["tableParts"] = 27, ["extLst"] = 99
+        };
+
+        var children = ws.ChildElements.ToList();
+        var sorted = children
+            .OrderBy(c => order.TryGetValue(c.LocalName, out var idx) ? idx : 50)
+            .ToList();
+
+        bool needsReorder = false;
+        for (int i = 0; i < children.Count; i++)
+        {
+            if (!ReferenceEquals(children[i], sorted[i]))
+            {
+                needsReorder = true;
+                break;
+            }
+        }
+
+        if (needsReorder)
+        {
+            foreach (var child in children) child.Remove();
+            foreach (var child in sorted) ws.AppendChild(child);
+        }
+    }
 
     private Workbook GetWorkbook() =>
         _doc.WorkbookPart?.Workbook ?? throw new InvalidOperationException("Corrupt file: workbook missing");
@@ -833,5 +887,172 @@ public partial class ExcelHandler
             ),
             new C.Overlay { Val = false }
         );
+    }
+
+    // ==================== Data Validation Helpers ====================
+
+    private DocumentNode TableToNode(string sheetName, WorksheetPart worksheetPart, int tableIndex, int depth)
+    {
+        var tableParts = worksheetPart.TableDefinitionParts.ToList();
+        if (tableIndex < 1 || tableIndex > tableParts.Count)
+            throw new ArgumentException($"Table index {tableIndex} out of range (1..{tableParts.Count})");
+
+        var tbl = tableParts[tableIndex - 1].Table
+            ?? throw new ArgumentException($"Table {tableIndex} has no definition");
+
+        var node = new DocumentNode
+        {
+            Path = $"/{sheetName}/table[{tableIndex}]",
+            Type = "table",
+            Text = tbl.DisplayName?.Value ?? tbl.Name?.Value ?? $"Table{tableIndex}",
+            Preview = $"{tbl.Name?.Value} ({tbl.Reference?.Value})"
+        };
+
+        node.Format["name"] = tbl.Name?.Value ?? "";
+        node.Format["displayName"] = tbl.DisplayName?.Value ?? "";
+        node.Format["ref"] = tbl.Reference?.Value ?? "";
+
+        var styleInfo = tbl.GetFirstChild<TableStyleInfo>();
+        if (styleInfo?.Name?.Value != null)
+            node.Format["style"] = styleInfo.Name.Value;
+
+        node.Format["headerRow"] = (tbl.HeaderRowCount?.Value ?? 1) != 0;
+        node.Format["totalRow"] = tbl.TotalsRowShown?.Value ?? false;
+
+        var tableColumns = tbl.GetFirstChild<TableColumns>();
+        if (tableColumns != null)
+        {
+            var colNames = tableColumns.Elements<TableColumn>()
+                .Select(c => c.Name?.Value ?? "").ToArray();
+            node.Format["columns"] = string.Join(",", colNames);
+            node.ChildCount = colNames.Length;
+        }
+
+        return node;
+    }
+
+    private DocumentNode CommentToNode(string sheetName, Comment comment, Comments comments, int index)
+    {
+        var reference = comment.Reference?.Value ?? "?";
+        var text = comment.CommentText?.InnerText ?? "";
+        var authorId = comment.AuthorId?.Value ?? 0;
+
+        var authors = comments.GetFirstChild<Authors>();
+        var authorName = authors?.Elements<Author>().ElementAtOrDefault((int)authorId)?.Text ?? "Unknown";
+
+        var node = new DocumentNode
+        {
+            Path = $"/{sheetName}/comment[{index}]",
+            Type = "comment",
+            Text = text,
+            Preview = $"{reference}: {text}"
+        };
+
+        node.Format["ref"] = reference;
+        node.Format["author"] = authorName;
+
+        return node;
+    }
+
+    private static DocumentNode DataValidationToNode(string sheetName, DataValidation dv, int index)
+    {
+        var sqref = dv.SequenceOfReferences?.InnerText ?? "";
+        var node = new DocumentNode
+        {
+            Path = $"/{sheetName}/validation[{index}]",
+            Type = "validation",
+            Text = sqref,
+            Preview = $"validation[{index}] ({sqref})"
+        };
+
+        node.Format["sqref"] = sqref;
+
+        if (dv.Type?.HasValue == true)
+            node.Format["type"] = dv.Type.Value.ToString();
+        if (dv.Operator?.HasValue == true)
+            node.Format["operator"] = dv.Operator.Value.ToString();
+
+        if (dv.Formula1 != null)
+        {
+            var f1 = dv.Formula1.Text ?? "";
+            if (f1.StartsWith("\"") && f1.EndsWith("\""))
+                f1 = f1[1..^1];
+            node.Format["formula1"] = f1;
+        }
+
+        if (dv.Formula2 != null)
+            node.Format["formula2"] = dv.Formula2.Text ?? "";
+
+        if (dv.AllowBlank?.HasValue == true)
+            node.Format["allowBlank"] = dv.AllowBlank.Value;
+        if (dv.ShowErrorMessage?.HasValue == true)
+            node.Format["showError"] = dv.ShowErrorMessage.Value;
+        if (dv.ShowInputMessage?.HasValue == true)
+            node.Format["showInput"] = dv.ShowInputMessage.Value;
+
+        if (!string.IsNullOrEmpty(dv.ErrorTitle?.Value))
+            node.Format["errorTitle"] = dv.ErrorTitle!.Value!;
+        if (!string.IsNullOrEmpty(dv.Error?.Value))
+            node.Format["error"] = dv.Error!.Value!;
+        if (!string.IsNullOrEmpty(dv.PromptTitle?.Value))
+            node.Format["promptTitle"] = dv.PromptTitle!.Value!;
+        if (!string.IsNullOrEmpty(dv.Prompt?.Value))
+            node.Format["prompt"] = dv.Prompt!.Value!;
+
+        return node;
+    }
+
+    // ==================== Picture Helpers ====================
+
+    private DocumentNode GetPictureNode(string sheetName, WorksheetPart worksheetPart, int index, string path)
+    {
+        var drawingsPart = worksheetPart.DrawingsPart
+            ?? throw new ArgumentException("Sheet has no drawings/pictures");
+
+        var wsDrawing = drawingsPart.WorksheetDrawing
+            ?? throw new ArgumentException("Sheet has no drawings/pictures");
+
+        var picAnchors = wsDrawing.Elements<XDR.TwoCellAnchor>()
+            .Where(a => a.Descendants<XDR.Picture>().Any())
+            .ToList();
+
+        if (index < 1 || index > picAnchors.Count)
+            throw new ArgumentException($"Picture index {index} out of range (1..{picAnchors.Count})");
+
+        var anchor = picAnchors[index - 1];
+        var picture = anchor.Descendants<XDR.Picture>().First();
+
+        var node = new DocumentNode { Path = path, Type = "picture" };
+
+        var nvProps = picture.NonVisualPictureProperties?.NonVisualDrawingProperties;
+        if (nvProps != null)
+        {
+            if (!string.IsNullOrEmpty(nvProps.Description?.Value))
+            {
+                node.Format["alt"] = nvProps.Description.Value;
+                node.Text = nvProps.Description.Value;
+            }
+            if (!string.IsNullOrEmpty(nvProps.Name?.Value))
+                node.Format["name"] = nvProps.Name.Value;
+        }
+
+        var from = anchor.FromMarker;
+        var to = anchor.ToMarker;
+        if (from != null)
+        {
+            node.Format["x"] = from.ColumnId?.Text ?? "0";
+            node.Format["y"] = from.RowId?.Text ?? "0";
+        }
+        if (to != null && from != null)
+        {
+            var fromCol = int.TryParse(from.ColumnId?.Text, out var fc) ? fc : 0;
+            var toCol = int.TryParse(to.ColumnId?.Text, out var tc) ? tc : 0;
+            var fromRow = int.TryParse(from.RowId?.Text, out var fr) ? fr : 0;
+            var toRow = int.TryParse(to.RowId?.Text, out var tr2) ? tr2 : 0;
+            node.Format["width"] = (toCol - fromCol).ToString();
+            node.Format["height"] = (toRow - fromRow).ToString();
+        }
+
+        return node;
     }
 }
