@@ -369,7 +369,6 @@ public partial class WordHandler
             case "table" or "tbl":
                 var table = new Table();
                 var tblProps = new TableProperties(
-                    new TableCellSpacing { Width = "0", Type = TableWidthUnitValues.Dxa },
                     new TableBorders(
                         new TopBorder { Val = BorderValues.Single, Size = 4 },
                         new LeftBorder { Val = BorderValues.Single, Size = 4 },
