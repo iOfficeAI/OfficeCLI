@@ -24,6 +24,7 @@ public partial class WordHandler
         if (parentPath is "/" or "" or "/body")
         {
             parent = body;
+            parentPath = "/body"; // Normalize so result paths are usable (e.g. /body/p[1] not //p[1])
         }
         else if (parentPath == "/styles")
         {
@@ -140,6 +141,11 @@ public partial class WordHandler
                     pProps.PageBreakBefore = new PageBreakBefore();
                 if (properties.TryGetValue("widowcontrol", out var addWC) && IsTruthy(addWC))
                     pProps.WidowControl = new WidowControl();
+                foreach (var (pk, pv) in properties)
+                {
+                    if (pk.StartsWith("pbdr", StringComparison.OrdinalIgnoreCase))
+                        ApplyParagraphBorders(pProps, pk, pv);
+                }
                 if (properties.TryGetValue("liststyle", out var listStyle))
                 {
                     para.AppendChild(pProps);
@@ -346,6 +352,18 @@ public partial class WordHandler
                     newRProps.Shading = shd;
                 }
 
+                // Inherit default formatting from paragraph mark run properties
+                var markRProps = targetPara.ParagraphProperties?.ParagraphMarkRunProperties;
+                if (markRProps != null)
+                {
+                    foreach (var child in markRProps.ChildElements)
+                    {
+                        var childType = child.GetType();
+                        if (newRProps.Elements().All(e => e.GetType() != childType))
+                            newRProps.AppendChild(child.CloneNode(true));
+                    }
+                }
+
                 newRun.AppendChild(newRProps);
                 var runText = properties.GetValueOrDefault("text", "");
                 newRun.AppendChild(new Text(runText) { Space = SpaceProcessingModeValues.Preserve });
@@ -447,10 +465,11 @@ public partial class WordHandler
                             break;
                         case "padding":
                             var cm = tblProps.TableCellMarginDefault ?? tblProps.AppendChild(new TableCellMarginDefault());
+                            var paddingVal = int.Parse(tv);
                             cm.TopMargin = new TopMargin { Width = tv, Type = TableWidthUnitValues.Dxa };
-                            cm.TableCellLeftMargin = new TableCellLeftMargin { Width = short.Parse(tv), Type = TableWidthValues.Dxa };
+                            cm.TableCellLeftMargin = new TableCellLeftMargin { Width = (short)Math.Min(paddingVal, short.MaxValue), Type = TableWidthValues.Dxa };
                             cm.BottomMargin = new BottomMargin { Width = tv, Type = TableWidthUnitValues.Dxa };
-                            cm.TableCellRightMargin = new TableCellRightMargin { Width = short.Parse(tv), Type = TableWidthValues.Dxa };
+                            cm.TableCellRightMargin = new TableCellRightMargin { Width = (short)Math.Min(paddingVal, short.MaxValue), Type = TableWidthValues.Dxa };
                             break;
                     }
                 }
@@ -790,7 +809,7 @@ public partial class WordHandler
                 }
 
                 newElement = bookmarkStart;
-                resultPath = $"/bookmark[{bkName}]";
+                resultPath = $"{parentPath}/bookmark[{bkName}]";
                 break;
             }
 
@@ -1316,7 +1335,7 @@ public partial class WordHandler
             {
                 var wmText = properties.GetValueOrDefault("text", "DRAFT");
                 var wmColor = properties.TryGetValue("color", out var wmcVal)
-                    ? wmcVal.TrimStart('#').ToLowerInvariant() : "silver";
+                    ? wmcVal.TrimStart('#').ToUpperInvariant() : "silver";
                 var wmFont = properties.GetValueOrDefault("font", "Calibri");
                 var wmSize = properties.GetValueOrDefault("size", "1pt");
                 if (!wmSize.EndsWith("pt")) wmSize += "pt";

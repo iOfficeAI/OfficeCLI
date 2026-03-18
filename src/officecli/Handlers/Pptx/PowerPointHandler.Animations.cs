@@ -32,14 +32,17 @@ public partial class PowerPointHandler
     private static void ApplyTransition(SlidePart slidePart, string value)
     {
         var slide = slidePart.Slide ?? throw new InvalidOperationException("Corrupt file");
-        slide.RemoveAllChildren<Transition>();
+
+        // Step 1: Build the Transition element using SDK (for correct child XML generation)
+        var parts = value.Split('-');
+        var typeName = parts[0].ToLowerInvariant();
 
         if (value.Equals("none", StringComparison.OrdinalIgnoreCase) ||
             value.Equals("false", StringComparison.OrdinalIgnoreCase))
+        {
+            slide.Transition = null;
             return;
-
-        var parts = value.Split('-');
-        var typeName = parts[0].ToLowerInvariant();
+        }
 
         TransitionSpeedValues? speed = null;
         string? durationMs = null;
@@ -110,12 +113,40 @@ public partial class PowerPointHandler
 
         if (transElem != null) trans.Append(transElem);
 
-        // Insert transition before timing element (schema order)
-        var timing = slide.GetFirstChild<Timing>();
-        if (timing != null)
-            slide.InsertBefore(trans, timing);
+        // Insert transition XML directly as an unknown element to prevent SDK from dropping it.
+        // The SDK's typed Slide.Transition setter appears to work (OuterXml shows the element)
+        // but Save() strips it during serialization. Workaround: inject as raw XML element
+        // that the SDK preserves as-is.
+        var transXml = trans.OuterXml;
+        // Remove any existing transition from the slide's children
+        foreach (var existing in slide.ChildElements.Where(c => c.LocalName == "transition").ToList())
+            existing.Remove();
+        // Parse the transition XML as a generic OpenXmlUnknownElement and insert after cSld
+        var unknownTrans = new OpenXmlUnknownElement(trans.Prefix, trans.LocalName, trans.NamespaceUri);
+        unknownTrans.InnerXml = trans.InnerXml;
+        foreach (var attr in trans.GetAttributes()) unknownTrans.SetAttribute(attr);
+        var csd = slide.CommonSlideData;
+        if (csd != null)
+            csd.InsertAfterSelf(unknownTrans);
         else
-            slide.Append(trans);
+            slide.AppendChild(unknownTrans);
+    }
+
+    /// <summary>Remove transition from slide by rewriting the part XML.</summary>
+    private static void RewriteSlideXmlWithoutTransition(SlidePart slidePart)
+    {
+        slidePart.Slide?.Save();
+        using var stream = slidePart.GetStream(System.IO.FileMode.Open);
+        string xml;
+        using (var reader = new System.IO.StreamReader(stream, leaveOpen: true))
+            xml = reader.ReadToEnd();
+        xml = System.Text.RegularExpressions.Regex.Replace(
+            xml, @"<p:transition[^>]*?(?:/>|>.*?</p:transition>)", "",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        stream.Position = 0;
+        stream.SetLength(0);
+        using (var writer = new System.IO.StreamWriter(stream, leaveOpen: true))
+            writer.Write(xml);
     }
 
     private static TransitionSlideDirectionValues ParseSlideDir(string dir) =>
@@ -641,9 +672,58 @@ public partial class PowerPointHandler
     /// Populate Format["transition"], Format["advanceTime"], Format["advanceClick"]
     /// on a slide DocumentNode.
     /// </summary>
+    /// <summary>
+    /// Overload that reads transition from the SlidePart stream directly,
+    /// bypassing the SDK's typed Transition accessor which may fail.
+    /// </summary>
+    internal static void ReadSlideTransition(SlidePart slidePart, OfficeCli.Core.DocumentNode node)
+    {
+        // First try SDK typed access
+        var slide = slidePart.Slide;
+        var trans = slide?.Transition;
+        if (trans != null)
+        {
+            ReadSlideTransition(slide!, node);
+            return;
+        }
+
+        // SDK typed access failed — try parsing from the slide's serialized XML.
+        // The OuterXml may contain the transition even when the typed property is null.
+        if (slide != null)
+            ParseTransitionFromXml(slide.OuterXml, node);
+    }
+
+    private static void ParseTransitionFromXml(string xml, OfficeCli.Core.DocumentNode node)
+    {
+        var typeMatch = System.Text.RegularExpressions.Regex.Match(
+            xml, @"<p:transition([^>]*?)(?:/>|>(.*?)</p:transition>)",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        if (!typeMatch.Success) return;
+
+        var attrs = typeMatch.Groups[1].Value;
+        var inner = typeMatch.Groups[2].Value;
+
+        // Extract transition type from first child element: <p:fade/> → "fade"
+        var childMatch = System.Text.RegularExpressions.Regex.Match(inner, @"<p:(\w+)[\s/>]");
+        if (childMatch.Success)
+            node.Format["transition"] = childMatch.Groups[1].Value.ToLowerInvariant();
+
+        // Extract speed attribute
+        var spdMatch = System.Text.RegularExpressions.Regex.Match(attrs, @"spd=""(\w+)""");
+        if (spdMatch.Success) node.Format["transitionSpeed"] = spdMatch.Groups[1].Value;
+
+        // Extract advance time
+        var advMatch = System.Text.RegularExpressions.Regex.Match(attrs, @"advTm=""(\d+)""");
+        if (advMatch.Success) node.Format["advanceTime"] = advMatch.Groups[1].Value;
+
+        // Extract advance on click
+        var clickMatch = System.Text.RegularExpressions.Regex.Match(attrs, @"advClick=""(\d+)""");
+        if (clickMatch.Success) node.Format["advanceClick"] = clickMatch.Groups[1].Value == "1";
+    }
+
     internal static void ReadSlideTransition(Slide slide, OfficeCli.Core.DocumentNode node)
     {
-        var trans = slide.GetFirstChild<Transition>();
+        var trans = slide.Transition;
         if (trans == null) return;
 
         // Determine type from first child element

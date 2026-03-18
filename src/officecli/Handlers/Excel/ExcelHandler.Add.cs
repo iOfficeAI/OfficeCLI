@@ -383,8 +383,7 @@ public partial class ExcelHandler
                 var minVal = properties.GetValueOrDefault("min", "0");
                 var maxVal = properties.GetValueOrDefault("max", "1");
                 var cfColor = properties.GetValueOrDefault("color", "638EC6");
-                var strippedColor = cfColor.TrimStart('#').ToUpperInvariant();
-                var normalizedColor = (strippedColor.Length == 6 ? "FF" : "") + strippedColor;
+                var normalizedColor = ParseHelpers.NormalizeArgbColor(cfColor);
 
                 var cfRule = new ConditionalFormattingRule
                 {
@@ -436,10 +435,8 @@ public partial class ExcelHandler
                 var maxColor = properties.GetValueOrDefault("maxcolor", "63BE7B");
                 var midColor = properties.GetValueOrDefault("midcolor");
 
-                var strippedMinColor = minColor.TrimStart('#').ToUpperInvariant();
-                var normalizedMinColor = (strippedMinColor.Length == 6 ? "FF" : "") + strippedMinColor;
-                var strippedMaxColor = maxColor.TrimStart('#').ToUpperInvariant();
-                var normalizedMaxColor = (strippedMaxColor.Length == 6 ? "FF" : "") + strippedMaxColor;
+                var normalizedMinColor = ParseHelpers.NormalizeArgbColor(minColor);
+                var normalizedMaxColor = ParseHelpers.NormalizeArgbColor(maxColor);
 
                 var colorScale = new ColorScale();
                 colorScale.Append(new ConditionalFormatValueObject { Type = ConditionalFormatValueObjectValues.Min });
@@ -449,8 +446,7 @@ public partial class ExcelHandler
                 colorScale.Append(new DocumentFormat.OpenXml.Spreadsheet.Color { Rgb = normalizedMinColor });
                 if (midColor != null)
                 {
-                    var strippedMidColor = midColor.TrimStart('#').ToUpperInvariant();
-                    var normalizedMidColor = (strippedMidColor.Length == 6 ? "FF" : "") + strippedMidColor;
+                    var normalizedMidColor = ParseHelpers.NormalizeArgbColor(midColor);
                     colorScale.Append(new DocumentFormat.OpenXml.Spreadsheet.Color { Rgb = normalizedMidColor });
                 }
                 colorScale.Append(new DocumentFormat.OpenXml.Spreadsheet.Color { Rgb = normalizedMaxColor });
@@ -556,8 +552,7 @@ public partial class ExcelHandler
                 var dxf = new DifferentialFormat();
                 if (properties.TryGetValue("font.color", out var fontColor))
                 {
-                    var strippedFontColor = fontColor.TrimStart('#').ToUpperInvariant();
-                    var normalizedFontColor = (strippedFontColor.Length == 6 ? "FF" : "") + strippedFontColor;
+                    var normalizedFontColor = ParseHelpers.NormalizeArgbColor(fontColor);
                     dxf.Append(new Font(new DocumentFormat.OpenXml.Spreadsheet.Color { Rgb = normalizedFontColor }));
                 }
                 else if (properties.TryGetValue("font.bold", out var fontBold) && IsTruthy(fontBold))
@@ -567,8 +562,7 @@ public partial class ExcelHandler
 
                 if (properties.TryGetValue("fill", out var fillColor))
                 {
-                    var strippedFillColor = fillColor.TrimStart('#').ToUpperInvariant();
-                    var normalizedFillColor = (strippedFillColor.Length == 6 ? "FF" : "") + strippedFillColor;
+                    var normalizedFillColor = ParseHelpers.NormalizeArgbColor(fillColor);
                     dxf.Append(new Fill(new PatternFill(
                         new BackgroundColor { Rgb = normalizedFillColor })
                     { PatternType = PatternValues.Solid }));
@@ -985,7 +979,20 @@ public partial class ExcelHandler
             sheet.Remove();
             if (relId != null)
                 workbookPart.DeletePart(workbookPart.GetPartById(relId));
-            GetWorkbook().Save();
+
+            // Clean up named ranges referencing the deleted sheet
+            var workbook = GetWorkbook();
+            var definedNames = workbook.GetFirstChild<DefinedNames>();
+            if (definedNames != null)
+            {
+                var toRemove = definedNames.Elements<DefinedName>()
+                    .Where(dn => dn.Text?.Contains(sheetName + "!", StringComparison.OrdinalIgnoreCase) == true)
+                    .ToList();
+                foreach (var dn in toRemove) dn.Remove();
+                if (!definedNames.HasChildren) definedNames.Remove();
+            }
+
+            workbook.Save();
             return;
         }
 

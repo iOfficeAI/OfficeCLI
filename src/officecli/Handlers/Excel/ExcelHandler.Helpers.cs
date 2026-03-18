@@ -232,7 +232,7 @@ public partial class ExcelHandler
                             if (font.Underline != null)
                                 node.Format["underline"] = font.Underline.Val?.InnerText == "double" ? "double" : "single";
                             if (font.Color?.Rgb?.Value != null) node.Format["font.color"] = font.Color.Rgb.Value;
-                            if (font.FontSize?.Val?.Value != null) node.Format["font.size"] = font.FontSize.Val.Value;
+                            if (font.FontSize?.Val?.Value != null) node.Format["font.size"] = $"{font.FontSize.Val.Value:0.##}pt";
                             if (font.FontName?.Val?.Value != null) node.Format["font.name"] = font.FontName.Val.Value;
                         }
                     }
@@ -281,7 +281,10 @@ public partial class ExcelHandler
                         if (alignment.WrapText?.Value == true)
                             node.Format["wrap"] = true;
                         if (alignment.Horizontal?.HasValue == true)
+                        {
                             node.Format["alignment.horizontal"] = alignment.Horizontal.InnerText;
+                            node.Format["halign"] = alignment.Horizontal.InnerText;
+                        }
                         if (alignment.Vertical?.HasValue == true)
                             node.Format["alignment.vertical"] = alignment.Vertical.InnerText;
                     }
@@ -296,6 +299,8 @@ public partial class ExcelHandler
                             .FirstOrDefault(nf => nf.NumberFormatId?.Value == numFmtId);
                         if (customFmt?.FormatCode?.Value != null)
                             node.Format["numberformat"] = customFmt.FormatCode.Value;
+                        else
+                            node.Format["numberformat"] = numFmtId;
                     }
                 }
             }

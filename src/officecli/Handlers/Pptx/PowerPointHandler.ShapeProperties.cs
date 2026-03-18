@@ -74,7 +74,7 @@ public partial class PowerPointHandler
                     break;
 
                 case "size":
-                    var sizeVal = (int)(ParseFontSize(value) * 100);
+                    var sizeVal = (int)Math.Round(ParseFontSize(value) * 100);
                     foreach (var run in runs)
                     {
                         var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
@@ -484,7 +484,7 @@ public partial class PowerPointHandler
                     }
                     break;
                 case "size":
-                    var sz = (int)(ParseFontSize(value) * 100);
+                    var sz = (int)Math.Round(ParseFontSize(value) * 100);
                     foreach (var run in cell.Descendants<Drawing.Run>())
                     {
                         var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
@@ -535,7 +535,7 @@ public partial class PowerPointHandler
                     }
                     break;
                 }
-                case "align":
+                case "align" or "alignment":
                 {
                     var para = cell.TextBody?.Elements<Drawing.Paragraph>().FirstOrDefault();
                     if (para != null)
@@ -543,6 +543,18 @@ public partial class PowerPointHandler
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.Alignment = ParseTextAlignment(value);
                     }
+                    break;
+                }
+                case "valign":
+                {
+                    var tcPrV = cell.TableCellProperties ?? (cell.TableCellProperties = new Drawing.TableCellProperties());
+                    tcPrV.Anchor = value.ToLowerInvariant() switch
+                    {
+                        "top" or "t" => Drawing.TextAnchoringTypeValues.Top,
+                        "middle" or "center" or "ctr" => Drawing.TextAnchoringTypeValues.Center,
+                        "bottom" or "b" => Drawing.TextAnchoringTypeValues.Bottom,
+                        _ => Drawing.TextAnchoringTypeValues.Top
+                    };
                     break;
                 }
                 case "gridspan" or "colspan":
@@ -583,23 +595,94 @@ public partial class PowerPointHandler
                         tcPr = new Drawing.TableCellProperties();
                         cell.Append(tcPr);
                     }
-                    var borderColor = value.TrimStart('#').ToUpperInvariant();
-                    var solidLine = new Drawing.Outline(BuildSolidFill(borderColor));
-                    if (k is "border.all" or "border")
+
+                    // Parse value: "FF0000", "1pt solid FF0000", "2pt dash 0000FF"
+                    var borderParts = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    string? borderColor = null;
+                    long? borderWidth = null;
+                    string? borderDash = null;
+                    foreach (var bp in borderParts)
                     {
-                        tcPr.LeftBorderLineProperties = new Drawing.LeftBorderLineProperties(BuildSolidFill(borderColor));
-                        tcPr.RightBorderLineProperties = new Drawing.RightBorderLineProperties(BuildSolidFill(borderColor));
-                        tcPr.TopBorderLineProperties = new Drawing.TopBorderLineProperties(BuildSolidFill(borderColor));
-                        tcPr.BottomBorderLineProperties = new Drawing.BottomBorderLineProperties(BuildSolidFill(borderColor));
+                        if (bp.EndsWith("pt", StringComparison.OrdinalIgnoreCase) ||
+                            bp.EndsWith("cm", StringComparison.OrdinalIgnoreCase) ||
+                            bp.EndsWith("px", StringComparison.OrdinalIgnoreCase))
+                            borderWidth = Core.EmuConverter.ParseEmu(bp);
+                        else if (bp is "solid" or "dot" or "dash" or "lgDash" or "dashDot" or "sysDot" or "sysDash")
+                            borderDash = bp;
+                        else if (bp.Length >= 3 && !bp.Equals("none", StringComparison.OrdinalIgnoreCase))
+                            borderColor = bp.TrimStart('#').ToUpperInvariant();
                     }
-                    else if (k == "border.left")
-                        tcPr.LeftBorderLineProperties = new Drawing.LeftBorderLineProperties(BuildSolidFill(borderColor));
-                    else if (k == "border.right")
-                        tcPr.RightBorderLineProperties = new Drawing.RightBorderLineProperties(BuildSolidFill(borderColor));
-                    else if (k == "border.top")
-                        tcPr.TopBorderLineProperties = new Drawing.TopBorderLineProperties(BuildSolidFill(borderColor));
-                    else if (k == "border.bottom")
-                        tcPr.BottomBorderLineProperties = new Drawing.BottomBorderLineProperties(BuildSolidFill(borderColor));
+
+                    // Build line properties following POI's setBorderDefaults pattern
+                    void ApplyBorderLine(OpenXmlCompositeElement lineProps)
+                    {
+                        // Remove NoFill if present (POI: setBorderDefaults line 265)
+                        lineProps.RemoveAllChildren<Drawing.NoFill>();
+                        // Set width (default 12700 EMU = 1pt like POI)
+                        if (borderWidth.HasValue)
+                        {
+                            var wAttr = lineProps.GetAttributes().FirstOrDefault(a => a.LocalName == "w");
+                            if (wAttr.LocalName != null) lineProps.SetAttribute(new OpenXmlAttribute("", "w", null, borderWidth.Value.ToString()));
+                            else lineProps.SetAttribute(new OpenXmlAttribute("", "w", null, borderWidth.Value.ToString()));
+                        }
+                        // Set color
+                        if (borderColor != null)
+                        {
+                            lineProps.RemoveAllChildren<Drawing.SolidFill>();
+                            lineProps.RemoveAllChildren<Drawing.NoFill>();
+                            lineProps.AppendChild(BuildSolidFill(borderColor));
+                        }
+                        // Set dash style (default: solid)
+                        if (borderDash != null)
+                        {
+                            lineProps.RemoveAllChildren<Drawing.PresetDash>();
+                            lineProps.AppendChild(new Drawing.PresetDash
+                            {
+                                Val = borderDash switch
+                                {
+                                    "dot" => Drawing.PresetLineDashValues.Dot,
+                                    "dash" => Drawing.PresetLineDashValues.Dash,
+                                    "lgDash" => Drawing.PresetLineDashValues.LargeDash,
+                                    "dashDot" => Drawing.PresetLineDashValues.DashDot,
+                                    "sysDot" => Drawing.PresetLineDashValues.SystemDot,
+                                    "sysDash" => Drawing.PresetLineDashValues.SystemDash,
+                                    _ => Drawing.PresetLineDashValues.Solid
+                                }
+                            });
+                        }
+                    }
+
+                    var edges = k switch
+                    {
+                        "border.left" => new[] { "left" },
+                        "border.right" => new[] { "right" },
+                        "border.top" => new[] { "top" },
+                        "border.bottom" => new[] { "bottom" },
+                        _ => new[] { "left", "right", "top", "bottom" }  // "border" or "border.all"
+                    };
+
+                    foreach (var edge in edges)
+                    {
+                        switch (edge)
+                        {
+                            case "left":
+                                var lnL = tcPr.LeftBorderLineProperties ?? (tcPr.LeftBorderLineProperties = new Drawing.LeftBorderLineProperties());
+                                ApplyBorderLine(lnL);
+                                break;
+                            case "right":
+                                var lnR = tcPr.RightBorderLineProperties ?? (tcPr.RightBorderLineProperties = new Drawing.RightBorderLineProperties());
+                                ApplyBorderLine(lnR);
+                                break;
+                            case "top":
+                                var lnT = tcPr.TopBorderLineProperties ?? (tcPr.TopBorderLineProperties = new Drawing.TopBorderLineProperties());
+                                ApplyBorderLine(lnT);
+                                break;
+                            case "bottom":
+                                var lnB = tcPr.BottomBorderLineProperties ?? (tcPr.BottomBorderLineProperties = new Drawing.BottomBorderLineProperties());
+                                ApplyBorderLine(lnB);
+                                break;
+                        }
+                    }
                     break;
                 }
                 default:

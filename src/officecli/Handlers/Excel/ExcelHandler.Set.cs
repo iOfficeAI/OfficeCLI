@@ -369,19 +369,19 @@ public partial class ExcelHandler
                         break;
                     case "color":
                         var dbColor = rule?.GetFirstChild<DataBar>()?.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.Color>();
-                        if (dbColor != null) { var sc = value.TrimStart('#').ToUpperInvariant(); dbColor.Rgb = (sc.Length == 6 ? "FF" : "") + sc; }
+                        if (dbColor != null) { dbColor.Rgb = ParseHelpers.NormalizeArgbColor(value); }
                         else unsup.Add(key);
                         break;
                     case "mincolor":
                         var csColors = rule?.GetFirstChild<ColorScale>()?.Elements<DocumentFormat.OpenXml.Spreadsheet.Color>().ToList();
                         if (csColors != null && csColors.Count >= 2)
-                        { var sc = value.TrimStart('#').ToUpperInvariant(); csColors[0].Rgb = (sc.Length == 6 ? "FF" : "") + sc; }
+                        { csColors[0].Rgb = ParseHelpers.NormalizeArgbColor(value); }
                         else unsup.Add(key);
                         break;
                     case "maxcolor":
                         var csColors2 = rule?.GetFirstChild<ColorScale>()?.Elements<DocumentFormat.OpenXml.Spreadsheet.Color>().ToList();
                         if (csColors2 != null && csColors2.Count >= 2)
-                        { var sc = value.TrimStart('#').ToUpperInvariant(); csColors2[^1].Rgb = (sc.Length == 6 ? "FF" : "") + sc; }
+                        { csColors2[^1].Rgb = ParseHelpers.NormalizeArgbColor(value); }
                         else unsup.Add(key);
                         break;
                     case "iconset":
@@ -410,11 +410,12 @@ public partial class ExcelHandler
             return unsup;
         }
 
-        // Handle /SheetName/col[X]
-        var colMatch = Regex.Match(cellRef, @"^col\[([A-Z]+)\]$", RegexOptions.IgnoreCase);
+        // Handle /SheetName/col[X] where X is a column letter (A) or numeric index (1)
+        var colMatch = Regex.Match(cellRef, @"^col\[([A-Za-z0-9]+)\]$", RegexOptions.IgnoreCase);
         if (colMatch.Success)
         {
-            var colName = colMatch.Groups[1].Value.ToUpperInvariant();
+            var colValue = colMatch.Groups[1].Value;
+            var colName = int.TryParse(colValue, out var colNumIdx) ? IndexToColumnName(colNumIdx) : colValue.ToUpperInvariant();
             return SetColumn(worksheet, colName, properties);
         }
 
@@ -501,14 +502,9 @@ public partial class ExcelHandler
                 case "value":
                     cell.CellValue = new CellValue(value);
                     cell.CellFormula = null; // Clear formula when explicit value is set
-                    // Auto-detect type: number, boolean, or string
+                    // Auto-detect type: number or string (boolean only via explicit type=boolean)
                     if (double.TryParse(value, out _))
                         cell.DataType = null; // Number is default
-                    else if (value.Equals("true", StringComparison.OrdinalIgnoreCase) || value.Equals("false", StringComparison.OrdinalIgnoreCase))
-                    {
-                        cell.DataType = new EnumValue<CellValues>(CellValues.Boolean);
-                        cell.CellValue = new CellValue(value.Equals("true", StringComparison.OrdinalIgnoreCase) ? "1" : "0");
-                    }
                     else
                     {
                         cell.DataType = new EnumValue<CellValues>(CellValues.String);
@@ -532,6 +528,7 @@ public partial class ExcelHandler
                     cell.CellValue = null;
                     cell.CellFormula = null;
                     cell.DataType = null; // Reset type on clear
+                    cell.StyleIndex = null; // Also reset style/formatting
                     break;
                 case "link":
                 {
@@ -545,7 +542,9 @@ public partial class ExcelHandler
                     }
                     else
                     {
-                        var hlRel = worksheet.AddHyperlinkRelationship(new Uri(value), isExternal: true);
+                        var hlUri = Uri.TryCreate(value, UriKind.Absolute, out var absUri) ? absUri
+                            : new Uri(value, UriKind.RelativeOrAbsolute);
+                        var hlRel = worksheet.AddHyperlinkRelationship(hlUri, isExternal: true);
                         if (hyperlinksEl == null)
                         {
                             hyperlinksEl = new Hyperlinks();

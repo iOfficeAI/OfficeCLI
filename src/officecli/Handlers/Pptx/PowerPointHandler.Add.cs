@@ -127,7 +127,7 @@ public partial class PowerPointHandler
                 }
                 if (properties.TryGetValue("size", out var sizeStr))
                 {
-                    var sizeVal = (int)(ParseFontSize(sizeStr) * 100);
+                    var sizeVal = (int)Math.Round(ParseFontSize(sizeStr) * 100);
                     foreach (var run in newShape.Descendants<Drawing.Run>())
                     {
                         var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());

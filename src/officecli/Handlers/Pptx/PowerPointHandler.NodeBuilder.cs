@@ -120,6 +120,10 @@ public partial class PowerPointHandler
                     ChildCount = row.Elements<Drawing.TableCell>().Count()
                 };
 
+                // Row height
+                if (row.Height?.HasValue == true)
+                    rowNode.Format["height"] = FormatEmu(row.Height.Value);
+
                 if (depth > 1)
                 {
                     int cIdx = 0;
@@ -138,6 +142,9 @@ public partial class PowerPointHandler
                         var tcPr = cell.TableCellProperties ?? cell.GetFirstChild<Drawing.TableCellProperties>();
                         var cellFillHex = tcPr?.GetFirstChild<Drawing.SolidFill>()?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
                         if (cellFillHex != null) cellNode.Format["fill"] = cellFillHex;
+
+                        // Cell borders
+                        if (tcPr != null) ReadTableCellBorders(tcPr, cellNode);
 
                         rowNode.Children.Add(cellNode);
                     }
@@ -265,12 +272,12 @@ public partial class PowerPointHandler
             var fontSize = firstRun.RunProperties.FontSize?.Value;
             if (fontSize.HasValue) node.Format["size"] = $"{fontSize.Value / 100.0:0.##}pt";
 
-            if (firstRun.RunProperties.Bold?.Value == true) node.Format["bold"] = true;
-            if (firstRun.RunProperties.Italic?.Value == true) node.Format["italic"] = true;
+            if (firstRun.RunProperties.Bold?.HasValue == true) node.Format["bold"] = firstRun.RunProperties.Bold.Value;
+            if (firstRun.RunProperties.Italic?.HasValue == true) node.Format["italic"] = firstRun.RunProperties.Italic.Value;
             if (firstRun.RunProperties.Underline?.HasValue == true && firstRun.RunProperties.Underline.Value != Drawing.TextUnderlineValues.None)
                 node.Format["underline"] = firstRun.RunProperties.Underline.InnerText;
             if (firstRun.RunProperties.Strike?.HasValue == true && firstRun.RunProperties.Strike.Value != Drawing.TextStrikeValues.NoStrike)
-                node.Format["strikethrough"] = firstRun.RunProperties.Strike.InnerText;
+                node.Format["strike"] = true;
 
             // Text color (from first run)
             var runColor = ReadColorFromFill(firstRun.RunProperties.GetFirstChild<Drawing.SolidFill>());

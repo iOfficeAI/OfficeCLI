@@ -146,10 +146,11 @@ public partial class ExcelHandler
         }
 
         // Column path: /Sheet1/col[A]
-        var colMatch = Regex.Match(cellRef, @"^col\[([A-Z]+)\]$", RegexOptions.IgnoreCase);
+        var colMatch = Regex.Match(cellRef, @"^col\[([A-Za-z0-9]+)\]$", RegexOptions.IgnoreCase);
         if (colMatch.Success)
         {
-            var colName = colMatch.Groups[1].Value.ToUpperInvariant();
+            var colValue = colMatch.Groups[1].Value;
+            var colName = int.TryParse(colValue, out var numIdx) ? IndexToColumnName(numIdx) : colValue.ToUpperInvariant();
             var colIdx = (uint)ColumnNameToIndex(colName);
             var colNode = new DocumentNode { Path = path, Type = "column", Preview = colName };
             var columns = GetSheet(worksheet).GetFirstChild<Columns>();

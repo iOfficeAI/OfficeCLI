@@ -337,6 +337,50 @@ public partial class WordHandler
         return run.RunProperties ?? run.PrependChild(new RunProperties());
     }
 
+    /// <summary>
+    /// Apply a run-level formatting property to either RunProperties or ParagraphMarkRunProperties.
+    /// </summary>
+    private static void ApplyRunFormatting(OpenXmlCompositeElement props, string key, string value)
+    {
+        switch (key.ToLowerInvariant())
+        {
+            case "size":
+                var existingFs = props.GetFirstChild<FontSize>();
+                if (existingFs != null) existingFs.Val = ((int)(ParseFontSize(value) * 2)).ToString();
+                else props.AppendChild(new FontSize { Val = ((int)(ParseFontSize(value) * 2)).ToString() });
+                break;
+            case "font":
+                var existingRf = props.GetFirstChild<RunFonts>();
+                if (existingRf != null) { existingRf.Ascii = value; existingRf.HighAnsi = value; existingRf.EastAsia = value; }
+                else props.AppendChild(new RunFonts { Ascii = value, HighAnsi = value, EastAsia = value });
+                break;
+            case "bold":
+                props.RemoveAllChildren<Bold>();
+                if (IsTruthy(value)) props.AppendChild(new Bold());
+                break;
+            case "italic":
+                props.RemoveAllChildren<Italic>();
+                if (IsTruthy(value)) props.AppendChild(new Italic());
+                break;
+            case "color":
+                props.RemoveAllChildren<Color>();
+                props.AppendChild(new Color { Val = value.TrimStart('#').ToUpperInvariant() });
+                break;
+            case "highlight":
+                props.RemoveAllChildren<Highlight>();
+                props.AppendChild(new Highlight { Val = new HighlightColorValues(value) });
+                break;
+            case "underline":
+                props.RemoveAllChildren<Underline>();
+                props.AppendChild(new Underline { Val = new UnderlineValues(value) });
+                break;
+            case "strike":
+                props.RemoveAllChildren<Strike>();
+                if (IsTruthy(value)) props.AppendChild(new Strike());
+                break;
+        }
+    }
+
     private static string GetBookmarkText(BookmarkStart bkStart)
     {
         var bkId = bkStart.Id?.Value;

@@ -18,6 +18,54 @@ public partial class PowerPointHandler
     private static double ParseFontSize(string value) =>
         ParseHelpers.ParseFontSize(value);
 
+    /// <summary>
+    /// Read table cell border properties following POI's getBorderWidth/getBorderColor pattern.
+    /// Maps a:lnL/lnR/lnT/lnB → border.left, border.right, border.top, border.bottom in Format.
+    /// </summary>
+    private static void ReadTableCellBorders(Drawing.TableCellProperties tcPr, DocumentNode node)
+    {
+        ReadBorderLine(tcPr.LeftBorderLineProperties, "border.left", node);
+        ReadBorderLine(tcPr.RightBorderLineProperties, "border.right", node);
+        ReadBorderLine(tcPr.TopBorderLineProperties, "border.top", node);
+        ReadBorderLine(tcPr.BottomBorderLineProperties, "border.bottom", node);
+    }
+
+    /// <summary>
+    /// Read a single border line's properties (color, width, dash) following POI's pattern:
+    /// - Returns nothing if line is null, has NoFill, or lacks SolidFill
+    /// - Reads width from w attribute, color from SolidFill, dash from PresetDash
+    /// </summary>
+    private static void ReadBorderLine(OpenXmlCompositeElement? lineProps, string prefix, DocumentNode node)
+    {
+        if (lineProps == null) return;
+        // POI: if NoFill is set, the border is invisible — skip
+        if (lineProps.GetFirstChild<Drawing.NoFill>() != null) return;
+        var solidFill = lineProps.GetFirstChild<Drawing.SolidFill>();
+        if (solidFill == null) return; // POI: !isSetSolidFill → null
+
+        var color = ReadColorFromFill(solidFill);
+        if (color != null) node.Format[$"{prefix}.color"] = color;
+
+        // Width from "w" attribute (EMU) — POI: Units.toPoints(ln.getW())
+        var wAttr = lineProps.GetAttributes().FirstOrDefault(a => a.LocalName == "w");
+        if (!string.IsNullOrEmpty(wAttr.Value) && long.TryParse(wAttr.Value, out var wEmu) && wEmu > 0)
+            node.Format[$"{prefix}.width"] = FormatEmu(wEmu);
+
+        // Dash style from PresetDash — POI: ln.getPrstDash().getVal()
+        var dash = lineProps.GetFirstChild<Drawing.PresetDash>();
+        if (dash?.Val?.HasValue == true)
+            node.Format[$"{prefix}.dash"] = dash.Val.InnerText;
+
+        // Summary key: "1pt solid FF0000" format for convenience
+        var parts = new List<string>();
+        if (!string.IsNullOrEmpty(wAttr.Value) && long.TryParse(wAttr.Value, out var wEmu2) && wEmu2 > 0)
+            parts.Add(FormatEmu(wEmu2));
+        if (dash?.Val?.HasValue == true) parts.Add(dash.Val.InnerText);
+        else parts.Add("solid");
+        if (color != null) parts.Add(color);
+        if (parts.Count > 0) node.Format[prefix] = string.Join(" ", parts);
+    }
+
     private static string GetShapeText(Shape shape)
     {
         var textBody = shape.TextBody;

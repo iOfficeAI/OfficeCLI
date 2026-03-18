@@ -140,9 +140,13 @@ public class ExcelStyleManager
         var alignProps = styleProps
             .Where(kv => kv.Key.StartsWith("alignment.", StringComparison.OrdinalIgnoreCase))
             .ToDictionary(kv => kv.Key[10..].ToLowerInvariant(), kv => kv.Value);
-        // Handle "wrap" shorthand → "wraptext"
+        // Handle shorthands: "wrap" → "wraptext", "halign" → "horizontal", "valign" → "vertical"
         if (styleProps.TryGetValue("wrap", out var wrapVal))
             alignProps["wraptext"] = wrapVal;
+        if (styleProps.TryGetValue("halign", out var halignVal))
+            alignProps["horizontal"] = halignVal;
+        if (styleProps.TryGetValue("valign", out var valignVal))
+            alignProps["vertical"] = valignVal;
         if (alignProps.Count > 0)
         {
             alignment ??= new Alignment();
@@ -181,7 +185,7 @@ public class ExcelStyleManager
         var lower = key.ToLowerInvariant();
         return lower is "numfmt" or "fill" or "bgcolor"
             or "bold" or "italic" or "strike" or "underline"
-            or "wrap" or "numberformat"
+            or "wrap" or "numberformat" or "halign" or "valign"
             || lower.StartsWith("font.")
             || lower.StartsWith("alignment.")
             || lower.StartsWith("border.");

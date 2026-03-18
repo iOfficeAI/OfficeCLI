@@ -47,7 +47,7 @@ public partial class WordHandler
                                     @"string=""[^""]*""", $@"string=""{System.Security.SecurityElement.Escape(value)}""");
                                 break;
                             case "color":
-                                var clr = value.TrimStart('#').ToLowerInvariant();
+                                var clr = value.TrimStart('#').ToUpperInvariant();
                                 xml = System.Text.RegularExpressions.Regex.Replace(xml,
                                     @"fillcolor=""[^""]*""", $@"fillcolor=""{clr}""");
                                 break;
@@ -631,148 +631,30 @@ public partial class WordHandler
             var pProps = para.ParagraphProperties ?? para.PrependChild(new ParagraphProperties());
             foreach (var (key, value) in properties)
             {
-                switch (key.ToLowerInvariant())
+                var k = key.ToLowerInvariant();
+                if (ApplyParagraphLevelProperty(pProps, key, value))
                 {
-                    case "style":
-                        pProps.ParagraphStyleId = new ParagraphStyleId { Val = value };
-                        break;
-                    case "alignment":
-                        pProps.Justification = new Justification
-                        {
-                            Val = value.ToLowerInvariant() switch
-                            {
-                                "center" => JustificationValues.Center,
-                                "right" => JustificationValues.Right,
-                                "justify" => JustificationValues.Both,
-                                _ => JustificationValues.Left
-                            }
-                        };
-                        break;
-                    case "firstlineindent":
-                        var indent = pProps.Indentation ?? (pProps.Indentation = new Indentation());
-                        indent.FirstLine = ((long)(double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) * 480)).ToString(); // chars to twips (~480 per char)
-                        indent.Hanging = null; // firstline and hanging are mutually exclusive
-                        break;
-                    case "leftindent" or "indentleft":
-                        var indentL = pProps.Indentation ?? (pProps.Indentation = new Indentation());
-                        indentL.Left = value; // twips
-                        break;
-                    case "rightindent" or "indentright":
-                        var indentR = pProps.Indentation ?? (pProps.Indentation = new Indentation());
-                        indentR.Right = value; // twips
-                        break;
-                    case "hangingindent" or "hanging":
-                        var indentH = pProps.Indentation ?? (pProps.Indentation = new Indentation());
-                        indentH.Hanging = value; // twips
-                        indentH.FirstLine = null; // hanging and firstline are mutually exclusive
-                        break;
-                    case "keepnext":
-                        if (IsTruthy(value))
-                            pProps.KeepNext ??= new KeepNext();
-                        else
-                            pProps.KeepNext = null;
-                        break;
-                    case "keeplines" or "keeptogether":
-                        if (IsTruthy(value))
-                            pProps.KeepLines ??= new KeepLines();
-                        else
-                            pProps.KeepLines = null;
-                        break;
-                    case "pagebreakbefore":
-                        if (IsTruthy(value))
-                            pProps.PageBreakBefore ??= new PageBreakBefore();
-                        else
-                            pProps.PageBreakBefore = null;
-                        break;
-                    case "widowcontrol":
-                        if (IsTruthy(value))
-                            pProps.WidowControl ??= new WidowControl();
-                        else
-                            pProps.WidowControl = null;
-                        break;
-                    case "shading":
-                    case "shd":
-                        var shdPartsP = value.Split(';');
-                        var shdP = new Shading();
-                        if (shdPartsP.Length == 1)
-                        {
-                            shdP.Val = ShadingPatternValues.Clear;
-                            shdP.Fill = shdPartsP[0].TrimStart('#').ToUpperInvariant();
-                        }
-                        else if (shdPartsP.Length >= 2)
-                        {
-                            shdP.Val = new ShadingPatternValues(shdPartsP[0]);
-                            shdP.Fill = shdPartsP[1].TrimStart('#').ToUpperInvariant();
-                            if (shdPartsP.Length >= 3) shdP.Color = shdPartsP[2].TrimStart('#').ToUpperInvariant();
-                        }
-                        pProps.Shading = shdP;
-                        break;
-                    case "spacebefore":
-                        var spacingBefore = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
-                        spacingBefore.Before = value;
-                        break;
-                    case "spaceafter":
-                        var spacingAfter = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
-                        spacingAfter.After = value;
-                        break;
-                    case "linespacing":
-                        var spacingLine = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
-                        spacingLine.Line = value;
-                        spacingLine.LineRule = LineSpacingRuleValues.Auto;
-                        break;
-                    case "numid":
-                        var numPr = pProps.NumberingProperties ?? (pProps.NumberingProperties = new NumberingProperties());
-                        numPr.NumberingId = new NumberingId { Val = int.Parse(value) };
-                        break;
-                    case "numlevel" or "ilvl":
-                        var numPr2 = pProps.NumberingProperties ?? (pProps.NumberingProperties = new NumberingProperties());
-                        numPr2.NumberingLevelReference = new NumberingLevelReference { Val = int.Parse(value) };
-                        break;
+                    // handled by paragraph-level helper
+                }
+                else switch (k)
+                {
                     case "liststyle":
                         ApplyListStyle(para, value);
                         break;
                     case "start":
                         SetListStartValue(para, int.Parse(value));
                         break;
-                    case "size":
-                    case "font":
-                    case "bold":
-                    case "italic":
-                    case "color":
-                    case "highlight":
-                    case "underline":
-                    case "strike":
+                    case "size" or "font" or "bold" or "italic" or "color" or "highlight" or "underline" or "strike":
                         // Apply run-level formatting to all runs in the paragraph
-                        foreach (var pRun in para.Descendants<Run>())
+                        var allParaRuns = para.Descendants<Run>().ToList();
+                        // Also update paragraph mark run properties (rPr inside pPr)
+                        // so new runs inherit the formatting
+                        var markRPr = pProps.ParagraphMarkRunProperties ?? pProps.AppendChild(new ParagraphMarkRunProperties());
+                        ApplyRunFormatting(markRPr, key, value);
+                        foreach (var pRun in allParaRuns)
                         {
                             var pRunProps = EnsureRunProperties(pRun);
-                            switch (key.ToLowerInvariant())
-                            {
-                                case "size":
-                                    pRunProps.FontSize = new FontSize { Val = ((int)(ParseFontSize(value) * 2)).ToString() };
-                                    break;
-                                case "font":
-                                    pRunProps.RunFonts = new RunFonts { Ascii = value, HighAnsi = value, EastAsia = value };
-                                    break;
-                                case "bold":
-                                    pRunProps.Bold = IsTruthy(value) ? new Bold() : null;
-                                    break;
-                                case "italic":
-                                    pRunProps.Italic = IsTruthy(value) ? new Italic() : null;
-                                    break;
-                                case "color":
-                                    pRunProps.Color = new Color { Val = value.TrimStart('#').ToUpperInvariant() };
-                                    break;
-                                case "highlight":
-                                    pRunProps.Highlight = new Highlight { Val = new HighlightColorValues(value) };
-                                    break;
-                                case "underline":
-                                    pRunProps.Underline = new Underline { Val = new UnderlineValues(value) };
-                                    break;
-                                case "strike":
-                                    pRunProps.Strike = IsTruthy(value) ? new Strike() : null;
-                                    break;
-                            }
+                            ApplyRunFormatting(pRunProps, key, value);
                         }
                         break;
                     case "text":
@@ -788,7 +670,18 @@ public partial class WordHandler
                         }
                         else
                         {
-                            para.AppendChild(new Run(new Text(value) { Space = SpaceProcessingModeValues.Preserve }));
+                            // Use paragraph mark run properties as default for new run
+                            var newRun = new Run();
+                            var markProps = pProps.ParagraphMarkRunProperties;
+                            if (markProps != null)
+                            {
+                                var cloned = new RunProperties();
+                                foreach (var child in markProps.ChildElements)
+                                    cloned.AppendChild(child.CloneNode(true));
+                                newRun.PrependChild(cloned);
+                            }
+                            newRun.AppendChild(new Text(value) { Space = SpaceProcessingModeValues.Preserve });
+                            para.AppendChild(newRun);
                         }
                         break;
                     default:
@@ -802,20 +695,14 @@ public partial class WordHandler
         else if (element is TableCell cell)
         {
             var tcPr = cell.TableCellProperties ?? cell.PrependChild(new TableCellProperties());
+            string? deferredText = null;
             foreach (var (key, value) in properties)
             {
                 switch (key.ToLowerInvariant())
                 {
                     case "text":
-                        var firstPara = cell.Elements<Paragraph>().FirstOrDefault();
-                        if (firstPara == null)
-                        {
-                            firstPara = new Paragraph();
-                            cell.AppendChild(firstPara);
-                        }
-                        // Remove existing runs
-                        foreach (var r in firstPara.Elements<Run>().ToList()) r.Remove();
-                        firstPara.AppendChild(new Run(new Text(value) { Space = SpaceProcessingModeValues.Preserve }));
+                        // Defer text handling until after formatting is applied
+                        deferredText = value;
                         break;
                     case "font":
                     case "size":
@@ -826,10 +713,12 @@ public partial class WordHandler
                     case "underline":
                     case "strike":
                         // Apply to all runs in all paragraphs in the cell
+                        bool hasRuns = false;
                         foreach (var cellPara in cell.Elements<Paragraph>())
                         {
                             foreach (var cellRun in cellPara.Elements<Run>())
                             {
+                                hasRuns = true;
                                 var rPr = EnsureRunProperties(cellRun);
                                 switch (key.ToLowerInvariant())
                                 {
@@ -860,6 +749,49 @@ public partial class WordHandler
                                 }
                             }
                         }
+                        // If no runs exist, store formatting in ParagraphMarkRunProperties on first paragraph
+                        if (!hasRuns)
+                        {
+                            var fp = cell.Elements<Paragraph>().FirstOrDefault();
+                            if (fp == null) { fp = new Paragraph(); cell.AppendChild(fp); }
+                            var pPr = fp.ParagraphProperties ?? fp.PrependChild(new ParagraphProperties());
+                            var pmrp = pPr.ParagraphMarkRunProperties ?? pPr.AppendChild(new ParagraphMarkRunProperties());
+                            switch (key.ToLowerInvariant())
+                            {
+                                case "font":
+                                    pmrp.RemoveAllChildren<RunFonts>();
+                                    pmrp.AppendChild(new RunFonts { Ascii = value, HighAnsi = value, EastAsia = value });
+                                    break;
+                                case "size":
+                                    pmrp.RemoveAllChildren<FontSize>();
+                                    pmrp.AppendChild(new FontSize { Val = ((int)(ParseFontSize(value) * 2)).ToString() });
+                                    break;
+                                case "bold":
+                                    pmrp.RemoveAllChildren<Bold>();
+                                    if (IsTruthy(value)) pmrp.AppendChild(new Bold());
+                                    break;
+                                case "italic":
+                                    pmrp.RemoveAllChildren<Italic>();
+                                    if (IsTruthy(value)) pmrp.AppendChild(new Italic());
+                                    break;
+                                case "color":
+                                    pmrp.RemoveAllChildren<Color>();
+                                    pmrp.AppendChild(new Color { Val = value.TrimStart('#').ToUpperInvariant() });
+                                    break;
+                                case "highlight":
+                                    pmrp.RemoveAllChildren<Highlight>();
+                                    pmrp.AppendChild(new Highlight { Val = new HighlightColorValues(value) });
+                                    break;
+                                case "underline":
+                                    pmrp.RemoveAllChildren<Underline>();
+                                    pmrp.AppendChild(new Underline { Val = new UnderlineValues(value) });
+                                    break;
+                                case "strike":
+                                    pmrp.RemoveAllChildren<Strike>();
+                                    if (IsTruthy(value)) pmrp.AppendChild(new Strike());
+                                    break;
+                            }
+                        }
                         break;
                     case "shd" or "shading":
                         var shdParts = value.Split(';');
@@ -878,19 +810,20 @@ public partial class WordHandler
                         tcPr.Shading = shd;
                         break;
                     case "alignment":
-                        var cellFirstPara = cell.Elements<Paragraph>().FirstOrDefault();
-                        if (cellFirstPara != null)
+                        var alignVal = value.ToLowerInvariant() switch
                         {
-                            var cpProps = cellFirstPara.ParagraphProperties ?? cellFirstPara.PrependChild(new ParagraphProperties());
+                            "center" => JustificationValues.Center,
+                            "right" => JustificationValues.Right,
+                            "justify" => JustificationValues.Both,
+                            _ => JustificationValues.Left
+                        };
+                        // Apply alignment to ALL paragraphs in the cell, not just the first
+                        foreach (var cellAlignPara in cell.Elements<Paragraph>())
+                        {
+                            var cpProps = cellAlignPara.ParagraphProperties ?? cellAlignPara.PrependChild(new ParagraphProperties());
                             cpProps.Justification = new Justification
                             {
-                                Val = value.ToLowerInvariant() switch
-                                {
-                                    "center" => JustificationValues.Center,
-                                    "right" => JustificationValues.Right,
-                                    "justify" => JustificationValues.Both,
-                                    _ => JustificationValues.Left
-                                }
+                                Val = alignVal
                             };
                         }
                         break;
@@ -1021,6 +954,29 @@ public partial class WordHandler
                         break;
                 }
             }
+            // Process deferred "text" AFTER formatting so font/size/bold are applied to existing runs first
+            if (deferredText != null)
+            {
+                var firstPara = cell.Elements<Paragraph>().FirstOrDefault();
+                if (firstPara == null)
+                {
+                    firstPara = new Paragraph();
+                    cell.AppendChild(firstPara);
+                }
+                // Preserve RunProperties from first run before replacing
+                var cellExistingRuns = firstPara.Elements<Run>().ToList();
+                var cellRunProps = cellExistingRuns.FirstOrDefault()?.RunProperties?.CloneNode(true) as RunProperties;
+                // Also check ParagraphMarkRunProperties if no run props found
+                if (cellRunProps == null)
+                {
+                    var pmrp = firstPara.ParagraphProperties?.ParagraphMarkRunProperties;
+                    if (pmrp != null) cellRunProps = new RunProperties(pmrp.CloneNode(true).ChildElements.Select(c => c.CloneNode(true)));
+                }
+                foreach (var r in cellExistingRuns) r.Remove();
+                var cellNewRun = new Run(new Text(deferredText) { Space = SpaceProcessingModeValues.Preserve });
+                if (cellRunProps != null) cellNewRun.PrependChild(cellRunProps);
+                firstPara.AppendChild(cellNewRun);
+            }
         }
         else if (element is TableRow row)
         {
@@ -1057,6 +1013,10 @@ public partial class WordHandler
             {
                 switch (key.ToLowerInvariant())
                 {
+                    case "style":
+                        var tblStyle = tblPr.TableStyle ?? (tblPr.TableStyle = new TableStyle());
+                        tblStyle.Val = value;
+                        break;
                     case "alignment":
                         tblPr.TableJustification = new TableJustification
                         {
@@ -1137,18 +1097,25 @@ public partial class WordHandler
         if (container == null)
             throw new ArgumentException($"{kind} content not found at index {index + 1}");
 
+        var firstPara = container.Elements<Paragraph>().FirstOrDefault();
+        if (firstPara == null)
+        {
+            firstPara = new Paragraph();
+            container.AppendChild(firstPara);
+        }
+        var pProps = firstPara.ParagraphProperties ?? firstPara.PrependChild(new ParagraphProperties());
+
         foreach (var (key, value) in properties)
         {
-            switch (key.ToLowerInvariant())
+            var k = key.ToLowerInvariant();
+            if (ApplyParagraphLevelProperty(pProps, key, value))
+            {
+                // handled by paragraph-level helper
+            }
+            else switch (k)
             {
                 case "text":
                 {
-                    var firstPara = container.Elements<Paragraph>().FirstOrDefault();
-                    if (firstPara == null)
-                    {
-                        firstPara = new Paragraph();
-                        container.AppendChild(firstPara);
-                    }
                     RunProperties? existingRProps = null;
                     var existingRun = firstPara.Elements<Run>().FirstOrDefault();
                     if (existingRun?.RunProperties != null)
@@ -1161,57 +1128,14 @@ public partial class WordHandler
                     firstPara.AppendChild(newRun);
                     break;
                 }
-                case "font":
+                case "size" or "font" or "bold" or "italic" or "color" or "highlight" or "underline" or "strike":
+                    // Apply run-level formatting to all runs in the container
                     foreach (var run in container.Descendants<Run>())
-                        EnsureRunProperties(run).RunFonts = new RunFonts { Ascii = value, HighAnsi = value, EastAsia = value };
+                        ApplyRunFormatting(EnsureRunProperties(run), key, value);
+                    // Also update paragraph mark run properties so new runs inherit formatting
+                    var markRPr = pProps.ParagraphMarkRunProperties ?? pProps.AppendChild(new ParagraphMarkRunProperties());
+                    ApplyRunFormatting(markRPr, key, value);
                     break;
-                case "size":
-                    foreach (var run in container.Descendants<Run>())
-                        EnsureRunProperties(run).FontSize = new FontSize { Val = ((int)(ParseFontSize(value) * 2)).ToString() };
-                    break;
-                case "bold":
-                    foreach (var run in container.Descendants<Run>())
-                        EnsureRunProperties(run).Bold = IsTruthy(value) ? new Bold() : null;
-                    break;
-                case "italic":
-                    foreach (var run in container.Descendants<Run>())
-                        EnsureRunProperties(run).Italic = IsTruthy(value) ? new Italic() : null;
-                    break;
-                case "color":
-                    foreach (var run in container.Descendants<Run>())
-                        EnsureRunProperties(run).Color = new Color { Val = value.TrimStart('#').ToUpperInvariant() };
-                    break;
-                case "underline":
-                    foreach (var run in container.Descendants<Run>())
-                        EnsureRunProperties(run).Underline = new Underline { Val = new UnderlineValues(value) };
-                    break;
-                case "strike":
-                    foreach (var run in container.Descendants<Run>())
-                        EnsureRunProperties(run).Strike = IsTruthy(value) ? new Strike() : null;
-                    break;
-                case "highlight":
-                    foreach (var run in container.Descendants<Run>())
-                        EnsureRunProperties(run).Highlight = new Highlight { Val = new HighlightColorValues(value) };
-                    break;
-                case "alignment":
-                {
-                    var firstPara = container.Elements<Paragraph>().FirstOrDefault();
-                    if (firstPara != null)
-                    {
-                        var pProps = firstPara.ParagraphProperties ?? firstPara.PrependChild(new ParagraphProperties());
-                        pProps.Justification = new Justification
-                        {
-                            Val = value.ToLowerInvariant() switch
-                            {
-                                "center" => JustificationValues.Center,
-                                "right" => JustificationValues.Right,
-                                "justify" => JustificationValues.Both,
-                                _ => JustificationValues.Left
-                            }
-                        };
-                    }
-                    break;
-                }
                 default:
                     unsupported.Add(key);
                     break;
@@ -1274,6 +1198,143 @@ public partial class WordHandler
         var b = new T { Val = style, Size = size, Space = space };
         if (color != null) b.Color = color;
         return b;
+    }
+
+    /// <summary>
+    /// Apply a paragraph-level property. Returns true if handled, false if not recognized.
+    /// Handles: style, alignment, indent, spacing, keepNext, keepLines, pageBreakBefore, widowControl, shading, pbdr.
+    /// </summary>
+    private static bool ApplyParagraphLevelProperty(ParagraphProperties pProps, string key, string value)
+    {
+        switch (key.ToLowerInvariant())
+        {
+            case "style":
+                pProps.ParagraphStyleId = new ParagraphStyleId { Val = value };
+                return true;
+            case "alignment":
+                pProps.Justification = new Justification
+                {
+                    Val = value.ToLowerInvariant() switch
+                    {
+                        "center" => JustificationValues.Center,
+                        "right" => JustificationValues.Right,
+                        "justify" => JustificationValues.Both,
+                        _ => JustificationValues.Left
+                    }
+                };
+                return true;
+            case "firstlineindent":
+                var indent = pProps.Indentation ?? (pProps.Indentation = new Indentation());
+                indent.FirstLine = ((long)(double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) * 480)).ToString();
+                indent.Hanging = null;
+                return true;
+            case "leftindent" or "indentleft":
+                var indentL = pProps.Indentation ?? (pProps.Indentation = new Indentation());
+                indentL.Left = value;
+                return true;
+            case "rightindent" or "indentright":
+                var indentR = pProps.Indentation ?? (pProps.Indentation = new Indentation());
+                indentR.Right = value;
+                return true;
+            case "hangingindent" or "hanging":
+                var indentH = pProps.Indentation ?? (pProps.Indentation = new Indentation());
+                indentH.Hanging = value;
+                indentH.FirstLine = null;
+                return true;
+            case "keepnext":
+                if (IsTruthy(value)) pProps.KeepNext ??= new KeepNext();
+                else pProps.KeepNext = null;
+                return true;
+            case "keeplines" or "keeptogether":
+                if (IsTruthy(value)) pProps.KeepLines ??= new KeepLines();
+                else pProps.KeepLines = null;
+                return true;
+            case "pagebreakbefore":
+                if (IsTruthy(value)) pProps.PageBreakBefore ??= new PageBreakBefore();
+                else pProps.PageBreakBefore = null;
+                return true;
+            case "widowcontrol":
+                if (IsTruthy(value)) pProps.WidowControl ??= new WidowControl();
+                else pProps.WidowControl = null;
+                return true;
+            case "shading" or "shd":
+                var shdParts = value.Split(';');
+                var shd = new Shading();
+                if (shdParts.Length == 1)
+                {
+                    shd.Val = ShadingPatternValues.Clear;
+                    shd.Fill = shdParts[0].TrimStart('#').ToUpperInvariant();
+                }
+                else if (shdParts.Length >= 2)
+                {
+                    shd.Val = new ShadingPatternValues(shdParts[0]);
+                    shd.Fill = shdParts[1].TrimStart('#').ToUpperInvariant();
+                    if (shdParts.Length >= 3) shd.Color = shdParts[2].TrimStart('#').ToUpperInvariant();
+                }
+                pProps.Shading = shd;
+                return true;
+            case "spacebefore":
+                var spacingBefore = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
+                spacingBefore.Before = value;
+                return true;
+            case "spaceafter":
+                var spacingAfter = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
+                spacingAfter.After = value;
+                return true;
+            case "linespacing":
+                var spacingLine = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
+                spacingLine.Line = value;
+                spacingLine.LineRule = LineSpacingRuleValues.Auto;
+                return true;
+            case "numid":
+                var numPr = pProps.NumberingProperties ?? (pProps.NumberingProperties = new NumberingProperties());
+                numPr.NumberingId = new NumberingId { Val = int.Parse(value) };
+                return true;
+            case "numlevel" or "ilvl":
+                var numPr2 = pProps.NumberingProperties ?? (pProps.NumberingProperties = new NumberingProperties());
+                numPr2.NumberingLevelReference = new NumberingLevelReference { Val = int.Parse(value) };
+                return true;
+            case "pbdr.top" or "pbdr.bottom" or "pbdr.left" or "pbdr.right" or "pbdr.between" or "pbdr.bar" or "pbdr.all" or "pbdr":
+                ApplyParagraphBorders(pProps, key, value);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static void ApplyParagraphBorders(ParagraphProperties pProps, string key, string value)
+    {
+        var borders = pProps.ParagraphBorders ?? pProps.AppendChild(new ParagraphBorders());
+        var (style, size, color, space) = ParseBorderValue(value);
+
+        switch (key.ToLowerInvariant())
+        {
+            case "pbdr.all" or "pbdr":
+                borders.TopBorder = MakeBorder<TopBorder>(style, size, color, space);
+                borders.BottomBorder = MakeBorder<BottomBorder>(style, size, color, space);
+                borders.LeftBorder = MakeBorder<LeftBorder>(style, size, color, space);
+                borders.RightBorder = MakeBorder<RightBorder>(style, size, color, space);
+                borders.BetweenBorder = MakeBorder<BetweenBorder>(style, size, color, space);
+                break;
+            case "pbdr.top":
+                borders.TopBorder = MakeBorder<TopBorder>(style, size, color, space);
+                break;
+            case "pbdr.bottom":
+                borders.BottomBorder = MakeBorder<BottomBorder>(style, size, color, space);
+                break;
+            case "pbdr.left":
+                borders.LeftBorder = MakeBorder<LeftBorder>(style, size, color, space);
+                break;
+            case "pbdr.right":
+                borders.RightBorder = MakeBorder<RightBorder>(style, size, color, space);
+                break;
+            case "pbdr.between":
+                borders.BetweenBorder = MakeBorder<BetweenBorder>(style, size, color, space);
+                break;
+            case "pbdr.bar":
+                borders.BarBorder = MakeBorder<BarBorder>(style, size, color, space);
+                break;
+        }
     }
 
     private static void ApplyTableBorders(TableProperties tblPr, string key, string value)

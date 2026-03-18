@@ -46,7 +46,7 @@ public partial class PowerPointHandler
                 var lName = GetSlideLayoutName(slidePart);
                 if (lName != null) slideNode.Format["layout"] = lName;
                 ReadSlideBackground(GetSlide(slidePart), slideNode);
-                ReadSlideTransition(GetSlide(slidePart), slideNode);
+                ReadSlideTransition(slidePart, slideNode);
 
                 if (depth > 0)
                 {
@@ -240,6 +240,20 @@ public partial class PowerPointHandler
             var cellFillHex = tcPr?.GetFirstChild<Drawing.SolidFill>()?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
             if (cellFillHex != null) cellNode.Format["fill"] = cellFillHex;
 
+            // Cell borders — following POI's getBorderWidth/getBorderColor pattern
+            if (tcPr != null)
+                ReadTableCellBorders(tcPr, cellNode);
+
+            // Vertical alignment
+            if (tcPr?.Anchor?.HasValue == true)
+                cellNode.Format["valign"] = tcPr.Anchor.Value.ToString().ToLowerInvariant();
+
+            // Alignment from first paragraph
+            var cellFirstPara = cell.TextBody?.Elements<Drawing.Paragraph>().FirstOrDefault();
+            var cellParaAlign = cellFirstPara?.ParagraphProperties?.Alignment;
+            if (cellParaAlign?.HasValue == true)
+                cellNode.Format["alignment"] = cellParaAlign.Value.ToString().ToLowerInvariant();
+
             // Font info from first run
             var firstRun = cell.Descendants<Drawing.Run>().FirstOrDefault();
             if (firstRun?.RunProperties != null)
@@ -248,7 +262,7 @@ public partial class PowerPointHandler
                     ?? firstRun.RunProperties.GetFirstChild<Drawing.EastAsianFont>()?.Typeface;
                 if (f != null) cellNode.Format["font"] = f;
                 var fs = firstRun.RunProperties.FontSize?.Value;
-                if (fs.HasValue) cellNode.Format["size"] = $"{fs.Value / 100}pt";
+                if (fs.HasValue) cellNode.Format["size"] = $"{fs.Value / 100.0:0.##}pt";
                 if (firstRun.RunProperties.Bold?.Value == true) cellNode.Format["bold"] = true;
                 if (firstRun.RunProperties.Italic?.Value == true) cellNode.Format["italic"] = true;
                 var colorHex = firstRun.RunProperties.GetFirstChild<Drawing.SolidFill>()
@@ -348,7 +362,7 @@ public partial class PowerPointHandler
             var layoutType = GetSlideLayoutType(targetSlidePart);
             if (layoutType != null) slideNode.Format["layoutType"] = layoutType;
             ReadSlideBackground(slide, slideNode);
-            ReadSlideTransition(slide, slideNode);
+            ReadSlideTransition(targetSlidePart, slideNode);
             if (targetSlidePart.NotesSlidePart != null)
             {
                 var notesText = GetNotesText(targetSlidePart.NotesSlidePart);

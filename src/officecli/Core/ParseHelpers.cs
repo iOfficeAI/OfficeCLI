@@ -30,4 +30,22 @@ public static class ParseHelpers
             trimmed = trimmed[..^2].Trim();
         return double.Parse(trimmed, CultureInfo.InvariantCulture);
     }
+
+    /// <summary>
+    /// Normalize a hex color string to 8-char ARGB format (e.g. "FFFF0000").
+    /// Accepts: "FF0000" (6-char RGB → prepend FF), "#FF0000" (strip #), "F00" (3-char → expand),
+    /// "80FF0000" (8-char ARGB → as-is). Always returns uppercase.
+    /// </summary>
+    public static string NormalizeArgbColor(string value)
+    {
+        var hex = value.TrimStart('#').ToUpperInvariant();
+        if (hex.Length == 3)
+        {
+            // Expand shorthand: "F00" → "FF0000"
+            hex = new string(new[] { hex[0], hex[0], hex[1], hex[1], hex[2], hex[2] });
+        }
+        if (hex.Length == 6)
+            return "FF" + hex;
+        return hex; // 8-char ARGB or other (pass through)
+    }
 }

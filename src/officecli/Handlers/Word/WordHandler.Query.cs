@@ -161,14 +161,15 @@ public partial class WordHandler
             if (sectType?.Val?.Value != null)
                 secNode.Format["type"] = sectType.Val.InnerText;
             var pageSize = sectPr.GetFirstChild<PageSize>();
-            if (pageSize?.Width?.Value != null) secNode.Format["pageWidth"] = pageSize.Width.Value;
-            if (pageSize?.Height?.Value != null) secNode.Format["pageHeight"] = pageSize.Height.Value;
+            // Default to A4 size (11906 × 16838 twips) if no explicit page size
+            secNode.Format["pagewidth"] = pageSize?.Width?.Value ?? 11906u;
+            secNode.Format["pageheight"] = pageSize?.Height?.Value ?? 16838u;
             if (pageSize?.Orient?.Value != null) secNode.Format["orientation"] = pageSize.Orient.InnerText;
             var margin = sectPr.GetFirstChild<PageMargin>();
-            if (margin?.Top?.Value != null) secNode.Format["marginTop"] = margin.Top.Value;
-            if (margin?.Bottom?.Value != null) secNode.Format["marginBottom"] = margin.Bottom.Value;
-            if (margin?.Left?.Value != null) secNode.Format["marginLeft"] = margin.Left.Value;
-            if (margin?.Right?.Value != null) secNode.Format["marginRight"] = margin.Right.Value;
+            if (margin?.Top?.Value != null) secNode.Format["margintop"] = margin.Top.Value;
+            if (margin?.Bottom?.Value != null) secNode.Format["marginbottom"] = margin.Bottom.Value;
+            if (margin?.Left?.Value != null) secNode.Format["marginleft"] = margin.Left.Value;
+            if (margin?.Right?.Value != null) secNode.Format["marginright"] = margin.Right.Value;
             return secNode;
         }
 
@@ -241,7 +242,15 @@ public partial class WordHandler
         }
         // Body-level section properties (last section)
         var bodySectPr = body.GetFirstChild<SectionProperties>();
-        if (bodySectPr != null) result.Add(bodySectPr);
+        if (bodySectPr != null)
+            result.Add(bodySectPr);
+        else if (result.Count == 0)
+        {
+            // Always have at least one implicit section (the document body itself acts as a section)
+            var implicitSectPr = new SectionProperties();
+            body.AppendChild(implicitSectPr);
+            result.Add(implicitSectPr);
+        }
         return result;
     }
 
@@ -288,7 +297,7 @@ public partial class WordHandler
             var font = rp.RunFonts?.Ascii?.Value ?? rp.RunFonts?.HighAnsi?.Value;
             if (font != null) node.Format["font"] = font;
             if (rp.FontSize?.Val?.Value != null)
-                node.Format["size"] = $"{int.Parse(rp.FontSize.Val.Value) / 2}pt";
+                node.Format["size"] = $"{int.Parse(rp.FontSize.Val.Value) / 2.0:0.##}pt";
             if (rp.Bold != null) node.Format["bold"] = true;
             if (rp.Italic != null) node.Format["italic"] = true;
             if (rp.Color?.Val?.Value != null) node.Format["color"] = rp.Color.Val.Value;
@@ -296,7 +305,7 @@ public partial class WordHandler
 
         var firstPara = header.Elements<Paragraph>().FirstOrDefault();
         if (firstPara?.ParagraphProperties?.Justification?.Val?.Value != null)
-            node.Format["alignment"] = firstPara.ParagraphProperties.Justification.Val.Value.ToString();
+            node.Format["alignment"] = firstPara.ParagraphProperties.Justification.Val.Value.ToString().ToLowerInvariant();
 
         node.ChildCount = header.Elements<Paragraph>().Count();
         if (depth > 0)
@@ -343,7 +352,7 @@ public partial class WordHandler
             var font = rp.RunFonts?.Ascii?.Value ?? rp.RunFonts?.HighAnsi?.Value;
             if (font != null) node.Format["font"] = font;
             if (rp.FontSize?.Val?.Value != null)
-                node.Format["size"] = $"{int.Parse(rp.FontSize.Val.Value) / 2}pt";
+                node.Format["size"] = $"{int.Parse(rp.FontSize.Val.Value) / 2.0:0.##}pt";
             if (rp.Bold != null) node.Format["bold"] = true;
             if (rp.Italic != null) node.Format["italic"] = true;
             if (rp.Color?.Val?.Value != null) node.Format["color"] = rp.Color.Val.Value;
@@ -351,7 +360,7 @@ public partial class WordHandler
 
         var firstPara = footer.Elements<Paragraph>().FirstOrDefault();
         if (firstPara?.ParagraphProperties?.Justification?.Val?.Value != null)
-            node.Format["alignment"] = firstPara.ParagraphProperties.Justification.Val.Value.ToString();
+            node.Format["alignment"] = firstPara.ParagraphProperties.Justification.Val.Value.ToString().ToLowerInvariant();
 
         node.ChildCount = footer.Elements<Paragraph>().Count();
         if (depth > 0)
@@ -429,7 +438,8 @@ public partial class WordHandler
                 or "picture" or "image" or "img"
                 or "equation" or "math" or "formula"
                 or "bookmark"
-                or "chart";
+                or "chart"
+                or "comment";
         if (!isKnownType && parsed.ChildSelector == null)
         {
             var root = _doc.MainDocumentPart?.Document;
@@ -459,6 +469,36 @@ public partial class WordHandler
                             continue;
                     }
                     results.Add(node);
+                }
+            }
+            return results;
+        }
+
+        // Handle comment query
+        bool isCommentSelector = parsed.ChildSelector == null && parsed.Element == "comment";
+        if (isCommentSelector)
+        {
+            var commentsPart = _doc.MainDocumentPart?.WordprocessingCommentsPart;
+            if (commentsPart?.Comments != null)
+            {
+                int cIdx = 0;
+                foreach (var comment in commentsPart.Comments.Elements<Comment>())
+                {
+                    cIdx++;
+                    var text = string.Join("", comment.Descendants<Text>().Select(t => t.Text));
+                    if (parsed.ContainsText != null && !text.Contains(parsed.ContainsText, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var cNode = new DocumentNode
+                    {
+                        Path = $"/comments/comment[{cIdx}]",
+                        Type = "comment",
+                        Text = text
+                    };
+                    if (comment.Author?.Value != null) cNode.Format["author"] = comment.Author.Value;
+                    if (comment.Initials?.Value != null) cNode.Format["initials"] = comment.Initials.Value;
+                    if (comment.Id?.Value != null) cNode.Format["id"] = comment.Id.Value;
+                    if (comment.Date?.Value != null) cNode.Format["date"] = comment.Date.Value.ToString("o");
+                    results.Add(cNode);
                 }
             }
             return results;

@@ -204,8 +204,8 @@ public partial class WordHandler
             {
                 if (pProps.ParagraphStyleId?.Val?.Value != null)
                     node.Format["style"] = pProps.ParagraphStyleId.Val.Value;
-                if (pProps.Justification?.Val?.Value != null)
-                    node.Format["alignment"] = pProps.Justification.Val.Value.ToString();
+                if (pProps.Justification?.Val != null)
+                    node.Format["alignment"] = pProps.Justification.Val.InnerText;
                 if (pProps.SpacingBetweenLines != null)
                 {
                     if (pProps.SpacingBetweenLines.Before?.Value != null)
@@ -216,21 +216,34 @@ public partial class WordHandler
                         node.Format["linespacing"] = pProps.SpacingBetweenLines.Line.Value;
                 }
                 if (pProps.Indentation?.FirstLine?.Value != null)
-                    node.Format["firstLineIndent"] = pProps.Indentation.FirstLine.Value;
+                    node.Format["firstlineindent"] = pProps.Indentation.FirstLine.Value;
                 if (pProps.Indentation?.Left?.Value != null)
-                    node.Format["leftIndent"] = pProps.Indentation.Left.Value;
+                    node.Format["leftindent"] = pProps.Indentation.Left.Value;
                 if (pProps.Indentation?.Right?.Value != null)
-                    node.Format["rightIndent"] = pProps.Indentation.Right.Value;
+                    node.Format["rightindent"] = pProps.Indentation.Right.Value;
                 if (pProps.Indentation?.Hanging?.Value != null)
-                    node.Format["hangingIndent"] = pProps.Indentation.Hanging.Value;
+                    node.Format["hangingindent"] = pProps.Indentation.Hanging.Value;
                 if (pProps.KeepNext != null)
-                    node.Format["keepNext"] = true;
+                    node.Format["keepnext"] = true;
                 if (pProps.KeepLines != null)
-                    node.Format["keepLines"] = true;
+                    node.Format["keeplines"] = true;
                 if (pProps.PageBreakBefore != null)
-                    node.Format["pageBreakBefore"] = true;
+                    node.Format["pagebreakbefore"] = true;
                 if (pProps.WidowControl != null)
-                    node.Format["widowControl"] = true;
+                    node.Format["widowcontrol"] = true;
+                if (pProps.Shading != null)
+                    node.Format["shading"] = pProps.Shading.Fill?.Value ?? pProps.Shading.Color?.Value ?? "";
+
+                var pBdr = pProps.ParagraphBorders;
+                if (pBdr != null)
+                {
+                    ReadBorder(pBdr.TopBorder, "pBdr.top", node);
+                    ReadBorder(pBdr.BottomBorder, "pBdr.bottom", node);
+                    ReadBorder(pBdr.LeftBorder, "pBdr.left", node);
+                    ReadBorder(pBdr.RightBorder, "pBdr.right", node);
+                    ReadBorder(pBdr.BetweenBorder, "pBdr.between", node);
+                    ReadBorder(pBdr.BarBorder, "pBdr.bar", node);
+                }
 
                 var numProps = pProps.NumberingProperties;
                 if (numProps != null)
@@ -276,7 +289,7 @@ public partial class WordHandler
             if (run.RunProperties?.Strike != null) node.Format["strike"] = true;
             if (run.RunProperties?.Highlight?.Val != null) node.Format["highlight"] = run.RunProperties.Highlight.Val.InnerText;
             if (run.RunProperties?.Caps != null) node.Format["caps"] = true;
-            if (run.RunProperties?.SmallCaps != null) node.Format["smallCaps"] = true;
+            if (run.RunProperties?.SmallCaps != null) node.Format["smallcaps"] = true;
             if (run.RunProperties?.DoubleStrike != null) node.Format["dstrike"] = true;
             if (run.RunProperties?.Vanish != null) node.Format["vanish"] = true;
             if (run.RunProperties?.Outline != null) node.Format["outline"] = true;
@@ -289,6 +302,17 @@ public partial class WordHandler
                 node.Format["superscript"] = true;
             if (run.RunProperties?.VerticalTextAlignment?.Val?.Value == VerticalPositionValues.Subscript)
                 node.Format["subscript"] = true;
+            if (run.RunProperties?.Shading?.Fill?.Value != null)
+                node.Format["shading"] = run.RunProperties.Shading.Fill.Value;
+            if (run.Parent is Hyperlink hlParent && hlParent.Id?.Value != null)
+            {
+                try
+                {
+                    var rel = _doc.MainDocumentPart?.HyperlinkRelationships.FirstOrDefault(r => r.Id == hlParent.Id.Value);
+                    if (rel != null) node.Format["link"] = rel.Uri.ToString();
+                }
+                catch { }
+            }
         }
         else if (element is Hyperlink hyperlink)
         {
@@ -316,6 +340,9 @@ public partial class WordHandler
             var tp = table.GetFirstChild<TableProperties>();
             if (tp != null)
             {
+                // Table style
+                if (tp.TableStyle?.Val?.Value != null)
+                    node.Format["style"] = tp.TableStyle.Val.Value;
                 // Table borders
                 var tblBorders = tp.TableBorders;
                 if (tblBorders != null)
