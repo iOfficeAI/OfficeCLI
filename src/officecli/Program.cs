@@ -576,6 +576,90 @@ validateCommand.SetAction(result => SafeRun(() =>
 }));
 rootCommand.Add(validateCommand);
 
+// ==================== batch command ====================
+var batchFileArg = new Argument<FileInfo>("file") { Description = "Office document path" };
+var batchInputOpt = new Option<FileInfo?>("--input") { Description = "JSON file containing batch commands. If omitted, reads from stdin" };
+var batchStopOnErrorOpt = new Option<bool>("--stop-on-error") { Description = "Stop execution on first error (default: continue all)" };
+var batchCommand = new Command("batch", "Execute multiple commands from a JSON array (one open/save cycle)");
+batchCommand.Add(batchFileArg);
+batchCommand.Add(batchInputOpt);
+batchCommand.Add(batchStopOnErrorOpt);
+batchCommand.Add(jsonOption);
+
+batchCommand.SetAction(result => SafeRun(() =>
+{
+    var file = result.GetValue(batchFileArg)!;
+    var inputFile = result.GetValue(batchInputOpt);
+    var stopOnError = result.GetValue(batchStopOnErrorOpt);
+    var json = result.GetValue(jsonOption);
+
+    string jsonText;
+    if (inputFile != null)
+    {
+        if (!inputFile.Exists)
+        {
+            Console.Error.WriteLine($"Error: Input file not found: {inputFile.FullName}");
+            return;
+        }
+        jsonText = File.ReadAllText(inputFile.FullName);
+    }
+    else
+    {
+        // Read from stdin
+        jsonText = Console.In.ReadToEnd();
+    }
+
+    var items = System.Text.Json.JsonSerializer.Deserialize<List<BatchItem>>(jsonText, BatchJsonContext.Default.ListBatchItem);
+    if (items == null || items.Count == 0)
+    {
+        Console.Error.WriteLine("Error: No commands found in input.");
+        return;
+    }
+
+    // If a resident process is running, forward each command to it
+    if (ResidentClient.TryConnect(file.FullName, out _))
+    {
+        var results = new List<BatchResult>();
+        foreach (var item in items)
+        {
+            var req = item.ToResidentRequest();
+            req.Json = json;
+            var response = ResidentClient.TrySend(file.FullName, req);
+            if (response == null)
+            {
+                results.Add(new BatchResult { Success = false, Error = "Failed to send to resident" });
+                if (stopOnError) break;
+                continue;
+            }
+            var success = string.IsNullOrEmpty(response.Stderr);
+            results.Add(new BatchResult { Success = success, Output = response.Stdout, Error = response.Stderr });
+            if (!success && stopOnError) break;
+        }
+        PrintBatchResults(results, json);
+        return;
+    }
+
+    // Non-resident: open file once, execute all commands, save once
+    using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
+    var batchResults = new List<BatchResult>();
+    foreach (var item in items)
+    {
+        try
+        {
+            var output = ExecuteBatchItem(handler, item, json);
+            batchResults.Add(new BatchResult { Success = true, Output = output });
+        }
+        catch (Exception ex)
+        {
+            batchResults.Add(new BatchResult { Success = false, Error = ex.Message });
+            if (stopOnError) break;
+        }
+    }
+    PrintBatchResults(batchResults, json);
+}));
+
+rootCommand.Add(batchCommand);
+
 // ==================== create command ====================
 var createFileArg = new Argument<string>("file") { Description = "Output file path (.docx, .xlsx, .pptx)" };
 var createTypeOpt = new Option<string>("--type") { Description = "Document type (docx, xlsx, pptx) — optional, inferred from file extension" };
@@ -651,6 +735,140 @@ static void SafeRun(Action action)
     catch (Exception ex)
     {
         Console.Error.WriteLine($"Error: {ex.Message}");
+    }
+}
+
+static string ExecuteBatchItem(OfficeCli.Core.IDocumentHandler handler, BatchItem item, bool json)
+{
+    var format = json ? OfficeCli.Core.OutputFormat.Json : OfficeCli.Core.OutputFormat.Text;
+    var props = item.Props ?? new Dictionary<string, string>();
+
+    switch (item.Command.ToLowerInvariant())
+    {
+        case "get":
+        {
+            var path = item.Path ?? "/";
+            var depth = item.Depth ?? 1;
+            var node = handler.Get(path, depth);
+            return OfficeCli.Core.OutputFormatter.FormatNode(node, format);
+        }
+        case "query":
+        {
+            var selector = item.Selector ?? "";
+            var results = handler.Query(selector);
+            return OfficeCli.Core.OutputFormatter.FormatNodes(results, format);
+        }
+        case "set":
+        {
+            var path = item.Path ?? "/";
+            var unsupported = handler.Set(path, props);
+            var applied = props.Where(kv => !unsupported.Contains(kv.Key)).ToList();
+            var parts = new List<string>();
+            if (applied.Count > 0)
+                parts.Add($"Updated {path}: {string.Join(", ", applied.Select(kv => $"{kv.Key}={kv.Value}"))}");
+            if (unsupported.Count > 0)
+                parts.Add($"UNSUPPORTED: {string.Join(", ", unsupported)}");
+            return string.Join("\n", parts);
+        }
+        case "add":
+        {
+            var parentPath = item.Parent ?? "/";
+            if (!string.IsNullOrEmpty(item.From))
+            {
+                var resultPath = handler.CopyFrom(item.From, parentPath, item.Index);
+                return $"Copied to {resultPath}";
+            }
+            else
+            {
+                var type = item.Type ?? "";
+                var resultPath = handler.Add(parentPath, type, item.Index, props);
+                return $"Added {type} at {resultPath}";
+            }
+        }
+        case "remove":
+        {
+            var path = item.Path ?? "/";
+            handler.Remove(path);
+            return $"Removed {path}";
+        }
+        case "move":
+        {
+            var path = item.Path ?? "/";
+            var resultPath = handler.Move(path, item.To, item.Index);
+            return $"Moved to {resultPath}";
+        }
+        case "view":
+        {
+            var mode = item.Mode ?? "text";
+            return mode.ToLowerInvariant() switch
+            {
+                "text" or "t" => handler.ViewAsText(null, null, null, null),
+                "annotated" or "a" => handler.ViewAsAnnotated(null, null, null, null),
+                "outline" or "o" => handler.ViewAsOutline(),
+                "stats" or "s" => handler.ViewAsStats(),
+                "issues" or "i" => OfficeCli.Core.OutputFormatter.FormatIssues(handler.ViewAsIssues(null, null), format),
+                _ => $"Unknown mode: {mode}"
+            };
+        }
+        case "raw":
+        {
+            var partPath = item.Part ?? "/document";
+            return handler.Raw(partPath, null, null, null);
+        }
+        case "raw-set":
+        {
+            var partPath = item.Part ?? "/document";
+            var xpath = item.Xpath ?? "";
+            var action = item.Action ?? "";
+            handler.RawSet(partPath, xpath, action, item.Xml);
+            return $"raw-set {action} applied";
+        }
+        case "validate":
+        {
+            var errors = handler.Validate();
+            if (errors.Count == 0) return "Validation passed: no errors found.";
+            var lines = new List<string> { $"Found {errors.Count} validation error(s):" };
+            foreach (var err in errors)
+            {
+                lines.Add($"  [{err.ErrorType}] {err.Description}");
+                if (err.Path != null) lines.Add($"    Path: {err.Path}");
+                if (err.Part != null) lines.Add($"    Part: {err.Part}");
+            }
+            return string.Join("\n", lines);
+        }
+        default:
+            throw new InvalidOperationException($"Unknown command: {item.Command}");
+    }
+}
+
+static void PrintBatchResults(List<BatchResult> results, bool json)
+{
+    if (json)
+    {
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(results, BatchJsonContext.Default.ListBatchResult));
+    }
+    else
+    {
+        for (int i = 0; i < results.Count; i++)
+        {
+            var r = results[i];
+            var prefix = $"[{i + 1}] ";
+            if (r.Success)
+            {
+                if (!string.IsNullOrEmpty(r.Output))
+                    Console.WriteLine($"{prefix}{r.Output}");
+                else
+                    Console.WriteLine($"{prefix}OK");
+            }
+            else
+            {
+                Console.Error.WriteLine($"{prefix}ERROR: {r.Error}");
+            }
+        }
+
+        var succeeded = results.Count(r => r.Success);
+        var failed = results.Count - succeeded;
+        Console.WriteLine($"\nBatch complete: {succeeded} succeeded, {failed} failed, {results.Count} total");
     }
 }
 
