@@ -623,8 +623,8 @@ public partial class PowerPointHandler
             return unsupported;
         }
 
-        // Try picture path: /slide[N]/picture[M]
-        var picSetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/picture\[(\d+)\]$");
+        // Try picture path: /slide[N]/picture[M] or /slide[N]/pic[M]
+        var picSetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/(?:picture|pic)\[(\d+)\]$");
         if (picSetMatch.Success)
         {
             var slideIdx = int.Parse(picSetMatch.Groups[1].Value);
@@ -686,7 +686,7 @@ public partial class PowerPointHandler
                             ".tif" or ".tiff" => ImagePartType.Tiff,
                             ".emf" => ImagePartType.Emf,
                             ".wmf" => ImagePartType.Wmf,
-                            _ => ImagePartType.Png
+                            _ => throw new ArgumentException($"Unsupported image format: {imgExt}")
                         };
                         // Remove old image part to avoid storage bloat
                         var oldEmbedId = blip.Embed?.Value;
@@ -860,8 +860,8 @@ public partial class PowerPointHandler
             }
         }
 
-        // Try connector path: /slide[N]/connector[M]
-        var cxnMatch = Regex.Match(path, @"^/slide\[(\d+)\]/connector\[(\d+)\]$");
+        // Try connector path: /slide[N]/connector[M] or /slide[N]/connection[M]
+        var cxnMatch = Regex.Match(path, @"^/slide\[(\d+)\]/(?:connector|connection)\[(\d+)\]$");
         if (cxnMatch.Success)
         {
             var slideIdx = int.Parse(cxnMatch.Groups[1].Value);

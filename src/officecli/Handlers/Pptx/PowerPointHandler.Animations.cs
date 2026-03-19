@@ -109,18 +109,19 @@ public partial class PowerPointHandler
             "pan" => new DocumentFormat.OpenXml.Office2010.PowerPoint.PanTransition { Direction = ParseSlideDir(direction ?? "left") },
             "reveal" => new DocumentFormat.OpenXml.Office2010.PowerPoint.RevealTransition(),
             "morph" => null, // handled specially below
-            _ => null
+            _ => throw new ArgumentException($"Invalid transition type: '{typeName}'. Valid values: fade, cut, dissolve, circle, diamond, newsflash, plus, random, wedge, wipe, push, cover, pull, wheel, zoom, split, blinds, checker, comb, bars, strips, flash, honeycomb, vortex, switch, flip, ripple, glitter, prism, doors, window, shred, ferris, flythrough, warp, gallery, conveyor, pan, reveal, morph, none.")
         };
 
         // Morph transition: requires mc:AlternateContent wrapper with p159 namespace
         // PowerPoint ignores bare p159:morph without the mc:Choice/Fallback structure
         if (typeName == "morph")
         {
-            var morphOption = direction switch
+            var morphOption = (direction ?? "byobject").ToLowerInvariant() switch
             {
                 "byword" or "word" => "byWord",
                 "bychar" or "char" or "character" => "byChar",
-                _ => "byObject"
+                "byobject" or "object" => "byObject",
+                _ => throw new ArgumentException($"Invalid morph option: '{direction}'. Valid values: byObject, byWord, byChar.")
             };
 
             var mcNs = "http://schemas.openxmlformats.org/markup-compatibility/2006";
@@ -234,7 +235,7 @@ public partial class PowerPointHandler
             "r" or "right" => TransitionSlideDirectionValues.Right,
             "u" or "up" => TransitionSlideDirectionValues.Up,
             "d" or "down" => TransitionSlideDirectionValues.Down,
-            _ => TransitionSlideDirectionValues.Left
+            _ => throw new ArgumentException($"Invalid slide direction: '{dir}'. Valid values: left, right, up, down.")
         };
 
     // For EightDirectionTransitionType where Direction is StringValue
@@ -249,21 +250,23 @@ public partial class PowerPointHandler
             "ru" or "rightup" => "ru",
             "ld" or "leftdown" => "ld",
             "rd" or "rightdown" => "rd",
-            _ => "l"
+            _ => throw new ArgumentException($"Invalid direction: '{dir}'. Valid values: left, right, up, down, leftup, rightup, leftdown, rightdown.")
         };
 
     private static TransitionInOutDirectionValues ParseInOutDir(string dir) =>
         dir.ToLowerInvariant() switch
         {
+            "in" => TransitionInOutDirectionValues.In,
             "out" => TransitionInOutDirectionValues.Out,
-            _ => TransitionInOutDirectionValues.In
+            _ => throw new ArgumentException($"Invalid in/out direction: '{dir}'. Valid values: in, out.")
         };
 
     private static EnumValue<DirectionValues> ParseOrientation(string dir) =>
         dir.ToLowerInvariant() switch
         {
+            "h" or "horiz" or "horizontal" => DirectionValues.Horizontal,
             "v" or "vert" or "vertical" => DirectionValues.Vertical,
-            _ => DirectionValues.Horizontal
+            _ => throw new ArgumentException($"Invalid orientation: '{dir}'. Valid values: horizontal, vertical.")
         };
 
     private static TransitionCornerDirectionValues ParseCornerDir(string dir) =>
@@ -272,7 +275,8 @@ public partial class PowerPointHandler
             "lu" or "leftup" or "upleft" => TransitionCornerDirectionValues.LeftUp,
             "ru" or "rightup" or "upright" => TransitionCornerDirectionValues.RightUp,
             "ld" or "leftdown" or "downleft" => TransitionCornerDirectionValues.LeftDown,
-            _ => TransitionCornerDirectionValues.RightDown
+            "rd" or "rightdown" or "downright" => TransitionCornerDirectionValues.RightDown,
+            _ => throw new ArgumentException($"Invalid corner direction: '{dir}'. Valid values: leftup, rightup, leftdown, rightdown.")
         };
 
     private static SplitTransition BuildSplitTransition(string? direction)

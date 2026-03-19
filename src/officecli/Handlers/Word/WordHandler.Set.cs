@@ -359,10 +359,11 @@ public partial class WordHandler
                         var st = sectPr.GetFirstChild<SectionType>() ?? sectPr.PrependChild(new SectionType());
                         st.Val = value.ToLowerInvariant() switch
                         {
+                            "nextpage" or "next" => SectionMarkValues.NextPage,
                             "continuous" => SectionMarkValues.Continuous,
                             "evenpage" or "even" => SectionMarkValues.EvenPage,
                             "oddpage" or "odd" => SectionMarkValues.OddPage,
-                            _ => SectionMarkValues.NextPage
+                            _ => throw new ArgumentException($"Invalid section break type: '{value}'. Valid values: nextPage, continuous, evenPage, oddPage.")
                         };
                         break;
                     case "pagewidth":
@@ -604,7 +605,8 @@ public partial class WordHandler
                             "contentlocked" or "content" => LockingValues.ContentLocked,
                             "sdtlocked" or "sdt" => LockingValues.SdtLocked,
                             "sdtcontentlocked" or "both" => LockingValues.SdtContentLocked,
-                            _ => LockingValues.Unlocked
+                            "unlocked" or "none" => LockingValues.Unlocked,
+                            _ => throw new ArgumentException($"Invalid lock value: '{value}'. Valid values: unlocked, contentLocked, sdtLocked, sdtContentLocked.")
                         };
                         if (existingLock != null) existingLock.Val = lockEnum;
                         else sdtProps.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.Lock { Val = lockEnum });
@@ -813,7 +815,7 @@ public partial class WordHandler
                             ".emf" => DocumentFormat.OpenXml.Packaging.ImagePartType.Emf,
                             ".wmf" => DocumentFormat.OpenXml.Packaging.ImagePartType.Wmf,
                             ".svg" => DocumentFormat.OpenXml.Packaging.ImagePartType.Svg,
-                            _ => DocumentFormat.OpenXml.Packaging.ImagePartType.Png
+                            _ => throw new ArgumentException($"Unsupported image format: {imgExt}")
                         };
 
                         // Remove old image part to avoid storage bloat
@@ -1065,7 +1067,7 @@ public partial class WordHandler
                             }
                         }
                         break;
-                    case "shd" or "shading":
+                    case "shd" or "shading" or "fill":
                         var shdParts = value.Split(';');
                         if (shdParts.Length >= 3 && shdParts[0].Equals("gradient", StringComparison.OrdinalIgnoreCase))
                         {
@@ -1124,9 +1126,10 @@ public partial class WordHandler
                         {
                             Val = value.ToLowerInvariant() switch
                             {
+                                "top" => TableVerticalAlignmentValues.Top,
                                 "center" => TableVerticalAlignmentValues.Center,
                                 "bottom" => TableVerticalAlignmentValues.Bottom,
-                                _ => TableVerticalAlignmentValues.Top
+                                _ => throw new ArgumentException($"Invalid valign value: '{value}'. Valid values: top, center, bottom.")
                             }
                         };
                         break;
@@ -1178,7 +1181,7 @@ public partial class WordHandler
                                 "tbrl-r" or "tb-rl-rotated" => TextDirectionValues.TopToBottomRightToLeftRotated,
                                 "lrtb-r" or "lr-tb-rotated" => TextDirectionValues.LefttoRightTopToBottomRotated,
                                 "tblr-r" or "tb-lr-rotated" => TextDirectionValues.TopToBottomLeftToRightRotated,
-                                _ => TextDirectionValues.LefToRightTopToBottom
+                                _ => throw new ArgumentException($"Invalid textDirection value: '{value}'. Valid values: lrtb, btlr, tbrl, horizontal, vertical.")
                             }
                         };
                         break;
@@ -1317,9 +1320,10 @@ public partial class WordHandler
                         {
                             Val = value.ToLowerInvariant() switch
                             {
+                                "left" => TableRowAlignmentValues.Left,
                                 "center" => TableRowAlignmentValues.Center,
                                 "right" => TableRowAlignmentValues.Right,
-                                _ => TableRowAlignmentValues.Left
+                                _ => throw new ArgumentException($"Invalid table alignment value: '{value}'. Valid values: left, center, right.")
                             }
                         };
                         break;
@@ -1474,18 +1478,8 @@ public partial class WordHandler
         "doublewave" => BorderValues.DoubleWave,
         "threedembed" or "3demboss" => BorderValues.ThreeDEmboss,
         "threedengrave" or "3dengrave" => BorderValues.ThreeDEngrave,
-        _ => WarnBorderDefault(style)
+        _ => throw new ArgumentException($"Invalid border style: '{style}'. Valid values: single, thick, double, dotted, dashed, none, triple, wave, etc.")
     };
-
-    private static BorderValues WarnBorderDefault(string style)
-    {
-        // Only warn if it doesn't look like a recognized style name
-        if (!string.IsNullOrEmpty(style) && !style.All(char.IsAsciiHexDigit))
-            Console.Error.WriteLine($"Warning: unrecognized border style '{style}', using 'single'. Format: STYLE[;SIZE[;COLOR[;SPACE]]]");
-        else if (style.All(char.IsAsciiHexDigit) && style.Length >= 3)
-            Console.Error.WriteLine($"Warning: '{style}' looks like a color, not a border style. Format: STYLE[;SIZE[;COLOR[;SPACE]]] e.g. single;4;FF0000");
-        return BorderValues.Single;
-    }
 
     private static (BorderValues style, uint size, string? color, uint space) ParseBorderValue(string value)
     {
@@ -1605,6 +1599,7 @@ public partial class WordHandler
                 numPr2.NumberingLevelReference = new NumberingLevelReference { Val = ParseHelpers.SafeParseInt(value, "numlevel") };
                 return true;
             case "pbdr.top" or "pbdr.bottom" or "pbdr.left" or "pbdr.right" or "pbdr.between" or "pbdr.bar" or "pbdr.all" or "pbdr":
+            case "border.all" or "border" or "border.top" or "border.bottom" or "border.left" or "border.right":
                 ApplyParagraphBorders(pProps, key, value);
                 return true;
             default:
@@ -1619,23 +1614,23 @@ public partial class WordHandler
 
         switch (key.ToLowerInvariant())
         {
-            case "pbdr.all" or "pbdr":
+            case "pbdr.all" or "pbdr" or "border.all" or "border":
                 borders.TopBorder = MakeBorder<TopBorder>(style, size, color, space);
                 borders.BottomBorder = MakeBorder<BottomBorder>(style, size, color, space);
                 borders.LeftBorder = MakeBorder<LeftBorder>(style, size, color, space);
                 borders.RightBorder = MakeBorder<RightBorder>(style, size, color, space);
                 borders.BetweenBorder = MakeBorder<BetweenBorder>(style, size, color, space);
                 break;
-            case "pbdr.top":
+            case "pbdr.top" or "border.top":
                 borders.TopBorder = MakeBorder<TopBorder>(style, size, color, space);
                 break;
-            case "pbdr.bottom":
+            case "pbdr.bottom" or "border.bottom":
                 borders.BottomBorder = MakeBorder<BottomBorder>(style, size, color, space);
                 break;
-            case "pbdr.left":
+            case "pbdr.left" or "border.left":
                 borders.LeftBorder = MakeBorder<LeftBorder>(style, size, color, space);
                 break;
-            case "pbdr.right":
+            case "pbdr.right" or "border.right":
                 borders.RightBorder = MakeBorder<RightBorder>(style, size, color, space);
                 break;
             case "pbdr.between":

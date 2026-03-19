@@ -409,10 +409,16 @@ public partial class WordHandler
                 {
                     if (!int.TryParse(rowsStr, out rows))
                         throw new ArgumentException($"Invalid 'rows' value: '{rowsStr}'. Expected a positive integer.");
+                    if (rows <= 0)
+                        throw new ArgumentException($"Invalid 'rows' value: '{rowsStr}'. Must be a positive integer (> 0).");
                 }
                 int cols = 1;
                 if (properties.TryGetValue("cols", out var colsStr))
+                {
                     cols = ParseHelpers.SafeParseInt(colsStr, "cols");
+                    if (cols <= 0)
+                        throw new ArgumentException($"Invalid 'cols' value: '{colsStr}'. Must be a positive integer (> 0).");
+                }
 
                 // Parse per-column widths: colWidths="3000,2000,5000"
                 int[]? colWidthArr = null;
@@ -450,7 +456,8 @@ public partial class WordHandler
                                 {
                                     "center" => TableRowAlignmentValues.Center,
                                     "right" => TableRowAlignmentValues.Right,
-                                    _ => TableRowAlignmentValues.Left
+                                    "left" => TableRowAlignmentValues.Left,
+                                    _ => throw new ArgumentException($"Invalid table alignment value: '{tv}'. Valid values: left, center, right.")
                                 }
                             };
                             break;
@@ -929,7 +936,7 @@ public partial class WordHandler
                     "continuous" => SectionMarkValues.Continuous,
                     "evenpage" or "even" => SectionMarkValues.EvenPage,
                     "oddpage" or "odd" => SectionMarkValues.OddPage,
-                    _ => SectionMarkValues.NextPage
+                    _ => throw new ArgumentException($"Invalid section break type: '{breakType}'. Valid values: nextPage, continuous, evenPage, oddPage.")
                 };
 
                 // Create a paragraph with section properties to mark the break
@@ -1146,7 +1153,8 @@ public partial class WordHandler
                     "character" or "char" => StyleValues.Character,
                     "table" => StyleValues.Table,
                     "numbering" => StyleValues.Numbering,
-                    _ => StyleValues.Paragraph
+                    "paragraph" or "para" => StyleValues.Paragraph,
+                    _ => throw new ArgumentException($"Invalid style type: '{properties.GetValueOrDefault("type", "paragraph")}'. Valid values: paragraph, character, table, numbering.")
                 };
 
                 var newStyle = new Style
@@ -1267,7 +1275,8 @@ public partial class WordHandler
                     {
                         "first" => HeaderFooterValues.First,
                         "even" => HeaderFooterValues.Even,
-                        _ => HeaderFooterValues.Default
+                        "default" => HeaderFooterValues.Default,
+                        _ => throw new ArgumentException($"Invalid header type: '{hTypeStr}'. Valid values: default, first, even.")
                     };
                 }
 
@@ -1338,7 +1347,8 @@ public partial class WordHandler
                     {
                         "first" => HeaderFooterValues.First,
                         "even" => HeaderFooterValues.Even,
-                        _ => HeaderFooterValues.Default
+                        "default" => HeaderFooterValues.Default,
+                        _ => throw new ArgumentException($"Invalid footer type: '{fTypeStr}'. Valid values: default, first, even.")
                     };
                 }
 
@@ -1458,9 +1468,10 @@ public partial class WordHandler
                 {
                     breakType = brType.ToLowerInvariant() switch
                     {
+                        "page" => BreakValues.Page,
                         "column" => BreakValues.Column,
                         "textwrapping" or "line" => BreakValues.TextWrapping,
-                        _ => BreakValues.Page
+                        _ => throw new ArgumentException($"Invalid break type: '{brType}'. Valid values: page, column, line, textwrapping.")
                     };
                 }
 
@@ -1520,7 +1531,8 @@ public partial class WordHandler
                                 "contentlocked" or "content" => LockingValues.ContentLocked,
                                 "sdtlocked" or "sdt" => LockingValues.SdtLocked,
                                 "sdtcontentlocked" or "both" => LockingValues.SdtContentLocked,
-                                _ => LockingValues.Unlocked
+                                "unlocked" or "none" => LockingValues.Unlocked,
+                                _ => throw new ArgumentException($"Invalid lock value: '{lockVal}'. Valid values: unlocked, contentLocked, sdtLocked, sdtContentLocked.")
                             }
                         });
                     }
@@ -1604,7 +1616,8 @@ public partial class WordHandler
                                 "contentlocked" or "content" => LockingValues.ContentLocked,
                                 "sdtlocked" or "sdt" => LockingValues.SdtLocked,
                                 "sdtcontentlocked" or "both" => LockingValues.SdtContentLocked,
-                                _ => LockingValues.Unlocked
+                                "unlocked" or "none" => LockingValues.Unlocked,
+                                _ => throw new ArgumentException($"Invalid lock value: '{lockVal}'. Valid values: unlocked, contentLocked, sdtLocked, sdtContentLocked.")
                             }
                         });
                     }

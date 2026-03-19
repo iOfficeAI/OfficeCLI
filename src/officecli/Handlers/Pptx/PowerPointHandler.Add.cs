@@ -234,8 +234,12 @@ public partial class PowerPointHandler
                         {
                             "true" or "single" or "sng" => Drawing.TextUnderlineValues.Single,
                             "double" or "dbl" => Drawing.TextUnderlineValues.Double,
+                            "heavy" => Drawing.TextUnderlineValues.Heavy,
+                            "dotted" => Drawing.TextUnderlineValues.Dotted,
+                            "dash" => Drawing.TextUnderlineValues.Dash,
+                            "wavy" => Drawing.TextUnderlineValues.Wavy,
                             "false" or "none" => Drawing.TextUnderlineValues.None,
-                            _ => Drawing.TextUnderlineValues.Single
+                            _ => throw new ArgumentException($"Invalid underline value: '{ulVal}'. Valid values: single, double, heavy, dotted, dash, wavy, none.")
                         };
                     }
                 }
@@ -251,7 +255,7 @@ public partial class PowerPointHandler
                             "true" or "single" => Drawing.TextStrikeValues.SingleStrike,
                             "double" => Drawing.TextStrikeValues.DoubleStrike,
                             "false" or "none" => Drawing.TextStrikeValues.NoStrike,
-                            _ => Drawing.TextStrikeValues.SingleStrike
+                            _ => throw new ArgumentException($"Invalid strikethrough value: '{stVal}'. Valid values: single, double, none.")
                         };
                     }
                 }
@@ -263,8 +267,8 @@ public partial class PowerPointHandler
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.LineSpacing>();
-                        if (!double.TryParse(lsVal, System.Globalization.CultureInfo.InvariantCulture, out var lsNum))
-                            throw new ArgumentException($"Invalid 'lineSpacing' value '{lsVal}'. Expected a numeric multiplier (e.g. 1.5 for 150%).");
+                        if (!double.TryParse(lsVal, System.Globalization.CultureInfo.InvariantCulture, out var lsNum) || double.IsNaN(lsNum) || double.IsInfinity(lsNum))
+                            throw new ArgumentException($"Invalid 'lineSpacing' value '{lsVal}'. Expected a finite numeric multiplier (e.g. 1.5 for 150%).");
                         pProps.AppendChild(new Drawing.LineSpacing(
                             new Drawing.SpacingPercent { Val = (int)(lsNum * 100000) }));
                     }
@@ -277,8 +281,8 @@ public partial class PowerPointHandler
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.SpaceBefore>();
-                        if (!double.TryParse(sbVal, System.Globalization.CultureInfo.InvariantCulture, out var sbNum))
-                            throw new ArgumentException($"Invalid 'spaceBefore' value '{sbVal}'. Expected a numeric value in points.");
+                        if (!double.TryParse(sbVal, System.Globalization.CultureInfo.InvariantCulture, out var sbNum) || double.IsNaN(sbNum) || double.IsInfinity(sbNum))
+                            throw new ArgumentException($"Invalid 'spaceBefore' value '{sbVal}'. Expected a finite numeric value in points.");
                         pProps.AppendChild(new Drawing.SpaceBefore(new Drawing.SpacingPoints { Val = (int)(sbNum * 100) }));
                     }
                 }
@@ -288,8 +292,8 @@ public partial class PowerPointHandler
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.SpaceAfter>();
-                        if (!double.TryParse(saVal, System.Globalization.CultureInfo.InvariantCulture, out var saNum))
-                            throw new ArgumentException($"Invalid 'spaceAfter' value '{saVal}'. Expected a numeric value in points.");
+                        if (!double.TryParse(saVal, System.Globalization.CultureInfo.InvariantCulture, out var saNum) || double.IsNaN(saNum) || double.IsInfinity(saNum))
+                            throw new ArgumentException($"Invalid 'spaceAfter' value '{saVal}'. Expected a finite numeric value in points.");
                         pProps.AppendChild(new Drawing.SpaceAfter(new Drawing.SpacingPoints { Val = (int)(saNum * 100) }));
                     }
                 }
@@ -325,8 +329,8 @@ public partial class PowerPointHandler
                     };
                     if (properties.TryGetValue("rotation", out var rotVal) || properties.TryGetValue("rotate", out rotVal))
                     {
-                        if (!double.TryParse(rotVal, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var rotDbl))
-                            throw new ArgumentException($"Invalid 'rotation' value: '{rotVal}'. Expected a number in degrees (e.g. 45, -90, 180.5).");
+                        if (!double.TryParse(rotVal, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var rotDbl) || double.IsNaN(rotDbl) || double.IsInfinity(rotDbl))
+                            throw new ArgumentException($"Invalid 'rotation' value: '{rotVal}'. Expected a finite number in degrees (e.g. 45, -90, 180.5).");
                         xfrm.Rotation = (int)(rotDbl * 60000);
                     }
                     newShape.ShapeProperties!.Transform2D = xfrm;
@@ -1016,7 +1020,7 @@ public partial class PowerPointHandler
                             "straight" or "straightconnector1" => Drawing.ShapeTypeValues.StraightConnector1,
                             "elbow" or "bentconnector3" => Drawing.ShapeTypeValues.BentConnector3,
                             "curve" or "curvedconnector3" => Drawing.ShapeTypeValues.CurvedConnector3,
-                            _ => Drawing.ShapeTypeValues.StraightConnector1
+                            _ => throw new ArgumentException($"Invalid connector preset: '{properties.GetValueOrDefault("preset", "straightConnector1")}'. Valid values: straight, elbow, curve.")
                         }
                     }
                 );
@@ -1251,7 +1255,7 @@ public partial class PowerPointHandler
                     "onclick" or "click" => "click",
                     "after" or "afterprevious" => "after",
                     "with" or "withprevious" => "with",
-                    _ => "click"
+                    _ => throw new ArgumentException($"Invalid animation trigger: '{trigger}'. Valid values: onclick, click, after, afterprevious, with, withprevious.")
                 };
 
                 var animValue = $"{effect}-{cls}-{duration}-{triggerPart}";
@@ -1412,14 +1416,16 @@ public partial class PowerPointHandler
                         "dotted" => Drawing.TextUnderlineValues.Dotted,
                         "dash" => Drawing.TextUnderlineValues.Dash,
                         "wavy" => Drawing.TextUnderlineValues.Wavy,
-                        _ => Drawing.TextUnderlineValues.Single
+                        "false" or "none" => Drawing.TextUnderlineValues.None,
+                        _ => throw new ArgumentException($"Invalid underline value: '{rUnderline}'. Valid values: single, double, heavy, dotted, dash, wavy, none.")
                     };
                 if (properties.TryGetValue("strikethrough", out var rStrike) || properties.TryGetValue("strike", out rStrike))
                     rProps.Strike = rStrike.ToLowerInvariant() switch
                     {
                         "true" or "single" => Drawing.TextStrikeValues.SingleStrike,
                         "double" => Drawing.TextStrikeValues.DoubleStrike,
-                        _ => Drawing.TextStrikeValues.SingleStrike
+                        "false" or "none" => Drawing.TextStrikeValues.NoStrike,
+                        _ => throw new ArgumentException($"Invalid strikethrough value: '{rStrike}'. Valid values: single, double, none.")
                     };
                 if (properties.TryGetValue("color", out var rColor))
                     rProps.AppendChild(BuildSolidFill(rColor));
@@ -1601,7 +1607,7 @@ public partial class PowerPointHandler
             }
             chartGf.Remove();
         }
-        else if (elementType == "connector")
+        else if (elementType is "connector" or "connection")
         {
             var connectors = shapeTree.Elements<ConnectionShape>().ToList();
             if (elementIdx < 1 || elementIdx > connectors.Count)
@@ -1628,7 +1634,7 @@ public partial class PowerPointHandler
         }
         else
         {
-            throw new ArgumentException($"Unknown element type: {elementType}. Supported: shape, picture, video, audio, table, chart, connector, group");
+            throw new ArgumentException($"Unknown element type: {elementType}. Supported: shape, picture, video, audio, table, chart, connector/connection, group");
         }
 
         GetSlide(slidePart).Save();

@@ -157,7 +157,7 @@ public partial class PowerPointHandler
                             "dash" => Drawing.TextUnderlineValues.Dash,
                             "wavy" => Drawing.TextUnderlineValues.Wavy,
                             "false" or "none" => Drawing.TextUnderlineValues.None,
-                            _ => Drawing.TextUnderlineValues.Single
+                            _ => throw new ArgumentException($"Invalid underline value: '{value}'. Valid values: single, double, heavy, dotted, dash, wavy, none.")
                         };
                     }
                     break;
@@ -171,7 +171,7 @@ public partial class PowerPointHandler
                             "true" or "single" => Drawing.TextStrikeValues.SingleStrike,
                             "double" => Drawing.TextStrikeValues.DoubleStrike,
                             "false" or "none" => Drawing.TextStrikeValues.NoStrike,
-                            _ => Drawing.TextStrikeValues.SingleStrike
+                            _ => throw new ArgumentException($"Invalid strikethrough value: '{value}'. Valid values: single, double, none.")
                         };
                     }
                     break;
@@ -843,7 +843,7 @@ public partial class PowerPointHandler
                         "top" or "t" => Drawing.TextAnchoringTypeValues.Top,
                         "middle" or "center" or "ctr" => Drawing.TextAnchoringTypeValues.Center,
                         "bottom" or "b" => Drawing.TextAnchoringTypeValues.Bottom,
-                        _ => Drawing.TextAnchoringTypeValues.Top
+                        _ => throw new ArgumentException($"Invalid valign value: '{value}'. Valid values: top, middle, center, bottom.")
                     };
                     break;
                 }
@@ -872,7 +872,7 @@ public partial class PowerPointHandler
                             "dash" => Drawing.TextUnderlineValues.Dash,
                             "wavy" => Drawing.TextUnderlineValues.Wavy,
                             "false" or "none" => Drawing.TextUnderlineValues.None,
-                            _ => Drawing.TextUnderlineValues.Single
+                            _ => throw new ArgumentException($"Invalid underline value: '{value}'. Valid values: single, double, heavy, dotted, dash, wavy, none.")
                         };
                     }
                     break;
@@ -885,7 +885,7 @@ public partial class PowerPointHandler
                             "true" or "single" => Drawing.TextStrikeValues.SingleStrike,
                             "double" => Drawing.TextStrikeValues.DoubleStrike,
                             "false" or "none" => Drawing.TextStrikeValues.NoStrike,
-                            _ => Drawing.TextStrikeValues.SingleStrike
+                            _ => throw new ArgumentException($"Invalid strikethrough value: '{value}'. Valid values: single, double, none.")
                         };
                     }
                     break;
@@ -964,7 +964,8 @@ public partial class PowerPointHandler
                                     "dashDot" => Drawing.PresetLineDashValues.DashDot,
                                     "sysDot" => Drawing.PresetLineDashValues.SystemDot,
                                     "sysDash" => Drawing.PresetLineDashValues.SystemDash,
-                                    _ => Drawing.PresetLineDashValues.Solid
+                                    "solid" => Drawing.PresetLineDashValues.Solid,
+                                    _ => throw new ArgumentException($"Invalid border dash value: '{borderDash}'. Valid values: solid, dot, dash, lgDash, dashDot, sysDot, sysDash.")
                                 }
                             });
                         }
@@ -1032,7 +1033,9 @@ public partial class PowerPointHandler
                         ".png" => ImagePartType.Png,
                         ".jpg" or ".jpeg" => ImagePartType.Jpeg,
                         ".gif" => ImagePartType.Gif,
-                        _ => ImagePartType.Png
+                        ".bmp" => ImagePartType.Bmp,
+                        ".tif" or ".tiff" => ImagePartType.Tiff,
+                        _ => throw new ArgumentException($"Unsupported image format: {imgExt}")
                     };
                     // Find the SlidePart — the method is called from Set which has the slidePart context
                     // We pass it via the part parameter if available, or traverse to root element

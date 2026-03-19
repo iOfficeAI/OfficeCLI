@@ -84,7 +84,8 @@ public partial class WordHandler
                 new DW.LineTo { X = 0, Y = 0 }
             ) { Edited = false }),
             "topandbottom" or "topbottom" => new DW.WrapTopBottom(),
-            _ => new DW.WrapNone() as OpenXmlElement
+            "none" => new DW.WrapNone() as OpenXmlElement,
+            _ => throw new ArgumentException($"Invalid wrap value: '{wrap}'. Valid values: none, square, tight, through, topandbottom.")
         };
 
         var anchorDocPropId = NextImageId();
@@ -141,7 +142,8 @@ public partial class WordHandler
             "page" => DW.HorizontalRelativePositionValues.Page,
             "column" => DW.HorizontalRelativePositionValues.Column,
             "character" => DW.HorizontalRelativePositionValues.Character,
-            _ => DW.HorizontalRelativePositionValues.Margin
+            "margin" => DW.HorizontalRelativePositionValues.Margin,
+            _ => throw new ArgumentException($"Invalid horizontal relative position: '{value}'. Valid values: margin, page, column, character.")
         };
 
     private static DW.VerticalRelativePositionValues ParseVerticalRelative(string value) =>
@@ -150,7 +152,8 @@ public partial class WordHandler
             "page" => DW.VerticalRelativePositionValues.Page,
             "paragraph" => DW.VerticalRelativePositionValues.Paragraph,
             "line" => DW.VerticalRelativePositionValues.Line,
-            _ => DW.VerticalRelativePositionValues.Margin
+            "margin" => DW.VerticalRelativePositionValues.Margin,
+            _ => throw new ArgumentException($"Invalid vertical relative position: '{value}'. Valid values: margin, page, paragraph, line.")
         };
 
     private static string GetDrawingInfo(Drawing drawing)

@@ -670,7 +670,7 @@ public partial class ExcelHandler
                     ".tiff" or ".tif" => ImagePartType.Tiff,
                     ".emf" => ImagePartType.Emf,
                     ".wmf" => ImagePartType.Wmf,
-                    _ => ImagePartType.Png
+                    _ => throw new ArgumentException($"Unsupported image format: {ext}")
                 };
 
                 var imgPart = picDrawingsPart.AddImagePart(imgPartType);
