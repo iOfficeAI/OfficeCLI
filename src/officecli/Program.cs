@@ -776,7 +776,7 @@ static string ExecuteBatchItem(OfficeCli.Core.IDocumentHandler handler, BatchIte
         }
         case "add":
         {
-            var parentPath = item.Parent ?? "/";
+            var parentPath = item.Parent ?? item.Path ?? "/";
             if (!string.IsNullOrEmpty(item.From))
             {
                 var resultPath = handler.CopyFrom(item.From, parentPath, item.Index);
