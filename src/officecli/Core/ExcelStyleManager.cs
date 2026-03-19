@@ -749,12 +749,7 @@ public class ExcelStyleManager
     }
 
     private static string NormalizeColor(string hex)
-    {
-        // Ensure AARRGGBB format
-        hex = hex.TrimStart('#');
-        if (hex.Length == 6) return "FF" + hex.ToUpperInvariant();
-        return hex.ToUpperInvariant();
-    }
+        => ParseHelpers.NormalizeArgbColor(hex);
 
     private static bool IsTruthy(string value) =>
         ParseHelpers.IsTruthy(value);

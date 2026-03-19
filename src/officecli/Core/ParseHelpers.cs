@@ -81,14 +81,18 @@ public static class ParseHelpers
     public static string NormalizeArgbColor(string value)
     {
         var hex = value.TrimStart('#').ToUpperInvariant();
-        if (hex.Length == 3)
+        if (hex.Length == 3 && hex.All(char.IsAsciiHexDigit))
         {
             // Expand shorthand: "F00" → "FF0000"
             hex = new string(new[] { hex[0], hex[0], hex[1], hex[1], hex[2], hex[2] });
         }
-        if (hex.Length == 6)
+        if (hex.Length == 6 && hex.All(char.IsAsciiHexDigit))
             return "FF" + hex;
-        return hex; // 8-char ARGB or other (pass through)
+        if (hex.Length == 8 && hex.All(char.IsAsciiHexDigit))
+            return hex;
+        throw new ArgumentException(
+            $"Invalid color value: '{value}'. Expected 6-digit hex RGB (e.g. FF0000), " +
+            $"8-digit AARRGGBB (e.g. 80FF0000), or 3-digit shorthand (e.g. F00).");
     }
 
     /// <summary>
