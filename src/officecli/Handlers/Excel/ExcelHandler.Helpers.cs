@@ -252,8 +252,12 @@ public partial class ExcelHandler
                         if (fonts != null && fontId < (uint)fonts.Elements<Font>().Count())
                         {
                             var font = fonts.Elements<Font>().ElementAt((int)fontId);
-                            if (font.Bold != null) node.Format["font.bold"] = true;
-                            if (font.Italic != null) node.Format["font.italic"] = true;
+                            if (font.Bold != null) { node.Format["font.bold"] = true; node.Format["bold"] = true; }
+                            if (font.Italic != null)
+                            {
+                                node.Format["font.italic"] = true;
+                                node.Format["italic"] = true;
+                            }
                             if (font.Strike != null) node.Format["font.strike"] = true;
                             if (font.Underline != null)
                                 node.Format["font.underline"] = font.Underline.Val?.InnerText == "double" ? "double" : "single";
@@ -265,7 +269,8 @@ public partial class ExcelHandler
                                     rgbVal = rgbVal[2..];
                                 node.Format["font.color"] = rgbVal;
                             }
-                            if (font.FontSize?.Val?.Value != null) node.Format["font.size"] = $"{font.FontSize.Val.Value:0.##}";
+                            if (font.FontSize?.Val?.Value != null)
+                                node.Format["font.size"] = $"{font.FontSize.Val.Value:0.##}pt";
                             if (font.FontName?.Val?.Value != null) node.Format["font.name"] = font.FontName.Val.Value;
                         }
                     }
@@ -358,17 +363,14 @@ public partial class ExcelHandler
                     if (alignment != null)
                     {
                         if (alignment.WrapText?.Value == true)
-                        {
                             node.Format["alignment.wrapText"] = true;
-                            node.Format["wrap"] = true;
-                        }
                         if (alignment.Horizontal?.HasValue == true)
-                        {
                             node.Format["alignment.horizontal"] = alignment.Horizontal.InnerText;
-                            node.Format["halign"] = alignment.Horizontal.InnerText;
-                        }
                         if (alignment.Vertical?.HasValue == true)
+                        {
                             node.Format["alignment.vertical"] = alignment.Vertical.InnerText;
+                            node.Format["valign"] = alignment.Vertical.InnerText;
+                        }
                     }
 
                     // Number format readback
@@ -419,7 +421,6 @@ public partial class ExcelHandler
                             };
                         }
                         node.Format["numberformat"] = fmtVal;
-                        node.Format["format"] = fmtVal;
                     }
                 }
             }

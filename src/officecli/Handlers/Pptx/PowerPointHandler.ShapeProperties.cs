@@ -396,6 +396,7 @@ public partial class PowerPointHandler
                     if (spPr == null) { unsupported.Add(key); break; }
                     if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var opacityVal) || double.IsNaN(opacityVal) || double.IsInfinity(opacityVal))
                         throw new ArgumentException($"Invalid 'opacity' value: '{value}'. Expected a finite decimal 0.0-1.0 (e.g. 0.5 = 50% opacity).");
+                    if (opacityVal > 1.0) opacityVal /= 100.0; // treat >1 as percentage (e.g. 30 → 0.30)
                     var solidFill = spPr.GetFirstChild<Drawing.SolidFill>();
                     if (solidFill == null)
                     {

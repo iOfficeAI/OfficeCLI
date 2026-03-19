@@ -14,6 +14,9 @@ public partial class PowerPointHandler
 {
     public List<string> Set(string path, Dictionary<string, string> properties)
     {
+        if (path.Equals("/theme", StringComparison.OrdinalIgnoreCase))
+            return SetThemeProperties(properties);
+
         // Presentation-level properties: / or /presentation
         if (path is "/" or "" or "/presentation")
         {
@@ -812,6 +815,20 @@ public partial class PowerPointHandler
                         SetNotesText(notesPart, value);
                         break;
                     }
+                    case "align":
+                    {
+                        var targets = properties.GetValueOrDefault("targets");
+                        AlignShapes(slidePart2, value, targets);
+                        break;
+                    }
+                    case "distribute":
+                    {
+                        var targets = properties.GetValueOrDefault("targets");
+                        DistributeShapes(slidePart2, value, targets);
+                        break;
+                    }
+                    case "targets":
+                        break; // consumed by align/distribute
                     default:
                         if (!GenericXmlQuery.SetGenericAttribute(slide2, key, value))
                             unsupported.Add(key);
@@ -847,12 +864,14 @@ public partial class PowerPointHandler
             {
                 var allRuns = shape.Descendants<Drawing.Run>().ToList();
 
-                // Separate animation, link, and z-order from other shape properties
+                // Separate animation, motionPath, link, and z-order from other shape properties
                 var animValue = properties.GetValueOrDefault("animation")
                     ?? properties.GetValueOrDefault("animate");
+                var motionPathValue = properties.GetValueOrDefault("motionpath")
+                    ?? properties.GetValueOrDefault("motionPath");
                 var linkValue = properties.GetValueOrDefault("link");
                 var excludeKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                    { "animation", "animate", "link", "zorder", "z-order", "order" };
+                    { "animation", "animate", "motionpath", "motionPath", "link", "zorder", "z-order", "order" };
                 var shapeProps = properties
                     .Where(kv => !excludeKeys.Contains(kv.Key))
                     .ToDictionary(kv => kv.Key, kv => kv.Value);
@@ -861,6 +880,8 @@ public partial class PowerPointHandler
 
                 if (animValue != null)
                     ApplyShapeAnimation(slidePart, shape, animValue);
+                if (motionPathValue != null)
+                    ApplyMotionPathAnimation(slidePart, shape, motionPathValue);
                 if (linkValue != null)
                     ApplyShapeHyperlink(slidePart, shape, linkValue);
 

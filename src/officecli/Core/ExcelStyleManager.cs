@@ -122,10 +122,14 @@ public class ExcelStyleManager
         bool applyFill = baseXf.ApplyFill?.Value ?? false;
         if (styleProps.TryGetValue("fill", out var fillColor) || styleProps.TryGetValue("bgcolor", out fillColor))
         {
-            if (fillColor.Contains('-'))
+            if (fillColor.Contains('-') || fillColor.Contains(';'))
             {
-                // Gradient fill: "FF0000-0000FF" or "FF0000-0000FF-90" or "radial:FF0000-0000FF"
-                fillId = GetOrCreateGradientFill(stylesheet, fillColor);
+                // Gradient fill: "FF0000-0000FF[-90]" or "radial:FF0000-0000FF"
+                // Also handles semicolon format from Get: "gradient;FF0000;0000FF;90"
+                var dashFormat = fillColor.Contains(';')
+                    ? fillColor.TrimStart("gradient;".ToCharArray()).Replace(';', '-')
+                    : fillColor;
+                fillId = GetOrCreateGradientFill(stylesheet, dashFormat);
             }
             else
             {

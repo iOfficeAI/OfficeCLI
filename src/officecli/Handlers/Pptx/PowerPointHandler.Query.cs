@@ -71,6 +71,12 @@ public partial class PowerPointHandler
             return node;
         }
 
+        if (path.Equals("/theme", StringComparison.OrdinalIgnoreCase))
+            return GetThemeNode();
+
+        if (path.Equals("/morph-check", StringComparison.OrdinalIgnoreCase))
+            return GetMorphCheckNode();
+
         // Try notes path: /slide[N]/notes
         var notesGetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/notes$");
         if (notesGetMatch.Success)
@@ -181,6 +187,7 @@ public partial class PowerPointHandler
                     // Find all effect CTns for this shape
                     var effectCTns = timing.Descendants<CommonTimeNode>()
                         .Where(ctn => ctn.PresetClass != null && ctn.PresetId != null &&
+                               ctn.GetAttributes().All(a => a.LocalName != "presetClass" || a.Value != "motion") &&
                                ctn.Descendants<ShapeTarget>().Any(st => st.ShapeId?.Value == shapeIdStr))
                         .ToList();
 
@@ -217,6 +224,20 @@ public partial class PowerPointHandler
                         var dur = 500;
                         if (int.TryParse(animEffect?.CommonBehavior?.CommonTimeNode?.Duration, out var dd)) dur = dd;
                         animNode.Format["duration"] = dur;
+
+                        // Easing (stored as 0-100000 on effectCTn)
+                        if (effectCTn.Acceleration?.HasValue == true && effectCTn.Acceleration.Value > 0)
+                            animNode.Format["easein"] = (int)(effectCTn.Acceleration.Value / 1000);
+                        if (effectCTn.Deceleration?.HasValue == true && effectCTn.Deceleration.Value > 0)
+                            animNode.Format["easeout"] = (int)(effectCTn.Deceleration.Value / 1000);
+
+                        // Delay (stored on midCTn start condition)
+                        // Tree: effectCTn → effectPar → midCTn.ChildTimeNodeList → midCTn
+                        var midCTn = effectCTn.Parent?.Parent?.Parent as CommonTimeNode;
+                        var midDelayVal = midCTn?.StartConditionList?.GetFirstChild<Condition>()?.Delay?.Value;
+                        if (midDelayVal != null && midDelayVal != "0"
+                            && int.TryParse(midDelayVal, out var dMs) && dMs > 0)
+                            animNode.Format["delay"] = dMs;
                     }
                 }
             }
@@ -267,7 +288,9 @@ public partial class PowerPointHandler
                     var gc2 = stops[^1].GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "";
                     var lin = gradFill.GetFirstChild<Drawing.LinearGradientFill>();
                     int deg = lin?.Angle?.Value != null ? lin.Angle.Value / 60000 : 0;
+                    var gradient = $"linear;{gc1};{gc2};{deg}";
                     cellNode.Format["fill"] = deg != 0 ? $"{gc1}-{gc2}-{deg}" : $"{gc1}-{gc2}";
+                    cellNode.Format["gradient"] = gradient;
                 }
             }
             else
@@ -282,13 +305,27 @@ public partial class PowerPointHandler
 
             // Vertical alignment
             if (tcPr?.Anchor?.HasValue == true)
-                cellNode.Format["valign"] = tcPr.Anchor.InnerText;
+            {
+                cellNode.Format["valign"] = tcPr.Anchor.InnerText switch
+                {
+                    "ctr" => "center",
+                    _ => tcPr.Anchor.InnerText
+                };
+            }
 
             // Alignment from first paragraph
             var cellFirstPara = cell.TextBody?.Elements<Drawing.Paragraph>().FirstOrDefault();
             var cellParaAlign = cellFirstPara?.ParagraphProperties?.Alignment;
             if (cellParaAlign?.HasValue == true)
-                cellNode.Format["alignment"] = cellParaAlign.InnerText;
+            {
+                var align = cellParaAlign.InnerText switch
+                {
+                    "ctr" => "center",
+                    _ => cellParaAlign.InnerText
+                };
+                cellNode.Format["alignment"] = align;
+                cellNode.Format["align"] = align;
+            }
 
             // Font info from first run
             var firstRun = cell.Descendants<Drawing.Run>().FirstOrDefault();

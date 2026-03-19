@@ -661,7 +661,8 @@ public partial class ExcelHandler
                         "string" or "str" => new EnumValue<CellValues>(CellValues.String),
                         "number" or "num" => null,
                         "boolean" or "bool" => new EnumValue<CellValues>(CellValues.Boolean),
-                        _ => throw new ArgumentException($"Invalid cell 'type' value '{value}'. Valid types: string, number, boolean.")
+                        "date" => null,
+                        _ => throw new ArgumentException($"Invalid cell 'type' value '{value}'. Valid types: string, number, boolean, date.")
                     };
                     // Convert cell value for boolean type
                     if (value.ToLowerInvariant() is "boolean" or "bool" && cell.CellValue != null)

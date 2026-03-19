@@ -337,6 +337,7 @@ public partial class PowerPointHandler
         var durationMs = 400;
         string? direction = null;
         AnimTrigger? explicitTrigger = null;
+        int delayMs = 0, easingAccel = 0, easingDecel = 0;
         var unrecognized = new List<string>();
 
         for (int i = 1; i < parts.Length; i++)
@@ -360,6 +361,22 @@ public partial class PowerPointHandler
             else if (seg is "left" or "l" or "right" or "r" or "up" or "top" or "u"
                      or "down" or "bottom" or "d")
                 direction = seg;
+            // key=value (delay, easing, easein, easeout)?
+            else if (seg.Contains('='))
+            {
+                var eqIdx = seg.IndexOf('=');
+                var kKey = seg[..eqIdx];
+                if (int.TryParse(seg[(eqIdx + 1)..], out var kVal))
+                {
+                    switch (kKey)
+                    {
+                        case "delay": delayMs = kVal; break;
+                        case "easing": easingAccel = easingDecel = kVal * 1000; break;
+                        case "easein": easingAccel = kVal * 1000; break;
+                        case "easeout": easingDecel = kVal * 1000; break;
+                    }
+                }
+            }
             // Duration (integer)?
             else if (int.TryParse(seg, out var d))
                 durationMs = Math.Max(0, d);
@@ -369,7 +386,7 @@ public partial class PowerPointHandler
 
         if (unrecognized.Count > 0)
             Console.Error.WriteLine($"Warning: unrecognized animation segments: {string.Join(", ", unrecognized)}. "
-                + "Format: EFFECT[-CLASS][-DIRECTION][-DURATION][-TRIGGER] "
+                + "Format: EFFECT[-CLASS][-DIRECTION][-DURATION][-TRIGGER][-delay=N][-easein=N][-easeout=N] "
                 + "e.g. fly-entrance-left-400-after");
 
         // Resolve trigger
@@ -410,7 +427,8 @@ public partial class PowerPointHandler
         // Build the click-group par
         var clickGroup = BuildClickGroup(
             shapeId.ToString(), presetId, presetClass, nodeType,
-            durationMs, filter, grpId, outerDelay, presetSubtype, ref nextId);
+            durationMs, filter, grpId, outerDelay, presetSubtype, ref nextId,
+            delayMs, easingAccel, easingDecel);
 
         mainSeqCTn.ChildTimeNodeList!.AppendChild(clickGroup);
 
@@ -540,7 +558,10 @@ public partial class PowerPointHandler
         int grpId,
         string outerDelay,
         int presetSubtype,
-        ref uint nextId)
+        ref uint nextId,
+        int delayMs = 0,
+        int easingAccel = 0,
+        int easingDecel = 0)
     {
         var isEntrance = presetClass == TimeNodePresetClassValues.Entrance;
         var isEmphasis = presetClass == TimeNodePresetClassValues.Emphasis;
@@ -607,12 +628,14 @@ public partial class PowerPointHandler
             StartConditionList = stCondEffect,
             ChildTimeNodeList = effectChildList
         };
+        if (easingAccel > 0) effectCTn.Acceleration = easingAccel;
+        if (easingDecel > 0) effectCTn.Deceleration = easingDecel;
         var effectPar = new ParallelTimeNode { CommonTimeNode = effectCTn };
 
         // --- middle cTn (delay wrapper) ---
         var midId = nextId++;
         var midStCond = new StartConditionList();
-        midStCond.AppendChild(new Condition { Delay = "0" });
+        midStCond.AppendChild(new Condition { Delay = delayMs > 0 ? delayMs.ToString() : "0" });
         var midChildList = new ChildTimeNodeList();
         midChildList.AppendChild(effectPar);
 
@@ -684,6 +707,194 @@ public partial class PowerPointHandler
         }
     }
 
+    // ==================== Motion Path Animations ====================
+
+    /// <summary>
+    /// Apply a motion-path animation to a shape.
+    /// value format: "M x y L x y E[-DURATION[-TRIGGER[-delay=N][-easing=N]]]"
+    /// Coords are normalized 0.0–1.0 (relative to slide). Comma separators are normalised to spaces.
+    /// Use "none" to remove existing motion path animations.
+    /// </summary>
+    internal static void ApplyMotionPathAnimation(SlidePart slidePart, Shape shape, string value)
+    {
+        var slide = slidePart.Slide ?? throw new InvalidOperationException("Corrupt file");
+        var shapeId = shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value
+            ?? throw new ArgumentException("Shape has no ID");
+
+        if (value.Equals("none", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("false", StringComparison.OrdinalIgnoreCase))
+        {
+            RemoveMotionPathAnimations(slide, shapeId);
+            return;
+        }
+
+        // Split path from options at "E-" (E ends the path, options follow)
+        string pathPart = value;
+        int durationMs = 500;
+        int delayMs = 0, easingAccel = 0, easingDecel = 0;
+        var trigger = AnimTrigger.OnClick;
+
+        var eIdx = value.IndexOf("E-", StringComparison.Ordinal);
+        if (eIdx < 0) eIdx = value.IndexOf("e-", StringComparison.Ordinal);
+        if (eIdx >= 0)
+        {
+            pathPart = value[..(eIdx + 1)]; // include the "E"
+            var opts = value[(eIdx + 2)..].Split('-');
+            foreach (var opt in opts)
+            {
+                var seg = opt.ToLowerInvariant();
+                if (seg.Contains('='))
+                {
+                    var eq = seg.IndexOf('=');
+                    if (int.TryParse(seg[(eq + 1)..], out var kVal))
+                        switch (seg[..eq])
+                        {
+                            case "delay": delayMs = kVal; break;
+                            case "easing": easingAccel = easingDecel = kVal * 1000; break;
+                            case "easein": easingAccel = kVal * 1000; break;
+                            case "easeout": easingDecel = kVal * 1000; break;
+                        }
+                }
+                else if (seg is "after" or "afterprevious" or "afterprev")
+                    trigger = AnimTrigger.AfterPrevious;
+                else if (seg is "with" or "withprevious" or "withprev")
+                    trigger = AnimTrigger.WithPrevious;
+                else if (seg is "click" or "onclick")
+                    trigger = AnimTrigger.OnClick;
+                else if (int.TryParse(seg, out var d) && d > 0)
+                    durationMs = d;
+            }
+        }
+
+        pathPart = NormaliseMotionPath(pathPart);
+
+        RemoveMotionPathAnimations(slide, shapeId);
+        EnsureTimingTree(slide, out var mainSeqCTn, out _);
+        var timing = slide.GetFirstChild<Timing>()!;
+        var nextId = GetMaxTimingId(timing) + 1;
+        var grpId = GetMaxGrpId(timing);
+
+        var nodeType = trigger switch
+        {
+            AnimTrigger.AfterPrevious => TimeNodeValues.AfterEffect,
+            AnimTrigger.WithPrevious => TimeNodeValues.WithEffect,
+            _ => TimeNodeValues.ClickEffect
+        };
+        var outerDelay = trigger == AnimTrigger.OnClick ? "indefinite" : "0";
+
+        var motionGroup = BuildMotionPathGroup(
+            shapeId.ToString(), durationMs, nodeType, grpId, outerDelay,
+            pathPart, ref nextId, delayMs, easingAccel, easingDecel);
+        mainSeqCTn.ChildTimeNodeList!.AppendChild(motionGroup);
+    }
+
+    private static string NormaliseMotionPath(string path)
+    {
+        // "M0,0 L0.5,-0.3 E" → "M 0 0 L 0.5 -0.3 E"
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < path.Length; i++)
+        {
+            char c = path[i];
+            if (char.IsLetter(c) && i > 0 && path[i - 1] != ' ')
+                sb.Append(' ');
+            sb.Append(c == ',' ? ' ' : c);
+            if (char.IsLetter(c) && i + 1 < path.Length && path[i + 1] != ' ')
+                sb.Append(' ');
+        }
+        // Collapse multiple spaces
+        return System.Text.RegularExpressions.Regex.Replace(sb.ToString().Trim(), @" {2,}", " ");
+    }
+
+    private static ParallelTimeNode BuildMotionPathGroup(
+        string shapeId, int durationMs, TimeNodeValues nodeType,
+        int grpId, string outerDelay, string path,
+        ref uint nextId,
+        int delayMs = 0, int easingAccel = 0, int easingDecel = 0)
+    {
+        var effectId = nextId++;
+        var animMotionId = nextId++;
+
+        var stCond = new StartConditionList();
+        stCond.AppendChild(new Condition { Delay = "0" });
+
+        var animMotion = new AnimateMotion
+        {
+            Origin = AnimateMotionBehaviorOriginValues.Layout,
+            PathEditMode = AnimateMotionPathEditModeValues.Relative,
+            Path = path,
+            CommonBehavior = new CommonBehavior(
+                new CommonTimeNode { Id = animMotionId, Duration = durationMs.ToString() },
+                new TargetElement(new ShapeTarget { ShapeId = shapeId })
+            )
+        };
+
+        var effectCTn = new CommonTimeNode
+        {
+            Id = effectId,
+            PresetId = 26,
+            PresetSubtype = 0,
+            Fill = TimeNodeFillValues.Hold,
+            GroupId = (uint)grpId,
+            NodeType = nodeType,
+            StartConditionList = stCond,
+            ChildTimeNodeList = new ChildTimeNodeList(animMotion)
+        };
+        effectCTn.SetAttribute(new OpenXmlAttribute("presetClass", string.Empty, "motion"));
+        if (easingAccel > 0) effectCTn.Acceleration = easingAccel;
+        if (easingDecel > 0) effectCTn.Deceleration = easingDecel;
+
+        var midId = nextId++;
+        var midStCond = new StartConditionList();
+        midStCond.AppendChild(new Condition { Delay = delayMs > 0 ? delayMs.ToString() : "0" });
+        var midCTn = new CommonTimeNode
+        {
+            Id = midId, Fill = TimeNodeFillValues.Hold,
+            StartConditionList = midStCond,
+            ChildTimeNodeList = new ChildTimeNodeList(new ParallelTimeNode { CommonTimeNode = effectCTn })
+        };
+
+        var outerId = nextId++;
+        var outerStCond = new StartConditionList();
+        outerStCond.AppendChild(new Condition { Delay = outerDelay });
+        var outerCTn = new CommonTimeNode
+        {
+            Id = outerId, Fill = TimeNodeFillValues.Hold,
+            StartConditionList = outerStCond,
+            ChildTimeNodeList = new ChildTimeNodeList(new ParallelTimeNode { CommonTimeNode = midCTn })
+        };
+        return new ParallelTimeNode { CommonTimeNode = outerCTn };
+    }
+
+    private static void RemoveMotionPathAnimations(Slide slide, uint shapeId)
+    {
+        var timing = slide.GetFirstChild<Timing>();
+        if (timing == null) return;
+
+        var spIdStr = shapeId.ToString();
+        var toRemove = timing.Descendants<ShapeTarget>()
+            .Where(st => st.ShapeId?.Value == spIdStr)
+            .Select(st =>
+            {
+                OpenXmlElement? node = st;
+                while (node?.Parent != null)
+                {
+                    if (node.Parent is ChildTimeNodeList ctl &&
+                        ctl.Parent is CommonTimeNode ctn &&
+                        ctn.NodeType?.Value == TimeNodeValues.MainSequence)
+                        return node;
+                    node = node.Parent;
+                }
+                return null;
+            })
+            .Where(n => n != null)
+            // Only remove groups that contain a motion presetClass
+            .Where(n => n!.Descendants<CommonTimeNode>()
+                .Any(c => c.GetAttributes().Any(a => a.LocalName == "presetClass" && a.Value == "motion")))
+            .Distinct().ToList();
+
+        foreach (var n in toRemove) n!.Remove();
+    }
+
     private static uint GetMaxTimingId(Timing timing)
     {
         uint max = 1;
@@ -725,19 +936,23 @@ public partial class PowerPointHandler
         if (shapeTarget == null) return;
 
         // Find the effect CommonTimeNode (the one with PresetClass + PresetId)
+        // Skip motion path CTns (presetClass="motion" — not a valid SDK enum)
         CommonTimeNode? effectCTn = null;
         OpenXmlElement? cur = shapeTarget;
         while (cur != null)
         {
             if (cur is CommonTimeNode ctn && ctn.PresetClass != null && ctn.PresetId != null)
-            { effectCTn = ctn; break; }
+            {
+                var rawCls = ctn.GetAttributes().FirstOrDefault(a => a.LocalName == "presetClass").Value ?? "";
+                if (rawCls != "motion") { effectCTn = ctn; break; }
+            }
             cur = cur.Parent;
         }
         if (effectCTn == null) return;
 
-        var clsVal = effectCTn.PresetClass?.Value;
-        var cls = clsVal == TimeNodePresetClassValues.Exit ? "exit"
-                : clsVal == TimeNodePresetClassValues.Emphasis ? "emphasis"
+        var rawPresetClass = effectCTn.GetAttributes().FirstOrDefault(a => a.LocalName == "presetClass").Value ?? "";
+        var cls = rawPresetClass == "exit" ? "exit"
+                : rawPresetClass == "emphasis" ? "emphasis"
                 : "entrance";
 
         // Duration from the animEffect child
@@ -822,7 +1037,10 @@ public partial class PowerPointHandler
         // Extract transition type from first child element: <p:fade/> → "fade"
         var childMatch = System.Text.RegularExpressions.Regex.Match(inner, @"<p:(\w+)[\s/>]");
         if (childMatch.Success)
-            node.Format["transition"] = childMatch.Groups[1].Value.ToLowerInvariant();
+        {
+            var typeName = childMatch.Groups[1].Value.ToLowerInvariant();
+            node.Format["transition"] = typeName == "randombar" ? "bars" : typeName;
+        }
 
         // Extract speed attribute
         var spdMatch = System.Text.RegularExpressions.Regex.Match(attrs, @"spd=""(\w+)""");
@@ -843,7 +1061,7 @@ public partial class PowerPointHandler
         if (trans == null) return;
 
         // Determine type from first child element
-        var transElem = trans.ChildElements.FirstOrDefault(c => c is not OpenXmlLeafElement);
+        var transElem = trans.ChildElements.FirstOrDefault(c => c.LocalName != "extLst");
         if (transElem != null)
         {
             var typeName = transElem.LocalName.ToLowerInvariant() switch

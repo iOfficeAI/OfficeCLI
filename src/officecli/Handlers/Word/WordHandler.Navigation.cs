@@ -229,24 +229,23 @@ public partial class WordHandler
                 if (pProps.Justification?.Val != null)
                 {
                     var alignText = pProps.Justification.Val.InnerText;
-                    node.Format["alignment"] = alignText == "both" ? "justify" : alignText;
+                    var alignValue = alignText == "both" ? "justify" : alignText;
+                    node.Format["alignment"] = alignValue;
+                    node.Format["align"] = alignValue;
                 }
                 if (pProps.SpacingBetweenLines != null)
                 {
                     if (pProps.SpacingBetweenLines.Before?.Value != null)
                     {
                         node.Format["spaceBefore"] = pProps.SpacingBetweenLines.Before.Value;
-                        node.Format["spacebefore"] = pProps.SpacingBetweenLines.Before.Value;
                     }
                     if (pProps.SpacingBetweenLines.After?.Value != null)
                     {
                         node.Format["spaceAfter"] = pProps.SpacingBetweenLines.After.Value;
-                        node.Format["spaceafter"] = pProps.SpacingBetweenLines.After.Value;
                     }
                     if (pProps.SpacingBetweenLines.Line?.Value != null)
                     {
                         node.Format["lineSpacing"] = pProps.SpacingBetweenLines.Line.Value;
-                        node.Format["linespacing"] = pProps.SpacingBetweenLines.Line.Value;
                     }
                 }
                 if (pProps.Indentation?.FirstLine?.Value != null)
@@ -258,15 +257,39 @@ public partial class WordHandler
                 if (pProps.Indentation?.Hanging?.Value != null)
                     node.Format["hangingindent"] = pProps.Indentation.Hanging.Value;
                 if (pProps.KeepNext != null)
+                {
                     node.Format["keepnext"] = true;
+                    node.Format["keepNext"] = true;
+                }
                 if (pProps.KeepLines != null)
+                {
                     node.Format["keeplines"] = true;
+                    node.Format["keepLines"] = true;
+                }
                 if (pProps.PageBreakBefore != null)
                     node.Format["pagebreakbefore"] = true;
                 if (pProps.WidowControl != null)
                     node.Format["widowcontrol"] = true;
                 if (pProps.Shading != null)
-                    node.Format["shd"] = pProps.Shading.Fill?.Value ?? pProps.Shading.Color?.Value ?? "";
+                {
+                    var shdVal = pProps.Shading.Val?.InnerText ?? "";
+                    var shdFill = pProps.Shading.Fill?.Value;
+                    var shdColor = pProps.Shading.Color?.Value;
+                    if (string.Equals(shdVal, "clear", StringComparison.OrdinalIgnoreCase)
+                        && !string.IsNullOrEmpty(shdFill)
+                        && string.IsNullOrEmpty(shdColor))
+                    {
+                        node.Format["shd"] = shdFill;
+                    }
+                    else
+                    {
+                        var shdParts = new List<string>();
+                        if (!string.IsNullOrEmpty(shdVal)) shdParts.Add(shdVal);
+                        if (!string.IsNullOrEmpty(shdFill)) shdParts.Add(shdFill);
+                        if (!string.IsNullOrEmpty(shdColor)) shdParts.Add(shdColor);
+                        node.Format["shd"] = string.Join(";", shdParts);
+                    }
+                }
 
                 var pBdr = pProps.ParagraphBorders;
                 if (pBdr != null)
@@ -356,7 +379,10 @@ public partial class WordHandler
             if (run.RunProperties?.VerticalTextAlignment?.Val?.Value == VerticalPositionValues.Subscript)
                 node.Format["subscript"] = true;
             if (run.RunProperties?.Shading?.Fill?.Value != null)
+            {
                 node.Format["shading"] = run.RunProperties.Shading.Fill.Value;
+                node.Format["shd"] = run.RunProperties.Shading.Fill.Value;
+            }
             // Image properties if run contains a Drawing
             var runDrawing = run.GetFirstChild<Drawing>();
             if (runDrawing != null)

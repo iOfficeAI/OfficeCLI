@@ -179,8 +179,6 @@ public partial class WordHandler
             var pgH = pageSize?.Height?.Value ?? 16838u;
             secNode.Format["pageWidth"] = pgW.ToString();
             secNode.Format["pageHeight"] = pgH.ToString();
-            secNode.Format["pagewidth"] = pgW.ToString();
-            secNode.Format["pageheight"] = pgH.ToString();
             if (pageSize?.Orient?.Value != null) secNode.Format["orientation"] = pageSize.Orient.InnerText;
             var margin = sectPr.GetFirstChild<PageMargin>();
             if (margin?.Top?.Value != null) secNode.Format["margintop"] = margin.Top.Value;
@@ -232,7 +230,7 @@ public partial class WordHandler
             if (rPr != null)
             {
                 if (rPr.RunFonts?.Ascii?.Value != null) styleNode.Format["font"] = rPr.RunFonts.Ascii.Value;
-                if (rPr.FontSize?.Val?.Value != null) styleNode.Format["size"] = int.Parse(rPr.FontSize.Val.Value) / 2;
+                if (rPr.FontSize?.Val?.Value != null) styleNode.Format["size"] = $"{int.Parse(rPr.FontSize.Val.Value) / 2.0:0.##}pt";
                 if (rPr.Bold != null) styleNode.Format["bold"] = true;
                 if (rPr.Italic != null) styleNode.Format["italic"] = true;
                 if (rPr.Color?.Val?.Value != null) styleNode.Format["color"] = rPr.Color.Val.Value;
@@ -594,6 +592,8 @@ public partial class WordHandler
             (parsed.Element == "equation" || parsed.Element == "math" || parsed.Element == "formula");
         bool isBookmarkSelector = parsed.ChildSelector == null &&
             parsed.Element == "bookmark";
+        bool isSdtSelector = parsed.ChildSelector == null &&
+            (parsed.Element == "sdt" || parsed.Element == "contentcontrol");
 
         // Scheme B: generic XML fallback for unrecognized element types
         // Use GenericXmlQuery.ParseSelector which properly handles namespace prefixes (e.g., "a:ln")
@@ -603,6 +603,7 @@ public partial class WordHandler
                 or "picture" or "image" or "img"
                 or "equation" or "math" or "formula"
                 or "bookmark"
+                or "sdt" or "contentcontrol"
                 or "chart"
                 or "comment"
                 or "field"
@@ -687,6 +688,26 @@ public partial class WordHandler
                 }
 
                 results.Add(ElementToNode(bkStart, $"/bookmark[{bkName}]", 0));
+            }
+            return results;
+        }
+
+        if (isSdtSelector)
+        {
+            int sdtIdx = 0;
+            foreach (var sdt in body.Descendants().Where(e => e is SdtBlock or SdtRun))
+            {
+                sdtIdx++;
+                var path = sdt switch
+                {
+                    SdtBlock => $"/body/sdt[{sdtIdx}]",
+                    SdtRun => $"/body/sdt[{sdtIdx}]",
+                    _ => $"/body/sdt[{sdtIdx}]"
+                };
+                var node = ElementToNode(sdt, path, 0);
+                if (parsed.ContainsText != null && !(node.Text?.Contains(parsed.ContainsText, StringComparison.OrdinalIgnoreCase) ?? false))
+                    continue;
+                results.Add(node);
             }
             return results;
         }

@@ -71,7 +71,7 @@ public partial class ExcelHandler
             {
                 Path = $"/namedrange[{dnIndex}]",
                 Type = "namedrange",
-                Text = dn.Name?.Value ?? "",
+                Text = dn.InnerText ?? dn.Name?.Value ?? "",
                 Preview = dn.InnerText
             };
             nrNode.Format["name"] = dn.Name?.Value ?? "";
@@ -133,7 +133,6 @@ public partial class ExcelHandler
             if (autoFilter?.Reference?.Value != null)
             {
                 sheetNode.Format["autoFilter"] = autoFilter.Reference.Value;
-                sheetNode.Format["autofilter"] = autoFilter.Reference.Value;
             }
 
             if (depth > 0)

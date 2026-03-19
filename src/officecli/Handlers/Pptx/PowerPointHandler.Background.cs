@@ -291,11 +291,22 @@ public partial class PowerPointHandler
 
         for (int i = 0; i < colorParts.Count; i++)
         {
-            var pos = colorParts.Count == 1
-                ? 0
-                : (int)((long)i * 100000 / (colorParts.Count - 1));
+            var cp = colorParts[i];
+            int pos;
+            var atIdx = cp.IndexOf('@');
+            if (atIdx >= 0 && int.TryParse(cp[(atIdx + 1)..], out var pct))
+            {
+                pos = Math.Clamp(pct, 0, 100) * 1000;
+                cp = cp[..atIdx];
+            }
+            else
+            {
+                pos = colorParts.Count == 1
+                    ? 0
+                    : (int)((long)i * 100000 / (colorParts.Count - 1));
+            }
             var gs = new Drawing.GradientStop { Position = pos };
-            gs.AppendChild(BuildColorElement(colorParts[i]));
+            gs.AppendChild(BuildColorElement(cp));
             gsLst.AppendChild(gs);
         }
 

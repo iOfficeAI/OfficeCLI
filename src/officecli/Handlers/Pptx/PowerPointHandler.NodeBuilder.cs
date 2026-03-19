@@ -49,6 +49,9 @@ public partial class PowerPointHandler
             picIdx++;
         }
 
+        var contentElements = shapeTree.ChildElements
+            .Where(e => e is Shape or Picture or GraphicFrame or GroupShape or ConnectionShape).ToList();
+
         int grpIdx = 0;
         foreach (var grp in shapeTree.Elements<GroupShape>())
         {
@@ -64,6 +67,13 @@ public partial class PowerPointHandler
                     + grp.Elements<GroupShape>().Count()
             };
             grpNode.Format["name"] = grpName;
+            var grpXfrm = grp.GroupShapeProperties?.TransformGroup;
+            if (grpXfrm?.Offset?.X != null) grpNode.Format["x"] = FormatEmu(grpXfrm.Offset.X.Value);
+            if (grpXfrm?.Offset?.Y != null) grpNode.Format["y"] = FormatEmu(grpXfrm.Offset.Y.Value);
+            if (grpXfrm?.Extents?.Cx != null) grpNode.Format["width"] = FormatEmu(grpXfrm.Extents.Cx.Value);
+            if (grpXfrm?.Extents?.Cy != null) grpNode.Format["height"] = FormatEmu(grpXfrm.Extents.Cy.Value);
+            var grpZIdx = contentElements.IndexOf(grp);
+            if (grpZIdx >= 0) grpNode.Format["zorder"] = grpZIdx + 1;
             children.Add(grpNode);
         }
 
@@ -165,6 +175,8 @@ public partial class PowerPointHandler
                                 var gc2 = stops[^1].GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "";
                                 var lin = gradFill.GetFirstChild<Drawing.LinearGradientFill>();
                                 int deg = lin?.Angle?.Value != null ? lin.Angle.Value / 60000 : 0;
+                                var gradient = $"linear;{gc1};{gc2};{deg}";
+                                cellNode.Format["gradient"] = gradient;
                                 cellNode.Format["fill"] = deg != 0 ? $"{gc1}-{gc2}-{deg}" : $"{gc1}-{gc2}";
                             }
                         }
@@ -182,9 +194,13 @@ public partial class PowerPointHandler
                         {
                             var av = tcPr.Anchor.Value;
                             if (av == Drawing.TextAnchoringTypeValues.Top) cellNode.Format["valign"] = "top";
-                            else if (av == Drawing.TextAnchoringTypeValues.Center) cellNode.Format["valign"] = "middle";
+                            else if (av == Drawing.TextAnchoringTypeValues.Center) cellNode.Format["valign"] = "center";
                             else if (av == Drawing.TextAnchoringTypeValues.Bottom) cellNode.Format["valign"] = "bottom";
-                            else cellNode.Format["valign"] = tcPr.Anchor.InnerText;
+                            else cellNode.Format["valign"] = tcPr.Anchor.InnerText switch
+                            {
+                                "ctr" => "center",
+                                _ => tcPr.Anchor.InnerText
+                            };
                         }
 
                         // Cell run-level formatting (font, size, bold, italic, underline, strike, color)
@@ -230,11 +246,14 @@ public partial class PowerPointHandler
                         if (cellFirstPara?.ParagraphProperties?.Alignment?.HasValue == true)
                         {
                             var alv = cellFirstPara.ParagraphProperties.Alignment.Value;
-                            if (alv == Drawing.TextAlignmentTypeValues.Left) cellNode.Format["alignment"] = "left";
-                            else if (alv == Drawing.TextAlignmentTypeValues.Center) cellNode.Format["alignment"] = "center";
-                            else if (alv == Drawing.TextAlignmentTypeValues.Right) cellNode.Format["alignment"] = "right";
-                            else if (alv == Drawing.TextAlignmentTypeValues.Justified) cellNode.Format["alignment"] = "justify";
-                            else cellNode.Format["alignment"] = cellFirstPara.ParagraphProperties.Alignment.InnerText;
+                            var align = cellFirstPara.ParagraphProperties.Alignment.InnerText;
+                            if (alv == Drawing.TextAlignmentTypeValues.Left) align = "left";
+                            else if (alv == Drawing.TextAlignmentTypeValues.Center) align = "center";
+                            else if (alv == Drawing.TextAlignmentTypeValues.Right) align = "right";
+                            else if (alv == Drawing.TextAlignmentTypeValues.Justified) align = "justify";
+                            else if (align == "ctr") align = "center";
+                            cellNode.Format["align"] = align;
+                            cellNode.Format["alignment"] = align;
                         }
 
                         rowNode.Children.Add(cellNode);
@@ -295,7 +314,6 @@ public partial class PowerPointHandler
                 var gc2 = stops[^1].GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "";
                 var lin = shapeGradFill.GetFirstChild<Drawing.LinearGradientFill>();
                 int deg = lin?.Angle?.Value != null ? lin.Angle.Value / 60000 : 0;
-                node.Format["fill"] = gc1;
 
                 // Gradient opacity (from first stop's alpha)
                 var gradAlpha = stops[0].GetFirstChild<Drawing.RgbColorModelHex>()?.GetFirstChild<Drawing.Alpha>()?.Val?.Value
@@ -323,41 +341,9 @@ public partial class PowerPointHandler
         var gradFill = shape.ShapeProperties?.GetFirstChild<Drawing.GradientFill>();
         if (gradFill != null)
         {
-            var stops = gradFill.GradientStopList?.Elements<Drawing.GradientStop>()
-                .Select(gs => gs.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "?")
-                .ToList();
-            if (stops?.Count > 0)
-            {
-                var pathGrad = gradFill.GetFirstChild<Drawing.PathGradientFill>();
-                if (pathGrad != null)
-                {
-                    // Radial/path gradient — decode focus point from FillToRectangle
-                    var fillRect = pathGrad.GetFirstChild<Drawing.FillToRectangle>();
-                    var focus = "center";
-                    if (fillRect != null)
-                    {
-                        var fl = fillRect.Left?.Value ?? 50000;
-                        var ft = fillRect.Top?.Value ?? 50000;
-                        focus = (fl, ft) switch
-                        {
-                            (0, 0) => "tl",
-                            ( >= 100000, 0) => "tr",
-                            (0, >= 100000) => "bl",
-                            ( >= 100000, >= 100000) => "br",
-                            _ => "center"
-                        };
-                    }
-                    node.Format["gradient"] = $"radial:{string.Join("-", stops)}-{focus}";
-                }
-                else
-                {
-                    var gradStr = string.Join("-", stops);
-                    var linear = gradFill.GetFirstChild<Drawing.LinearGradientFill>();
-                    if (linear?.Angle?.HasValue == true)
-                        gradStr += $"-{linear.Angle.Value / 60000}";
-                    node.Format["gradient"] = gradStr;
-                }
-            }
+            node.Format["gradient"] = ReadGradientString(gradFill);
+            if (!node.Format.ContainsKey("fill"))
+                node.Format["fill"] = "gradient";
         }
 
         // Image (blip) fill on shape
@@ -436,7 +422,8 @@ public partial class PowerPointHandler
             var dash = outline.GetFirstChild<Drawing.PresetDash>();
             if (dash?.Val?.HasValue == true)
             {
-                node.Format["lineDash"] = dash.Val.InnerText switch
+                var dashValue = dash.Val.InnerText ?? "";
+                node.Format["lineDash"] = dashValue switch
                 {
                     "solid" => "solid",
                     "dot" => "dot",
@@ -448,7 +435,7 @@ public partial class PowerPointHandler
                     "sysDash" => "sysdash",
                     "sysDashDot" => "sysdashdot",
                     "sysDashDotDot" => "sysdashdotdot",
-                    var v => v.ToLowerInvariant()
+                    _ => dashValue.ToLowerInvariant()
                 };
             }
             var lineColorEl = lineSolidFill?.GetFirstChild<Drawing.RgbColorModelHex>() as OpenXmlElement
@@ -600,6 +587,10 @@ public partial class PowerPointHandler
                 "just" => "justify",
                 _ => alInner
             };
+        }
+        else if (shape.TextBody != null)
+        {
+            node.Format["align"] = "left";
         }
 
         // Paragraph spacing and indent (from first paragraph)
@@ -918,7 +909,8 @@ public partial class PowerPointHandler
         var cxnDash = ln?.GetFirstChild<Drawing.PresetDash>();
         if (cxnDash?.Val?.HasValue == true)
         {
-            node.Format["lineDash"] = cxnDash.Val.InnerText switch
+            var dashValue = cxnDash.Val.InnerText ?? "";
+            node.Format["lineDash"] = dashValue switch
             {
                 "solid" => "solid",
                 "dot" => "dot",
@@ -928,7 +920,7 @@ public partial class PowerPointHandler
                 "lgDashDot" => "longdashdot",
                 "sysDot" => "sysdot",
                 "sysDash" => "sysdash",
-                var v => v.ToLowerInvariant()
+                _ => dashValue.ToLowerInvariant()
             };
         }
         var solidFill = ln?.GetFirstChild<Drawing.SolidFill>();

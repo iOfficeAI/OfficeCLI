@@ -247,10 +247,29 @@ public partial class PowerPointHandler
     /// </summary>
     internal static string ReadGradientString(Drawing.GradientFill gradFill)
     {
-        var stops = gradFill.GradientStopList?.Elements<Drawing.GradientStop>()
-            .Select(gs => gs.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "?")
-            .ToList();
-        if (stops == null || stops.Count == 0) return "gradient";
+        var stopEls = gradFill.GradientStopList?.Elements<Drawing.GradientStop>().ToList();
+        if (stopEls == null || stopEls.Count == 0) return "gradient";
+
+        var stopData = stopEls.Select(gs => (
+            color: gs.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "?",
+            pos: gs.Position?.Value
+        )).ToList();
+
+        // Check if positions deviate >1% from even distribution (1000 units)
+        bool hasCustomPos = false;
+        int n = stopData.Count;
+        for (int i = 0; i < n; i++)
+        {
+            var expectedPos = n == 1 ? 0 : (int)((long)i * 100000 / (n - 1));
+            var actualPos = (int)(stopData[i].pos ?? 0);
+            if (Math.Abs(actualPos - expectedPos) > 1000) { hasCustomPos = true; break; }
+        }
+
+        var stopStrs = stopData.Select((s, i) =>
+            hasCustomPos && s.pos.HasValue
+                ? $"{s.color}@{s.pos.Value / 1000}"
+                : s.color
+        ).ToList();
 
         var pathGrad = gradFill.GetFirstChild<Drawing.PathGradientFill>();
         if (pathGrad != null)
@@ -270,14 +289,12 @@ public partial class PowerPointHandler
                     _ => "center"
                 };
             }
-            return $"radial:{string.Join("-", stops)}-{focus}";
+            return $"radial:{string.Join("-", stopStrs)}-{focus}";
         }
 
-        var gradStr = string.Join("-", stops);
         var linear = gradFill.GetFirstChild<Drawing.LinearGradientFill>();
-        if (linear?.Angle?.HasValue == true)
-            gradStr += $"-{linear.Angle.Value / 60000}";
-        return gradStr;
+        int deg = linear?.Angle?.HasValue == true ? linear.Angle.Value / 60000 : 0;
+        return $"linear;{string.Join(";", stopStrs)};{deg}";
     }
 
     /// <summary>

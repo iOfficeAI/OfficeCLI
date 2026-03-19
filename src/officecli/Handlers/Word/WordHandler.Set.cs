@@ -378,10 +378,10 @@ public partial class WordHandler
                             _ => throw new ArgumentException($"Invalid section break type: '{value}'. Valid values: nextPage, continuous, evenPage, oddPage.")
                         };
                         break;
-                    case "pagewidth":
+                    case "pagewidth" or "pageWidth":
                         EnsureSectPrPageSize(sectPr).Width = ParseHelpers.SafeParseUint(value, "pagewidth");
                         break;
-                    case "pageheight":
+                    case "pageheight" or "pageHeight":
                         EnsureSectPrPageSize(sectPr).Height = ParseHelpers.SafeParseUint(value, "pageheight");
                         break;
                     case "orientation":
@@ -533,12 +533,12 @@ public partial class WordHandler
                         var pPr = style.StyleParagraphProperties ?? style.AppendChild(new StyleParagraphProperties());
                         pPr.Justification = new Justification { Val = ParseJustification(value) };
                         break;
-                    case "spacebefore":
+                    case "spacebefore" or "spaceBefore":
                         var pPr2 = style.StyleParagraphProperties ?? style.AppendChild(new StyleParagraphProperties());
                         var sp2 = pPr2.SpacingBetweenLines ?? (pPr2.SpacingBetweenLines = new SpacingBetweenLines());
                         sp2.Before = ParseHelpers.SafeParseUint(value, "spacebefore").ToString();
                         break;
-                    case "spaceafter":
+                    case "spaceafter" or "spaceAfter":
                         var pPr3 = style.StyleParagraphProperties ?? style.AppendChild(new StyleParagraphProperties());
                         var sp3 = pPr3.SpacingBetweenLines ?? (pPr3.SpacingBetweenLines = new SpacingBetweenLines());
                         sp3.After = ParseHelpers.SafeParseUint(value, "spaceafter").ToString();
@@ -1565,7 +1565,7 @@ public partial class WordHandler
             case "style":
                 pProps.ParagraphStyleId = new ParagraphStyleId { Val = value };
                 return true;
-            case "alignment":
+            case "alignment" or "align":
                 pProps.Justification = new Justification { Val = ParseJustification(value) };
                 return true;
             case "firstlineindent":

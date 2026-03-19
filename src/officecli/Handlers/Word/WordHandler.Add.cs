@@ -52,7 +52,7 @@ public partial class WordHandler
 
                 if (properties.TryGetValue("style", out var style))
                     pProps.ParagraphStyleId = new ParagraphStyleId { Val = style };
-                if (properties.TryGetValue("alignment", out var alignment))
+                if (properties.TryGetValue("alignment", out var alignment) || properties.TryGetValue("align", out alignment))
                     pProps.Justification = new Justification { Val = ParseJustification(alignment) };
                 if (properties.TryGetValue("firstlineindent", out var indent))
                 {
@@ -64,17 +64,17 @@ public partial class WordHandler
                         FirstLine = indent  // raw twips, consistent with Set and Get
                     };
                 }
-                if (properties.TryGetValue("spacebefore", out var sb4))
+                if (properties.TryGetValue("spacebefore", out var sb4) || properties.TryGetValue("spaceBefore", out sb4))
                 {
                     var spacing = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
                     spacing.Before = ParseHelpers.SafeParseUint(sb4, "spacebefore").ToString();
                 }
-                if (properties.TryGetValue("spaceafter", out var sa4))
+                if (properties.TryGetValue("spaceafter", out var sa4) || properties.TryGetValue("spaceAfter", out sa4))
                 {
                     var spacing = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
                     spacing.After = ParseHelpers.SafeParseUint(sa4, "spaceafter").ToString();
                 }
-                if (properties.TryGetValue("linespacing", out var ls4))
+                if (properties.TryGetValue("linespacing", out var ls4) || properties.TryGetValue("lineSpacing", out ls4))
                 {
                     var spacing = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
                     spacing.Line = ParseHelpers.SafeParseUint(ls4, "linespacing").ToString();
@@ -120,6 +120,7 @@ public partial class WordHandler
                 {
                     var ind = pProps.Indentation ?? (pProps.Indentation = new Indentation());
                     ind.Hanging = ParseHelpers.SafeParseUint(addHI, "hangingindent").ToString();
+                    ind.FirstLine = null;
                 }
                 // firstlineindent already handled above (line ~66-74) with × 480 conversion
                 if (properties.TryGetValue("keepnext", out var addKN) && IsTruthy(addKN))
@@ -964,11 +965,11 @@ public partial class WordHandler
                 });
 
                 // Allow per-section overrides
-                if (properties.TryGetValue("pagewidth", out var sw) || properties.TryGetValue("width", out sw))
+                if (properties.TryGetValue("pagewidth", out var sw) || properties.TryGetValue("pageWidth", out sw) || properties.TryGetValue("width", out sw))
                 {
                     (sectPr.GetFirstChild<PageSize>() ?? sectPr.AppendChild(new PageSize())).Width = ParseHelpers.SafeParseUint(sw, "pagewidth");
                 }
-                if (properties.TryGetValue("pageheight", out var sh) || properties.TryGetValue("height", out sh))
+                if (properties.TryGetValue("pageheight", out var sh) || properties.TryGetValue("pageHeight", out sh) || properties.TryGetValue("height", out sh))
                 {
                     (sectPr.GetFirstChild<PageSize>() ?? sectPr.AppendChild(new PageSize())).Height = ParseHelpers.SafeParseUint(sh, "pageheight");
                 }
@@ -1173,18 +1174,18 @@ public partial class WordHandler
                 // Style paragraph properties
                 var stylePPr = new StyleParagraphProperties();
                 bool hasPPr = false;
-                if (properties.TryGetValue("alignment", out var sAlign))
+                if (properties.TryGetValue("alignment", out var sAlign) || properties.TryGetValue("align", out sAlign))
                 {
                     stylePPr.Justification = new Justification { Val = ParseJustification(sAlign) };
                     hasPPr = true;
                 }
-                if (properties.TryGetValue("spacebefore", out var sSBefore))
+                if (properties.TryGetValue("spacebefore", out var sSBefore) || properties.TryGetValue("spaceBefore", out sSBefore))
                 {
                     var sp = stylePPr.SpacingBetweenLines ?? (stylePPr.SpacingBetweenLines = new SpacingBetweenLines());
                     sp.Before = ParseHelpers.SafeParseUint(sSBefore, "spacebefore").ToString();
                     hasPPr = true;
                 }
-                if (properties.TryGetValue("spaceafter", out var sSAfter))
+                if (properties.TryGetValue("spaceafter", out var sSAfter) || properties.TryGetValue("spaceAfter", out sSAfter))
                 {
                     var sp = stylePPr.SpacingBetweenLines ?? (stylePPr.SpacingBetweenLines = new SpacingBetweenLines());
                     sp.After = ParseHelpers.SafeParseUint(sSAfter, "spaceafter").ToString();
