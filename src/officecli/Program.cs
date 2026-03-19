@@ -915,9 +915,10 @@ static string? SuggestProperty(string input)
         "gridspan", "vmerge", "nowrap", "padding", "margin",
         "orientation", "pageWidth", "pageHeight",
         "x", "y", "cx", "cy", "rotation", "opacity",
-        "borderColor", "borderWidth", "borderStyle",
-        "fontColor", "fontSize", "fontFamily", "fontBold", "fontItalic",
-        "hyperlink", "tooltip", "alt", "description",
+        "border.color", "border.width", "border.style",
+        "font.color", "font.size", "font.name", "font.bold", "font.italic",
+        "hyperlink", "link", "tooltip", "alt", "description",
+        "font.strike", "font.underline", "tabColor", "shadow", "glow",
     };
 
     var lower = input.ToLowerInvariant();
