@@ -932,6 +932,60 @@ public partial class PowerPointHandler
             return unsupported;
         }
 
+        // Try group path: /slide[N]/group[M]
+        var grpMatch = Regex.Match(path, @"^/slide\[(\d+)\]/group\[(\d+)\]$");
+        if (grpMatch.Success)
+        {
+            var slideIdx = int.Parse(grpMatch.Groups[1].Value);
+            var grpIdx = int.Parse(grpMatch.Groups[2].Value);
+
+            var slideParts6 = GetSlideParts().ToList();
+            if (slideIdx < 1 || slideIdx > slideParts6.Count)
+                throw new ArgumentException($"Slide {slideIdx} not found");
+
+            var slidePart = slideParts6[slideIdx - 1];
+            var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
+                ?? throw new ArgumentException("Slide has no shape tree");
+            var groups = shapeTree.Elements<GroupShape>().ToList();
+            if (grpIdx < 1 || grpIdx > groups.Count)
+                throw new ArgumentException($"Group {grpIdx} not found (total: {groups.Count})");
+
+            var grp = groups[grpIdx - 1];
+            var unsupported = new List<string>();
+            foreach (var (key, value) in properties)
+            {
+                switch (key.ToLowerInvariant())
+                {
+                    case "name":
+                        var nvGrpPr = grp.NonVisualGroupShapeProperties?.NonVisualDrawingProperties;
+                        if (nvGrpPr != null) nvGrpPr.Name = value;
+                        break;
+                    case "x" or "y" or "width" or "height":
+                    {
+                        var grpSpPr = grp.GroupShapeProperties ?? (grp.GroupShapeProperties = new GroupShapeProperties());
+                        var xfrm = grpSpPr.TransformGroup ?? (grpSpPr.TransformGroup = new Drawing.TransformGroup());
+                        var offset = xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset());
+                        var extents = xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents());
+                        var emu = ParseEmu(value);
+                        switch (key.ToLowerInvariant())
+                        {
+                            case "x": offset.X = emu; break;
+                            case "y": offset.Y = emu; break;
+                            case "width": extents.Cx = emu; break;
+                            case "height": extents.Cy = emu; break;
+                        }
+                        break;
+                    }
+                    default:
+                        if (!GenericXmlQuery.SetGenericAttribute(grp, key, value))
+                            unsupported.Add(key);
+                        break;
+                }
+            }
+            GetSlide(slidePart).Save();
+            return unsupported;
+        }
+
         // Generic XML fallback: navigate to element and set attributes
         {
             SlidePart fbSlidePart;
