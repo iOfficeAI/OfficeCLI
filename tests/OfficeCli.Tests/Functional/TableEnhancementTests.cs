@@ -137,11 +137,10 @@ public class TableEnhancementTests : IDisposable
         // 3. Set gradient fill
         _pptxHandler.Set("/slide[1]/table[1]/tr[1]/tc[1]", new() { ["fill"] = "FF0000-0000FF-90" });
 
-        // 4. Get + Verify gradient
+        // 4. Get + Verify gradient (format: "COLOR1-COLOR2[-angle]")
         node = _pptxHandler.Get("/slide[1]/table[1]/tr[1]/tc[1]");
         node.Format.Should().ContainKey("fill");
         var fill = node.Format["fill"].ToString()!;
-        fill.Should().Contain("gradient");
         fill.Should().Contain("FF0000");
         fill.Should().Contain("0000FF");
 
@@ -157,7 +156,7 @@ public class TableEnhancementTests : IDisposable
         // 7. Reopen + Verify persistence
         ReopenPptx();
         node = _pptxHandler.Get("/slide[1]/table[1]/tr[1]/tc[1]");
-        node.Format["fill"].ToString().Should().Contain("gradient");
+        node.Format["fill"].ToString().Should().Contain("-"); // gradient format: COLOR1-COLOR2
 
         // 8. Modify: override with solid fill
         _pptxHandler.Set("/slide[1]/table[1]/tr[1]/tc[1]", new() { ["fill"] = "AABBCC" });

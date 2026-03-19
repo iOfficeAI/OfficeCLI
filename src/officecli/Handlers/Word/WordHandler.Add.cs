@@ -103,13 +103,13 @@ public partial class WordHandler
                     if (shdParts.Length == 1)
                     {
                         shd.Val = ShadingPatternValues.Clear;
-                        shd.Fill = shdParts[0].TrimStart('#').ToUpperInvariant();
+                        shd.Fill = SanitizeHex(shdParts[0]);
                     }
                     else if (shdParts.Length >= 2)
                     {
-                        shd.Val = new ShadingPatternValues(shdParts[0]);
-                        shd.Fill = shdParts[1].TrimStart('#').ToUpperInvariant();
-                        if (shdParts.Length >= 3) shd.Color = shdParts[2].TrimStart('#').ToUpperInvariant();
+                        WarnIfShadingOrderWrong(shdParts[0]); shd.Val = new ShadingPatternValues(shdParts[0]);
+                        shd.Fill = SanitizeHex(shdParts[1]);
+                        if (shdParts.Length >= 3) shd.Color = SanitizeHex(shdParts[2]);
                     }
                     pProps.Shading = shd;
                 }
@@ -171,7 +171,7 @@ public partial class WordHandler
                     if (properties.TryGetValue("italic", out var pItalic) && IsTruthy(pItalic))
                         rProps.Italic = new Italic();
                     if (properties.TryGetValue("color", out var pColor))
-                        rProps.Color = new Color { Val = pColor.TrimStart('#').ToUpperInvariant() };
+                        rProps.Color = new Color { Val = SanitizeHex(pColor) };
                     if (properties.TryGetValue("underline", out var pUnderline))
                         rProps.Underline = new Underline { Val = new UnderlineValues(pUnderline) };
                     if (properties.TryGetValue("strike", out var pStrike) && IsTruthy(pStrike))
@@ -195,13 +195,13 @@ public partial class WordHandler
                         if (shdParts.Length == 1)
                         {
                             shd.Val = ShadingPatternValues.Clear;
-                            shd.Fill = shdParts[0].TrimStart('#').ToUpperInvariant();
+                            shd.Fill = SanitizeHex(shdParts[0]);
                         }
                         else if (shdParts.Length >= 2)
                         {
-                            shd.Val = new ShadingPatternValues(shdParts[0]);
-                            shd.Fill = shdParts[1].TrimStart('#').ToUpperInvariant();
-                            if (shdParts.Length >= 3) shd.Color = shdParts[2].TrimStart('#').ToUpperInvariant();
+                            WarnIfShadingOrderWrong(shdParts[0]); shd.Val = new ShadingPatternValues(shdParts[0]);
+                            shd.Fill = SanitizeHex(shdParts[1]);
+                            if (shdParts.Length >= 3) shd.Color = SanitizeHex(shdParts[2]);
                         }
                         rProps.Shading = shd;
                     }
@@ -301,7 +301,7 @@ public partial class WordHandler
                 if (properties.TryGetValue("italic", out var rItalic) && IsTruthy(rItalic))
                     newRProps.Italic = new Italic();
                 if (properties.TryGetValue("color", out var rColor))
-                    newRProps.Color = new Color { Val = rColor.TrimStart('#').ToUpperInvariant() };
+                    newRProps.Color = new Color { Val = SanitizeHex(rColor) };
                 if (properties.TryGetValue("underline", out var rUnderline))
                     newRProps.Underline = new Underline { Val = new UnderlineValues(rUnderline) };
                 if (properties.TryGetValue("strike", out var rStrike) && IsTruthy(rStrike))
@@ -339,13 +339,13 @@ public partial class WordHandler
                     if (shdParts.Length == 1)
                     {
                         shd.Val = ShadingPatternValues.Clear;
-                        shd.Fill = shdParts[0].TrimStart('#').ToUpperInvariant();
+                        shd.Fill = SanitizeHex(shdParts[0]);
                     }
                     else if (shdParts.Length >= 2)
                     {
-                        shd.Val = new ShadingPatternValues(shdParts[0]);
-                        shd.Fill = shdParts[1].TrimStart('#').ToUpperInvariant();
-                        if (shdParts.Length >= 3) shd.Color = shdParts[2].TrimStart('#').ToUpperInvariant();
+                        WarnIfShadingOrderWrong(shdParts[0]); shd.Val = new ShadingPatternValues(shdParts[0]);
+                        shd.Fill = SanitizeHex(shdParts[1]);
+                        if (shdParts.Length >= 3) shd.Color = SanitizeHex(shdParts[2]);
                     }
                     newRProps.Shading = shd;
                 }
@@ -870,7 +870,7 @@ public partial class WordHandler
 
                 var hlRProps = new RunProperties();
                 if (properties.TryGetValue("color", out var hlColor))
-                    hlRProps.Color = new Color { Val = hlColor.TrimStart('#').ToUpperInvariant() };
+                    hlRProps.Color = new Color { Val = SanitizeHex(hlColor) };
                 else
                     hlRProps.Color = new Color { Val = "0563C1" };
                 hlRProps.Underline = new Underline { Val = UnderlineValues.Single };
@@ -1202,7 +1202,7 @@ public partial class WordHandler
                 }
                 if (properties.TryGetValue("color", out var sColor))
                 {
-                    styleRPr.Color = new Color { Val = sColor.TrimStart('#').ToUpperInvariant() };
+                    styleRPr.Color = new Color { Val = SanitizeHex(sColor) };
                     hasRPr = true;
                 }
                 if (hasRPr) newStyle.AppendChild(styleRPr);
@@ -1249,7 +1249,7 @@ public partial class WordHandler
                     if (properties.TryGetValue("italic", out var hItalic) && IsTruthy(hItalic))
                         hRProps.Italic = new Italic();
                     if (properties.TryGetValue("color", out var hColor))
-                        hRProps.Color = new Color { Val = hColor.TrimStart('#').ToUpperInvariant() };
+                        hRProps.Color = new Color { Val = SanitizeHex(hColor) };
                     hRun.AppendChild(hRProps);
                     hRun.AppendChild(new Text(hText) { Space = SpaceProcessingModeValues.Preserve });
                     hPara.AppendChild(hRun);
@@ -1329,7 +1329,7 @@ public partial class WordHandler
                     if (properties.TryGetValue("italic", out var fItalic) && IsTruthy(fItalic))
                         fRProps.Italic = new Italic();
                     if (properties.TryGetValue("color", out var fColor))
-                        fRProps.Color = new Color { Val = fColor.TrimStart('#').ToUpperInvariant() };
+                        fRProps.Color = new Color { Val = SanitizeHex(fColor) };
                     fRun.AppendChild(fRProps);
                     fRun.AppendChild(new Text(fText) { Space = SpaceProcessingModeValues.Preserve });
                     fPara.AppendChild(fRun);
@@ -1412,7 +1412,7 @@ public partial class WordHandler
                     if (properties.TryGetValue("bold", out var fb) && IsTruthy(fb))
                         fieldRProps.AppendChild(new Bold());
                     if (properties.TryGetValue("color", out var fc))
-                        fieldRProps.AppendChild(new Color { Val = fc.TrimStart('#').ToUpperInvariant() });
+                        fieldRProps.AppendChild(new Color { Val = SanitizeHex(fc) });
                 }
 
                 if (fieldRProps != null)
@@ -1691,8 +1691,9 @@ public partial class WordHandler
             case "watermark":
             {
                 var wmText = properties.GetValueOrDefault("text", "DRAFT");
+                // VML watermarks accept named colors (silver, red, etc.) or hex — don't sanitize
                 var wmColor = properties.TryGetValue("color", out var wmcVal)
-                    ? wmcVal.TrimStart('#').ToUpperInvariant() : "silver";
+                    ? wmcVal.TrimStart('#') : "silver";
                 var wmFont = properties.GetValueOrDefault("font", "Calibri");
                 var wmSize = properties.GetValueOrDefault("size", "1pt");
                 if (!wmSize.EndsWith("pt")) wmSize += "pt";

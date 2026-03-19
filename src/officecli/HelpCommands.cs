@@ -911,12 +911,20 @@ XML paths also work (via get --depth N):
   /slide[1]/cSld/spTree/sp[1]/spPr/xfrm[1]/off[1]   Shape offset
   /slide[1]/cSld/spTree/sp[1]/txBody/p[1]/r[1]/rPr[1]  Run properties
 
+Create a blank presentation:
+  officecli create pres.pptx
+  Output includes slide dimensions (slideWidth, slideHeight) for positioning:
+    Created: pres.pptx
+      slideWidth: 33.87cm
+      slideHeight: 19.05cm
+
 Common workflow:
-  1. officecli view pres.pptx outline              # slide titles overview
-  2. officecli view pres.pptx annotated             # shapes, fonts, sizes
-  3. officecli get  pres.pptx '/slide[1]' --depth 2
-  4. officecli set  pres.pptx '/slide[1]/shape[1]' --prop text="Title"
-  5. officecli validate pres.pptx
+  1. officecli create pres.pptx                     # create blank (shows slide size)
+  2. officecli view pres.pptx outline               # slide titles overview
+  3. officecli view pres.pptx annotated             # shapes, fonts, sizes
+  4. officecli get  pres.pptx '/slide[1]' --depth 2
+  5. officecli set  pres.pptx '/slide[1]/shape[1]' --prop text="Title"
+  6. officecli validate pres.pptx
 
 Run 'officecli pptx <command>' for details:
   view    View modes
@@ -1006,7 +1014,8 @@ Format keys returned by Get:
     link                   Hyperlink URL (from first run)
     shadow, glow           Effect color hex
     reflection             "true" if reflection effect applied
-    animation              "effectName-class-durationMs" (e.g. "fade-entrance-500")
+    animation              Flexible: "effect[-class][-direction][-duration][-trigger]" (e.g. "fly-left-400")
+                           Trigger default: 1st on slide = click, subsequent = after (sequential)
 
   Chart (/slide[N]/chart[M]):
     chartType              column, bar, line, pie, doughnut, area, scatter, bubble, radar, stock
@@ -1224,13 +1233,16 @@ Shape animation (/slide[N]/shape[M]):
   link         Hyperlink URL for the shape (applied to all runs). "none" to remove.
                Example: "https://example.com"
 
-  animation    EFFECT[-CLASS[-DURATION[-TRIGGER]]]
-               EFFECT:  appear, fade, fly, zoom, wipe, bounce, float, split, wheel,
-                        spin, grow, swivel, checkerboard, blinds, bars, dissolve, flash, none
-               CLASS:   entrance/in (default), exit/out, emphasis/emph
-               DURATION: milliseconds (default 500)
-               TRIGGER: click (default), after/afterprevious, with/withprevious
-               Examples: "fade"  |  "fly-entrance"  |  "zoom-exit-800"  |  "fade-in-500-after"
+  animation    Segments can appear in any order after EFFECT (parsed by content type):
+               EFFECT:    appear, fade, fly, zoom, wipe, bounce, float, split, wheel,
+                          spin, grow, swivel, checkerboard, blinds, bars, dissolve, flash, none
+               CLASS:     entrance/in (default), exit/out, emphasis/emph
+               DIRECTION: left/right/up/down/top/bottom (for fly, wipe, etc.)
+               DURATION:  milliseconds (default 400)
+               TRIGGER:   click, after/afterprevious, with/withprevious
+                          Default: 1st on slide = click, subsequent = after (sequential)
+               Examples: "fade"  |  "fly-left"  |  "fly-entrance-left-350"
+                         "zoom-exit-800"  |  "fade-in-500-after"  |  "wipe-right-300-with"
 
 Table properties (/slide[N]/table[M]):
   x, y, width, height, name
@@ -1300,6 +1312,9 @@ Types and properties:
       Type: blank, title, titleonly, twocontent, titlecontent, section, comparison, caption
       Index: 1, 2, 3, ... (1-based index of available layouts)
     background (optional) — RRGGBB, gradient (C1-C2[-angle]), or image:/path/to/file.png
+    transition (optional) — morph, fade, push, wipe, split, reveal, random, none, etc.
+    advanceTime (optional) — auto-advance time in ms (e.g. "3000")
+    advanceClick (optional) — advance on click (true/false)
 
   notes  -- parent: /slide[N]
     text (required) — speaker notes text (multi-line with \n)

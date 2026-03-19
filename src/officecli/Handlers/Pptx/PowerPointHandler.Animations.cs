@@ -194,8 +194,10 @@ public partial class PowerPointHandler
         // but Save() strips it during serialization. Workaround: inject as raw XML element
         // that the SDK preserves as-is.
         var transXml = trans.OuterXml;
-        // Remove any existing transition from the slide's children
-        foreach (var existing in slide.ChildElements.Where(c => c.LocalName == "transition").ToList())
+        // Remove any existing transition from the slide's children (including AlternateContent wrappers for morph)
+        foreach (var existing in slide.ChildElements
+            .Where(c => c.LocalName == "transition" || c.LocalName == "AlternateContent")
+            .ToList())
             existing.Remove();
         // Parse the transition XML as a generic OpenXmlUnknownElement and insert after cSld
         var unknownTrans = new OpenXmlUnknownElement(trans.Prefix, trans.LocalName, trans.NamespaceUri);
@@ -305,9 +307,10 @@ public partial class PowerPointHandler
     ///           diamond, dissolve, flash, plus, random, strips, wedge
     ///   CLASS:  entrance/in/entr (default) | exit/out | emphasis/emph
     ///   DURATION: ms (default 500)
-    ///   TRIGGER: click (default) | after|afterprevious | with|withprevious
+    ///   TRIGGER: click | after|afterprevious | with|withprevious
+    ///            Default: first animation on slide = click, subsequent = after (sequential)
     /// Examples: "fade", "fly-entrance", "zoom-exit-800", "fade-in-500-after",
-    ///           "wipe-entrance-1000-with", "none"
+    ///           "wipe-entrance-1000-with", "fade-entrance-500-click", "none"
     /// </summary>
     private static void ApplyShapeAnimation(SlidePart slidePart, Shape shape, string value)
     {
@@ -325,31 +328,64 @@ public partial class PowerPointHandler
         var parts = value.Split('-');
         var effectName = parts[0].ToLowerInvariant();
 
-        // Parse class (entrance/exit/emphasis)
-        var className = parts.Length > 1 ? parts[1].ToLowerInvariant() : "entrance";
-        var presetClass = className switch
-        {
-            "exit" or "out" => TimeNodePresetClassValues.Exit,
-            "emphasis" or "emph" => TimeNodePresetClassValues.Emphasis,
-            _ => TimeNodePresetClassValues.Entrance
-        };
+        // Flexible parsing: each segment after effect name is identified by content type
+        var presetClass = TimeNodePresetClassValues.Entrance;
+        var durationMs = 400;
+        string? direction = null;
+        AnimTrigger? explicitTrigger = null;
+        var unrecognized = new List<string>();
 
-        // Parse duration
-        var durationMs = 500;
-        if (parts.Length > 2 && int.TryParse(parts[2], out var d)) durationMs = Math.Max(0, d);
-
-        // Parse trigger
-        var triggerStr = parts.Length > 3 ? parts[3].ToLowerInvariant() : "click";
-        var trigger = triggerStr switch
+        for (int i = 1; i < parts.Length; i++)
         {
-            "after" or "afterprevious" or "afterprev" => AnimTrigger.AfterPrevious,
-            "with" or "withprevious" or "withprev" => AnimTrigger.WithPrevious,
-            _ => AnimTrigger.OnClick
-        };
+            var seg = parts[i].ToLowerInvariant();
+            // Class?
+            if (seg is "entrance" or "in" or "entr")
+                presetClass = TimeNodePresetClassValues.Entrance;
+            else if (seg is "exit" or "out")
+                presetClass = TimeNodePresetClassValues.Exit;
+            else if (seg is "emphasis" or "emph")
+                presetClass = TimeNodePresetClassValues.Emphasis;
+            // Trigger?
+            else if (seg is "after" or "afterprevious" or "afterprev")
+                explicitTrigger = AnimTrigger.AfterPrevious;
+            else if (seg is "with" or "withprevious" or "withprev")
+                explicitTrigger = AnimTrigger.WithPrevious;
+            else if (seg is "click" or "onclick")
+                explicitTrigger = AnimTrigger.OnClick;
+            // Direction?
+            else if (seg is "left" or "l" or "right" or "r" or "up" or "top" or "u"
+                     or "down" or "bottom" or "d")
+                direction = seg;
+            // Duration (integer)?
+            else if (int.TryParse(seg, out var d))
+                durationMs = Math.Max(0, d);
+            else
+                unrecognized.Add(seg);
+        }
+
+        if (unrecognized.Count > 0)
+            Console.Error.WriteLine($"Warning: unrecognized animation segments: {string.Join(", ", unrecognized)}. "
+                + "Format: EFFECT[-CLASS][-DIRECTION][-DURATION][-TRIGGER] "
+                + "e.g. fly-entrance-left-400-after");
+
+        // Resolve trigger
+        AnimTrigger trigger;
+        if (explicitTrigger.HasValue)
+        {
+            trigger = explicitTrigger.Value;
+        }
+        else
+        {
+            // Auto: first animation on slide → click, subsequent → after previous (sequential)
+            var hasExistingAnimations = slide.GetFirstChild<Timing>()
+                ?.Descendants<CommonTimeNode>()
+                .Any(ctn => ctn.PresetId != null) ?? false;
+            trigger = hasExistingAnimations ? AnimTrigger.AfterPrevious : AnimTrigger.OnClick;
+        }
 
         // Get filter string, preset ID, and subtype from effect name
         var (presetId, filter) = GetAnimPreset(effectName, presetClass);
-        var presetSubtype = GetAnimPresetSubtype(effectName);
+        var presetSubtype = GetAnimPresetSubtype(effectName, direction);
         var nodeType = trigger switch
         {
             AnimTrigger.AfterPrevious => TimeNodeValues.AfterEffect,
@@ -843,8 +879,27 @@ public partial class PowerPointHandler
     }
 
     /// <summary>Returns a preset subtype for the given effect name, or 0 for default.</summary>
-    private static int GetAnimPresetSubtype(string effect) =>
-        effect switch
+    /// <summary>
+    /// Map direction keyword to OOXML subtype. If direction is null, use effect-specific default.
+    /// Subtypes: 0=none, 1=from-left, 2=from-top, 4=from-bottom, 8=from-right
+    /// </summary>
+    private static int GetAnimPresetSubtype(string effect, string? direction)
+    {
+        // If direction is explicitly specified, map it
+        if (direction != null)
+        {
+            return direction switch
+            {
+                "left" or "l"                  => 8,  // object enters from left → subtype 8
+                "right" or "r"                 => 2,  // from right → subtype 2
+                "up" or "top" or "u"           => 1,  // from top → subtype 1
+                "down" or "bottom" or "d"      => 4,  // from bottom → subtype 4
+                _ => 0
+            };
+        }
+
+        // Effect-specific defaults
+        return effect switch
         {
             "fly" or "flyin" or "flyout" => 4,  // from bottom
             "wipe"                       => 1,   // from left
@@ -855,6 +910,7 @@ public partial class PowerPointHandler
             "wheel"                      => 1,   // 1 spoke
             _                            => 0    // default
         };
+    }
 
     /// <summary>Returns (presetId, animFilter) for the given effect name.</summary>
     private static (int presetId, string? filter) GetAnimPreset(

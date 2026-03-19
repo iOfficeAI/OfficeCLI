@@ -726,15 +726,17 @@ static bool TryResident(string filePath, Action<ResidentRequest> configure)
     return true;
 }
 
-static void SafeRun(Action action)
+static int SafeRun(Action action)
 {
     try
     {
         action();
+        return 0;
     }
     catch (Exception ex)
     {
         Console.Error.WriteLine($"Error: {ex.Message}");
+        return 1;
     }
 }
 

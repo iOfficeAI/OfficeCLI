@@ -18,17 +18,22 @@ public static class BlankDocCreator
         {
             case ".xlsx":
                 CreateExcel(path);
+                Console.WriteLine($"Created: {path}");
                 break;
             case ".docx":
                 CreateWord(path);
+                Console.WriteLine($"Created: {path}");
                 break;
             case ".pptx":
                 CreatePowerPoint(path);
+                // Output slide dimensions so callers know the canvas size
+                Console.WriteLine($"Created: {path}");
+                Console.WriteLine($"  slideWidth: {Core.EmuConverter.FormatEmu(12192000)}");
+                Console.WriteLine($"  slideHeight: {Core.EmuConverter.FormatEmu(6858000)}");
                 break;
             default:
                 throw new NotSupportedException($"Unsupported file type: {ext}. Supported: .docx, .xlsx, .pptx");
         }
-        Console.WriteLine($"Created: {path}");
     }
 
     private static void CreateExcel(string path)

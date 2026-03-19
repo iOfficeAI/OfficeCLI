@@ -77,7 +77,7 @@ public partial class WordHandler
                                     @"string=""[^""]*""", $@"string=""{System.Security.SecurityElement.Escape(value)}""");
                                 break;
                             case "color":
-                                var clr = value.TrimStart('#').ToUpperInvariant();
+                                var clr = SanitizeHex(value);
                                 xml = System.Text.RegularExpressions.Regex.Replace(xml,
                                     @"fillcolor=""[^""]*""", $@"fillcolor=""{clr}""");
                                 break;
@@ -483,7 +483,7 @@ public partial class WordHandler
                         break;
                     case "color":
                         var rPr5 = style.StyleRunProperties ?? style.AppendChild(new StyleRunProperties());
-                        rPr5.Color = new Color { Val = value.TrimStart('#').ToUpperInvariant() };
+                        rPr5.Color = new Color { Val = SanitizeHex(value) };
                         break;
                     case "alignment":
                         var pPr = style.StyleParagraphProperties ?? style.AppendChild(new StyleParagraphProperties());
@@ -703,14 +703,22 @@ public partial class WordHandler
                         };
                         break;
                     case "color":
-                        EnsureRunProperties(run).Color = new Color { Val = value.TrimStart('#').ToUpperInvariant() };
+                        EnsureRunProperties(run).Color = new Color { Val = SanitizeHex(value) };
                         break;
                     case "underline":
+                    {
+                        var ulVal = value.ToLowerInvariant() switch
+                        {
+                            "true" => "single",
+                            "false" or "none" => "none",
+                            _ => value
+                        };
                         EnsureRunProperties(run).Underline = new Underline
                         {
-                            Val = new UnderlineValues(value)
+                            Val = new UnderlineValues(ulVal)
                         };
                         break;
+                    }
                     case "strike":
                         EnsureRunProperties(run).Strike = IsTruthy(value) ? new Strike() : null;
                         break;
@@ -732,13 +740,13 @@ public partial class WordHandler
                         if (shdParts.Length == 1)
                         {
                             shd.Val = ShadingPatternValues.Clear;
-                            shd.Fill = shdParts[0].TrimStart('#').ToUpperInvariant();
+                            shd.Fill = SanitizeHex(shdParts[0]);
                         }
                         else if (shdParts.Length >= 2)
                         {
-                            shd.Val = new ShadingPatternValues(shdParts[0]);
-                            shd.Fill = shdParts[1].TrimStart('#').ToUpperInvariant();
-                            if (shdParts.Length >= 3) shd.Color = shdParts[2].TrimStart('#').ToUpperInvariant();
+                            WarnIfShadingOrderWrong(shdParts[0]); shd.Val = new ShadingPatternValues(shdParts[0]);
+                            shd.Fill = SanitizeHex(shdParts[1]);
+                            if (shdParts.Length >= 3) shd.Color = SanitizeHex(shdParts[2]);
                         }
                         EnsureRunProperties(run).Shading = shd;
                         break;
@@ -982,7 +990,7 @@ public partial class WordHandler
                                         rPr.Italic = IsTruthy(value) ? new Italic() : null;
                                         break;
                                     case "color":
-                                        rPr.Color = new Color { Val = value.TrimStart('#').ToUpperInvariant() };
+                                        rPr.Color = new Color { Val = SanitizeHex(value) };
                                         break;
                                     case "highlight":
                                         rPr.Highlight = new Highlight { Val = new HighlightColorValues(value) };
@@ -1023,7 +1031,7 @@ public partial class WordHandler
                                     break;
                                 case "color":
                                     pmrp.RemoveAllChildren<Color>();
-                                    pmrp.AppendChild(new Color { Val = value.TrimStart('#').ToUpperInvariant() });
+                                    pmrp.AppendChild(new Color { Val = SanitizeHex(value) });
                                     break;
                                 case "highlight":
                                     pmrp.RemoveAllChildren<Highlight>();
@@ -1045,9 +1053,22 @@ public partial class WordHandler
                         if (shdParts.Length >= 3 && shdParts[0].Equals("gradient", StringComparison.OrdinalIgnoreCase))
                         {
                             // gradient;startColor;endColor[;angle]  e.g. gradient;FF0000;0000FF;90
-                            var startColor = shdParts[1].TrimStart('#').ToUpperInvariant();
-                            var endColor = shdParts[2].TrimStart('#').ToUpperInvariant();
-                            int angleDeg = shdParts.Length >= 4 && int.TryParse(shdParts[3], out var a) ? a : 180;
+                            var startColor = SanitizeHex(shdParts[1]);
+                            var endColor = SanitizeHex(shdParts[2]);
+                            // Warn if color positions look like numbers (likely swapped with angle)
+                            if (int.TryParse(shdParts[1], out _) && shdParts[1].Length <= 3)
+                                Console.Error.WriteLine($"Warning: '{shdParts[1]}' looks like an angle, not a color. Format: gradient;STARTCOLOR;ENDCOLOR[;ANGLE]");
+                            if (int.TryParse(shdParts[2], out _) && shdParts[2].Length <= 3)
+                                Console.Error.WriteLine($"Warning: '{shdParts[2]}' looks like an angle, not a color. Format: gradient;STARTCOLOR;ENDCOLOR[;ANGLE]");
+                            int angleDeg = 180;
+                            if (shdParts.Length >= 4)
+                            {
+                                if (!int.TryParse(shdParts[3], out angleDeg))
+                                {
+                                    Console.Error.WriteLine($"Warning: invalid gradient angle '{shdParts[3]}', expected integer. Format: gradient;STARTCOLOR;ENDCOLOR[;ANGLE]");
+                                    angleDeg = 180;
+                                }
+                            }
                             ApplyCellGradient(tcPr, startColor, endColor, angleDeg);
                         }
                         else
@@ -1058,13 +1079,13 @@ public partial class WordHandler
                             if (shdParts.Length == 1)
                             {
                                 shd.Val = ShadingPatternValues.Clear;
-                                shd.Fill = shdParts[0].TrimStart('#').ToUpperInvariant();
+                                shd.Fill = OfficeCli.Core.ParseHelpers.SanitizeColorForOoxml(shdParts[0]).Rgb;
                             }
                             else if (shdParts.Length >= 2)
                             {
-                                shd.Val = new ShadingPatternValues(shdParts[0]);
-                                shd.Fill = shdParts[1].TrimStart('#').ToUpperInvariant();
-                                if (shdParts.Length >= 3) shd.Color = shdParts[2].TrimStart('#').ToUpperInvariant();
+                                WarnIfShadingOrderWrong(shdParts[0]); shd.Val = new ShadingPatternValues(shdParts[0]);
+                                shd.Fill = OfficeCli.Core.ParseHelpers.SanitizeColorForOoxml(shdParts[1]).Rgb;
+                                if (shdParts.Length >= 3) shd.Color = OfficeCli.Core.ParseHelpers.SanitizeColorForOoxml(shdParts[2]).Rgb;
                             }
                             tcPr.Shading = shd;
                         }
@@ -1439,18 +1460,41 @@ public partial class WordHandler
         "doublewave" => BorderValues.DoubleWave,
         "threedembed" or "3demboss" => BorderValues.ThreeDEmboss,
         "threedengrave" or "3dengrave" => BorderValues.ThreeDEngrave,
-        _ => BorderValues.Single
+        _ => WarnBorderDefault(style)
     };
+
+    private static BorderValues WarnBorderDefault(string style)
+    {
+        // Only warn if it doesn't look like a recognized style name
+        if (!string.IsNullOrEmpty(style) && !style.All(char.IsAsciiHexDigit))
+            Console.Error.WriteLine($"Warning: unrecognized border style '{style}', using 'single'. Format: STYLE[;SIZE[;COLOR[;SPACE]]]");
+        else if (style.All(char.IsAsciiHexDigit) && style.Length >= 3)
+            Console.Error.WriteLine($"Warning: '{style}' looks like a color, not a border style. Format: STYLE[;SIZE[;COLOR[;SPACE]]] e.g. single;4;FF0000");
+        return BorderValues.Single;
+    }
 
     private static (BorderValues style, uint size, string? color, uint space) ParseBorderValue(string value)
     {
         var parts = value.Split(';');
         var style = ParseBorderStyle(parts[0]);
-        uint size = parts.Length > 1 && uint.TryParse(parts[1], out var s) ? s
-            : style == BorderValues.Nil ? 0u
-            : style == BorderValues.Thick ? 12u : 4u;
-        string? color = parts.Length > 2 ? parts[2].TrimStart('#').ToUpperInvariant() : null;
-        uint space = parts.Length > 3 && uint.TryParse(parts[3], out var sp) ? sp : 0u;
+        uint size;
+        if (parts.Length > 1)
+        {
+            if (!uint.TryParse(parts[1], out size))
+            {
+                Console.Error.WriteLine($"Warning: invalid border size '{parts[1]}', expected integer. Format: STYLE[;SIZE[;COLOR[;SPACE]]]");
+                size = style == BorderValues.Thick ? 12u : 4u;
+            }
+        }
+        else
+            size = style == BorderValues.Nil ? 0u : style == BorderValues.Thick ? 12u : 4u;
+        string? color = parts.Length > 2 ? SanitizeHex(parts[2]) : null;
+        uint space = 0u;
+        if (parts.Length > 3 && !uint.TryParse(parts[3], out space))
+        {
+            Console.Error.WriteLine($"Warning: invalid border space '{parts[3]}', expected integer. Format: STYLE[;SIZE[;COLOR[;SPACE]]]");
+            space = 0u;
+        }
         return (style, size, color, space);
     }
 
@@ -1524,13 +1568,13 @@ public partial class WordHandler
                 if (shdParts.Length == 1)
                 {
                     shd.Val = ShadingPatternValues.Clear;
-                    shd.Fill = shdParts[0].TrimStart('#').ToUpperInvariant();
+                    shd.Fill = SanitizeHex(shdParts[0]);
                 }
                 else if (shdParts.Length >= 2)
                 {
-                    shd.Val = new ShadingPatternValues(shdParts[0]);
-                    shd.Fill = shdParts[1].TrimStart('#').ToUpperInvariant();
-                    if (shdParts.Length >= 3) shd.Color = shdParts[2].TrimStart('#').ToUpperInvariant();
+                    WarnIfShadingOrderWrong(shdParts[0]); shd.Val = new ShadingPatternValues(shdParts[0]);
+                    shd.Fill = SanitizeHex(shdParts[1]);
+                    if (shdParts.Length >= 3) shd.Color = SanitizeHex(shdParts[2]);
                 }
                 pProps.Shading = shd;
                 return true;
@@ -1674,12 +1718,16 @@ public partial class WordHandler
     /// </summary>
     private static void ApplyCellGradient(TableCellProperties tcPr, string startColor, string endColor, int angleDeg)
     {
+        // Sanitize colors: strip 8-char RRGGBBAA to 6-char RGB (w14:srgbClr requires 6 chars)
+        var (startRgb, _) = OfficeCli.Core.ParseHelpers.SanitizeColorForOoxml(startColor);
+        var (endRgb, _) = OfficeCli.Core.ParseHelpers.SanitizeColorForOoxml(endColor);
+
         // Remove existing shading/gradient
         RemoveCellGradient(tcPr);
         tcPr.Shading?.Remove();
 
         // Set fallback solid fill
-        tcPr.Shading = new Shading { Val = ShadingPatternValues.Clear, Fill = startColor };
+        tcPr.Shading = new Shading { Val = ShadingPatternValues.Clear, Fill = startRgb };
 
         // Build w14:gradFill XML via raw OpenXml
         var w14Ns = "http://schemas.microsoft.com/office/word/2010/wordml";
@@ -1688,31 +1736,15 @@ public partial class WordHandler
         // Convert angle to OOXML 60000ths of a degree
         var angleOoxml = angleDeg * 60000;
 
-        var acXml = $@"<mc:AlternateContent xmlns:mc=""{mcNs}"" xmlns:w14=""{w14Ns}"">
-  <mc:Choice Requires=""w14"">
-    <w14:gradFill>
-      <w14:gsLst>
-        <w14:gs w14:pos=""0"">
-          <w14:srgbClr w14:val=""{startColor}""/>
-        </w14:gs>
-        <w14:gs w14:pos=""100000"">
-          <w14:srgbClr w14:val=""{endColor}""/>
-        </w14:gs>
-      </w14:gsLst>
-      <w14:lin w14:ang=""{angleOoxml}"" w14:scaled=""1""/>
-    </w14:gradFill>
-  </mc:Choice>
-</mc:AlternateContent>";
-
         var acElement = new OpenXmlUnknownElement("mc", "AlternateContent", mcNs);
         acElement.InnerXml = $@"<mc:Choice xmlns:mc=""{mcNs}"" xmlns:w14=""{w14Ns}"" Requires=""w14"">
     <w14:gradFill>
       <w14:gsLst>
         <w14:gs w14:pos=""0"">
-          <w14:srgbClr w14:val=""{startColor}""/>
+          <w14:srgbClr w14:val=""{startRgb}""/>
         </w14:gs>
         <w14:gs w14:pos=""100000"">
-          <w14:srgbClr w14:val=""{endColor}""/>
+          <w14:srgbClr w14:val=""{endRgb}""/>
         </w14:gs>
       </w14:gsLst>
       <w14:lin w14:ang=""{angleOoxml}"" w14:scaled=""1""/>

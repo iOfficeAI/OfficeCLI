@@ -15,6 +15,30 @@ public partial class PowerPointHandler
     private static bool IsTruthy(string value) =>
         ParseHelpers.IsTruthy(value);
 
+    /// <summary>
+    /// Find existing Transition element or create one, avoiding duplicates with unknown-element transitions.
+    /// </summary>
+    private static Transition FindOrCreateTransition(Slide slide)
+    {
+        var typed = slide.GetFirstChild<Transition>();
+        if (typed != null) return typed;
+
+        // Check for unknown-element transitions (injected as raw XML to survive SDK serialization)
+        var unknown = slide.ChildElements.FirstOrDefault(c => c.LocalName == "transition" && c is not Transition);
+        if (unknown != null)
+        {
+            // Replace with a typed Transition so we can set properties
+            var trans = new Transition();
+            foreach (var attr in unknown.GetAttributes()) trans.SetAttribute(attr);
+            trans.InnerXml = unknown.InnerXml;
+            unknown.InsertAfterSelf(trans);
+            unknown.Remove();
+            return trans;
+        }
+
+        return slide.AppendChild(new Transition());
+    }
+
     private static double ParseFontSize(string value) =>
         ParseHelpers.ParseFontSize(value);
 

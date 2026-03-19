@@ -1345,6 +1345,44 @@ public class PptxEnhancementTests : IDisposable
     }
 
     [Fact]
+    public void Transition_NoDuplicate_WhenSwitchingBetweenPushAndMorph()
+    {
+        // Regression: setting push then morph (or vice versa) used to leave duplicate
+        // <p:transition> elements, causing Microsoft PowerPoint to crash.
+        BlankDocCreator.Create(_path);
+        var handler = CreateHandler();
+
+        handler.Add("/", "slide", null, new() { ["title"] = "Slide 1" });
+        handler.Add("/", "slide", null, new() { ["title"] = "Slide 2" });
+
+        // Set push first, then switch to morph
+        handler.Set("/slide[2]", new() { ["transition"] = "push" });
+        handler.Set("/slide[2]", new() { ["transition"] = "morph" });
+
+        // Verify only one transition-related element exists in XML
+        Reopen(ref handler);
+        handler.Get("/").ChildCount.Should().Be(2);
+
+        // Now switch back from morph to push
+        handler.Set("/slide[2]", new() { ["transition"] = "push" });
+        Reopen(ref handler);
+        handler.Get("/").ChildCount.Should().Be(2);
+
+        handler.Dispose();
+
+        // Verify the slide XML has exactly one transition element
+        using var pkg = DocumentFormat.OpenXml.Packaging.PresentationDocument.Open(_path, false);
+        var slide2Part = pkg.PresentationPart!.SlideParts.ElementAt(1);
+        // mc:AlternateContent may contain p:transition inside mc:Choice/Fallback, so count top-level only
+        var topLevelTransitions = slide2Part.Slide.ChildElements
+            .Count(c => c.LocalName == "transition");
+        var topLevelAC = slide2Part.Slide.ChildElements
+            .Count(c => c.LocalName == "AlternateContent");
+        (topLevelTransitions + topLevelAC).Should().BeLessOrEqualTo(1,
+            "slide should have at most one transition element to avoid PowerPoint crash");
+    }
+
+    [Fact]
     public void MorphTransition_ByChar_FullLifecycle()
     {
         // 1. Create

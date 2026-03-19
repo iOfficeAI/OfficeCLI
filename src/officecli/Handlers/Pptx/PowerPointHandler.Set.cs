@@ -755,13 +755,13 @@ public partial class PowerPointHandler
                         break;
                     case "advancetime" or "advanceaftertime":
                     {
-                        var trans = slide2.GetFirstChild<Transition>() ?? slide2.AppendChild(new Transition());
+                        var trans = FindOrCreateTransition(slide2);
                         trans.AdvanceAfterTime = value;
                         break;
                     }
                     case "advanceclick" or "advanceonclick":
                     {
-                        var trans = slide2.GetFirstChild<Transition>() ?? slide2.AppendChild(new Transition());
+                        var trans = FindOrCreateTransition(slide2);
                         trans.AdvanceOnClick = IsTruthy(value);
                         break;
                     }

@@ -60,7 +60,9 @@ internal static class PivotTableHelper
 
         // 3. Generate unique cache ID
         uint cacheId = 0;
-        var pivotCaches = workbookPart.Workbook?.GetFirstChild<PivotCaches>();
+        var workbook = workbookPart.Workbook
+            ?? throw new InvalidOperationException("Workbook is missing");
+        var pivotCaches = workbook.GetFirstChild<PivotCaches>();
         if (pivotCaches != null)
             cacheId = pivotCaches.Elements<PivotCache>().Select(pc => pc.CacheId?.Value ?? 0u).DefaultIfEmpty(0u).Max() + 1;
 
@@ -77,10 +79,10 @@ internal static class PivotTableHelper
         if (pivotCaches == null)
         {
             pivotCaches = new PivotCaches();
-            workbookPart.Workbook.AppendChild(pivotCaches);
+            workbook.AppendChild(pivotCaches);
         }
         pivotCaches.AppendChild(new PivotCache { CacheId = cacheId, Id = cacheRelId });
-        workbookPart.Workbook.Save();
+        workbook.Save();
 
         // 5. Create PivotTablePart at worksheet level
         var pivotPart = targetSheet.AddNewPart<PivotTablePart>();
