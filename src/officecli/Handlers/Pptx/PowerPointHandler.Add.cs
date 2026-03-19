@@ -2123,6 +2123,40 @@ public partial class PowerPointHandler
             typeName = "picture";
             typeIdx = shapeTree.Elements<Picture>().ToList().IndexOf((Picture)element) + 1;
         }
+        else if (element is ConnectionShape)
+        {
+            typeName = "connector";
+            typeIdx = shapeTree.Elements<ConnectionShape>().ToList().IndexOf((ConnectionShape)element) + 1;
+        }
+        else if (element is GroupShape)
+        {
+            typeName = "group";
+            typeIdx = shapeTree.Elements<GroupShape>().ToList().IndexOf((GroupShape)element) + 1;
+        }
+        else if (element is GraphicFrame gf)
+        {
+            if (gf.Descendants<Drawing.Table>().Any())
+            {
+                typeName = "table";
+                typeIdx = shapeTree.Elements<GraphicFrame>()
+                    .Where(f => f.Descendants<Drawing.Table>().Any())
+                    .ToList().IndexOf(gf) + 1;
+            }
+            else if (gf.Descendants<C.ChartReference>().Any())
+            {
+                typeName = "chart";
+                typeIdx = shapeTree.Elements<GraphicFrame>()
+                    .Where(f => f.Descendants<C.ChartReference>().Any())
+                    .ToList().IndexOf(gf) + 1;
+            }
+            else
+            {
+                typeName = element.LocalName;
+                typeIdx = shapeTree.ChildElements
+                    .Where(e => e.LocalName == element.LocalName)
+                    .ToList().IndexOf(element) + 1;
+            }
+        }
         else
         {
             typeName = element.LocalName;
