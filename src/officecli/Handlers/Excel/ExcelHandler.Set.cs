@@ -249,7 +249,8 @@ public partial class ExcelHandler
                                 spPr.InsertAt(xfrm, 0);
                             }
                             // Rotation in degrees -> 60000ths of a degree
-                            var degrees = double.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+                            if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var degrees))
+                                throw new ArgumentException($"Invalid 'rotation' value: '{value}'. Expected a number in degrees (e.g. 45, -90, 180.5).");
                             xfrm.Rotation = (int)(degrees * 60000);
                         }
                         break;
@@ -588,6 +589,23 @@ public partial class ExcelHandler
 
         var cell = FindOrCreateCell(sheetData, cellRef);
 
+        // Clone cell for rollback on failure (atomic: no partial modifications)
+        var cellBackup = cell.CloneNode(true);
+
+        try
+        {
+        return SetCellProperties(cell, cellRef, worksheet, properties);
+        }
+        catch
+        {
+            // Rollback: restore cell to pre-modification state
+            cell.Parent?.ReplaceChild(cellBackup, cell);
+            throw;
+        }
+    }
+
+    private List<string> SetCellProperties(Cell cell, string cellRef, WorksheetPart worksheet, Dictionary<string, string> properties)
+    {
         // Separate content props from style props
         var styleProps = new Dictionary<string, string>();
         var unsupported = new List<string>();
@@ -614,18 +632,26 @@ public partial class ExcelHandler
                     }
                     break;
                 case "formula":
-                    cell.CellFormula = new CellFormula(value);
+                    cell.CellFormula = new CellFormula(value.TrimStart('='));
                     cell.CellValue = null;
                     cell.DataType = null; // Formula cells should not retain DataType
                     break;
                 case "type":
-                    cell.DataType = value.ToLowerInvariant() switch
+                    switch (value.ToLowerInvariant())
                     {
-                        "string" or "str" => new EnumValue<CellValues>(CellValues.String),
-                        "number" or "num" => null,
-                        "boolean" or "bool" => new EnumValue<CellValues>(CellValues.Boolean),
-                        _ => cell.DataType
-                    };
+                        case "string" or "str":
+                            cell.DataType = new EnumValue<CellValues>(CellValues.String);
+                            break;
+                        case "number" or "num":
+                            cell.DataType = null;
+                            break;
+                        case "boolean" or "bool":
+                            cell.DataType = new EnumValue<CellValues>(CellValues.Boolean);
+                            break;
+                        default:
+                            unsupported.Add(key);
+                            break;
+                    }
                     break;
                 case "clear":
                     cell.CellValue = null;
@@ -935,7 +961,9 @@ public partial class ExcelHandler
                         || value == "1" || value.Equals("yes", StringComparison.OrdinalIgnoreCase);
                     break;
                 case "outline" or "outlinelevel" or "group":
-                    col.OutlineLevel = byte.Parse(value);
+                    if (!byte.TryParse(value, out var colOutline))
+                        throw new ArgumentException($"Invalid 'outline' value: '{value}'. Expected an integer 0-7 (outline/group level).");
+                    col.OutlineLevel = colOutline;
                     break;
                 case "collapsed":
                     col.Collapsed = value.Equals("true", StringComparison.OrdinalIgnoreCase)
@@ -978,7 +1006,9 @@ public partial class ExcelHandler
             switch (key.ToLowerInvariant())
             {
                 case "height":
-                    row.Height = double.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+                    if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var heightVal))
+                        throw new ArgumentException($"Invalid 'height' value: '{value}'. Expected a number (row height in points, e.g. 15.75).");
+                    row.Height = heightVal;
                     row.CustomHeight = true;
                     break;
                 case "hidden":
@@ -986,7 +1016,9 @@ public partial class ExcelHandler
                         || value == "1" || value.Equals("yes", StringComparison.OrdinalIgnoreCase);
                     break;
                 case "outline" or "outlinelevel" or "group":
-                    row.OutlineLevel = byte.Parse(value);
+                    if (!byte.TryParse(value, out var outlineVal))
+                        throw new ArgumentException($"Invalid 'outline' value: '{value}'. Expected an integer 0-7 (outline/group level).");
+                    row.OutlineLevel = outlineVal;
                     break;
                 case "collapsed":
                     row.Collapsed = value.Equals("true", StringComparison.OrdinalIgnoreCase)

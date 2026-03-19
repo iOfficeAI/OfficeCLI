@@ -366,10 +366,14 @@ public partial class WordHandler
                         };
                         break;
                     case "pagewidth":
-                        EnsureSectPrPageSize(sectPr).Width = uint.TryParse(value, out var pgW) ? pgW : throw new FormatException($"Invalid page width: {value}");
+                        if (!uint.TryParse(value, out var pgW))
+                            throw new ArgumentException($"Invalid 'pagewidth' value: '{value}'. Expected a positive integer (in twips, e.g. 12240 = 8.5 inches).");
+                        EnsureSectPrPageSize(sectPr).Width = pgW;
                         break;
                     case "pageheight":
-                        EnsureSectPrPageSize(sectPr).Height = uint.TryParse(value, out var pgH) ? pgH : throw new FormatException($"Invalid page height: {value}");
+                        if (!uint.TryParse(value, out var pgH))
+                            throw new ArgumentException($"Invalid 'pageheight' value: '{value}'. Expected a positive integer (in twips, e.g. 15840 = 11 inches).");
+                        EnsureSectPrPageSize(sectPr).Height = pgH;
                         break;
                     case "orientation":
                         var ps = EnsureSectPrPageSize(sectPr);
@@ -377,23 +381,33 @@ public partial class WordHandler
                             ? PageOrientationValues.Landscape : PageOrientationValues.Portrait;
                         break;
                     case "margintop":
-                        EnsureSectPrPageMargin(sectPr).Top = int.Parse(value);
+                        if (!int.TryParse(value, out var mtVal))
+                            throw new ArgumentException($"Invalid 'margintop' value: '{value}'. Expected an integer (in twips, e.g. 1440 = 1 inch).");
+                        EnsureSectPrPageMargin(sectPr).Top = mtVal;
                         break;
                     case "marginbottom":
-                        EnsureSectPrPageMargin(sectPr).Bottom = int.Parse(value);
+                        if (!int.TryParse(value, out var mbVal))
+                            throw new ArgumentException($"Invalid 'marginbottom' value: '{value}'. Expected an integer (in twips).");
+                        EnsureSectPrPageMargin(sectPr).Bottom = mbVal;
                         break;
                     case "marginleft":
-                        EnsureSectPrPageMargin(sectPr).Left = uint.Parse(value);
+                        if (!uint.TryParse(value, out var mlVal))
+                            throw new ArgumentException($"Invalid 'marginleft' value: '{value}'. Expected a positive integer (in twips).");
+                        EnsureSectPrPageMargin(sectPr).Left = mlVal;
                         break;
                     case "marginright":
-                        EnsureSectPrPageMargin(sectPr).Right = uint.Parse(value);
+                        if (!uint.TryParse(value, out var mrVal))
+                            throw new ArgumentException($"Invalid 'marginright' value: '{value}'. Expected a positive integer (in twips).");
+                        EnsureSectPrPageMargin(sectPr).Right = mrVal;
                         break;
                     case "columns" or "cols" or "col":
                     {
                         // Equal-width columns: "3" or "3,720" (count,space in twips)
                         var eqCols = EnsureColumns(sectPr);
                         var colParts = value.Split(',');
-                        eqCols.ColumnCount = (Int16Value)short.Parse(colParts[0]);
+                        if (!short.TryParse(colParts[0], out var colCount))
+                            throw new ArgumentException($"Invalid 'columns' value: '{value}'. Expected an integer or integer,space (e.g. '3' or '3,720').");
+                        eqCols.ColumnCount = (Int16Value)colCount;
                         eqCols.EqualWidth = true;
                         if (colParts.Length > 1)
                             eqCols.Space = colParts[1];
@@ -521,6 +535,24 @@ public partial class WordHandler
         var element = NavigateToElement(parts);
         if (element == null)
             throw new ArgumentException($"Path not found: {path}");
+
+        // Clone element for rollback on failure (atomic: no partial modifications)
+        var elementBackup = element.CloneNode(true);
+        try
+        {
+        return SetElement(element, properties);
+        }
+        catch
+        {
+            // Rollback: restore element to pre-modification state
+            element.Parent?.ReplaceChild(elementBackup, element);
+            throw;
+        }
+    }
+
+    private List<string> SetElement(OpenXmlElement element, Dictionary<string, string> properties)
+    {
+        var unsupported = new List<string>();
 
         if (element is BookmarkStart bkStart)
         {
@@ -996,8 +1028,11 @@ public partial class WordHandler
                                         rPr.Highlight = new Highlight { Val = new HighlightColorValues(value) };
                                         break;
                                     case "underline":
-                                        rPr.Underline = new Underline { Val = new UnderlineValues(value) };
+                                    {
+                                        var ulVal = value.ToLowerInvariant() switch { "true" => "single", "false" or "none" => "none", _ => value };
+                                        rPr.Underline = new Underline { Val = new UnderlineValues(ulVal) };
                                         break;
+                                    }
                                     case "strike":
                                         rPr.Strike = IsTruthy(value) ? new Strike() : null;
                                         break;
@@ -1038,9 +1073,12 @@ public partial class WordHandler
                                     pmrp.AppendChild(new Highlight { Val = new HighlightColorValues(value) });
                                     break;
                                 case "underline":
+                                {
+                                    var ulVal = value.ToLowerInvariant() switch { "true" => "single", "false" or "none" => "none", _ => value };
                                     pmrp.RemoveAllChildren<Underline>();
-                                    pmrp.AppendChild(new Underline { Val = new UnderlineValues(value) });
+                                    pmrp.AppendChild(new Underline { Val = new UnderlineValues(ulVal) });
                                     break;
+                                }
                                 case "strike":
                                     pmrp.RemoveAllChildren<Strike>();
                                     if (IsTruthy(value)) pmrp.AppendChild(new Strike());
@@ -1276,9 +1314,12 @@ public partial class WordHandler
                         break;
                     case "header":
                         if (IsTruthy(value))
-                            trPr.AppendChild(new TableHeader());
+                        {
+                            if (trPr.GetFirstChild<TableHeader>() == null)
+                                trPr.AppendChild(new TableHeader());
+                        }
                         else
-                            trPr.GetFirstChild<TableHeader>()?.Remove();
+                            trPr.RemoveAllChildren<TableHeader>();
                         break;
                     default:
                         if (!GenericXmlQuery.TryCreateTypedChild(trPr, key, value))
