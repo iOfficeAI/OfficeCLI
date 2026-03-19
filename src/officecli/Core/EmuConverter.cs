@@ -15,12 +15,12 @@ public static class EmuConverter
     /// <summary>
     /// Parse a dimension string into EMU (long).
     /// Supported formats: "914400" (raw EMU), "2.54cm", "1in", "72pt", "96px".
-    /// Throws FormatException on invalid input.
+    /// Throws ArgumentException on invalid input.
     /// </summary>
     public static long ParseEmu(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
-            throw new FormatException("EMU value cannot be null or empty.");
+            throw new ArgumentException("EMU value cannot be null or empty.");
 
         value = value.Trim();
 
@@ -44,17 +44,17 @@ public static class EmuConverter
         }
         else if (HasKnownUnitSuffix(value, out var unit))
         {
-            throw new FormatException($"Unsupported unit '{unit}' in dimension value '{value}'. Supported units: cm, in, pt, px (or raw EMU integer).");
+            throw new ArgumentException($"Unsupported unit '{unit}' in dimension value '{value}'. Supported units: cm, in, pt, px (or raw EMU integer).");
         }
         else
         {
             // Raw EMU integer
             if (!long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out result))
-                throw new FormatException($"Invalid EMU value '{value}'. Expected a number with optional unit suffix (cm, in, pt, px).");
+                throw new ArgumentException($"Invalid EMU value '{value}'. Expected a number with optional unit suffix (cm, in, pt, px).");
         }
 
         if (result < 0)
-            throw new FormatException($"Negative dimension value '{value}' is not allowed. EMU values must be non-negative.");
+            throw new ArgumentException($"Negative dimension value '{value}' is not allowed. EMU values must be non-negative.");
 
         return result;
     }
@@ -100,10 +100,10 @@ public static class EmuConverter
     {
         var numberPart = value[..^suffixLen];
         if (string.IsNullOrWhiteSpace(numberPart))
-            throw new FormatException($"Missing numeric value before '{unit}' unit in '{value}'.");
+            throw new ArgumentException($"Missing numeric value before '{unit}' unit in '{value}'.");
 
         if (!double.TryParse(numberPart, NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
-            throw new FormatException($"Invalid numeric value '{numberPart}' before '{unit}' unit in '{value}'.");
+            throw new ArgumentException($"Invalid numeric value '{numberPart}' before '{unit}' unit in '{value}'.");
 
         return (long)Math.Round(number * factor);
     }
