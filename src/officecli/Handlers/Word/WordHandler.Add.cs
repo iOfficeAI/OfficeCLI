@@ -92,9 +92,15 @@ public partial class WordHandler
                 if (properties.TryGetValue("numid", out var numId))
                 {
                     var numPr = pProps.NumberingProperties ?? (pProps.NumberingProperties = new NumberingProperties());
-                    numPr.NumberingId = new NumberingId { Val = int.Parse(numId) };
+                    if (!int.TryParse(numId, out var numIdVal))
+                        throw new ArgumentException($"Invalid 'numid' value: '{numId}'. Expected an integer (numbering definition ID).");
+                    numPr.NumberingId = new NumberingId { Val = numIdVal };
                     if (properties.TryGetValue("numlevel", out var numLevel))
-                        numPr.NumberingLevelReference = new NumberingLevelReference { Val = int.Parse(numLevel) };
+                    {
+                        if (!int.TryParse(numLevel, out var numLevelVal))
+                            throw new ArgumentException($"Invalid 'numlevel' value: '{numLevel}'. Expected an integer (0-based indentation level).");
+                        numPr.NumberingLevelReference = new NumberingLevelReference { Val = numLevelVal };
+                    }
                 }
                 if (properties.TryGetValue("shd", out var pShdVal) || properties.TryGetValue("shading", out pShdVal))
                 {
@@ -145,7 +151,13 @@ public partial class WordHandler
                 if (properties.TryGetValue("liststyle", out var listStyle))
                 {
                     para.AppendChild(pProps);
-                    int? startVal = properties.TryGetValue("start", out var sv) ? int.Parse(sv) : null;
+                    int? startVal = null;
+                    if (properties.TryGetValue("start", out var sv))
+                    {
+                        if (!int.TryParse(sv, out var parsedStart))
+                            throw new ArgumentException($"Invalid 'start' value: '{sv}'. Expected an integer (list start number).");
+                        startVal = parsedStart;
+                    }
                     ApplyListStyle(para, listStyle, startVal);
                     // pProps already appended, skip the append below
                     goto paragraphPropsApplied;
@@ -173,7 +185,10 @@ public partial class WordHandler
                     if (properties.TryGetValue("color", out var pColor))
                         rProps.Color = new Color { Val = SanitizeHex(pColor) };
                     if (properties.TryGetValue("underline", out var pUnderline))
-                        rProps.Underline = new Underline { Val = new UnderlineValues(pUnderline) };
+                    {
+                        var ulVal = pUnderline.ToLowerInvariant() switch { "true" => "single", "false" or "none" => "none", _ => pUnderline };
+                        rProps.Underline = new Underline { Val = new UnderlineValues(ulVal) };
+                    }
                     if (properties.TryGetValue("strike", out var pStrike) && IsTruthy(pStrike))
                         rProps.Strike = new Strike();
                     if (properties.TryGetValue("highlight", out var pHighlight))
@@ -303,7 +318,10 @@ public partial class WordHandler
                 if (properties.TryGetValue("color", out var rColor))
                     newRProps.Color = new Color { Val = SanitizeHex(rColor) };
                 if (properties.TryGetValue("underline", out var rUnderline))
-                    newRProps.Underline = new Underline { Val = new UnderlineValues(rUnderline) };
+                {
+                    var ulVal = rUnderline.ToLowerInvariant() switch { "true" => "single", "false" or "none" => "none", _ => rUnderline };
+                    newRProps.Underline = new Underline { Val = new UnderlineValues(ulVal) };
+                }
                 if (properties.TryGetValue("strike", out var rStrike) && IsTruthy(rStrike))
                     newRProps.Strike = new Strike();
                 if (properties.TryGetValue("highlight", out var rHighlight))
@@ -403,13 +421,31 @@ public partial class WordHandler
                         ApplyTableBorders(tblProps, bk, bv);
                 }
 
-                int rows = properties.TryGetValue("rows", out var rowsStr) ? int.Parse(rowsStr) : 1;
-                int cols = properties.TryGetValue("cols", out var colsStr) ? int.Parse(colsStr) : 1;
+                int rows = 1;
+                if (properties.TryGetValue("rows", out var rowsStr))
+                {
+                    if (!int.TryParse(rowsStr, out rows))
+                        throw new ArgumentException($"Invalid 'rows' value: '{rowsStr}'. Expected a positive integer.");
+                }
+                int cols = 1;
+                if (properties.TryGetValue("cols", out var colsStr))
+                {
+                    if (!int.TryParse(colsStr, out cols))
+                        throw new ArgumentException($"Invalid 'cols' value: '{colsStr}'. Expected a positive integer.");
+                }
 
                 // Parse per-column widths: colWidths="3000,2000,5000"
                 int[]? colWidthArr = null;
                 if (properties.TryGetValue("colwidths", out var cwStr))
-                    colWidthArr = cwStr.Split(',').Select(s => int.Parse(s.Trim())).ToArray();
+                {
+                    var parts = cwStr.Split(',');
+                    colWidthArr = new int[parts.Length];
+                    for (int ci = 0; ci < parts.Length; ci++)
+                    {
+                        if (!int.TryParse(parts[ci].Trim(), out colWidthArr[ci]))
+                            throw new ArgumentException($"Invalid 'colwidths' value: '{parts[ci].Trim()}'. Each column width must be a positive integer (in twips). Example: colwidths=3000,2000,5000");
+                    }
+                }
 
                 // Add table grid
                 var tblGrid = new TableGrid();
@@ -441,7 +477,9 @@ public partial class WordHandler
                         case "width":
                             if (tv.EndsWith('%'))
                             {
-                                var pct = int.Parse(tv.TrimEnd('%')) * 50;
+                                if (!int.TryParse(tv.TrimEnd('%'), out var pctNum))
+                                    throw new ArgumentException($"Invalid 'width' value: '{tv}'. Expected a percentage like '50%' or a number in twips.");
+                                var pct = pctNum * 50;
                                 tblProps.TableWidth = new TableWidth { Width = pct.ToString(), Type = TableWidthUnitValues.Pct };
                             }
                             else
@@ -450,7 +488,9 @@ public partial class WordHandler
                             }
                             break;
                         case "indent":
-                            tblProps.TableIndentation = new TableIndentation { Width = int.Parse(tv), Type = TableWidthUnitValues.Dxa };
+                            if (!int.TryParse(tv, out var indentVal))
+                                throw new ArgumentException($"Invalid 'indent' value: '{tv}'. Expected an integer (in twips, e.g. 720 = 0.5 inch).");
+                            tblProps.TableIndentation = new TableIndentation { Width = indentVal, Type = TableWidthUnitValues.Dxa };
                             break;
                         case "cellspacing":
                             tblProps.TableCellSpacing = new TableCellSpacing { Width = tv, Type = TableWidthUnitValues.Dxa };
@@ -463,7 +503,8 @@ public partial class WordHandler
                             break;
                         case "padding":
                             var cm = tblProps.TableCellMarginDefault ?? tblProps.AppendChild(new TableCellMarginDefault());
-                            var paddingVal = int.Parse(tv);
+                            if (!int.TryParse(tv, out var paddingVal))
+                                throw new ArgumentException($"Invalid 'padding' value: '{tv}'. Expected an integer (in twips, e.g. 100).");
                             cm.TopMargin = new TopMargin { Width = tv, Type = TableWidthUnitValues.Dxa };
                             cm.TableCellLeftMargin = new TableCellLeftMargin { Width = (short)Math.Min(paddingVal, short.MaxValue), Type = TableWidthValues.Dxa };
                             cm.BottomMargin = new BottomMargin { Width = tv, Type = TableWidthUnitValues.Dxa };
@@ -515,7 +556,12 @@ public partial class WordHandler
 
                 var existingCols = targetTable.Elements<TableGrid>().FirstOrDefault()
                     ?.Elements<GridColumn>().Count() ?? 1;
-                int newCols = properties.TryGetValue("cols", out var colsVal) ? int.Parse(colsVal) : existingCols;
+                int newCols = existingCols;
+                if (properties.TryGetValue("cols", out var colsVal))
+                {
+                    if (!int.TryParse(colsVal, out newCols))
+                        throw new ArgumentException($"Invalid 'cols' value: '{colsVal}'. Expected a positive integer.");
+                }
 
                 var newRow = new TableRow();
                 TableRowProperties? newRowProps = null;
@@ -940,13 +986,13 @@ public partial class WordHandler
                 if (properties.TryGetValue("pagewidth", out var sw) || properties.TryGetValue("width", out sw))
                 {
                     if (!uint.TryParse(sw, out var swVal))
-                        throw new FormatException($"Invalid page width: {sw}");
+                        throw new ArgumentException($"Invalid 'pagewidth' value: '{sw}'. Expected a positive integer (in twips, e.g. 12240 = 8.5 inches).");
                     (sectPr.GetFirstChild<PageSize>() ?? sectPr.AppendChild(new PageSize())).Width = swVal;
                 }
                 if (properties.TryGetValue("pageheight", out var sh) || properties.TryGetValue("height", out sh))
                 {
                     if (!uint.TryParse(sh, out var shVal))
-                        throw new FormatException($"Invalid page height: {sh}");
+                        throw new ArgumentException($"Invalid 'pageheight' value: '{sh}'. Expected a positive integer (in twips, e.g. 15840 = 11 inches).");
                     (sectPr.GetFirstChild<PageSize>() ?? sectPr.AppendChild(new PageSize())).Height = shVal;
                 }
                 if (properties.TryGetValue("orientation", out var orient))
@@ -2039,22 +2085,34 @@ public partial class WordHandler
                     break;
 
                 case "pagewidth":
-                    EnsureSectionProperties().GetFirstChild<PageSize>()!.Width = uint.Parse(value);
+                    if (!uint.TryParse(value, out var dpgW))
+                        throw new ArgumentException($"Invalid 'pagewidth' value: '{value}'. Expected a positive integer (in twips).");
+                    EnsureSectionProperties().GetFirstChild<PageSize>()!.Width = dpgW;
                     break;
                 case "pageheight":
-                    EnsureSectionProperties().GetFirstChild<PageSize>()!.Height = uint.Parse(value);
+                    if (!uint.TryParse(value, out var dpgH))
+                        throw new ArgumentException($"Invalid 'pageheight' value: '{value}'. Expected a positive integer (in twips).");
+                    EnsureSectionProperties().GetFirstChild<PageSize>()!.Height = dpgH;
                     break;
                 case "margintop":
-                    EnsurePageMargin().Top = int.Parse(value);
+                    if (!int.TryParse(value, out var dmtVal))
+                        throw new ArgumentException($"Invalid 'margintop' value: '{value}'. Expected an integer (in twips).");
+                    EnsurePageMargin().Top = dmtVal;
                     break;
                 case "marginbottom":
-                    EnsurePageMargin().Bottom = int.Parse(value);
+                    if (!int.TryParse(value, out var dmbVal))
+                        throw new ArgumentException($"Invalid 'marginbottom' value: '{value}'. Expected an integer (in twips).");
+                    EnsurePageMargin().Bottom = dmbVal;
                     break;
                 case "marginleft":
-                    EnsurePageMargin().Left = uint.Parse(value);
+                    if (!uint.TryParse(value, out var dmlVal))
+                        throw new ArgumentException($"Invalid 'marginleft' value: '{value}'. Expected a positive integer (in twips).");
+                    EnsurePageMargin().Left = dmlVal;
                     break;
                 case "marginright":
-                    EnsurePageMargin().Right = uint.Parse(value);
+                    if (!uint.TryParse(value, out var dmrVal))
+                        throw new ArgumentException($"Invalid 'marginright' value: '{value}'. Expected a positive integer (in twips).");
+                    EnsurePageMargin().Right = dmrVal;
                     break;
 
                 // Core document properties

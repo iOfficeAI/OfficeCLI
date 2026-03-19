@@ -177,7 +177,10 @@ internal static class ChartHelper
             {
                 int splitAt = 1;
                 if (properties.TryGetValue("combosplit", out var splitStr))
-                    splitAt = int.Parse(splitStr);
+                {
+                    if (!int.TryParse(splitStr, out splitAt))
+                        throw new ArgumentException($"Invalid 'combosplit' value '{splitStr}'. Expected a numeric index.");
+                }
                 splitAt = Math.Min(splitAt, seriesData.Count);
 
                 var barData = seriesData.Take(splitAt).ToList();
@@ -1225,7 +1228,9 @@ internal static class ChartHelper
                     var scaling = valAxis?.GetFirstChild<C.Scaling>();
                     if (scaling == null) { unsupported.Add(key); break; }
                     scaling.RemoveAllChildren<C.MinAxisValue>();
-                    scaling.AppendChild(new C.MinAxisValue { Val = double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) });
+                    if (!double.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var minVal))
+                        throw new ArgumentException($"Invalid 'axismin' value '{value}'. Expected a numeric value.");
+                    scaling.AppendChild(new C.MinAxisValue { Val = minVal });
                     break;
                 }
 
@@ -1236,7 +1241,9 @@ internal static class ChartHelper
                     var scaling = valAxis?.GetFirstChild<C.Scaling>();
                     if (scaling == null) { unsupported.Add(key); break; }
                     scaling.RemoveAllChildren<C.MaxAxisValue>();
-                    var maxEl = new C.MaxAxisValue { Val = double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) };
+                    if (!double.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var maxNum))
+                        throw new ArgumentException($"Invalid 'axismax' value '{value}'. Expected a numeric value.");
+                    var maxEl = new C.MaxAxisValue { Val = maxNum };
                     // Schema order: logBase?, orientation, max?, min? — insert max after orientation
                     var orient = scaling.GetFirstChild<C.Orientation>();
                     if (orient != null) orient.InsertAfterSelf(maxEl);
@@ -1250,7 +1257,9 @@ internal static class ChartHelper
                     var valAxis = plotArea2?.GetFirstChild<C.ValueAxis>();
                     if (valAxis == null) { unsupported.Add(key); break; }
                     valAxis.RemoveAllChildren<C.MajorUnit>();
-                    valAxis.AppendChild(new C.MajorUnit { Val = double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) });
+                    if (!double.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var majorNum))
+                        throw new ArgumentException($"Invalid 'majorunit' value '{value}'. Expected a numeric value.");
+                    valAxis.AppendChild(new C.MajorUnit { Val = majorNum });
                     break;
                 }
 
@@ -1260,7 +1269,9 @@ internal static class ChartHelper
                     var valAxis = plotArea2?.GetFirstChild<C.ValueAxis>();
                     if (valAxis == null) { unsupported.Add(key); break; }
                     valAxis.RemoveAllChildren<C.MinorUnit>();
-                    valAxis.AppendChild(new C.MinorUnit { Val = double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) });
+                    if (!double.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var minorNum))
+                        throw new ArgumentException($"Invalid 'minorunit' value '{value}'. Expected a numeric value.");
+                    valAxis.AppendChild(new C.MinorUnit { Val = minorNum });
                     break;
                 }
 
@@ -1372,7 +1383,9 @@ internal static class ChartHelper
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
-                    var widthEmu = (int)(double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) * 12700);
+                    if (!double.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var widthPt))
+                        throw new ArgumentException($"Invalid 'linewidth' value '{value}'. Expected a numeric value in points.");
+                    var widthEmu = (int)(widthPt * 12700);
                     foreach (var ser in plotArea2.Descendants<OpenXmlCompositeElement>().Where(e => e.LocalName == "ser"))
                         ApplySeriesLineWidth(ser, widthEmu);
                     break;
@@ -1400,7 +1413,8 @@ internal static class ChartHelper
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
-                    var mSize = byte.Parse(value);
+                    if (!byte.TryParse(value, out var mSize))
+                        throw new ArgumentException($"Invalid 'markersize' value '{value}'. Expected a numeric value (2-72).");
                     foreach (var ser in plotArea2.Descendants<OpenXmlCompositeElement>().Where(e => e.LocalName == "ser"))
                     {
                         var marker = ser.GetFirstChild<C.Marker>();
@@ -1416,7 +1430,11 @@ internal static class ChartHelper
                 {
                     chartSpace!.RemoveAllChildren<C.Style>();
                     if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
-                        chartSpace.InsertBefore(new C.Style { Val = (byte)int.Parse(value) }, chart);
+                    {
+                        if (!int.TryParse(value, out var styleId))
+                            throw new ArgumentException($"Invalid 'style' value '{value}'. Expected a numeric style ID.");
+                        chartSpace.InsertBefore(new C.Style { Val = (byte)styleId }, chart);
+                    }
                     break;
                 }
 
@@ -1425,7 +1443,8 @@ internal static class ChartHelper
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
-                    var alphaPercent = double.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+                    if (!double.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var alphaPercent))
+                        throw new ArgumentException($"Invalid '{key}' value '{value}'. Expected a numeric percentage (0-100).");
                     // If key is "transparency", convert to opacity (e.g. 30% transparency = 70% opacity)
                     if (key.Equals("transparency", StringComparison.OrdinalIgnoreCase))
                         alphaPercent = 100.0 - alphaPercent;

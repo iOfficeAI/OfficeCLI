@@ -52,7 +52,8 @@ public partial class ExcelHandler
                 // Create cells if cols specified
                 if (properties.TryGetValue("cols", out var colsStr))
                 {
-                    var cols = int.Parse(colsStr);
+                    if (!int.TryParse(colsStr, out var cols))
+                        throw new ArgumentException($"Invalid 'cols' value: '{colsStr}'. Expected a positive integer (number of columns to create).");
                     for (int c = 0; c < cols; c++)
                     {
                         var colLetter = IndexToColumnName(c + 1);
@@ -88,7 +89,7 @@ public partial class ExcelHandler
                 }
                 if (properties.TryGetValue("formula", out var formula))
                 {
-                    cell.CellFormula = new CellFormula(formula);
+                    cell.CellFormula = new CellFormula(formula.TrimStart('='));
                     cell.CellValue = null;
                 }
                 if (properties.TryGetValue("type", out var cellType))
@@ -98,7 +99,7 @@ public partial class ExcelHandler
                         "string" or "str" => new EnumValue<CellValues>(CellValues.String),
                         "number" or "num" => null,
                         "boolean" or "bool" => new EnumValue<CellValues>(CellValues.Boolean),
-                        _ => cell.DataType
+                        _ => throw new ArgumentException($"Invalid cell 'type' value '{cellType}'. Valid types: string, number, boolean.")
                     };
                 }
                 if (properties.TryGetValue("clear", out _))
@@ -1026,6 +1027,10 @@ public partial class ExcelHandler
                 .FirstOrDefault(s => s.Name?.Value?.Equals(sheetName, StringComparison.OrdinalIgnoreCase) == true);
             if (sheet == null)
                 throw new ArgumentException($"Sheet not found: {sheetName}");
+
+            var sheetCount = sheets!.Elements<Sheet>().Count();
+            if (sheetCount <= 1)
+                throw new InvalidOperationException($"Cannot remove the last sheet. A workbook must contain at least one sheet.");
 
             var relId = sheet.Id?.Value;
             sheet.Remove();

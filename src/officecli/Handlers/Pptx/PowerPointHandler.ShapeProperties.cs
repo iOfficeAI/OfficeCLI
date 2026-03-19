@@ -105,41 +105,41 @@ public partial class PowerPointHandler
                     break;
 
                 case "color":
+                {
+                    // Build fill before removing old one (atomic: no data loss on invalid color)
+                    var colorFill = BuildSolidFill(value);
                     foreach (var run in runs)
                     {
                         var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
                         rProps.RemoveAllChildren<Drawing.SolidFill>();
                         rProps.RemoveAllChildren<Drawing.GradientFill>();
-                        var colorFill = BuildSolidFill(value);
+                        var fill = (Drawing.SolidFill)colorFill.CloneNode(true);
                         if (rProps is OpenXmlCompositeElement composite)
                         {
-                            if (!composite.AddChild(colorFill, throwOnError: false))
-                                rProps.AppendChild(colorFill);
+                            if (!composite.AddChild(fill, throwOnError: false))
+                                rProps.AppendChild(fill);
                         }
                         else
                         {
-                            rProps.AppendChild(colorFill);
+                            rProps.AppendChild(fill);
                         }
                     }
                     break;
+                }
 
                 case "textfill" or "textgradient":
                 {
-                    // Text gradient fill: same format as shape gradient (C1-C2[-angle], radial:C1-C2[-focus])
+                    // Build fill before removing old one (atomic: no data loss on invalid value)
+                    OpenXmlElement newTextFill = value.Equals("none", StringComparison.OrdinalIgnoreCase)
+                        ? new Drawing.NoFill()
+                        : BuildGradientFill(value);
                     foreach (var run in runs)
                     {
                         var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
                         rProps.RemoveAllChildren<Drawing.SolidFill>();
                         rProps.RemoveAllChildren<Drawing.GradientFill>();
                         rProps.RemoveAllChildren<Drawing.NoFill>();
-                        if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
-                        {
-                            rProps.AppendChild(new Drawing.NoFill());
-                        }
-                        else
-                        {
-                            rProps.AppendChild(BuildGradientFill(value));
-                        }
+                        rProps.AppendChild(newTextFill.CloneNode(true));
                     }
                     break;
                 }
@@ -194,7 +194,9 @@ public partial class PowerPointHandler
                             "super" or "true" => 30000,
                             "sub" => -25000,
                             "none" or "false" or "0" => 0,
-                            _ => (int)(double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) * 1000)
+                            _ => double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var blVal)
+                                ? (int)(blVal * 1000)
+                                : throw new ArgumentException($"Invalid 'baseline' value: '{value}'. Expected 'super', 'sub', 'none', or a percentage (e.g. 30 for superscript 30%).")
                         };
                     }
                     foreach (var run in runs)
@@ -295,15 +297,16 @@ public partial class PowerPointHandler
 
                 case "line" or "linecolor" or "line.color":
                 {
+                    // Build fill before removing old one (atomic)
+                    OpenXmlElement newLineFill = value.Equals("none", StringComparison.OrdinalIgnoreCase)
+                        ? new Drawing.NoFill()
+                        : BuildSolidFill(value);
                     var spPr = shape.ShapeProperties;
                     if (spPr == null) { unsupported.Add(key); break; }
                     var outline = EnsureOutline(spPr);
                     outline.RemoveAllChildren<Drawing.SolidFill>();
                     outline.RemoveAllChildren<Drawing.NoFill>();
-                    if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
-                        outline.AppendChild(new Drawing.NoFill());
-                    else
-                        outline.AppendChild(BuildSolidFill(value));
+                    outline.AppendChild(newLineFill);
                     break;
                 }
 
@@ -339,6 +342,8 @@ public partial class PowerPointHandler
                 {
                     var spPr = shape.ShapeProperties;
                     if (spPr == null) { unsupported.Add(key); break; }
+                    if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var lnOpacity))
+                        throw new ArgumentException($"Invalid 'lineopacity' value: '{value}'. Expected a decimal 0.0-1.0 (e.g. 0.5 = 50% opacity).");
                     var outline = EnsureOutline(spPr);
                     var solidFillLn = outline.GetFirstChild<Drawing.SolidFill>();
                     if (solidFillLn != null)
@@ -348,7 +353,7 @@ public partial class PowerPointHandler
                         if (colorEl != null)
                         {
                             colorEl.RemoveAllChildren<Drawing.Alpha>();
-                            var pct = (int)(double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) * 100000); // 0.0-1.0 → 0-100000
+                            var pct = (int)(lnOpacity * 100000); // 0.0-1.0 → 0-100000
                             colorEl.AppendChild(new Drawing.Alpha { Val = pct });
                         }
                     }
@@ -359,8 +364,10 @@ public partial class PowerPointHandler
                 {
                     var spPr = shape.ShapeProperties;
                     if (spPr == null) { unsupported.Add(key); break; }
+                    if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var rotVal))
+                        throw new ArgumentException($"Invalid 'rotation' value: '{value}'. Expected a number in degrees (e.g. 45, -90, 180.5).");
                     var xfrm = spPr.Transform2D ?? (spPr.Transform2D = new Drawing.Transform2D());
-                    xfrm.Rotation = (int)(double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) * 60000); // degrees to 60000ths
+                    xfrm.Rotation = (int)(rotVal * 60000); // degrees to 60000ths
                     break;
                 }
 
@@ -368,6 +375,8 @@ public partial class PowerPointHandler
                 {
                     var spPr = shape.ShapeProperties;
                     if (spPr == null) { unsupported.Add(key); break; }
+                    if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var opacityVal))
+                        throw new ArgumentException($"Invalid 'opacity' value: '{value}'. Expected a decimal 0.0-1.0 (e.g. 0.5 = 50% opacity).");
                     var solidFill = spPr.GetFirstChild<Drawing.SolidFill>();
                     if (solidFill != null)
                     {
@@ -376,7 +385,7 @@ public partial class PowerPointHandler
                         if (colorEl != null)
                         {
                             colorEl.RemoveAllChildren<Drawing.Alpha>();
-                            var pct = (int)(double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) * 100000); // 0.0-1.0 → 0-100000
+                            var pct = (int)(opacityVal * 100000); // 0.0-1.0 → 0-100000
                             colorEl.AppendChild(new Drawing.Alpha { Val = pct });
                         }
                     }
@@ -395,7 +404,9 @@ public partial class PowerPointHandler
                 {
                     // Character spacing in points (e.g. "2" = +2pt, "-1" = -1pt)
                     // Stored as 1/100th of a point in OOXML (POI: setSpc((int)(100*spc)))
-                    var spcVal = (int)(double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) * 100);
+                    if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var spcDbl))
+                        throw new ArgumentException($"Invalid 'charspacing' value: '{value}'. Expected a number in points (e.g. 2, -1, 0.5).");
+                    var spcVal = (int)(spcDbl * 100);
                     foreach (var run in runs)
                     {
                         var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
@@ -443,8 +454,10 @@ public partial class PowerPointHandler
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.LineSpacing>();
+                        if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var lsVal))
+                            throw new ArgumentException($"Invalid 'lineSpacing' value: '{value}'. Expected a decimal multiplier (e.g. 1.0 = single, 1.5 = 1.5x, 2.0 = double).");
                         pProps.AppendChild(new Drawing.LineSpacing(
-                            new Drawing.SpacingPercent { Val = (int)(double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) * 100000) })); // e.g. 1.5 → 150000 (150%)
+                            new Drawing.SpacingPercent { Val = (int)(lsVal * 100000) })); // e.g. 1.5 → 150000 (150%)
                     }
                     break;
                 }
@@ -455,7 +468,9 @@ public partial class PowerPointHandler
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.SpaceBefore>();
-                        pProps.AppendChild(new Drawing.SpaceBefore(new Drawing.SpacingPoints { Val = (int)(double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) * 100) })); // pt
+                        if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var sbVal))
+                            throw new ArgumentException($"Invalid 'spaceBefore' value: '{value}'. Expected a number in points (e.g. 6, 12.5).");
+                        pProps.AppendChild(new Drawing.SpaceBefore(new Drawing.SpacingPoints { Val = (int)(sbVal * 100) })); // pt
                     }
                     break;
                 }
@@ -466,7 +481,9 @@ public partial class PowerPointHandler
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.SpaceAfter>();
-                        pProps.AppendChild(new Drawing.SpaceAfter(new Drawing.SpacingPoints { Val = (int)(double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) * 100) })); // pt
+                        if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var saVal))
+                            throw new ArgumentException($"Invalid 'spaceAfter' value: '{value}'. Expected a number in points (e.g. 6, 12.5).");
+                        pProps.AppendChild(new Drawing.SpaceAfter(new Drawing.SpacingPoints { Val = (int)(saVal * 100) })); // pt
                     }
                     break;
                 }
@@ -476,7 +493,7 @@ public partial class PowerPointHandler
                     var bodyPr = shape.TextBody?.Elements<Drawing.BodyProperties>().FirstOrDefault();
                     if (bodyPr == null) { unsupported.Add(key); break; }
                     bodyPr.RemoveAllChildren<Drawing.PresetTextWarp>();
-                    if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                    if (!string.IsNullOrWhiteSpace(value) && !value.Equals("none", StringComparison.OrdinalIgnoreCase))
                     {
                         var warpName = value.StartsWith("text") ? value : $"text{char.ToUpper(value[0])}{value[1..]}";
                         bodyPr.AppendChild(new Drawing.PresetTextWarp(
@@ -570,7 +587,7 @@ public partial class PowerPointHandler
                     break;
                 }
 
-                case "rot3d" or "rotation3d":
+                case "rot3d" or "rotation3d" or "3drotation" or "3d.rotation":
                 {
                     var spPr = shape.ShapeProperties;
                     if (spPr == null) { unsupported.Add(key); break; }
@@ -618,7 +635,7 @@ public partial class PowerPointHandler
                     break;
                 }
 
-                case "depth" or "extrusion":
+                case "depth" or "extrusion" or "3ddepth" or "3d.depth":
                 {
                     var spPr = shape.ShapeProperties;
                     if (spPr == null) { unsupported.Add(key); break; }
@@ -734,28 +751,24 @@ public partial class PowerPointHandler
                     }
                     break;
                 case "color":
+                {
+                    // Build fill before removing old one (atomic)
+                    var cellColorFill = BuildSolidFill(value);
                     foreach (var run in cell.Descendants<Drawing.Run>())
                     {
                         var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
                         rProps.RemoveAllChildren<Drawing.SolidFill>();
-                        rProps.AppendChild(BuildSolidFill(value));
+                        rProps.AppendChild((Drawing.SolidFill)cellColorFill.CloneNode(true));
                     }
                     break;
+                }
                 case "fill":
                 {
-                    var tcPr = cell.TableCellProperties ?? cell.GetFirstChild<Drawing.TableCellProperties>();
-                    if (tcPr == null)
-                    {
-                        tcPr = new Drawing.TableCellProperties();
-                        cell.Append(tcPr);
-                    }
-                    tcPr.RemoveAllChildren<Drawing.SolidFill>();
-                    tcPr.RemoveAllChildren<Drawing.NoFill>();
-                    tcPr.RemoveAllChildren<Drawing.GradientFill>();
-                    tcPr.RemoveAllChildren<Drawing.BlipFill>();
+                    // Build new fill element BEFORE removing old one (atomic: no data loss on invalid color)
+                    OpenXmlElement newCellFill;
                     if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
                     {
-                        tcPr.Append(new Drawing.NoFill());
+                        newCellFill = new Drawing.NoFill();
                     }
                     else if (value.Contains('-'))
                     {
@@ -793,12 +806,24 @@ public partial class PowerPointHandler
                         }
                         gradFill.Append(gsList);
                         gradFill.Append(new Drawing.LinearGradientFill { Angle = (int)(degree * 60000), Scaled = true });
-                        tcPr.Append(gradFill);
+                        newCellFill = gradFill;
                     }
                     else
                     {
-                        tcPr.Append(BuildSolidFill(value));
+                        newCellFill = BuildSolidFill(value);
                     }
+
+                    var tcPr = cell.TableCellProperties ?? cell.GetFirstChild<Drawing.TableCellProperties>();
+                    if (tcPr == null)
+                    {
+                        tcPr = new Drawing.TableCellProperties();
+                        cell.Append(tcPr);
+                    }
+                    tcPr.RemoveAllChildren<Drawing.SolidFill>();
+                    tcPr.RemoveAllChildren<Drawing.NoFill>();
+                    tcPr.RemoveAllChildren<Drawing.GradientFill>();
+                    tcPr.RemoveAllChildren<Drawing.BlipFill>();
+                    tcPr.Append(newCellFill);
                     break;
                 }
                 case "align" or "alignment":
@@ -917,12 +942,13 @@ public partial class PowerPointHandler
                             var wAttr = lineProps.GetAttributes().FirstOrDefault(a => a.LocalName == "w");
                             lineProps.SetAttribute(new OpenXmlAttribute("", "w", null!, borderWidth.Value.ToString()));
                         }
-                        // Set color
+                        // Set color (build before removing for atomicity)
                         if (borderColor != null)
                         {
+                            var borderFill = BuildSolidFill(borderColor);
                             lineProps.RemoveAllChildren<Drawing.SolidFill>();
                             lineProps.RemoveAllChildren<Drawing.NoFill>();
-                            lineProps.AppendChild(BuildSolidFill(borderColor));
+                            lineProps.AppendChild(borderFill);
                         }
                         // Set dash style (default: solid)
                         if (borderDash != null)
@@ -989,6 +1015,10 @@ public partial class PowerPointHandler
                 }
                 case "image":
                 {
+                    // Validate before modifying (atomic: no data loss on invalid input)
+                    if (!File.Exists(value))
+                        throw new FileNotFoundException($"Image file not found: {value}");
+
                     // Image fill on table cell (like POI CTBlipFillProperties on CTTableCellProperties)
                     var tcPr = cell.TableCellProperties ?? cell.GetFirstChild<Drawing.TableCellProperties>();
                     if (tcPr == null) { tcPr = new Drawing.TableCellProperties(); cell.Append(tcPr); }
@@ -996,9 +1026,6 @@ public partial class PowerPointHandler
                     tcPr.RemoveAllChildren<Drawing.NoFill>();
                     tcPr.RemoveAllChildren<Drawing.GradientFill>();
                     tcPr.RemoveAllChildren<Drawing.BlipFill>();
-
-                    if (!File.Exists(value))
-                        throw new FileNotFoundException($"Image file not found: {value}");
                     var imgExt = Path.GetExtension(value).ToLowerInvariant();
                     var imgType = imgExt switch
                     {

@@ -263,8 +263,10 @@ public partial class PowerPointHandler
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.LineSpacing>();
+                        if (!double.TryParse(lsVal, System.Globalization.CultureInfo.InvariantCulture, out var lsNum))
+                            throw new ArgumentException($"Invalid 'lineSpacing' value '{lsVal}'. Expected a numeric multiplier (e.g. 1.5 for 150%).");
                         pProps.AppendChild(new Drawing.LineSpacing(
-                            new Drawing.SpacingPercent { Val = (int)(double.Parse(lsVal, System.Globalization.CultureInfo.InvariantCulture) * 100000) }));
+                            new Drawing.SpacingPercent { Val = (int)(lsNum * 100000) }));
                     }
                 }
 
@@ -275,7 +277,9 @@ public partial class PowerPointHandler
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.SpaceBefore>();
-                        pProps.AppendChild(new Drawing.SpaceBefore(new Drawing.SpacingPoints { Val = (int)(double.Parse(sbVal, System.Globalization.CultureInfo.InvariantCulture) * 100) }));
+                        if (!double.TryParse(sbVal, System.Globalization.CultureInfo.InvariantCulture, out var sbNum))
+                            throw new ArgumentException($"Invalid 'spaceBefore' value '{sbVal}'. Expected a numeric value in points.");
+                        pProps.AppendChild(new Drawing.SpaceBefore(new Drawing.SpacingPoints { Val = (int)(sbNum * 100) }));
                     }
                 }
                 if (properties.TryGetValue("spaceAfter", out var saVal) || properties.TryGetValue("spaceafter", out saVal))
@@ -284,7 +288,9 @@ public partial class PowerPointHandler
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.SpaceAfter>();
-                        pProps.AppendChild(new Drawing.SpaceAfter(new Drawing.SpacingPoints { Val = (int)(double.Parse(saVal, System.Globalization.CultureInfo.InvariantCulture) * 100) }));
+                        if (!double.TryParse(saVal, System.Globalization.CultureInfo.InvariantCulture, out var saNum))
+                            throw new ArgumentException($"Invalid 'spaceAfter' value '{saVal}'. Expected a numeric value in points.");
+                        pProps.AppendChild(new Drawing.SpaceAfter(new Drawing.SpacingPoints { Val = (int)(saNum * 100) }));
                     }
                 }
 
@@ -318,7 +324,11 @@ public partial class PowerPointHandler
                         Extents = new Drawing.Extents { Cx = cxEmu, Cy = cyEmu }
                     };
                     if (properties.TryGetValue("rotation", out var rotVal) || properties.TryGetValue("rotate", out rotVal))
-                        xfrm.Rotation = (int)(double.Parse(rotVal, System.Globalization.CultureInfo.InvariantCulture) * 60000);
+                    {
+                        if (!double.TryParse(rotVal, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var rotDbl))
+                            throw new ArgumentException($"Invalid 'rotation' value: '{rotVal}'. Expected a number in degrees (e.g. 45, -90, 180.5).");
+                        xfrm.Rotation = (int)(rotDbl * 60000);
+                    }
                     newShape.ShapeProperties!.Transform2D = xfrm;
 
                     var presetName = properties.GetValueOrDefault("preset", "rect");
@@ -577,8 +587,12 @@ public partial class PowerPointHandler
                 var tblShapeTree = GetSlide(tblSlidePart).CommonSlideData?.ShapeTree
                     ?? throw new InvalidOperationException("Slide has no shape tree");
 
-                int rows = int.Parse(properties.GetValueOrDefault("rows", "3"));
-                int cols = int.Parse(properties.GetValueOrDefault("cols", "3"));
+                var rowsStr = properties.GetValueOrDefault("rows", "3");
+                var colsStr = properties.GetValueOrDefault("cols", "3");
+                if (!int.TryParse(rowsStr, out var rows))
+                    throw new ArgumentException($"Invalid 'rows' value: '{rowsStr}'. Expected a positive integer.");
+                if (!int.TryParse(colsStr, out var cols))
+                    throw new ArgumentException($"Invalid 'cols' value: '{colsStr}'. Expected a positive integer.");
                 if (rows < 1 || cols < 1)
                     throw new ArgumentException("rows and cols must be >= 1");
 
@@ -923,9 +937,13 @@ public partial class PowerPointHandler
 
                 // 5. Add media timing node (controls playback behavior)
                 var mediaSlide = GetSlide(mediaSlidePart);
-                var vol = properties.TryGetValue("volume", out var volStr)
-                    ? (int)(double.Parse(volStr, System.Globalization.CultureInfo.InvariantCulture) * 1000) // 0-100 → 0-100000
-                    : 80000; // default 80%
+                var vol = 80000; // default 80%
+                if (properties.TryGetValue("volume", out var volStr))
+                {
+                    if (!double.TryParse(volStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var volDbl))
+                        throw new ArgumentException($"Invalid 'volume' value: '{volStr}'. Expected a number 0-100 (e.g. 80 = 80%).");
+                    vol = (int)(volDbl * 1000); // 0-100 → 0-100000
+                }
                 var autoPlay = properties.GetValueOrDefault("autoplay", "false")
                     .Equals("true", StringComparison.OrdinalIgnoreCase);
 
@@ -971,9 +989,17 @@ public partial class PowerPointHandler
                 // Connect to shapes if specified
                 var cxnDrawProps = cxnNvProps.NonVisualConnectorShapeDrawingProperties!;
                 if (properties.TryGetValue("startshape", out var startId))
-                    cxnDrawProps.StartConnection = new Drawing.StartConnection { Id = uint.Parse(startId), Index = 0 };
+                {
+                    if (!uint.TryParse(startId, out var startIdVal))
+                        throw new ArgumentException($"Invalid 'startshape' value: '{startId}'. Expected a positive integer (shape ID).");
+                    cxnDrawProps.StartConnection = new Drawing.StartConnection { Id = startIdVal, Index = 0 };
+                }
                 if (properties.TryGetValue("endshape", out var endId))
-                    cxnDrawProps.EndConnection = new Drawing.EndConnection { Id = uint.Parse(endId), Index = 0 };
+                {
+                    if (!uint.TryParse(endId, out var endIdVal))
+                        throw new ArgumentException($"Invalid 'endshape' value: '{endId}'. Expected a positive integer (shape ID).");
+                    cxnDrawProps.EndConnection = new Drawing.EndConnection { Id = endIdVal, Index = 0 };
+                }
 
                 connector.NonVisualConnectionShapeProperties = cxnNvProps;
                 connector.ShapeProperties = new ShapeProperties(
@@ -1032,7 +1058,14 @@ public partial class PowerPointHandler
                 if (!properties.TryGetValue("shapes", out var shapesStr))
                     throw new ArgumentException("'shapes' property required: comma-separated shape indices to group (e.g. shapes=1,2,3)");
 
-                var shapeIndices = shapesStr.Split(',').Select(s => int.Parse(s.Trim())).ToList();
+                var shapeParts = shapesStr.Split(',');
+                var shapeIndices = new List<int>();
+                foreach (var sp in shapeParts)
+                {
+                    if (!int.TryParse(sp.Trim(), out var idx))
+                        throw new ArgumentException($"Invalid 'shapes' value: '{sp.Trim()}' is not a valid integer. Expected comma-separated shape indices (e.g. shapes=1,2,3).");
+                    shapeIndices.Add(idx);
+                }
                 var allShapes = grpShapeTree.Elements<Shape>().ToList();
 
                 // Collect shapes to group (in reverse order to maintain indices during removal)
@@ -1104,7 +1137,12 @@ public partial class PowerPointHandler
                 // Determine column count from existing grid
                 var existingColCount = rowTable.Elements<Drawing.TableGrid>().FirstOrDefault()
                     ?.Elements<Drawing.GridColumn>().Count() ?? 1;
-                int newColCount = properties.TryGetValue("cols", out var rcVal) ? int.Parse(rcVal) : existingColCount;
+                int newColCount = existingColCount;
+                if (properties.TryGetValue("cols", out var rcVal))
+                {
+                    if (!int.TryParse(rcVal, out newColCount))
+                        throw new ArgumentException($"Invalid 'cols' value: '{rcVal}'. Expected a positive integer.");
+                }
 
                 // Row height: default from first existing row, or 370840 EMU (~1cm)
                 long newRowHeight = properties.TryGetValue("height", out var rhVal)
@@ -1276,14 +1314,20 @@ public partial class PowerPointHandler
                 if (properties.TryGetValue("color", out var pColor))
                     rProps.AppendChild(BuildSolidFill(pColor));
                 if (properties.TryGetValue("spacing", out var pSpacing) || properties.TryGetValue("charspacing", out pSpacing))
-                    rProps.Spacing = (int)(double.Parse(pSpacing, System.Globalization.CultureInfo.InvariantCulture) * 100);
+                {
+                    if (!double.TryParse(pSpacing, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var pSpcVal))
+                        throw new ArgumentException($"Invalid 'spacing' value: '{pSpacing}'. Expected a number in points.");
+                    rProps.Spacing = (int)(pSpcVal * 100);
+                }
                 if (properties.TryGetValue("baseline", out var pBaseline))
                 {
                     rProps.Baseline = pBaseline.ToLowerInvariant() switch
                     {
                         "super" or "true" => 30000,
                         "sub" => -25000,
-                        _ => (int)(double.Parse(pBaseline, System.Globalization.CultureInfo.InvariantCulture) * 1000)
+                        _ => double.TryParse(pBaseline, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var pBlVal)
+                            ? (int)(pBlVal * 1000)
+                            : throw new ArgumentException($"Invalid 'baseline' value: '{pBaseline}'. Expected 'super', 'sub', or a percentage.")
                     };
                 }
 

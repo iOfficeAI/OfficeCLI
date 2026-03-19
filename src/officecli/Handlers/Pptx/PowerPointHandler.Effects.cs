@@ -160,7 +160,8 @@ public partial class PowerPointHandler
             return;
         }
 
-        var radiusPt = double.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+        if (!double.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var radiusPt))
+            throw new ArgumentException($"Invalid 'softedge' value '{value}'. Expected a numeric radius in points.");
         effectList.AppendChild(new Drawing.SoftEdge { Radius = (long)(radiusPt * 12700) });
     }
 
@@ -178,9 +179,10 @@ public partial class PowerPointHandler
         }
 
         var parts = value.Split(',');
-        var rotX = double.Parse(parts[0].Trim(), System.Globalization.CultureInfo.InvariantCulture);
-        var rotY = parts.Length > 1 ? double.Parse(parts[1].Trim(), System.Globalization.CultureInfo.InvariantCulture) : 0;
-        var rotZ = parts.Length > 2 ? double.Parse(parts[2].Trim(), System.Globalization.CultureInfo.InvariantCulture) : 0;
+        if (!double.TryParse(parts[0].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var rotX))
+            throw new ArgumentException($"Invalid '3drotation' value: '{value}'. Expected degrees as 'rotX,rotY,rotZ' (e.g. '45,30,0').");
+        var rotY = parts.Length > 1 && double.TryParse(parts[1].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var ry) ? ry : 0;
+        var rotZ = parts.Length > 2 && double.TryParse(parts[2].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var rz) ? rz : 0;
 
         var scene3d = EnsureScene3D(spPr);
         var camera = scene3d.Camera!;
@@ -200,7 +202,9 @@ public partial class PowerPointHandler
         var scene3d = EnsureScene3D(spPr);
         var camera = scene3d.Camera!;
         var rot = camera.Rotation ?? (camera.Rotation = new Drawing.Rotation());
-        var deg = (int)(double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) * 60000);
+        if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var degVal))
+            throw new ArgumentException($"Invalid '3drotation.{axis}' value: '{value}'. Expected a number in degrees.");
+        var deg = (int)(degVal * 60000);
 
         switch (axis)
         {
@@ -279,7 +283,9 @@ public partial class PowerPointHandler
         }
 
         var sp3dEl = EnsureShape3D(spPr);
-        sp3dEl.ExtrusionHeight = (long)(double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) * 12700);
+        if (!double.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var depthPt))
+            throw new ArgumentException($"Invalid '3ddepth' value '{value}'. Expected a numeric depth in points.");
+        sp3dEl.ExtrusionHeight = (long)(depthPt * 12700);
     }
 
     /// <summary>
