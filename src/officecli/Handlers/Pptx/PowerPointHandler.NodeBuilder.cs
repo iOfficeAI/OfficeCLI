@@ -65,6 +65,13 @@ public partial class PowerPointHandler
             children.Add(grpNode);
         }
 
+        int cxnIdx = 0;
+        foreach (var cxn in shapeTree.Elements<ConnectionShape>())
+        {
+            cxnIdx++;
+            children.Add(ConnectorToNode(cxn, slideNum, cxnIdx));
+        }
+
         return children;
     }
 
@@ -759,5 +766,41 @@ public partial class PowerPointHandler
         }
         shape.TextBody = body;
         return shape;
+    }
+
+    private static DocumentNode ConnectorToNode(ConnectionShape cxn, int slideNum, int cxnIdx)
+    {
+        var name = cxn.NonVisualConnectionShapeProperties?.NonVisualDrawingProperties?.Name?.Value ?? "Connector";
+        var node = new DocumentNode
+        {
+            Path = $"/slide[{slideNum}]/connector[{cxnIdx}]",
+            Type = "connector",
+            Preview = name
+        };
+        node.Format["name"] = name;
+
+        var spPr = cxn.ShapeProperties;
+        var xfrm = spPr?.GetFirstChild<Drawing.Transform2D>();
+        if (xfrm != null)
+        {
+            if (xfrm.Offset?.X != null) node.Format["x"] = FormatEmu(xfrm.Offset.X!);
+            if (xfrm.Offset?.Y != null) node.Format["y"] = FormatEmu(xfrm.Offset.Y!);
+            if (xfrm.Extents?.Cx != null) node.Format["width"] = FormatEmu(xfrm.Extents.Cx!);
+            if (xfrm.Extents?.Cy != null) node.Format["height"] = FormatEmu(xfrm.Extents.Cy!);
+        }
+
+        var geom = spPr?.GetFirstChild<Drawing.PresetGeometry>();
+        if (geom?.Preset?.HasValue == true)
+            node.Format["preset"] = geom.Preset.InnerText;
+
+        var ln = spPr?.GetFirstChild<Drawing.Outline>();
+        if (ln?.Width?.HasValue == true)
+            node.Format["lineWidth"] = $"{ln.Width.Value / 12700.0}pt";
+        var solidFill = ln?.GetFirstChild<Drawing.SolidFill>();
+        var rgb = solidFill?.GetFirstChild<Drawing.RgbColorModelHex>();
+        if (rgb?.Val?.HasValue == true)
+            node.Format["lineColor"] = rgb.Val.Value;
+
+        return node;
     }
 }

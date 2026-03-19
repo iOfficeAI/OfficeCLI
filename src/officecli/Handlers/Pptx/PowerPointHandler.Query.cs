@@ -440,6 +440,13 @@ public partial class PowerPointHandler
                 throw new ArgumentException($"Picture {elementIdx} not found (total: {pics.Count})");
             return PictureToNode(pics[elementIdx - 1], slideIdx, elementIdx, targetSlidePart);
         }
+        else if (elementType == "connector" || elementType == "connection")
+        {
+            var connectors = shapeTreeEl.Elements<ConnectionShape>().ToList();
+            if (elementIdx < 1 || elementIdx > connectors.Count)
+                throw new ArgumentException($"Connector {elementIdx} not found (total: {connectors.Count})");
+            return ConnectorToNode(connectors[elementIdx - 1], slideIdx, elementIdx);
+        }
 
         // Generic fallback for unknown element types
         {
@@ -470,7 +477,8 @@ public partial class PowerPointHandler
             || rawType is "shape" or "textbox" or "title" or "picture" or "pic"
                 or "video" or "audio"
                 or "equation" or "math" or "formula"
-                or "table" or "chart" or "placeholder" or "notes";
+                or "table" or "chart" or "placeholder" or "notes"
+                or "connector" or "connection";
         if (!isKnownType)
         {
             var genericParsed = GenericXmlQuery.ParseSelector(selector);
@@ -608,6 +616,21 @@ public partial class PowerPointHandler
                             continue;
                     }
                     results.Add(chartNode);
+                }
+            }
+
+            if (parsed.ElementType is "connector" or "connection" || (parsed.ElementType == null && !isEquationSelector))
+            {
+                int cxnIdx = 0;
+                foreach (var cxn in shapeTree.Elements<ConnectionShape>())
+                {
+                    cxnIdx++;
+                    if (parsed.ElementType is "connector" or "connection" || parsed.ElementType == null)
+                    {
+                        var cxnNode = ConnectorToNode(cxn, slideNum, cxnIdx);
+                        if (MatchesGenericAttributes(cxnNode, parsed.Attributes))
+                            results.Add(cxnNode);
+                    }
                 }
             }
 
