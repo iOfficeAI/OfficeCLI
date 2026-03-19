@@ -110,16 +110,18 @@ public partial class PowerPointHandler
 
     private static void ApplyShapeFill(ShapeProperties spPr, string value)
     {
+        // Build new fill element BEFORE removing old one (atomic: no data loss on validation failure)
+        OpenXmlElement newFill = value.Equals("none", StringComparison.OrdinalIgnoreCase)
+            ? new Drawing.NoFill()
+            : BuildSolidFill(value);
+
         spPr.RemoveAllChildren<Drawing.SolidFill>();
         spPr.RemoveAllChildren<Drawing.NoFill>();
         spPr.RemoveAllChildren<Drawing.GradientFill>();
         spPr.RemoveAllChildren<Drawing.PatternFill>();
         spPr.RemoveAllChildren<Drawing.BlipFill>();
 
-        if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
-            InsertFillElement(spPr, new Drawing.NoFill());
-        else
-            InsertFillElement(spPr, BuildSolidFill(value));
+        InsertFillElement(spPr, newFill);
     }
 
     /// <summary>

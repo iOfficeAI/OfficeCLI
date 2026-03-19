@@ -358,9 +358,19 @@ public partial class PowerPointHandler
                 throw new ArgumentException($"Cell {cellIdx} not found (row has {cells.Count} cells)");
 
             var cell = cells[cellIdx - 1];
-            var unsupported = SetTableCellProperties(cell, properties);
-            GetSlide(slidePart).Save();
-            return unsupported;
+            // Clone cell for rollback on failure (atomic: no partial modifications)
+            var cellBackup = cell.CloneNode(true);
+            try
+            {
+                var unsupported = SetTableCellProperties(cell, properties);
+                GetSlide(slidePart).Save();
+                return unsupported;
+            }
+            catch
+            {
+                cell.Parent?.ReplaceChild(cellBackup, cell);
+                throw;
+            }
         }
 
         // Try table-level path: /slide[N]/table[M]
@@ -694,6 +704,9 @@ public partial class PowerPointHandler
                             var parts = value.Split(',');
                             if (parts.Length == 4)
                             {
+                                for (int ci = 0; ci < 4; ci++)
+                                    if (!double.TryParse(parts[ci].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _))
+                                        throw new ArgumentException($"Invalid 'crop' value: '{value}'. Expected 1 or 4 comma-separated percentages (e.g. '10' or '5,10,5,10').");
                                 srcRect.Left = (int)(double.Parse(parts[0].Trim(), System.Globalization.CultureInfo.InvariantCulture) * 1000);
                                 srcRect.Top = (int)(double.Parse(parts[1].Trim(), System.Globalization.CultureInfo.InvariantCulture) * 1000);
                                 srcRect.Right = (int)(double.Parse(parts[2].Trim(), System.Globalization.CultureInfo.InvariantCulture) * 1000);
@@ -701,13 +714,17 @@ public partial class PowerPointHandler
                             }
                             else if (parts.Length == 1)
                             {
-                                var pct = (int)(double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) * 1000);
-                                srcRect.Left = pct; srcRect.Top = pct; srcRect.Right = pct; srcRect.Bottom = pct;
+                                if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var cropVal))
+                                    throw new ArgumentException($"Invalid 'crop' value: '{value}'. Expected a percentage (e.g. 10 = 10% from each edge).");
+                                var cropPct = (int)(cropVal * 1000);
+                                srcRect.Left = cropPct; srcRect.Top = cropPct; srcRect.Right = cropPct; srcRect.Bottom = cropPct;
                             }
                         }
                         else
                         {
-                            var pct = (int)(double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) * 1000); // percent (0-100) → 1/1000ths
+                            if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var cropSingle))
+                                throw new ArgumentException($"Invalid '{key}' value: '{value}'. Expected a percentage (0-100).");
+                            var pct = (int)(cropSingle * 1000); // percent (0-100) → 1/1000ths
                             switch (key.ToLowerInvariant())
                             {
                                 case "cropleft": srcRect.Left = pct; break;
@@ -799,27 +816,39 @@ public partial class PowerPointHandler
                 ApplyZOrder(slidePart, shape, zOrderValue);
             }
 
-            var allRuns = shape.Descendants<Drawing.Run>().ToList();
+            // Clone shape for rollback on failure (atomic: no partial modifications)
+            var shapeBackup = shape.CloneNode(true);
 
-            // Separate animation, link, and z-order from other shape properties
-            var animValue = properties.GetValueOrDefault("animation")
-                ?? properties.GetValueOrDefault("animate");
-            var linkValue = properties.GetValueOrDefault("link");
-            var excludeKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                { "animation", "animate", "link", "zorder", "z-order", "order" };
-            var shapeProps = properties
-                .Where(kv => !excludeKeys.Contains(kv.Key))
-                .ToDictionary(kv => kv.Key, kv => kv.Value);
+            try
+            {
+                var allRuns = shape.Descendants<Drawing.Run>().ToList();
 
-            var unsupported = SetRunOrShapeProperties(shapeProps, allRuns, shape, slidePart);
+                // Separate animation, link, and z-order from other shape properties
+                var animValue = properties.GetValueOrDefault("animation")
+                    ?? properties.GetValueOrDefault("animate");
+                var linkValue = properties.GetValueOrDefault("link");
+                var excludeKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                    { "animation", "animate", "link", "zorder", "z-order", "order" };
+                var shapeProps = properties
+                    .Where(kv => !excludeKeys.Contains(kv.Key))
+                    .ToDictionary(kv => kv.Key, kv => kv.Value);
 
-            if (animValue != null)
-                ApplyShapeAnimation(slidePart, shape, animValue);
-            if (linkValue != null)
-                ApplyShapeHyperlink(slidePart, shape, linkValue);
+                var unsupported = SetRunOrShapeProperties(shapeProps, allRuns, shape, slidePart);
 
-            GetSlide(slidePart).Save();
-            return unsupported;
+                if (animValue != null)
+                    ApplyShapeAnimation(slidePart, shape, animValue);
+                if (linkValue != null)
+                    ApplyShapeHyperlink(slidePart, shape, linkValue);
+
+                GetSlide(slidePart).Save();
+                return unsupported;
+            }
+            catch
+            {
+                // Rollback: restore shape to pre-modification state
+                shape.Parent?.ReplaceChild(shapeBackup, shape);
+                throw;
+            }
         }
 
         // Generic XML fallback: navigate to element and set attributes
