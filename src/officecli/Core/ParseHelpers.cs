@@ -34,6 +34,46 @@ public static class ParseHelpers
     }
 
     /// <summary>
+    /// Safely parse a string as int, throwing ArgumentException with a clear message on failure.
+    /// </summary>
+    public static int SafeParseInt(string value, string propertyName)
+    {
+        if (!int.TryParse(value, CultureInfo.InvariantCulture, out var result))
+            throw new ArgumentException($"Invalid '{propertyName}' value '{value}'. Expected an integer.");
+        return result;
+    }
+
+    /// <summary>
+    /// Safely parse a string as double, throwing ArgumentException with a clear message on failure.
+    /// </summary>
+    public static double SafeParseDouble(string value, string propertyName)
+    {
+        if (!double.TryParse(value, CultureInfo.InvariantCulture, out var result))
+            throw new ArgumentException($"Invalid '{propertyName}' value '{value}'. Expected a number.");
+        return result;
+    }
+
+    /// <summary>
+    /// Safely parse a string as uint, throwing ArgumentException with a clear message on failure.
+    /// </summary>
+    public static uint SafeParseUint(string value, string propertyName)
+    {
+        if (!uint.TryParse(value, CultureInfo.InvariantCulture, out var result))
+            throw new ArgumentException($"Invalid '{propertyName}' value '{value}'. Expected a non-negative integer.");
+        return result;
+    }
+
+    /// <summary>
+    /// Safely parse a string as byte, throwing ArgumentException with a clear message on failure.
+    /// </summary>
+    public static byte SafeParseByte(string value, string propertyName)
+    {
+        if (!byte.TryParse(value, CultureInfo.InvariantCulture, out var result))
+            throw new ArgumentException($"Invalid '{propertyName}' value '{value}'. Expected an integer (0-255).");
+        return result;
+    }
+
+    /// <summary>
     /// Normalize a hex color string to 8-char ARGB format (e.g. "FFFF0000").
     /// Accepts: "FF0000" (6-char RGB → prepend FF), "#FF0000" (strip #), "F00" (3-char → expand),
     /// "80FF0000" (8-char ARGB → as-is). Always returns uppercase.
