@@ -37,7 +37,12 @@ public partial class PowerPointHandler
         var schemeColor = TryParseSchemeColor(value);
         if (schemeColor.HasValue)
             return new Drawing.SchemeColor { Val = schemeColor.Value };
-        return new Drawing.RgbColorModelHex { Val = value.TrimStart('#').ToUpperInvariant() };
+
+        var (rgb, alpha) = OfficeCli.Core.ParseHelpers.SanitizeColorForOoxml(value);
+        var colorEl = new Drawing.RgbColorModelHex { Val = rgb };
+        if (alpha.HasValue)
+            colorEl.AppendChild(new Drawing.Alpha { Val = alpha.Value });
+        return colorEl;
     }
 
     /// <summary>
@@ -125,6 +130,8 @@ public partial class PowerPointHandler
     /// </summary>
     private static void ApplyGradientFill(ShapeProperties spPr, string value)
     {
+        // Normalize alternative format: "LINEAR;C1;C2;angle" → "C1-C2-angle"
+        value = NormalizeGradientValue(value);
         spPr.RemoveAllChildren<Drawing.SolidFill>();
         spPr.RemoveAllChildren<Drawing.NoFill>();
         spPr.RemoveAllChildren<Drawing.GradientFill>();

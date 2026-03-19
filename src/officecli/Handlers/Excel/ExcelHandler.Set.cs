@@ -259,16 +259,28 @@ public partial class ExcelHandler
                         var spPr = anchor.Descendants<XDR.ShapeProperties>().FirstOrDefault();
                         if (spPr != null)
                         {
-                            spPr.RemoveAllChildren<Drawing.EffectList>();
-                            if (!value.Equals("none", StringComparison.OrdinalIgnoreCase) &&
-                                !value.Equals("false", StringComparison.OrdinalIgnoreCase))
+                            var effectList = spPr.GetFirstChild<Drawing.EffectList>();
+                            if (value.Equals("none", StringComparison.OrdinalIgnoreCase) ||
+                                value.Equals("false", StringComparison.OrdinalIgnoreCase))
                             {
+                                effectList?.RemoveAllChildren<Drawing.OuterShadow>();
+                                if (effectList != null && !effectList.HasChildren) spPr.RemoveChild(effectList);
+                            }
+                            else
+                            {
+                                if (effectList == null) { effectList = new Drawing.EffectList(); spPr.AppendChild(effectList); }
+                                effectList.RemoveAllChildren<Drawing.OuterShadow>();
+
                                 // Format: "color:blur:dist:dir" e.g. "000000:4:3:45" or just "true"
                                 var parts = value.Split(':');
                                 var sColor = parts.Length > 0 && parts[0] != "true" ? parts[0] : "000000";
-                                var sBlur = parts.Length > 1 && int.TryParse(parts[1], out var b) ? b : 4;
-                                var sDist = parts.Length > 2 && int.TryParse(parts[2], out var d) ? d : 3;
-                                var sDir = parts.Length > 3 && int.TryParse(parts[3], out var dr) ? dr : 45;
+                                var sBlur = 4; var sDist = 3; var sDir = 45;
+                                if (parts.Length > 1 && !int.TryParse(parts[1], out sBlur))
+                                { Console.Error.WriteLine($"Warning: invalid shadow blur '{parts[1]}', expected integer. Format: COLOR[:BLUR[:DIST[:DIR]]]"); sBlur = 4; }
+                                if (parts.Length > 2 && !int.TryParse(parts[2], out sDist))
+                                { Console.Error.WriteLine($"Warning: invalid shadow distance '{parts[2]}', expected integer. Format: COLOR[:BLUR[:DIST[:DIR]]]"); sDist = 3; }
+                                if (parts.Length > 3 && !int.TryParse(parts[3], out sDir))
+                                { Console.Error.WriteLine($"Warning: invalid shadow direction '{parts[3]}', expected integer. Format: COLOR[:BLUR[:DIST[:DIR]]]"); sDir = 45; }
 
                                 var shadow = new Drawing.OuterShadow
                                 {
@@ -278,11 +290,11 @@ public partial class ExcelHandler
                                     Alignment = Drawing.RectangleAlignmentValues.BottomRight,
                                     RotateWithShape = false
                                 };
-                                shadow.AppendChild(new Drawing.RgbColorModelHex { Val = sColor.TrimStart('#').ToUpperInvariant() });
-
-                                var effectList = new Drawing.EffectList();
+                                var (sRgb, sAlpha) = OfficeCli.Core.ParseHelpers.SanitizeColorForOoxml(sColor);
+                                var sClr = new Drawing.RgbColorModelHex { Val = sRgb };
+                                if (sAlpha.HasValue) sClr.AppendChild(new Drawing.Alpha { Val = sAlpha.Value });
+                                shadow.AppendChild(sClr);
                                 effectList.AppendChild(shadow);
-                                spPr.AppendChild(effectList);
                             }
                         }
                         break;
@@ -301,11 +313,13 @@ public partial class ExcelHandler
                             {
                                 // Format: "color:radius" e.g. "4472C4:6" or just "color"
                                 var parts = value.Split(':');
-                                var gColor = parts[0].TrimStart('#').ToUpperInvariant();
                                 var gRadius = parts.Length > 1 && int.TryParse(parts[1], out var r) ? r : 6;
 
                                 var glow = new Drawing.Glow { Radius = (long)(gRadius * 12700) };
-                                glow.AppendChild(new Drawing.RgbColorModelHex { Val = gColor });
+                                var (gRgb, gAlpha) = OfficeCli.Core.ParseHelpers.SanitizeColorForOoxml(parts[0]);
+                                var gClr = new Drawing.RgbColorModelHex { Val = gRgb };
+                                if (gAlpha.HasValue) gClr.AppendChild(new Drawing.Alpha { Val = gAlpha.Value });
+                                glow.AppendChild(gClr);
                                 effectList.AppendChild(glow);
                             }
                         }
@@ -800,8 +814,7 @@ public partial class ExcelHandler
                     sheetPr.RemoveAllChildren<TabColor>();
                     if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
                     {
-                        var colorHex = value.TrimStart('#').ToUpperInvariant();
-                        if (colorHex.Length == 6) colorHex = "FF" + colorHex; // RRGGBB -> FFRRGGBB
+                        var colorHex = OfficeCli.Core.ParseHelpers.NormalizeArgbColor(value);
                         sheetPr.AppendChild(new TabColor { Rgb = new HexBinaryValue(colorHex) });
                     }
                     break;

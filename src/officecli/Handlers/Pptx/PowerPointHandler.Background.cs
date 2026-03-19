@@ -25,6 +25,9 @@ public partial class PowerPointHandler
     /// </summary>
     private static void ApplySlideBackground(SlidePart slidePart, string value)
     {
+        // Normalize alternative gradient format: "LINEAR;C1;C2;angle" → "C1-C2-angle"
+        value = NormalizeGradientValue(value);
+
         var slide = GetSlide(slidePart);
         var cSld = slide.CommonSlideData
             ?? throw new InvalidOperationException("Slide has no CommonSlideData");
@@ -169,6 +172,30 @@ public partial class PowerPointHandler
     }
 
     // ==================== Helpers ====================
+
+    /// <summary>
+    /// Normalize alternative gradient formats to the canonical "-" separated form.
+    /// Handles: "LINEAR;C1;C2;angle" → "C1-C2-angle", "RADIAL;C1;C2" → "radial:C1-C2"
+    /// </summary>
+    private static string NormalizeGradientValue(string value)
+    {
+        // Detect semicolon-separated format: TYPE;C1;C2[;angle/focus]
+        if (!value.Contains(';')) return value;
+
+        var parts = value.Split(';');
+        if (parts.Length < 3) return value;
+
+        var type = parts[0].Trim().ToUpperInvariant();
+        var colorAndParams = parts.Skip(1).Select(p => p.Trim()).ToArray();
+
+        return type switch
+        {
+            "LINEAR" => string.Join("-", colorAndParams),
+            "RADIAL" => "radial:" + string.Join("-", colorAndParams),
+            "PATH" => "path:" + string.Join("-", colorAndParams),
+            _ => value // unknown type, leave as-is
+        };
+    }
 
     /// <summary>
     /// Returns true if value looks like a gradient color string ("RRGGBB-RRGGBB[-angle]").

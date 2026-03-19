@@ -578,7 +578,10 @@ internal static class ChartHelper
         };
         if (schemeColor.HasValue)
             return new Drawing.SchemeColor { Val = schemeColor.Value };
-        return new Drawing.RgbColorModelHex { Val = value.TrimStart('#').ToUpperInvariant() };
+        var (rgb, alpha) = ParseHelpers.SanitizeColorForOoxml(value);
+        var el = new Drawing.RgbColorModelHex { Val = rgb };
+        if (alpha.HasValue) el.AppendChild(new Drawing.Alpha { Val = alpha.Value });
+        return el;
     }
 
     // ==================== Series Builders ====================

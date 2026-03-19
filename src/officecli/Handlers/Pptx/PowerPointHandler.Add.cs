@@ -65,6 +65,18 @@ public partial class PowerPointHandler
                 if (properties.TryGetValue("background", out var bgValue))
                     ApplySlideBackground(newSlidePart, bgValue);
 
+                // Apply transition if provided
+                if (properties.TryGetValue("transition", out var transValue))
+                {
+                    ApplyTransition(newSlidePart, transValue);
+                    if (transValue.StartsWith("morph", StringComparison.OrdinalIgnoreCase))
+                        AutoPrefixMorphNames(newSlidePart);
+                }
+                if (properties.TryGetValue("advancetime", out var advTime))
+                    FindOrCreateTransition(newSlidePart.Slide).AdvanceAfterTime = advTime;
+                if (properties.TryGetValue("advanceclick", out var advClick))
+                    FindOrCreateTransition(newSlidePart.Slide).AdvanceOnClick = IsTruthy(advClick);
+
                 newSlidePart.Slide.Save();
 
                 var maxId = slideIdList.Elements<SlideId>().Any()
@@ -346,7 +358,7 @@ public partial class PowerPointHandler
                 // Line/border (after fill per schema: xfrm → prstGeom → fill → ln)
                 if (properties.TryGetValue("line", out var lineColor) || properties.TryGetValue("linecolor", out lineColor) || properties.TryGetValue("line.color", out lineColor))
                 {
-                    var outline = newShape.ShapeProperties!.GetFirstChild<Drawing.Outline>() ?? newShape.ShapeProperties.AppendChild(new Drawing.Outline());
+                    var outline = EnsureOutline(newShape.ShapeProperties!);
                     if (lineColor.Equals("none", StringComparison.OrdinalIgnoreCase))
                         outline.AppendChild(new Drawing.NoFill());
                     else
@@ -354,7 +366,7 @@ public partial class PowerPointHandler
                 }
                 if (properties.TryGetValue("linewidth", out var lwStr) || properties.TryGetValue("lineWidth", out lwStr) || properties.TryGetValue("line.width", out lwStr))
                 {
-                    var outline = newShape.ShapeProperties!.GetFirstChild<Drawing.Outline>() ?? newShape.ShapeProperties.AppendChild(new Drawing.Outline());
+                    var outline = EnsureOutline(newShape.ShapeProperties!);
                     outline.Width = Core.EmuConverter.ParseEmuAsInt(lwStr);
                 }
 

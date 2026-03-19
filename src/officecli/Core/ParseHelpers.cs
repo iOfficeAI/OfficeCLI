@@ -48,4 +48,34 @@ public static class ParseHelpers
             return "FF" + hex;
         return hex; // 8-char ARGB or other (pass through)
     }
+
+    /// <summary>
+    /// Sanitize a hex color for OOXML srgbClr val (must be exactly 6-char RGB).
+    /// If 8-char hex is given, interprets as AARRGGBB (POI convention: alpha first),
+    /// strips the leading alpha and returns it separately.
+    /// Returns (rgb6, alphaPercent) where alphaPercent is 0-100000 scale or null if fully opaque.
+    /// </summary>
+    public static (string Rgb, int? AlphaPercent) SanitizeColorForOoxml(string value)
+    {
+        var hex = value.TrimStart('#').ToUpperInvariant();
+        if (hex.Length == 8 && hex.All(char.IsAsciiHexDigit))
+        {
+            var alphaByte = Convert.ToByte(hex[..2], 16); // AA portion: 00=transparent, FF=opaque
+            var rgb = hex[2..];                            // RRGGBB portion
+            if (alphaByte == 0xFF)
+                return (rgb, null);
+            var alphaPercent = (int)(alphaByte / 255.0 * 100000);
+            return (rgb, alphaPercent);
+        }
+        // Validate: must be exactly 6 hex digits for srgbClr val
+        if (hex.Length == 3 && hex.All(char.IsAsciiHexDigit))
+            hex = new string(new[] { hex[0], hex[0], hex[1], hex[1], hex[2], hex[2] });
+
+        if (hex.Length != 6 || !hex.All(char.IsAsciiHexDigit))
+            throw new ArgumentException(
+                $"Invalid color value: '{value}'. Expected 6-digit hex RGB (e.g. FF0000), " +
+                $"8-digit AARRGGBB (e.g. 80FF0000), or scheme color name.");
+
+        return (hex, null);
+    }
 }

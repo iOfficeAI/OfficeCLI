@@ -37,18 +37,22 @@ public partial class PowerPointHandler
                     }
                     else
                     {
-                        // Shape-level: replace all text, preserve first run formatting
+                        // Shape-level: replace all text, preserve first run and paragraph formatting
                         var textBody = shape.TextBody;
                         if (textBody != null)
                         {
+                            var firstPara = textBody.Elements<Drawing.Paragraph>().FirstOrDefault();
                             var firstRun = textBody.Descendants<Drawing.Run>().FirstOrDefault();
                             var runProps = firstRun?.RunProperties?.CloneNode(true) as Drawing.RunProperties;
+                            var paraProps = firstPara?.ParagraphProperties?.CloneNode(true) as Drawing.ParagraphProperties;
 
                             textBody.RemoveAllChildren<Drawing.Paragraph>();
 
                             foreach (var textLine in textLines)
                             {
                                 var newPara = new Drawing.Paragraph();
+                                if (paraProps != null)
+                                    newPara.ParagraphProperties = paraProps.CloneNode(true) as Drawing.ParagraphProperties;
                                 var newRun = new Drawing.Run();
                                 if (runProps != null)
                                     newRun.RunProperties = runProps.CloneNode(true) as Drawing.RunProperties;
@@ -293,7 +297,7 @@ public partial class PowerPointHandler
                 {
                     var spPr = shape.ShapeProperties;
                     if (spPr == null) { unsupported.Add(key); break; }
-                    var outline = spPr.GetFirstChild<Drawing.Outline>() ?? spPr.AppendChild(new Drawing.Outline());
+                    var outline = EnsureOutline(spPr);
                     outline.RemoveAllChildren<Drawing.SolidFill>();
                     outline.RemoveAllChildren<Drawing.NoFill>();
                     if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
@@ -307,7 +311,7 @@ public partial class PowerPointHandler
                 {
                     var spPr = shape.ShapeProperties;
                     if (spPr == null) { unsupported.Add(key); break; }
-                    var outline = spPr.GetFirstChild<Drawing.Outline>() ?? spPr.AppendChild(new Drawing.Outline());
+                    var outline = EnsureOutline(spPr);
                     outline.Width = Core.EmuConverter.ParseEmuAsInt(value);
                     break;
                 }
@@ -316,7 +320,7 @@ public partial class PowerPointHandler
                 {
                     var spPr = shape.ShapeProperties;
                     if (spPr == null) { unsupported.Add(key); break; }
-                    var outline = spPr.GetFirstChild<Drawing.Outline>() ?? spPr.AppendChild(new Drawing.Outline());
+                    var outline = EnsureOutline(spPr);
                     outline.RemoveAllChildren<Drawing.PresetDash>();
                     outline.AppendChild(new Drawing.PresetDash { Val = value.ToLowerInvariant() switch
                     {
@@ -335,16 +339,17 @@ public partial class PowerPointHandler
                 {
                     var spPr = shape.ShapeProperties;
                     if (spPr == null) { unsupported.Add(key); break; }
-                    var outline = spPr.GetFirstChild<Drawing.Outline>() ?? spPr.AppendChild(new Drawing.Outline());
+                    var outline = EnsureOutline(spPr);
                     var solidFillLn = outline.GetFirstChild<Drawing.SolidFill>();
                     if (solidFillLn != null)
                     {
-                        var color = solidFillLn.GetFirstChild<Drawing.RgbColorModelHex>();
-                        if (color != null)
+                        var colorEl = solidFillLn.GetFirstChild<Drawing.RgbColorModelHex>() as OpenXmlElement
+                            ?? solidFillLn.GetFirstChild<Drawing.SchemeColor>();
+                        if (colorEl != null)
                         {
-                            color.RemoveAllChildren<Drawing.Alpha>();
+                            colorEl.RemoveAllChildren<Drawing.Alpha>();
                             var pct = (int)(double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) * 100000); // 0.0-1.0 → 0-100000
-                            color.AppendChild(new Drawing.Alpha { Val = pct });
+                            colorEl.AppendChild(new Drawing.Alpha { Val = pct });
                         }
                     }
                     break;
@@ -366,12 +371,13 @@ public partial class PowerPointHandler
                     var solidFill = spPr.GetFirstChild<Drawing.SolidFill>();
                     if (solidFill != null)
                     {
-                        var color = solidFill.GetFirstChild<Drawing.RgbColorModelHex>();
-                        if (color != null)
+                        var colorEl = solidFill.GetFirstChild<Drawing.RgbColorModelHex>() as OpenXmlElement
+                            ?? solidFill.GetFirstChild<Drawing.SchemeColor>();
+                        if (colorEl != null)
                         {
-                            color.RemoveAllChildren<Drawing.Alpha>();
+                            colorEl.RemoveAllChildren<Drawing.Alpha>();
                             var pct = (int)(double.Parse(value, System.Globalization.CultureInfo.InvariantCulture) * 100000); // 0.0-1.0 → 0-100000
-                            color.AppendChild(new Drawing.Alpha { Val = pct });
+                            colorEl.AppendChild(new Drawing.Alpha { Val = pct });
                         }
                     }
                     break;
@@ -767,14 +773,23 @@ public partial class PowerPointHandler
                         }
                         if (colors.Count < 2) colors.Add(colors[0]);
 
+                        // Validate that all segments look like hex colors
+                        foreach (var c in colors)
+                        {
+                            var hex = c.TrimStart('#');
+                            if (hex.Length < 3 || !hex.All(ch => char.IsAsciiHexDigit(ch)))
+                                Console.Error.WriteLine($"Warning: '{c}' does not look like a hex color. Gradient format: COLOR1-COLOR2[-ANGLE] e.g. FF0000-0000FF-90");
+                        }
+
                         var gradFill = new Drawing.GradientFill();
                         var gsList = new Drawing.GradientStopList();
                         for (int gi = 0; gi < colors.Count; gi++)
                         {
                             var pos = colors.Count == 1 ? 0 : gi * 100000 / (colors.Count - 1);
-                            gsList.Append(new Drawing.GradientStop(
-                                new Drawing.RgbColorModelHex { Val = colors[gi].TrimStart('#').ToUpperInvariant() }
-                            ) { Position = pos });
+                            var (cRgb, cAlpha) = OfficeCli.Core.ParseHelpers.SanitizeColorForOoxml(colors[gi]);
+                            var cEl = new Drawing.RgbColorModelHex { Val = cRgb };
+                            if (cAlpha.HasValue) cEl.AppendChild(new Drawing.Alpha { Val = cAlpha.Value });
+                            gsList.Append(new Drawing.GradientStop(cEl) { Position = pos });
                         }
                         gradFill.Append(gsList);
                         gradFill.Append(new Drawing.LinearGradientFill { Angle = (int)(degree * 60000), Scaled = true });
@@ -788,8 +803,7 @@ public partial class PowerPointHandler
                 }
                 case "align" or "alignment":
                 {
-                    var para = cell.TextBody?.Elements<Drawing.Paragraph>().FirstOrDefault();
-                    if (para != null)
+                    foreach (var para in cell.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.Alignment = ParseTextAlignment(value);
@@ -824,18 +838,30 @@ public partial class PowerPointHandler
                     foreach (var run in cell.Descendants<Drawing.Run>())
                     {
                         var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
-                        rProps.Underline = value.Equals("none", StringComparison.OrdinalIgnoreCase)
-                            ? Drawing.TextUnderlineValues.None
-                            : new Drawing.TextUnderlineValues(value);
+                        rProps.Underline = value.ToLowerInvariant() switch
+                        {
+                            "true" or "single" or "sng" => Drawing.TextUnderlineValues.Single,
+                            "double" or "dbl" => Drawing.TextUnderlineValues.Double,
+                            "heavy" => Drawing.TextUnderlineValues.Heavy,
+                            "dotted" => Drawing.TextUnderlineValues.Dotted,
+                            "dash" => Drawing.TextUnderlineValues.Dash,
+                            "wavy" => Drawing.TextUnderlineValues.Wavy,
+                            "false" or "none" => Drawing.TextUnderlineValues.None,
+                            _ => Drawing.TextUnderlineValues.Single
+                        };
                     }
                     break;
                 case "strikethrough" or "strike":
                     foreach (var run in cell.Descendants<Drawing.Run>())
                     {
                         var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
-                        rProps.Strike = value.Equals("none", StringComparison.OrdinalIgnoreCase) || !IsTruthy(value)
-                            ? Drawing.TextStrikeValues.NoStrike
-                            : new Drawing.TextStrikeValues(value == "true" ? "sngStrike" : value);
+                        rProps.Strike = value.ToLowerInvariant() switch
+                        {
+                            "true" or "single" => Drawing.TextStrikeValues.SingleStrike,
+                            "double" => Drawing.TextStrikeValues.DoubleStrike,
+                            "false" or "none" => Drawing.TextStrikeValues.NoStrike,
+                            _ => Drawing.TextStrikeValues.SingleStrike
+                        };
                     }
                     break;
                 case var k when k.StartsWith("border"):
@@ -847,26 +873,42 @@ public partial class PowerPointHandler
                         cell.Append(tcPr);
                     }
 
+                    // Handle "none" — remove border by adding NoFill
+                    bool isNone = value.Equals("none", StringComparison.OrdinalIgnoreCase)
+                        || value.Equals("false", StringComparison.OrdinalIgnoreCase);
+
                     // Parse value: "FF0000", "1pt solid FF0000", "2pt dash 0000FF"
                     var borderParts = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                     string? borderColor = null;
                     long? borderWidth = null;
                     string? borderDash = null;
-                    foreach (var bp in borderParts)
+                    if (!isNone)
                     {
-                        if (bp.EndsWith("pt", StringComparison.OrdinalIgnoreCase) ||
-                            bp.EndsWith("cm", StringComparison.OrdinalIgnoreCase) ||
-                            bp.EndsWith("px", StringComparison.OrdinalIgnoreCase))
-                            borderWidth = Core.EmuConverter.ParseEmu(bp);
-                        else if (bp is "solid" or "dot" or "dash" or "lgDash" or "dashDot" or "sysDot" or "sysDash")
-                            borderDash = bp;
-                        else if (bp.Length >= 3 && !bp.Equals("none", StringComparison.OrdinalIgnoreCase))
-                            borderColor = bp.TrimStart('#').ToUpperInvariant();
+                        foreach (var bp in borderParts)
+                        {
+                            if (bp.EndsWith("pt", StringComparison.OrdinalIgnoreCase) ||
+                                bp.EndsWith("cm", StringComparison.OrdinalIgnoreCase) ||
+                                bp.EndsWith("px", StringComparison.OrdinalIgnoreCase))
+                                borderWidth = Core.EmuConverter.ParseEmu(bp);
+                            else if (bp is "solid" or "dot" or "dash" or "lgDash" or "dashDot" or "sysDot" or "sysDash")
+                                borderDash = bp;
+                            else if (bp.Length >= 3 && !bp.Equals("none", StringComparison.OrdinalIgnoreCase))
+                                borderColor = bp.TrimStart('#').ToUpperInvariant();
+                        }
                     }
 
                     // Build line properties following POI's setBorderDefaults pattern
                     void ApplyBorderLine(OpenXmlCompositeElement lineProps)
                     {
+                        if (isNone)
+                        {
+                            // Remove border: clear all children and add NoFill
+                            lineProps.RemoveAllChildren<Drawing.SolidFill>();
+                            lineProps.RemoveAllChildren<Drawing.PresetDash>();
+                            lineProps.RemoveAllChildren<Drawing.NoFill>();
+                            lineProps.AppendChild(new Drawing.NoFill());
+                            return;
+                        }
                         // Remove NoFill if present (POI: setBorderDefaults line 265)
                         lineProps.RemoveAllChildren<Drawing.NoFill>();
                         // Set width (default 12700 EMU = 1pt like POI)

@@ -20,7 +20,7 @@ public partial class PowerPointHandler
     /// </summary>
     private static void ApplyShadow(ShapeProperties spPr, string value)
     {
-        var effectList = spPr.GetFirstChild<Drawing.EffectList>() ?? spPr.AppendChild(new Drawing.EffectList());
+        var effectList = EnsureEffectList(spPr);
         effectList.RemoveAllChildren<Drawing.OuterShadow>();
 
         if (value.Equals("none", StringComparison.OrdinalIgnoreCase) || value.Equals("false", StringComparison.OrdinalIgnoreCase))
@@ -32,16 +32,22 @@ public partial class PowerPointHandler
         if (string.IsNullOrWhiteSpace(value))
             throw new ArgumentException("Shadow value cannot be empty. Use 'none' to remove shadow.");
 
+        // Normalize alternative separator: "COLOR;BLUR;ANGLE;DIST;OPACITY" → "COLOR-BLUR-ANGLE-DIST-OPACITY"
+        value = value.Replace(';', '-');
         var parts = value.Split('-');
-        var colorHex = parts[0].TrimStart('#').ToUpperInvariant();
-        if (!double.TryParse(parts.Length > 1 ? parts[1] : "4", out var blurPt))
-            throw new ArgumentException($"Invalid shadow blur value: '{parts[1]}'. Expected a number.");
-        if (!double.TryParse(parts.Length > 2 ? parts[2] : "45", out var angleDeg))
-            throw new ArgumentException($"Invalid shadow angle value: '{parts[2]}'. Expected a number.");
-        if (!double.TryParse(parts.Length > 3 ? parts[3] : "3", out var distPt))
-            throw new ArgumentException($"Invalid shadow distance value: '{parts[3]}'. Expected a number.");
-        if (!double.TryParse(parts.Length > 4 ? parts[4] : "40", out var opacity))
-            throw new ArgumentException($"Invalid shadow opacity value: '{parts[4]}'. Expected a number.");
+        // Format: COLOR[-BLUR[-ANGLE[-DIST[-OPACITY]]]]
+        var blurStr = parts.Length > 1 ? parts[1] : "4";
+        var angleStr = parts.Length > 2 ? parts[2] : "45";
+        var distStr = parts.Length > 3 ? parts[3] : "3";
+        var opacStr = parts.Length > 4 ? parts[4] : "40";
+        if (!double.TryParse(blurStr, out var blurPt))
+            throw new ArgumentException($"Invalid shadow blur value: '{blurStr}'. Expected a number. Format: COLOR[-BLUR[-ANGLE[-DIST[-OPACITY]]]]");
+        if (!double.TryParse(angleStr, out var angleDeg))
+            throw new ArgumentException($"Invalid shadow angle value: '{angleStr}'. Expected a number. Format: COLOR[-BLUR[-ANGLE[-DIST[-OPACITY]]]]");
+        if (!double.TryParse(distStr, out var distPt))
+            throw new ArgumentException($"Invalid shadow distance value: '{distStr}'. Expected a number. Format: COLOR[-BLUR[-ANGLE[-DIST[-OPACITY]]]]");
+        if (!double.TryParse(opacStr, out var opacity))
+            throw new ArgumentException($"Invalid shadow opacity value: '{opacStr}'. Expected a number. Format: COLOR[-BLUR[-ANGLE[-DIST[-OPACITY]]]]");
 
         var shadow = new Drawing.OuterShadow
         {
@@ -67,7 +73,7 @@ public partial class PowerPointHandler
     /// </summary>
     private static void ApplyGlow(ShapeProperties spPr, string value)
     {
-        var effectList = spPr.GetFirstChild<Drawing.EffectList>() ?? spPr.AppendChild(new Drawing.EffectList());
+        var effectList = EnsureEffectList(spPr);
         effectList.RemoveAllChildren<Drawing.Glow>();
 
         if (value.Equals("none", StringComparison.OrdinalIgnoreCase) || value.Equals("false", StringComparison.OrdinalIgnoreCase))
@@ -76,12 +82,16 @@ public partial class PowerPointHandler
             return;
         }
 
+        // Normalize alternative separator: "COLOR;RADIUS-OPACITY" → "COLOR-RADIUS-OPACITY"
+        value = value.Replace(';', '-');
         var parts = value.Split('-');
-        var colorHex = parts[0].TrimStart('#').ToUpperInvariant();
-        if (!double.TryParse(parts.Length > 1 ? parts[1] : "8", out var radiusPt))
-            throw new ArgumentException($"Invalid glow radius value: '{parts[1]}'. Expected a number.");
-        if (!double.TryParse(parts.Length > 2 ? parts[2] : "75", out var opacity))
-            throw new ArgumentException($"Invalid glow opacity value: '{parts[2]}'. Expected a number.");
+        // Format: COLOR[-RADIUS[-OPACITY]]
+        var radiusStr = parts.Length > 1 ? parts[1] : "8";
+        var opacStr = parts.Length > 2 ? parts[2] : "75";
+        if (!double.TryParse(radiusStr, out var radiusPt))
+            throw new ArgumentException($"Invalid glow radius value: '{radiusStr}'. Expected a number. Format: COLOR[-RADIUS[-OPACITY]]");
+        if (!double.TryParse(opacStr, out var opacity))
+            throw new ArgumentException($"Invalid glow opacity value: '{opacStr}'. Expected a number. Format: COLOR[-RADIUS[-OPACITY]]");
 
         var glow = new Drawing.Glow { Radius = (long)(radiusPt * 12700) };
         var glowClr = BuildColorElement(parts[0]);
@@ -101,7 +111,7 @@ public partial class PowerPointHandler
     /// </summary>
     private static void ApplyReflection(ShapeProperties spPr, string value)
     {
-        var effectList = spPr.GetFirstChild<Drawing.EffectList>() ?? spPr.AppendChild(new Drawing.EffectList());
+        var effectList = EnsureEffectList(spPr);
         effectList.RemoveAllChildren<Drawing.Reflection>();
 
         if (value.Equals("none", StringComparison.OrdinalIgnoreCase) || value.Equals("false", StringComparison.OrdinalIgnoreCase))
@@ -141,7 +151,7 @@ public partial class PowerPointHandler
     /// </summary>
     private static void ApplySoftEdge(ShapeProperties spPr, string value)
     {
-        var effectList = spPr.GetFirstChild<Drawing.EffectList>() ?? spPr.AppendChild(new Drawing.EffectList());
+        var effectList = EnsureEffectList(spPr);
         effectList.RemoveAllChildren<Drawing.SoftEdge>();
 
         if (value.Equals("none", StringComparison.OrdinalIgnoreCase) || value.Equals("false", StringComparison.OrdinalIgnoreCase))
@@ -225,10 +235,26 @@ public partial class PowerPointHandler
         }
 
         sp3d ??= EnsureShape3D(spPr);
+        // Normalize alternative separator: "preset;width;height" → "preset-width-height"
+        value = value.Replace(';', '-');
         var bevelParts = value.Split('-');
         var preset = ParseBevelPreset(bevelParts[0].Trim());
-        var w = bevelParts.Length > 1 ? (long)(double.Parse(bevelParts[1].Trim(), System.Globalization.CultureInfo.InvariantCulture) * 12700) : 76200L; // default 6pt
-        var h = bevelParts.Length > 2 ? (long)(double.Parse(bevelParts[2].Trim(), System.Globalization.CultureInfo.InvariantCulture) * 12700) : w;
+        long w = 76200L, h;
+        if (bevelParts.Length > 1)
+        {
+            if (!double.TryParse(bevelParts[1].Trim(), System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var wPt))
+                throw new ArgumentException($"Invalid bevel width: '{bevelParts[1]}'. Expected a number in points. Format: PRESET[-WIDTH[-HEIGHT]]");
+            w = (long)(wPt * 12700);
+        }
+        if (bevelParts.Length > 2)
+        {
+            if (!double.TryParse(bevelParts[2].Trim(), System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var hPt))
+                throw new ArgumentException($"Invalid bevel height: '{bevelParts[2]}'. Expected a number in points. Format: PRESET[-WIDTH[-HEIGHT]]");
+            h = (long)(hPt * 12700);
+        }
+        else h = w;
 
         if (top)
         {
@@ -276,6 +302,49 @@ public partial class PowerPointHandler
 
     // --- Helper methods ---
 
+    /// <summary>
+    /// Get or create EffectList in correct schema position.
+    /// Schema order: fill → ln → effectLst → scene3d → sp3d → extLst
+    /// </summary>
+    private static Drawing.EffectList EnsureEffectList(ShapeProperties spPr)
+    {
+        var effectList = spPr.GetFirstChild<Drawing.EffectList>();
+        if (effectList != null) return effectList;
+
+        effectList = new Drawing.EffectList();
+        // Insert before scene3d/sp3d/extLst if they exist
+        var insertBefore = (DocumentFormat.OpenXml.OpenXmlElement?)spPr.GetFirstChild<Drawing.Scene3DType>()
+            ?? (DocumentFormat.OpenXml.OpenXmlElement?)spPr.GetFirstChild<Drawing.Shape3DType>()
+            ?? spPr.GetFirstChild<Drawing.ShapePropertiesExtensionList>();
+        if (insertBefore != null)
+            spPr.InsertBefore(effectList, insertBefore);
+        else
+            spPr.AppendChild(effectList);
+        return effectList;
+    }
+
+    /// <summary>
+    /// Get or create Outline in correct schema position.
+    /// Schema order: fill → ln → effectLst → scene3d → sp3d → extLst
+    /// </summary>
+    private static Drawing.Outline EnsureOutline(ShapeProperties spPr)
+    {
+        var outline = spPr.GetFirstChild<Drawing.Outline>();
+        if (outline != null) return outline;
+
+        outline = new Drawing.Outline();
+        // Insert before effectLst/scene3d/sp3d/extLst if they exist
+        var insertBefore = (DocumentFormat.OpenXml.OpenXmlElement?)spPr.GetFirstChild<Drawing.EffectList>()
+            ?? (DocumentFormat.OpenXml.OpenXmlElement?)spPr.GetFirstChild<Drawing.Scene3DType>()
+            ?? (DocumentFormat.OpenXml.OpenXmlElement?)spPr.GetFirstChild<Drawing.Shape3DType>()
+            ?? spPr.GetFirstChild<Drawing.ShapePropertiesExtensionList>();
+        if (insertBefore != null)
+            spPr.InsertBefore(outline, insertBefore);
+        else
+            spPr.AppendChild(outline);
+        return outline;
+    }
+
     private static Drawing.Scene3DType EnsureScene3D(ShapeProperties spPr)
     {
         var scene3d = spPr.GetFirstChild<Drawing.Scene3DType>();
@@ -285,7 +354,13 @@ public partial class PowerPointHandler
             new Drawing.Camera { Preset = Drawing.PresetCameraValues.OrthographicFront },
             new Drawing.LightRig { Rig = Drawing.LightRigValues.ThreePoints, Direction = Drawing.LightRigDirectionValues.Top }
         );
-        spPr.AppendChild(scene3d);
+        // Schema order: effectLst → scene3d → sp3d → extLst
+        // Insert before sp3d if it exists, otherwise append
+        var sp3d = spPr.GetFirstChild<Drawing.Shape3DType>();
+        if (sp3d != null)
+            spPr.InsertBefore(scene3d, sp3d);
+        else
+            spPr.AppendChild(scene3d);
         return scene3d;
     }
 
@@ -295,7 +370,13 @@ public partial class PowerPointHandler
         if (sp3d != null) return sp3d;
 
         sp3d = new Drawing.Shape3DType();
-        spPr.AppendChild(sp3d);
+        // Schema order: scene3d → sp3d → extLst
+        // Insert before extLst if it exists, otherwise append
+        var extLst = spPr.GetFirstChild<Drawing.ShapePropertiesExtensionList>();
+        if (extLst != null)
+            spPr.InsertBefore(sp3d, extLst);
+        else
+            spPr.AppendChild(sp3d);
         return sp3d;
     }
 
@@ -315,8 +396,15 @@ public partial class PowerPointHandler
             "riblet" => Drawing.BevelPresetValues.Riblet,
             "hardedge" => Drawing.BevelPresetValues.HardEdge,
             "artdeco" => Drawing.BevelPresetValues.ArtDeco,
-            _ => Drawing.BevelPresetValues.Circle
+            _ => WarnAndDefault(value, Drawing.BevelPresetValues.Circle,
+                "bevel preset", "circle, relaxedinset, cross, coolslant, angle, softround, convex, slope, divot, riblet, hardedge, artdeco")
         };
+    }
+
+    private static T WarnAndDefault<T>(string value, T defaultVal, string paramName, string validValues)
+    {
+        Console.Error.WriteLine($"Warning: unrecognized {paramName} '{value}', using default. Valid values: {validValues}");
+        return defaultVal;
     }
 
     private static Drawing.PresetMaterialTypeValues ParseMaterial(string value)

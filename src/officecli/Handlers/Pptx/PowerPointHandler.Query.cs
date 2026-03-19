@@ -256,7 +256,7 @@ public partial class PowerPointHandler
                     var gc2 = stops[^1].GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "";
                     var lin = gradFill.GetFirstChild<Drawing.LinearGradientFill>();
                     int deg = lin?.Angle?.Value != null ? lin.Angle.Value / 60000 : 0;
-                    cellNode.Format["fill"] = $"gradient;{gc1};{gc2};{deg}";
+                    cellNode.Format["fill"] = deg != 0 ? $"{gc1}-{gc2}-{deg}" : $"{gc1}-{gc2}";
                 }
             }
             else

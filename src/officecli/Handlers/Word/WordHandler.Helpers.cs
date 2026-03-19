@@ -20,6 +20,24 @@ public partial class WordHandler
         ParseHelpers.IsTruthy(value);
 
     /// <summary>
+    /// Sanitize a hex color for Word OOXML (ST_HexColorRGB = exactly 6-char RGB).
+    /// Strips # prefix, uppercases, and handles 8-char AARRGGBB by extracting RGB portion.
+    /// </summary>
+    private static string SanitizeHex(string value) =>
+        ParseHelpers.SanitizeColorForOoxml(value).Rgb;
+
+    /// <summary>
+    /// Warn if a value that should be a shading pattern name looks like a hex color instead.
+    /// </summary>
+    private static void WarnIfShadingOrderWrong(string patternSegment)
+    {
+        var trimmed = patternSegment.TrimStart('#');
+        if (trimmed.Length >= 6 && trimmed.All(char.IsAsciiHexDigit))
+            Console.Error.WriteLine($"Warning: '{patternSegment}' looks like a color, but is in the pattern position. "
+                + "Shading format: FILL (single value) or PATTERN;FILL[;COLOR] e.g. clear;FF0000");
+    }
+
+    /// <summary>
     /// Append a child element to parent, but if parent is Body, insert before
     /// the final SectionProperties to maintain valid OOXML structure.
     /// </summary>
@@ -364,7 +382,7 @@ public partial class WordHandler
                 break;
             case "color":
                 props.RemoveAllChildren<Color>();
-                props.AppendChild(new Color { Val = value.TrimStart('#').ToUpperInvariant() });
+                props.AppendChild(new Color { Val = SanitizeHex(value) });
                 break;
             case "highlight":
                 props.RemoveAllChildren<Highlight>();
@@ -372,7 +390,8 @@ public partial class WordHandler
                 break;
             case "underline":
                 props.RemoveAllChildren<Underline>();
-                props.AppendChild(new Underline { Val = new UnderlineValues(value) });
+                var ulMapped = value.ToLowerInvariant() switch { "true" => "single", "false" or "none" => "none", _ => value };
+                props.AppendChild(new Underline { Val = new UnderlineValues(ulMapped) });
                 break;
             case "strike":
                 props.RemoveAllChildren<Strike>();
