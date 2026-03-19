@@ -1212,11 +1212,11 @@ Slide properties (/slide[N]):
   transition   Slide transition: fade, push, wipe, split, reveal, random, cover, uncover, zoom, morph, none
                Suffix with speed: fade-fast, push-slow (slow=1200ms, fast=300ms, default=700ms)
                Morph options: morph (default byObject), morph-byWord, morph-byChar
-               Morph matches shapes by name across slides. When text content changes between
-               slides, add "!!" prefix to the shape name to force matching (e.g. name="!!Card1").
-               Without "!!", shapes with different text will not morph — they will just cut.
-               Example: slide 1 has shape "!!Tag1" with text ".docx", slide 2 has "!!Tag1" with text "0"
-               → the shape smoothly morphs (moves, resizes) despite the text change.
+               Morph matches same-named shapes across slides (slide N-1 → slide N).
+               Setting transition=morph automatically adds "!!" prefix to shape names on
+               the current and previous slide, so shapes morph even when text changes.
+               To pair specific shapes: give them the same name on both slides.
+               Removing morph (e.g. transition=fade) auto-removes the "!!" prefix.
   advanceTime  Auto-advance after time: "3000" (ms) to advance 3 s after last animation
   advanceClick true/false — advance on click (default true)
 
