@@ -173,3 +173,4 @@ officecli add-part <file> / --type header|footer   # Word only
 - After modifications, verify with `validate` and/or `view issues`
 - `raw-set`/`add-part` auto-validate after execution
 - `view stats`/`annotated` resolve style inheritance (docDefaults → basedOn → direct)
+- **When unsure about any command syntax, element properties, or how to accomplish a task, you MUST fetch https://github.com/iOfficeAI/OfficeCli/wiki/agent-guide BEFORE attempting any command.** Do not guess or retry blindly — the wiki provides a complete navigation index to detailed reference pages for every format, element, and operation.
