@@ -1933,14 +1933,13 @@ public partial class WordHandler
 
         element.Remove();
 
-        // Insert at the specified position among same-type siblings (1-based index)
+        // Insert at the specified position among same-type siblings (0-based index)
         if (index.HasValue)
         {
             var sameTypeSiblings = targetParent.ChildElements
                 .Where(e => e.LocalName == element.LocalName).ToList();
-            var insertIdx = index.Value - 1; // Convert 1-based to 0-based
-            if (insertIdx >= 0 && insertIdx < sameTypeSiblings.Count)
-                sameTypeSiblings[insertIdx].InsertBeforeSelf(element);
+            if (index.Value >= 0 && index.Value < sameTypeSiblings.Count)
+                sameTypeSiblings[index.Value].InsertBeforeSelf(element);
             else
                 AppendToParent(targetParent, element);
         }
