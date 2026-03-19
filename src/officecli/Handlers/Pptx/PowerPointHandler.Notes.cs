@@ -59,7 +59,7 @@ public partial class PowerPointHandler
                     )
                 ),
                 new ShapeProperties(),
-                new TextBody(new Drawing.BodyProperties(), new Drawing.ListStyle())
+                new TextBody(new Drawing.BodyProperties(), new Drawing.ListStyle(), new Drawing.Paragraph())
             );
             spTree.AppendChild(notesShape);
         }
@@ -105,7 +105,7 @@ public partial class PowerPointHandler
                             )
                         ),
                         new ShapeProperties(),
-                        new TextBody(new Drawing.BodyProperties(), new Drawing.ListStyle())
+                        new TextBody(new Drawing.BodyProperties(), new Drawing.ListStyle(), new Drawing.Paragraph())
                     ),
                     // Notes body placeholder (idx=1)
                     new Shape(
