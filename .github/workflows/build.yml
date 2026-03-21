@@ -2,9 +2,6 @@ name: Build
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
 
 jobs:
   build:
@@ -25,6 +22,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Clone wiki for embedded help
+        run: git clone https://github.com/nicenemo/OfficeCli.wiki.git src/officecli/wiki || echo "Wiki clone failed, using fallback help"
+
+      - name: Verify wiki version matches csproj version
+        run: |
+          CSPROJ_VERSION=$(grep '<Version>' src/officecli/officecli.csproj | sed 's/.*<Version>\(.*\)<\/Version>.*/\1/')
+          WIKI_VERSION=$(python3 -c "import json; print(json.load(open('src/officecli/wiki/version.json'))['version'])" 2>/dev/null || echo "unknown")
+          echo "csproj: $CSPROJ_VERSION, wiki: $WIKI_VERSION"
+          if [ "$WIKI_VERSION" != "$CSPROJ_VERSION" ]; then
+            echo "::error::Wiki version ($WIKI_VERSION) does not match csproj version ($CSPROJ_VERSION). Update wiki before building."
+            exit 1
+          fi
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4

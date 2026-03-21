@@ -10,8 +10,12 @@ var jsonOption = new Option<bool>("--json") { Description = "Output as JSON (AI-
 var rootCommand = new RootCommand("""
     officecli: AI-friendly CLI for Office documents (.docx, .xlsx, .pptx)
 
-    Use 'officecli docx/xlsx/pptx [view|get|query|set|add|raw] --help' for format-specific property reference and examples.
-    E.g. 'officecli pptx set --help' shows all shape properties with usage examples.
+    Help navigation (start from the deepest level you know):
+      officecli pptx set              All settable elements and their properties
+      officecli pptx set shape        Shape properties in detail
+      officecli pptx set shape.fill   Specific property format and examples
+
+    Replace 'pptx' with 'docx' or 'xlsx'. Commands: view, get, query, set, add, raw.
     """);
 rootCommand.Add(jsonOption);
 

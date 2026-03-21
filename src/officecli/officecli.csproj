@@ -19,4 +19,8 @@
     <PackageReference Include="System.CommandLine" Version="3.0.0-preview.2.26159.112" />
   </ItemGroup>
 
+  <ItemGroup Condition="Exists('wiki/')">
+    <EmbeddedResource Include="wiki/**/*.md" />
+  </ItemGroup>
+
 </Project>

@@ -24,7 +24,10 @@ internal static class HelpCommands
 
     /// <summary>
     /// Intercept args before System.CommandLine. Returns true if handled.
-    /// Matches: docx [verb] [--help], xlsx [verb] [--help], pptx [verb] [--help]
+    /// Supports three-layer navigation:
+    ///   officecli pptx set              → Layer 1: all elements overview
+    ///   officecli pptx set shape        → Layer 2: element detail
+    ///   officecli pptx set shape.fill   → Layer 3: property detail
     /// </summary>
     internal static bool TryHandle(string[] args)
     {
@@ -32,21 +35,50 @@ internal static class HelpCommands
         var format = args[0].ToLowerInvariant();
         if (format is not ("docx" or "xlsx" or "pptx")) return false;
 
-        // Extract verb (skip --help flags)
+        // Extract verb and optional element.property (skip --help flags)
         string? verb = null;
+        string? elementArg = null;
         foreach (var arg in args.Skip(1))
         {
             if (arg is "--help" or "-h" or "-?") continue;
-            verb = arg.ToLowerInvariant();
+            if (verb == null) { verb = arg.ToLowerInvariant(); continue; }
+            if (elementArg == null) { elementArg = arg.ToLowerInvariant(); continue; }
             break;
         }
 
-        var help = GetHelp(format, verb);
+        // Parse element.property syntax
+        string? element = null;
+        string? property = null;
+        if (elementArg != null)
+        {
+            var dotIdx = elementArg.IndexOf('.');
+            if (dotIdx >= 0)
+            {
+                element = elementArg[..dotIdx];
+                property = elementArg[(dotIdx + 1)..];
+            }
+            else
+            {
+                element = elementArg;
+            }
+        }
+
+        var help = GetHelp(format, verb, element, property);
         Console.WriteLine(help);
         return true;
     }
 
-    static string GetHelp(string format, string? verb) => format switch
+    static string GetHelp(string format, string? verb, string? element = null, string? property = null)
+    {
+        // Try wiki-based help first (from local directory or embedded resource)
+        var wikiHelp = WikiHelpLoader.TryGetHelp(format, verb, element, property);
+        if (wikiHelp != null) return wikiHelp;
+
+        // Fallback to hardcoded help (no element/property layer support in fallback)
+        return GetFallbackHelp(format, verb);
+    }
+
+    static string GetFallbackHelp(string format, string? verb) => format switch
     {
         "docx" => verb switch
         {
