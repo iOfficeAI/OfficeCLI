@@ -267,22 +267,27 @@ public partial class PowerPointHandler
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.LineSpacing>();
-                        pProps.AppendChild(new Drawing.LineSpacing(
-                            new Drawing.SpacingPercent { Val = (int)(ParseHelpers.SafeParseDouble(value, "lineSpacing") * 100000) }));
+                        var (lsVal2, lsIsPercent) = SpacingConverter.ParsePptLineSpacing(value);
+                        if (lsIsPercent)
+                            pProps.AppendChild(new Drawing.LineSpacing(
+                                new Drawing.SpacingPercent { Val = lsVal2 }));
+                        else
+                            pProps.AppendChild(new Drawing.LineSpacing(
+                                new Drawing.SpacingPoints { Val = lsVal2 }));
                         break;
                     }
                     case "spacebefore" or "space.before":
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.SpaceBefore>();
-                        pProps.AppendChild(new Drawing.SpaceBefore(new Drawing.SpacingPoints { Val = (int)(ParseHelpers.SafeParseDouble(value, "spaceBefore") * 100) }));
+                        pProps.AppendChild(new Drawing.SpaceBefore(new Drawing.SpacingPoints { Val = SpacingConverter.ParsePptSpacing(value) }));
                         break;
                     }
                     case "spaceafter" or "space.after":
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.SpaceAfter>();
-                        pProps.AppendChild(new Drawing.SpaceAfter(new Drawing.SpacingPoints { Val = (int)(ParseHelpers.SafeParseDouble(value, "spaceAfter") * 100) }));
+                        pProps.AppendChild(new Drawing.SpaceAfter(new Drawing.SpacingPoints { Val = SpacingConverter.ParsePptSpacing(value) }));
                         break;
                     }
                     case "link":
@@ -328,18 +333,13 @@ public partial class PowerPointHandler
                 switch (key.ToLowerInvariant())
                 {
                     case "x" or "y" or "width" or "height":
+                    {
                         var xfrm = chartGf.Transform ?? (chartGf.Transform = new Transform());
-                        var offset = xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset());
-                        var extents = xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents());
-                        var emu = ParseEmu(value);
-                        switch (key.ToLowerInvariant())
-                        {
-                            case "x": offset.X = emu; break;
-                            case "y": offset.Y = emu; break;
-                            case "width": extents.Cx = emu; break;
-                            case "height": extents.Cy = emu; break;
-                        }
+                        TryApplyPositionSize(key.ToLowerInvariant(), value,
+                            xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset()),
+                            xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents()));
                         break;
+                    }
                     case "name":
                         var nvPr = chartGf.NonVisualGraphicFrameProperties?.NonVisualDrawingProperties;
                         if (nvPr != null) nvPr.Name = value;
@@ -413,16 +413,9 @@ public partial class PowerPointHandler
                     case "x" or "y" or "width" or "height":
                     {
                         var xfrm = gf.Transform ?? (gf.Transform = new Transform());
-                        var offset = xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset());
-                        var extents = xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents());
-                        var emu = ParseEmu(value);
-                        switch (key.ToLowerInvariant())
-                        {
-                            case "x": offset.X = emu; break;
-                            case "y": offset.Y = emu; break;
-                            case "width": extents.Cx = emu; break;
-                            case "height": extents.Cy = emu; break;
-                        }
+                        TryApplyPositionSize(key.ToLowerInvariant(), value,
+                            xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset()),
+                            xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents()));
                         break;
                     }
                     case "name":
@@ -620,16 +613,9 @@ public partial class PowerPointHandler
                     {
                         var spPr = pic.ShapeProperties ?? (pic.ShapeProperties = new ShapeProperties());
                         var xfrm = spPr.Transform2D ?? (spPr.Transform2D = new Drawing.Transform2D());
-                        var offset = xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset());
-                        var extents = xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents());
-                        var emu = ParseEmu(value);
-                        switch (key.ToLowerInvariant())
-                        {
-                            case "x": offset.X = emu; break;
-                            case "y": offset.Y = emu; break;
-                            case "width": extents.Cx = emu; break;
-                            case "height": extents.Cy = emu; break;
-                        }
+                        TryApplyPositionSize(key.ToLowerInvariant(), value,
+                            xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset()),
+                            xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents()));
                         break;
                     }
                     default:
@@ -673,16 +659,9 @@ public partial class PowerPointHandler
                     {
                         var spPr = pic.ShapeProperties ?? (pic.ShapeProperties = new ShapeProperties());
                         var xfrm = spPr.Transform2D ?? (spPr.Transform2D = new Drawing.Transform2D());
-                        var offset = xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset());
-                        var extents = xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents());
-                        var emu = ParseEmu(value);
-                        switch (key.ToLowerInvariant())
-                        {
-                            case "x": offset.X = emu; break;
-                            case "y": offset.Y = emu; break;
-                            case "width": extents.Cx = emu; break;
-                            case "height": extents.Cy = emu; break;
-                        }
+                        TryApplyPositionSize(key.ToLowerInvariant(), value,
+                            xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset()),
+                            xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents()));
                         break;
                     }
                     case "path" or "src":
@@ -1087,16 +1066,9 @@ public partial class PowerPointHandler
                     {
                         var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
                         var xfrm = spPr.Transform2D ?? (spPr.Transform2D = new Drawing.Transform2D());
-                        var offset = xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset());
-                        var extents = xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents());
-                        var emu = ParseEmu(value);
-                        switch (key.ToLowerInvariant())
-                        {
-                            case "x": offset.X = emu; break;
-                            case "y": offset.Y = emu; break;
-                            case "width": extents.Cx = emu; break;
-                            case "height": extents.Cy = emu; break;
-                        }
+                        TryApplyPositionSize(key.ToLowerInvariant(), value,
+                            xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset()),
+                            xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents()));
                         break;
                     }
                     case "linewidth" or "line.width":
@@ -1219,16 +1191,9 @@ public partial class PowerPointHandler
                     {
                         var grpSpPr = grp.GroupShapeProperties ?? (grp.GroupShapeProperties = new GroupShapeProperties());
                         var xfrm = grpSpPr.TransformGroup ?? (grpSpPr.TransformGroup = new Drawing.TransformGroup());
-                        var offset = xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset());
-                        var extents = xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents());
-                        var emu = ParseEmu(value);
-                        switch (key.ToLowerInvariant())
-                        {
-                            case "x": offset.X = emu; break;
-                            case "y": offset.Y = emu; break;
-                            case "width": extents.Cx = emu; break;
-                            case "height": extents.Cy = emu; break;
-                        }
+                        TryApplyPositionSize(key.ToLowerInvariant(), value,
+                            xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset()),
+                            xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents()));
                         break;
                     }
                     case "rotation" or "rotate":

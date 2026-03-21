@@ -272,38 +272,39 @@ public partial class PowerPointHandler
                 // Line spacing
                 if (properties.TryGetValue("lineSpacing", out var lsVal) || properties.TryGetValue("linespacing", out lsVal))
                 {
+                    var (lsInternal, lsIsPercent) = SpacingConverter.ParsePptLineSpacing(lsVal);
                     foreach (var para in newShape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.LineSpacing>();
-                        if (!double.TryParse(lsVal, System.Globalization.CultureInfo.InvariantCulture, out var lsNum) || double.IsNaN(lsNum) || double.IsInfinity(lsNum))
-                            throw new ArgumentException($"Invalid 'lineSpacing' value '{lsVal}'. Expected a finite numeric multiplier (e.g. 1.5 for 150%).");
-                        pProps.AppendChild(new Drawing.LineSpacing(
-                            new Drawing.SpacingPercent { Val = (int)(lsNum * 100000) }));
+                        if (lsIsPercent)
+                            pProps.AppendChild(new Drawing.LineSpacing(
+                                new Drawing.SpacingPercent { Val = lsInternal }));
+                        else
+                            pProps.AppendChild(new Drawing.LineSpacing(
+                                new Drawing.SpacingPoints { Val = lsInternal }));
                     }
                 }
 
                 // Space before/after
                 if (properties.TryGetValue("spaceBefore", out var sbVal) || properties.TryGetValue("spacebefore", out sbVal))
                 {
+                    var sbInternal = SpacingConverter.ParsePptSpacing(sbVal);
                     foreach (var para in newShape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.SpaceBefore>();
-                        if (!double.TryParse(sbVal, System.Globalization.CultureInfo.InvariantCulture, out var sbNum) || double.IsNaN(sbNum) || double.IsInfinity(sbNum))
-                            throw new ArgumentException($"Invalid 'spaceBefore' value '{sbVal}'. Expected a finite numeric value in points.");
-                        pProps.AppendChild(new Drawing.SpaceBefore(new Drawing.SpacingPoints { Val = (int)(sbNum * 100) }));
+                        pProps.AppendChild(new Drawing.SpaceBefore(new Drawing.SpacingPoints { Val = sbInternal }));
                     }
                 }
                 if (properties.TryGetValue("spaceAfter", out var saVal) || properties.TryGetValue("spaceafter", out saVal))
                 {
+                    var saInternal = SpacingConverter.ParsePptSpacing(saVal);
                     foreach (var para in newShape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.SpaceAfter>();
-                        if (!double.TryParse(saVal, System.Globalization.CultureInfo.InvariantCulture, out var saNum) || double.IsNaN(saNum) || double.IsInfinity(saNum))
-                            throw new ArgumentException($"Invalid 'spaceAfter' value '{saVal}'. Expected a finite numeric value in points.");
-                        pProps.AppendChild(new Drawing.SpaceAfter(new Drawing.SpacingPoints { Val = (int)(saNum * 100) }));
+                        pProps.AppendChild(new Drawing.SpaceAfter(new Drawing.SpacingPoints { Val = saInternal }));
                     }
                 }
 

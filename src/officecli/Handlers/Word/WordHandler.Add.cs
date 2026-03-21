@@ -67,18 +67,19 @@ public partial class WordHandler
                 if (properties.TryGetValue("spacebefore", out var sb4) || properties.TryGetValue("spaceBefore", out sb4))
                 {
                     var spacing = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
-                    spacing.Before = ParseHelpers.SafeParseUint(sb4, "spacebefore").ToString();
+                    spacing.Before = SpacingConverter.ParseWordSpacing(sb4).ToString();
                 }
                 if (properties.TryGetValue("spaceafter", out var sa4) || properties.TryGetValue("spaceAfter", out sa4))
                 {
                     var spacing = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
-                    spacing.After = ParseHelpers.SafeParseUint(sa4, "spaceafter").ToString();
+                    spacing.After = SpacingConverter.ParseWordSpacing(sa4).ToString();
                 }
                 if (properties.TryGetValue("linespacing", out var ls4) || properties.TryGetValue("lineSpacing", out ls4))
                 {
                     var spacing = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
-                    spacing.Line = ParseHelpers.SafeParseUint(ls4, "linespacing").ToString();
-                    spacing.LineRule = LineSpacingRuleValues.Auto;
+                    var (twips, isMultiplier) = SpacingConverter.ParseWordLineSpacing(ls4);
+                    spacing.Line = twips.ToString();
+                    spacing.LineRule = isMultiplier ? LineSpacingRuleValues.Auto : LineSpacingRuleValues.Exact;
                 }
                 if (properties.TryGetValue("numid", out var numId))
                 {
@@ -351,6 +352,22 @@ public partial class WordHandler
                     }
                     newRProps.Shading = shd;
                 }
+
+                // w14 text effects
+                var tempRun = new Run();
+                tempRun.PrependChild(newRProps);
+                if (properties.TryGetValue("textOutline", out var toVal) || properties.TryGetValue("textoutline", out toVal))
+                    ApplyW14TextEffect(tempRun, "textOutline", toVal, BuildW14TextOutline);
+                if (properties.TryGetValue("textFill", out var tfVal) || properties.TryGetValue("textfill", out tfVal))
+                    ApplyW14TextEffect(tempRun, "textFill", tfVal, BuildW14TextFill);
+                if (properties.TryGetValue("w14shadow", out var w14sVal))
+                    ApplyW14TextEffect(tempRun, "shadow", w14sVal, BuildW14Shadow);
+                if (properties.TryGetValue("w14glow", out var w14gVal))
+                    ApplyW14TextEffect(tempRun, "glow", w14gVal, BuildW14Glow);
+                if (properties.TryGetValue("w14reflection", out var w14rVal))
+                    ApplyW14TextEffect(tempRun, "reflection", w14rVal, BuildW14Reflection);
+                // Detach rPr from temp run for re-attachment to actual run
+                newRProps.Remove();
 
                 // Inherit default formatting from paragraph mark run properties
                 var markRProps = targetPara.ParagraphProperties?.ParagraphMarkRunProperties;
@@ -1182,13 +1199,13 @@ public partial class WordHandler
                 if (properties.TryGetValue("spacebefore", out var sSBefore) || properties.TryGetValue("spaceBefore", out sSBefore))
                 {
                     var sp = stylePPr.SpacingBetweenLines ?? (stylePPr.SpacingBetweenLines = new SpacingBetweenLines());
-                    sp.Before = ParseHelpers.SafeParseUint(sSBefore, "spacebefore").ToString();
+                    sp.Before = SpacingConverter.ParseWordSpacing(sSBefore).ToString();
                     hasPPr = true;
                 }
                 if (properties.TryGetValue("spaceafter", out var sSAfter) || properties.TryGetValue("spaceAfter", out sSAfter))
                 {
                     var sp = stylePPr.SpacingBetweenLines ?? (stylePPr.SpacingBetweenLines = new SpacingBetweenLines());
-                    sp.After = ParseHelpers.SafeParseUint(sSAfter, "spaceafter").ToString();
+                    sp.After = SpacingConverter.ParseWordSpacing(sSAfter).ToString();
                     hasPPr = true;
                 }
                 if (hasPPr) newStyle.AppendChild(stylePPr);

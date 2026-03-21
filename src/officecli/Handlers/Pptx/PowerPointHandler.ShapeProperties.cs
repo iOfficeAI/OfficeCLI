@@ -482,40 +482,41 @@ public partial class PowerPointHandler
 
                 case "linespacing" or "line.spacing":
                 {
+                    var (lsIntVal, lsIsPct) = SpacingConverter.ParsePptLineSpacing(value);
                     foreach (var para in shape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.LineSpacing>();
-                        if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var lsVal) || double.IsNaN(lsVal) || double.IsInfinity(lsVal))
-                            throw new ArgumentException($"Invalid 'lineSpacing' value: '{value}'. Expected a finite decimal multiplier (e.g. 1.0 = single, 1.5 = 1.5x, 2.0 = double).");
-                        pProps.AppendChild(new Drawing.LineSpacing(
-                            new Drawing.SpacingPercent { Val = (int)(lsVal * 100000) })); // e.g. 1.5 → 150000 (150%)
+                        if (lsIsPct)
+                            pProps.AppendChild(new Drawing.LineSpacing(
+                                new Drawing.SpacingPercent { Val = lsIntVal }));
+                        else
+                            pProps.AppendChild(new Drawing.LineSpacing(
+                                new Drawing.SpacingPoints { Val = lsIntVal }));
                     }
                     break;
                 }
 
                 case "spacebefore" or "space.before":
                 {
+                    var sbIntVal = SpacingConverter.ParsePptSpacing(value);
                     foreach (var para in shape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.SpaceBefore>();
-                        if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var sbVal) || double.IsNaN(sbVal) || double.IsInfinity(sbVal))
-                            throw new ArgumentException($"Invalid 'spaceBefore' value: '{value}'. Expected a finite number in points (e.g. 6, 12.5).");
-                        pProps.AppendChild(new Drawing.SpaceBefore(new Drawing.SpacingPoints { Val = (int)(sbVal * 100) })); // pt
+                        pProps.AppendChild(new Drawing.SpaceBefore(new Drawing.SpacingPoints { Val = sbIntVal }));
                     }
                     break;
                 }
 
                 case "spaceafter" or "space.after":
                 {
+                    var saIntVal = SpacingConverter.ParsePptSpacing(value);
                     foreach (var para in shape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.SpaceAfter>();
-                        if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var saVal) || double.IsNaN(saVal) || double.IsInfinity(saVal))
-                            throw new ArgumentException($"Invalid 'spaceAfter' value: '{value}'. Expected a finite number in points (e.g. 6, 12.5).");
-                        pProps.AppendChild(new Drawing.SpaceAfter(new Drawing.SpacingPoints { Val = (int)(saVal * 100) })); // pt
+                        pProps.AppendChild(new Drawing.SpaceAfter(new Drawing.SpacingPoints { Val = saIntVal }));
                     }
                     break;
                 }
@@ -556,16 +557,9 @@ public partial class PowerPointHandler
                     var spPr = shape.ShapeProperties;
                     if (spPr == null) { unsupported.Add(key); break; }
                     var xfrm = spPr.Transform2D ?? (spPr.Transform2D = new Drawing.Transform2D());
-                    var offset = xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset());
-                    var extents = xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents());
-                    var emu = ParseEmu(value);
-                    switch (key.ToLowerInvariant())
-                    {
-                        case "x": offset.X = emu; break;
-                        case "y": offset.Y = emu; break;
-                        case "width": extents.Cx = emu; break;
-                        case "height": extents.Cy = emu; break;
-                    }
+                    TryApplyPositionSize(key.ToLowerInvariant(), value,
+                        xfrm.Offset ?? (xfrm.Offset = new Drawing.Offset()),
+                        xfrm.Extents ?? (xfrm.Extents = new Drawing.Extents()));
                     break;
                 }
 

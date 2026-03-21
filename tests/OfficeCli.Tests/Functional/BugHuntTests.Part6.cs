@@ -47,7 +47,7 @@ public partial class BugHuntTests
             // 4. Get — readback looks correct due to reciprocal division (/1000)
             var node = handler.Get("/slide[1]/shape[2]");
             node.Format.Should().ContainKey("lineSpacing");
-            node.Format["lineSpacing"]?.ToString().Should().Be("1.5");
+            node.Format["lineSpacing"]?.ToString().Should().Be("1.5x");
 
             // 5. Verify actual XML value — this exposes the bug
             var rawXml = handler.Raw("/slide[1]");

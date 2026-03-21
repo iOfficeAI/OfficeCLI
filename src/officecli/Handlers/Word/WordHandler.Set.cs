@@ -536,12 +536,12 @@ public partial class WordHandler
                     case "spacebefore" or "spaceBefore":
                         var pPr2 = style.StyleParagraphProperties ?? style.AppendChild(new StyleParagraphProperties());
                         var sp2 = pPr2.SpacingBetweenLines ?? (pPr2.SpacingBetweenLines = new SpacingBetweenLines());
-                        sp2.Before = ParseHelpers.SafeParseUint(value, "spacebefore").ToString();
+                        sp2.Before = SpacingConverter.ParseWordSpacing(value).ToString();
                         break;
                     case "spaceafter" or "spaceAfter":
                         var pPr3 = style.StyleParagraphProperties ?? style.AppendChild(new StyleParagraphProperties());
                         var sp3 = pPr3.SpacingBetweenLines ?? (pPr3.SpacingBetweenLines = new SpacingBetweenLines());
-                        sp3.After = ParseHelpers.SafeParseUint(value, "spaceafter").ToString();
+                        sp3.After = SpacingConverter.ParseWordSpacing(value).ToString();
                         break;
                     default:
                         unsupported.Add(key);
@@ -906,6 +906,21 @@ public partial class WordHandler
                         }
                         break;
                     }
+                    case "textoutline":
+                        ApplyW14TextEffect(run, "textOutline", value, BuildW14TextOutline);
+                        break;
+                    case "textfill":
+                        ApplyW14TextEffect(run, "textFill", value, BuildW14TextFill);
+                        break;
+                    case "w14shadow":
+                        ApplyW14TextEffect(run, "shadow", value, BuildW14Shadow);
+                        break;
+                    case "w14glow":
+                        ApplyW14TextEffect(run, "glow", value, BuildW14Glow);
+                        break;
+                    case "w14reflection":
+                        ApplyW14TextEffect(run, "reflection", value, BuildW14Reflection);
+                        break;
                     case "formula":
                     {
                         // Replace this run with an inline oMath in the same position
@@ -1620,16 +1635,17 @@ public partial class WordHandler
                 return true;
             case "spacebefore":
                 var spacingBefore = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
-                spacingBefore.Before = ParseHelpers.SafeParseUint(value, "spacebefore").ToString();
+                spacingBefore.Before = SpacingConverter.ParseWordSpacing(value).ToString();
                 return true;
             case "spaceafter":
                 var spacingAfter = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
-                spacingAfter.After = ParseHelpers.SafeParseUint(value, "spaceafter").ToString();
+                spacingAfter.After = SpacingConverter.ParseWordSpacing(value).ToString();
                 return true;
             case "linespacing":
                 var spacingLine = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
-                spacingLine.Line = ParseHelpers.SafeParseUint(value, "linespacing").ToString();
-                spacingLine.LineRule = LineSpacingRuleValues.Auto;
+                var (lsTwips, lsIsMultiplier) = SpacingConverter.ParseWordLineSpacing(value);
+                spacingLine.Line = lsTwips.ToString();
+                spacingLine.LineRule = lsIsMultiplier ? LineSpacingRuleValues.Auto : LineSpacingRuleValues.Exact;
                 return true;
             case "numid":
                 var numPr = pProps.NumberingProperties ?? (pProps.NumberingProperties = new NumberingProperties());
