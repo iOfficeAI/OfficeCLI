@@ -1,0 +1,940 @@
+[
+  {
+    "command": "add",
+    "parent": "/",
+    "type": "slide",
+    "props": {
+      "layout": "blank",
+      "background": "080A1F"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "bg-mars",
+      "preset": "ellipse",
+      "fill": "FF5722",
+      "x": "18cm",
+      "y": "4cm",
+      "width": "18cm",
+      "height": "18cm",
+      "opacity": "0.8"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "bg-earth",
+      "preset": "ellipse",
+      "fill": "2196F3",
+      "x": "1cm",
+      "y": "1cm",
+      "width": "8cm",
+      "height": "8cm",
+      "opacity": "0.6"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "line-orbit",
+      "preset": "rect",
+      "fill": "FFFFFF",
+      "x": "0cm",
+      "y": "15cm",
+      "width": "33cm",
+      "height": "0.1cm",
+      "rotation": "-20",
+      "opacity": "0.3"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "dot-star1",
+      "preset": "ellipse",
+      "fill": "FFFFFF",
+      "x": "10cm",
+      "y": "5cm",
+      "width": "0.5cm",
+      "height": "0.5cm",
+      "opacity": "0.5"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "dot-star2",
+      "preset": "ellipse",
+      "fill": "FFFFFF",
+      "x": "25cm",
+      "y": "2cm",
+      "width": "0.8cm",
+      "height": "0.8cm",
+      "opacity": "0.5"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "dot-star3",
+      "preset": "ellipse",
+      "fill": "FFFFFF",
+      "x": "5cm",
+      "y": "16cm",
+      "width": "0.6cm",
+      "height": "0.6cm",
+      "opacity": "0.5"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "hero-title",
+      "text": "火星移民指南",
+      "x": "4cm",
+      "y": "7cm",
+      "width": "26cm",
+      "size": "72",
+      "bold": "true",
+      "color": "FFFFFF",
+      "align": "center",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "hero-sub",
+      "text": "人类的下一个家园",
+      "x": "4cm",
+      "y": "11cm",
+      "width": "26cm",
+      "size": "36",
+      "color": "B0BEC5",
+      "align": "center",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "statement-text",
+      "text": "地球是人类的摇篮，\n但人类不可能永远生活在摇篮里。",
+      "x": "36cm",
+      "y": "6cm",
+      "width": "28cm",
+      "size": "40",
+      "color": "FFFFFF",
+      "bold": "true",
+      "align": "center",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "pillars-title",
+      "text": "三大核心挑战",
+      "x": "36cm",
+      "y": "2cm",
+      "width": "26cm",
+      "size": "56",
+      "color": "FFFFFF",
+      "bold": "true",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "evidence-title",
+      "text": "火星档案：严酷的现实",
+      "x": "36cm",
+      "y": "2cm",
+      "width": "26cm",
+      "size": "48",
+      "color": "FFFFFF",
+      "bold": "true",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "cta-title",
+      "text": "我们的征途是星辰大海",
+      "x": "36cm",
+      "y": "7cm",
+      "width": "26cm",
+      "size": "64",
+      "color": "FFFFFF",
+      "bold": "true",
+      "align": "center",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "cta-sub",
+      "text": "加入探索者行列，共创多星系未来",
+      "x": "36cm",
+      "y": "11cm",
+      "width": "26cm",
+      "size": "32",
+      "color": "B0BEC5",
+      "align": "center",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "pillar1-box",
+      "preset": "roundRect",
+      "fill": "FFFFFF",
+      "opacity": "0.05",
+      "x": "36cm",
+      "y": "6cm",
+      "width": "9cm",
+      "height": "10cm",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "pillar1-title",
+      "text": "① 极端环境",
+      "x": "36cm",
+      "y": "7cm",
+      "width": "8cm",
+      "size": "28",
+      "color": "FF9800",
+      "bold": "true",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "pillar1-desc",
+      "text": "平均温度-60℃，稀薄的大气层，强烈的宇宙辐射。",
+      "x": "36cm",
+      "y": "9cm",
+      "width": "8cm",
+      "size": "18",
+      "color": "E0E0E0",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "pillar2-box",
+      "preset": "roundRect",
+      "fill": "FFFFFF",
+      "opacity": "0.05",
+      "x": "36cm",
+      "y": "6cm",
+      "width": "9cm",
+      "height": "10cm",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "pillar2-title",
+      "text": "② 漫长旅途",
+      "x": "36cm",
+      "y": "7cm",
+      "width": "8cm",
+      "size": "28",
+      "color": "2196F3",
+      "bold": "true",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "pillar2-desc",
+      "text": "约需6-9个月太空飞行，对宇航员身心是巨大考验。",
+      "x": "36cm",
+      "y": "9cm",
+      "width": "8cm",
+      "size": "18",
+      "color": "E0E0E0",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "pillar3-box",
+      "preset": "roundRect",
+      "fill": "FFFFFF",
+      "opacity": "0.05",
+      "x": "36cm",
+      "y": "6cm",
+      "width": "9cm",
+      "height": "10cm",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "pillar3-title",
+      "text": "③ 自给自足",
+      "x": "36cm",
+      "y": "7cm",
+      "width": "8cm",
+      "size": "28",
+      "color": "4CAF50",
+      "bold": "true",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "pillar3-desc",
+      "text": "建立封闭生态循环系统，实现水和氧气的内循环。",
+      "x": "36cm",
+      "y": "9cm",
+      "width": "8cm",
+      "size": "18",
+      "color": "E0E0E0",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "ev-num1",
+      "text": "38%",
+      "x": "36cm",
+      "y": "5cm",
+      "width": "10cm",
+      "size": "60",
+      "color": "FF5722",
+      "bold": "true",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "ev-lbl1",
+      "text": "火星重力仅为地球的38%",
+      "x": "36cm",
+      "y": "7.5cm",
+      "width": "10cm",
+      "size": "18",
+      "color": "B0BEC5",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "ev-num2",
+      "text": "1%",
+      "x": "36cm",
+      "y": "9cm",
+      "width": "10cm",
+      "size": "60",
+      "color": "FF5722",
+      "bold": "true",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "ev-lbl2",
+      "text": "火星大气密度不到地球1%",
+      "x": "36cm",
+      "y": "11.5cm",
+      "width": "10cm",
+      "size": "18",
+      "color": "B0BEC5",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "ev-num3",
+      "text": "-60℃",
+      "x": "36cm",
+      "y": "13cm",
+      "width": "10cm",
+      "size": "60",
+      "color": "FF5722",
+      "bold": "true",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/slide[1]",
+    "type": "shape",
+    "props": {
+      "name": "ev-lbl3",
+      "text": "火星表面平均温度",
+      "x": "36cm",
+      "y": "15.5cm",
+      "width": "10cm",
+      "size": "18",
+      "color": "B0BEC5",
+      "fill": "none",
+      "line": "none"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/",
+    "from": "/slide[1]"
+  },
+  {
+    "command": "set",
+    "path": "/slide[2]",
+    "props": {
+      "transition": "morph"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[2]/shape[1]",
+    "props": {
+      "x": "26cm",
+      "y": "2cm",
+      "width": "6cm",
+      "height": "6cm",
+      "opacity": "0.4"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[2]/shape[2]",
+    "props": {
+      "x": "10cm",
+      "y": "10cm",
+      "width": "14cm",
+      "height": "14cm",
+      "opacity": "0.8"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[2]/shape[3]",
+    "props": {
+      "x": "0cm",
+      "y": "16cm",
+      "width": "34cm",
+      "rotation": "0",
+      "opacity": "0.2"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[2]/shape[7]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[2]/shape[8]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[2]/shape[9]",
+    "props": {
+      "x": "3cm",
+      "y": "6cm"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/",
+    "from": "/slide[2]"
+  },
+  {
+    "command": "set",
+    "path": "/slide[3]",
+    "props": {
+      "transition": "morph"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[3]/shape[1]",
+    "props": {
+      "x": "4cm",
+      "y": "0cm",
+      "width": "26cm",
+      "height": "26cm",
+      "opacity": "0.05"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[3]/shape[2]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[3]/shape[3]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[3]/shape[9]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[3]/shape[10]",
+    "props": {
+      "x": "3cm",
+      "y": "2cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[3]/shape[14]",
+    "props": {
+      "x": "2cm",
+      "y": "5cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[3]/shape[15]",
+    "props": {
+      "x": "2.5cm",
+      "y": "6cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[3]/shape[16]",
+    "props": {
+      "x": "2.5cm",
+      "y": "8cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[3]/shape[17]",
+    "props": {
+      "x": "12cm",
+      "y": "5cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[3]/shape[18]",
+    "props": {
+      "x": "12.5cm",
+      "y": "6cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[3]/shape[19]",
+    "props": {
+      "x": "12.5cm",
+      "y": "8cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[3]/shape[20]",
+    "props": {
+      "x": "22cm",
+      "y": "5cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[3]/shape[21]",
+    "props": {
+      "x": "22.5cm",
+      "y": "6cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[3]/shape[22]",
+    "props": {
+      "x": "22.5cm",
+      "y": "8cm"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/",
+    "from": "/slide[3]"
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]",
+    "props": {
+      "transition": "morph"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[1]",
+    "props": {
+      "x": "0cm",
+      "y": "0cm",
+      "width": "16cm",
+      "height": "16cm",
+      "opacity": "0.4"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[10]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[14]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[15]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[16]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[17]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[18]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[19]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[20]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[21]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[22]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[11]",
+    "props": {
+      "x": "14cm",
+      "y": "2cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[23]",
+    "props": {
+      "x": "14cm",
+      "y": "5cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[24]",
+    "props": {
+      "x": "14cm",
+      "y": "7cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[25]",
+    "props": {
+      "x": "14cm",
+      "y": "9cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[26]",
+    "props": {
+      "x": "14cm",
+      "y": "11cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[27]",
+    "props": {
+      "x": "14cm",
+      "y": "13cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[4]/shape[28]",
+    "props": {
+      "x": "14cm",
+      "y": "15cm"
+    }
+  },
+  {
+    "command": "add",
+    "parent": "/",
+    "from": "/slide[4]"
+  },
+  {
+    "command": "set",
+    "path": "/slide[5]",
+    "props": {
+      "transition": "morph"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[5]/shape[11]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[5]/shape[23]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[5]/shape[24]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[5]/shape[25]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[5]/shape[26]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[5]/shape[27]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[5]/shape[28]",
+    "props": {
+      "x": "36cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[5]/shape[1]",
+    "props": {
+      "x": "25cm",
+      "y": "5cm",
+      "width": "12cm",
+      "height": "12cm",
+      "opacity": "0.8"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[5]/shape[2]",
+    "props": {
+      "x": "0cm",
+      "y": "5cm",
+      "width": "8cm",
+      "height": "8cm",
+      "opacity": "0.8"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[5]/shape[3]",
+    "props": {
+      "x": "5cm",
+      "y": "10cm",
+      "width": "24cm",
+      "rotation": "0",
+      "opacity": "0.4"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[5]/shape[12]",
+    "props": {
+      "x": "4cm",
+      "y": "7cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[5]/shape[13]",
+    "props": {
+      "x": "4cm",
+      "y": "11cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[5]/shape[4]",
+    "props": {
+      "x": "15cm",
+      "y": "3cm",
+      "width": "1cm",
+      "height": "1cm"
+    }
+  },
+  {
+    "command": "set",
+    "path": "/slide[5]/shape[5]",
+    "props": {
+      "x": "10cm",
+      "y": "16cm",
+      "width": "1cm",
+      "height": "1cm"
+    }
+  }
+]

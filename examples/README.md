@@ -18,15 +18,15 @@ examples/
 │   ├── gen-beautiful-charts.sh
 │   ├── gen-charts-demo.sh
 │   └── outputs/
-└── ppt/                               # 🎨 PowerPoint (3 scripts + 35 style templates)
+└── ppt/                               # 🎨 PowerPoint (3 scripts + 14 style templates)
     ├── README.md
     ├── gen-beautiful-pptx.sh
     ├── gen-animations-pptx.sh
     ├── gen-video-pptx.py
     ├── outputs/
-    └── templates/                     # 35 Professional Style Templates ⭐
+    └── templates/                     # 14 Professional Style Templates ⭐
         ├── README.md
-        └── styles/                    # (19 with pre-generated PPTs)
+        └── styles/                    # (all with pre-generated PPTs)
             ├── dark--*/               (14 dark styles)
             ├── light--*/              (8 light styles)
             ├── warm--*/               (5 warm styles)
@@ -75,7 +75,7 @@ open template.pptx
 bash build.sh
 ```
 
-👉 **[Browse all 35 styles →](ppt/templates/)** (19 with pre-generated PPTs)
+👉 **[Browse all 35 styles →](ppt/templates/)** (all with pre-generated PPTs)
 
 ---
 
