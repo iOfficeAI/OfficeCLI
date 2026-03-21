@@ -24,11 +24,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Clone wiki for embedded help
-        run: |
-          WIKI_URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.wiki.git"
-          echo "Wiki URL: https://github.com/${{ github.repository }}.wiki.git"
-          git clone "$WIKI_URL" src/officecli/wiki || echo "Wiki clone failed, using fallback help"
-          ls src/officecli/wiki/version.json 2>/dev/null && echo "Wiki cloned successfully" || echo "Wiki files not found"
+        run: git clone "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.wiki.git" src/officecli/wiki || echo "Wiki clone failed, using fallback help"
 
       - name: Verify wiki version matches csproj version
         run: |
