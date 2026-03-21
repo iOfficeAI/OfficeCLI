@@ -203,11 +203,12 @@ public partial class PowerPointHandler
         var minorLatin = fontScheme?.MinorFont?.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value;
         var minorEa = fontScheme?.MinorFont?.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
 
-        // Build font-family with fallbacks
+        // Build font-family with fallbacks including CJK fonts
         var fonts = new List<string>();
         if (!string.IsNullOrEmpty(minorLatin)) fonts.Add($"'{CssSanitize(minorLatin)}'");
         if (!string.IsNullOrEmpty(minorEa)) fonts.Add($"'{CssSanitize(minorEa)}'");
-        fonts.Add("sans-serif");
+        // CJK fallback chain: macOS → Windows → Linux
+        fonts.AddRange(new[] { "'PingFang SC'", "'Microsoft YaHei'", "'Noto Sans CJK SC'", "'Hiragino Sans GB'", "sans-serif" });
         styles.Add($"font-family:{string.Join(",", fonts)};");
 
         // 2. Default text size from presentation defaultTextStyle or slide master otherStyle
@@ -511,13 +512,8 @@ public partial class PowerPointHandler
             styles.Add($"box-shadow:inset {bW:0.#}px {bW:0.#}px {bW * 1.5:0.#}px rgba(255,255,255,0.25),inset -{bW:0.#}px -{bW:0.#}px {bW * 1.5:0.#}px rgba(0,0,0,0.15)");
         }
 
-        // Opacity
-        var shapeFill = shape.ShapeProperties?.GetFirstChild<Drawing.SolidFill>();
-        var fillColorEl = shapeFill?.GetFirstChild<Drawing.RgbColorModelHex>() as OpenXmlElement
-            ?? shapeFill?.GetFirstChild<Drawing.SchemeColor>();
-        var alphaVal = fillColorEl?.GetFirstChild<Drawing.Alpha>()?.Val?.Value;
-        if (alphaVal.HasValue)
-            styles.Add($"opacity:{alphaVal.Value / 100000.0:0.##}");
+        // Note: fill opacity (alpha) is already baked into rgba() by ResolveFillColor.
+        // Do NOT add a separate CSS opacity here — it would double-apply.
 
         // Text margins
         var bodyPr = shape.TextBody?.Elements<Drawing.BodyProperties>().FirstOrDefault();
@@ -539,7 +535,12 @@ public partial class PowerPointHandler
             };
         }
 
-        sb.Append($"    <div class=\"shape\" style=\"{string.Join(";", styles)}\">");
+        // Add has-fill class to clip overflow when shape has a visible background
+        var hasFillBg = shape.ShapeProperties?.GetFirstChild<Drawing.SolidFill>() != null
+            || shape.ShapeProperties?.GetFirstChild<Drawing.GradientFill>() != null
+            || shape.ShapeProperties?.GetFirstChild<Drawing.BlipFill>() != null;
+        var shapeClass = hasFillBg ? "shape has-fill" : "shape";
+        sb.Append($"    <div class=\"{shapeClass}\" style=\"{string.Join(";", styles)}\">");
 
         // Text content
         if (shape.TextBody != null)

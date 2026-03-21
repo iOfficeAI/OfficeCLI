@@ -763,6 +763,169 @@ public class PptxHtmlPreviewTests : IDisposable
         tableAfter.Format["rows"].Should().Be(tableBefore.Format["rows"]);
     }
 
+    // ==================== Default line-height regression ====================
+
+    [Fact]
+    public void ViewAsHtml_DefaultLineHeight_IsSingleSpaced()
+    {
+        // PowerPoint uses line-height:1 (single-spaced) by default.
+        // Browsers default to ~1.2, which causes large text to overflow
+        // into adjacent elements (e.g. 60pt "38%" overlapping "火星重力仅为地球的38%").
+        // This test locks the default to prevent accidental regression.
+        _handler.Add("/", "slide", null, new());
+        _handler.Add("/slide[1]", "shape", null, new() { ["text"] = "Test" });
+
+        var html = _handler.ViewAsHtml();
+
+        // The .para CSS class must have line-height:1
+        html.Should().Contain("line-height: 1", "default paragraph line-height must be 1 (single-spaced) to match PowerPoint");
+    }
+
+    [Fact]
+    public void ViewAsHtml_ExplicitLineSpacing_OverridesDefault()
+    {
+        // When lineSpacing is explicitly set, it should appear as inline style
+        // and override the default line-height:1
+        _handler.Add("/", "slide", null, new());
+        _handler.Add("/slide[1]", "shape", null, new()
+        {
+            ["text"] = "Spaced Text",
+            ["lineSpacing"] = "1.5x"
+        });
+
+        var html = _handler.ViewAsHtml();
+
+        html.Should().Contain("line-height:1.5", "explicit lineSpacing should override default");
+    }
+
+    [Fact]
+    public void ViewAsHtml_StackedLargeAndSmallText_NoOverlap()
+    {
+        // Regression scenario: 60pt number "38%" at y=5cm (height 2cm) followed by
+        // 18pt label "Description" at y=7.5cm. With browser default line-height:1.2,
+        // the 60pt text overflows 12pt (~0.4cm) into the label area, causing overlap.
+        // With line-height:1, it should fit within bounds.
+        _handler.Add("/", "slide", null, new());
+        _handler.Add("/slide[1]", "shape", null, new()
+        {
+            ["text"] = "38%",
+            ["size"] = "60pt", ["bold"] = "true", ["color"] = "FF5722",
+            ["x"] = "10cm", ["y"] = "5cm", ["width"] = "10cm", ["height"] = "2cm"
+        });
+        _handler.Add("/slide[1]", "shape", null, new()
+        {
+            ["text"] = "Description below large number",
+            ["size"] = "18pt", ["color"] = "B0BEC5",
+            ["x"] = "10cm", ["y"] = "7.5cm", ["width"] = "10cm", ["height"] = "2cm"
+        });
+
+        var html = _handler.ViewAsHtml();
+
+        // Both texts must be present (not clipped)
+        html.Should().Contain("38%");
+        html.Should().Contain("Description below large number");
+        // Default line-height must be 1 (not 1.2) to prevent overflow
+        html.Should().Contain("line-height: 1");
+    }
+
+    [Fact]
+    public void ViewAsHtml_MultiLineShapeText_NotSquished()
+    {
+        // Multi-line text should still render all lines, not collapse them.
+        // line-height:1 is fine for single lines, but multi-line text with
+        // explicit lineSpacing should use that value instead.
+        _handler.Add("/", "slide", null, new());
+        _handler.Add("/slide[1]", "shape", null, new()
+        {
+            ["text"] = "Line One",
+            ["size"] = "24pt",
+            ["x"] = "2cm", ["y"] = "2cm", ["width"] = "15cm", ["height"] = "6cm",
+            ["lineSpacing"] = "1.5x"
+        });
+        _handler.Add("/slide[1]/shape[1]", "paragraph", null, new() { ["text"] = "Line Two" });
+        _handler.Add("/slide[1]/shape[1]", "paragraph", null, new() { ["text"] = "Line Three" });
+
+        var html = _handler.ViewAsHtml();
+
+        html.Should().Contain("Line One");
+        html.Should().Contain("Line Two");
+        html.Should().Contain("Line Three");
+        html.Should().Contain("line-height:1.5", "explicit 1.5x spacing must be present");
+    }
+
+    [Fact]
+    public void ViewAsHtml_LargeTextNoOverflow_TextNotClipped()
+    {
+        // Transparent text boxes (no fill) should allow text overflow (overflow:visible)
+        // to match PowerPoint behavior where text can extend beyond the box.
+        _handler.Add("/", "slide", null, new());
+        _handler.Add("/slide[1]", "shape", null, new()
+        {
+            ["text"] = "Large",
+            ["size"] = "72pt",
+            ["x"] = "2cm", ["y"] = "2cm", ["width"] = "10cm", ["height"] = "1cm"
+        });
+
+        var html = _handler.ViewAsHtml();
+
+        // Shape without fill should NOT have overflow:hidden
+        html.Should().Contain("class=\"shape\"", "transparent shape should not have has-fill class");
+    }
+
+    [Fact]
+    public void ViewAsHtml_FilledShapeClipsOverflow()
+    {
+        // Shapes with fill should clip content (overflow:hidden via has-fill class)
+        _handler.Add("/", "slide", null, new());
+        _handler.Add("/slide[1]", "shape", null, new()
+        {
+            ["text"] = "Clipped",
+            ["fill"] = "FF0000",
+            ["x"] = "2cm", ["y"] = "2cm", ["width"] = "5cm", ["height"] = "1cm"
+        });
+
+        var html = _handler.ViewAsHtml();
+
+        html.Should().Contain("class=\"shape has-fill\"", "filled shape should have has-fill class for overflow:hidden");
+    }
+
+    [Fact]
+    public void ViewAsHtml_OpacityNotDoubleApplied()
+    {
+        // Fill opacity (alpha) is baked into rgba() by ResolveFillColor.
+        // A separate CSS opacity property must NOT be added (would cause double-application).
+        // e.g. rgba(255,255,255,0.05) + opacity:0.05 = 0.25% visible (almost invisible)
+        _handler.Add("/", "slide", null, new());
+        _handler.Add("/slide[1]", "shape", null, new()
+        {
+            ["text"] = "",
+            ["fill"] = "FFFFFF",
+            ["opacity"] = "0.5"
+        });
+
+        var html = _handler.ViewAsHtml();
+
+        // Should have rgba with alpha, but NOT a separate opacity property
+        html.Should().Contain("rgba(255,255,255,0.5)", "fill alpha should be in rgba");
+        // Count occurrences of "opacity" - should only appear in rgba, not as standalone
+        var shapeDiv = html.Split("class=\"shape")[1].Split("</div>")[0];
+        shapeDiv.Should().NotContain("opacity:", "separate opacity property would double-apply with rgba alpha");
+    }
+
+    [Fact]
+    public void ViewAsHtml_CjkFontFallback_IncludesPingFangAndYaHei()
+    {
+        // Default font-family must include CJK fallback fonts to prevent
+        // garbled Chinese text when theme font (e.g. Calibri) doesn't support CJK.
+        _handler.Add("/", "slide", null, new());
+        _handler.Add("/slide[1]", "shape", null, new() { ["text"] = "中文测试" });
+
+        var html = _handler.ViewAsHtml();
+
+        html.Should().Contain("PingFang SC", "must include macOS CJK font");
+        html.Should().Contain("Microsoft YaHei", "must include Windows CJK font");
+    }
+
     // ==================== Helpers ====================
 
     /// <summary>

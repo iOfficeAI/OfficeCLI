@@ -196,9 +196,12 @@ body.sidebar-hidden .sidebar-toggle { left: 8px; }
 /* ===== Elements ===== */
 .shape {
     position: absolute;
-    overflow: hidden;
+    overflow: visible;
     white-space: pre-wrap;
     word-wrap: break-word;
+}
+.shape.has-fill {
+    overflow: hidden;
 }
 .shape-text {
     width: 100%;
@@ -209,7 +212,7 @@ body.sidebar-hidden .sidebar-toggle { left: 8px; }
 .shape-text.valign-top { justify-content: flex-start; }
 .shape-text.valign-center { justify-content: center; }
 .shape-text.valign-bottom { justify-content: flex-end; }
-.para { width: 100%; }
+.para { width: 100%; line-height: 1; }
 .picture { position: absolute; }
 .picture img { width: 100%; height: 100%; object-fit: fill; }
 .table-container { position: absolute; overflow: hidden; }
