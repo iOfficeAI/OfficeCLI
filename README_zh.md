@@ -104,6 +104,18 @@ officecli set presentation.pptx /slide[2]/shape[3] --prop text="New Subtitle"
 officecli close presentation.pptx
 ```
 
+## 内置帮助
+
+属性名、取值格式不确定时，请用分层帮助查询，不要凭感觉写。将下文中的 `pptx` 换成 `docx` 或 `xlsx`；动词包括 `view`、`get`、`query`、`set`、`add`、`raw`。
+
+```bash
+officecli pptx set              # 全部可设置元素与属性
+officecli pptx set shape        # 某一类元素的详细说明
+officecli pptx set shape.fill   # 单个属性格式与示例
+```
+
+运行 `officecli --help` 可看到相同说明。若构建时包含 `wiki/` 目录，部分帮助内容可能嵌入二进制。
+
 ## 三层架构
 
 OfficeCLI 采用渐进式复杂度模型 — 从简单开始，仅在需要时深入。
@@ -137,8 +149,9 @@ officecli view deck.pptx stats
 通过结构化元素路径和属性修改文档。
 
 ```bash
-# Word — 查询标题并设置格式
+# Word — 查询标题并设置格式（类 CSS 选择器；完整语法见帮助）
 officecli query report.docx "paragraph[style=Heading1]"
+officecli docx query            # 选择器说明：属性匹配、:contains、:has() 等
 officecli set report.docx /body/p[1]/r[1] --prop bold=true --prop color=FF0000
 
 # Word — 添加段落、删除段落
@@ -206,7 +219,7 @@ officecli validate budget.xlsx
 
 ### Excel — 单元格、公式、工作表、样式（字体、填充、边框、数字格式）、条件格式、图表
 
-### PowerPoint — 幻灯片、形状、文本框、图片、动画、公式
+### PowerPoint — 幻灯片、形状、文本框、图片、动画、公式、主题、对齐与形状效果
 
 ## 驻留模式
 
@@ -220,6 +233,26 @@ officecli close report.docx       # 保存并退出
 ```
 
 通过命名管道通信，命令间延迟接近零。
+
+## 批量模式（batch）
+
+在**一次**打开/保存周期内执行多条命令（若文档已由 `open` 驻留，则会转发到驻留进程）。通过标准输入或 `--input` 传入 JSON 数组。
+
+```bash
+echo '[{"command":"view","mode":"outline"},{"command":"get","path":"/slide[1]","depth":1}]' \
+  | officecli batch deck.pptx
+```
+
+使用 `--stop-on-error` 可在首次失败时中止。每条命令的 `command` 支持 `get`、`query`、`set`、`add`、`remove`、`move`、`view`、`raw`、`raw-set`、`validate` 等（完整字段见源码中的 `BatchItem`）。
+
+## 更新与配置
+
+CLI 可能在后台**非阻塞**地检查更新并与 GitHub 最新 release 对齐。配置位于 `~/.officecli/config.json`。
+
+- **关闭自动更新检查：** `officecli config autoUpdate false`（查看当前值：`officecli config autoUpdate`）。
+- **单次调用跳过后台检查（如 CI）：** `OFFICECLI_SKIP_UPDATE=1 officecli ...`
+
+仍可通过 `install.sh` / `install.ps1` 安装或升级二进制文件。
 
 ## Python 使用示例
 
@@ -279,6 +312,8 @@ OfficeCLI 与其他 AI 智能体处理 Office 文档的方案相比如何？
 | 读取 + 写入 + 创建 | ✓ | ✓ | ✓ | ✓ |
 
 ## 构建
+
+本地编译需要安装 [.NET 10 SDK](https://dotnet.microsoft.com/download)。在仓库根目录执行：
 
 ```bash
 ./build.sh

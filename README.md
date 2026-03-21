@@ -104,6 +104,18 @@ officecli set presentation.pptx /slide[2]/shape[3] --prop text="New Subtitle"
 officecli close presentation.pptx
 ```
 
+## Built-in help
+
+When property names or value formats are unclear, use the nested help instead of guessing. Replace `pptx` with `docx` or `xlsx`; verbs are `view`, `get`, `query`, `set`, `add`, and `raw`.
+
+```bash
+officecli pptx set              # All settable elements and properties
+officecli pptx set shape        # Detail for one element type
+officecli pptx set shape.fill   # One property: format and examples
+```
+
+Run `officecli --help` for the same overview. Optional wiki content may be embedded in the binary when built with a `wiki/` directory.
+
 ## Three-Layer Architecture
 
 OfficeCLI is designed with a progressive complexity model — start simple, go deep only when needed.
@@ -137,8 +149,9 @@ officecli view deck.pptx stats
 Modify documents through structured element paths and properties.
 
 ```bash
-# Word — query headings and set formatting
+# Word — query headings and set formatting (CSS-like selectors; see help for full syntax)
 officecli query report.docx "paragraph[style=Heading1]"
+officecli docx query            # Selector reference: attributes, :contains, :has(), etc.
 officecli set report.docx /body/p[1]/r[1] --prop bold=true --prop color=FF0000
 
 # Word — add a paragraph, remove another
@@ -206,7 +219,7 @@ officecli validate budget.xlsx
 
 ### Excel — Cells, formulas, sheets, styles (fonts, fills, borders, number formats), conditional formatting, charts
 
-### PowerPoint — Slides, shapes, text boxes, images, animations, equations
+### PowerPoint — Slides, shapes, text boxes, images, animations, equations, themes, alignment, and shape effects
 
 ## Resident Mode
 
@@ -220,6 +233,26 @@ officecli close report.docx       # Save and stop
 ```
 
 Communication happens via named pipes for near-zero latency between commands.
+
+## Batch mode
+
+Run multiple operations in **one** open/save cycle (or forward to an already resident process) by passing a JSON array of commands on stdin or via `--input`.
+
+```bash
+echo '[{"command":"view","mode":"outline"},{"command":"get","path":"/slide[1]","depth":1}]' \
+  | officecli batch deck.pptx
+```
+
+Use `--stop-on-error` to abort on the first failure. Supported `command` values in each item include `get`, `query`, `set`, `add`, `remove`, `move`, `view`, `raw`, `raw-set`, and `validate` (see `BatchItem` in the source for all fields).
+
+## Updates & configuration
+
+The CLI may check for updates in the background (non-blocking) and align with the latest release from GitHub. Configuration lives under `~/.officecli/config.json`.
+
+- **Disable automatic update checks:** `officecli config autoUpdate false` (read current value with `officecli config autoUpdate`).
+- **Skip the background check for a single invocation (e.g. CI):** `OFFICECLI_SKIP_UPDATE=1 officecli ...`
+
+Re-running the install script (`install.sh` / `install.ps1`) still installs or upgrades the binary as before.
 
 ## Python Usage
 
@@ -279,6 +312,8 @@ How does OfficeCLI compare to other approaches for AI agents working with Office
 | Read + Write + Create | ✓ | ✓ | ✓ | ✓ |
 
 ## Build
+
+Requires [.NET 10 SDK](https://dotnet.microsoft.com/download) for local compilation. From the repository root:
 
 ```bash
 ./build.sh
