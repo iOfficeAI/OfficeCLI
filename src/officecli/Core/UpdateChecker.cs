@@ -25,6 +25,8 @@ internal static class UpdateChecker
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".officecli");
     private static readonly string ConfigPath = Path.Combine(ConfigDir, "config.json");
     private const string GitHubRepo = "iOfficeAI/OfficeCLI";
+    private const string PrimaryBase = "https://officecli.ai";
+    private const string FallbackBase = "https://github.com/iOfficeAI/OfficeCLI";
     private const int CheckIntervalHours = 24;
 
     /// <summary>
@@ -71,20 +73,34 @@ internal static class UpdateChecker
             if (currentVersion == null) return;
 
             // Get latest version from redirect URL (no API, no rate limit)
+            // Try primary (officecli.ai) first, fallback to GitHub
             using var handler = new HttpClientHandler { AllowAutoRedirect = false };
             using var client = new HttpClient(handler);
             client.DefaultRequestHeaders.Add("User-Agent", "OfficeCLI-UpdateChecker");
             client.Timeout = TimeSpan.FromSeconds(10);
 
-            var response = client.GetAsync($"https://github.com/{GitHubRepo}/releases/latest")
-                .GetAwaiter().GetResult();
-            var location = response.Headers.Location?.ToString();
-            if (string.IsNullOrEmpty(location)) return;
+            string? latestVersion = null;
+            string resolvedBase = FallbackBase;
+            foreach (var baseUrl in new[] { PrimaryBase, FallbackBase })
+            {
+                try
+                {
+                    var response = client.GetAsync($"{baseUrl}/releases/latest")
+                        .GetAwaiter().GetResult();
+                    var location = response.Headers.Location?.ToString();
+                    if (string.IsNullOrEmpty(location)) continue;
 
-            // Extract version from redirect URL: .../releases/tag/v1.0.12
-            var versionMatch = Regex.Match(location, @"/tag/v?(\d+\.\d+\.\d+)$");
-            if (!versionMatch.Success) return;
-            var latestVersion = versionMatch.Groups[1].Value;
+                    var versionMatch = Regex.Match(location, @"/tag/v?(\d+\.\d+\.\d+)");
+                    if (versionMatch.Success)
+                    {
+                        latestVersion = versionMatch.Groups[1].Value;
+                        resolvedBase = baseUrl;
+                        break;
+                    }
+                }
+                catch { continue; }
+            }
+            if (latestVersion == null) return;
 
             config.LastUpdateCheck = DateTime.UtcNow;
             config.LatestVersion = latestVersion;
@@ -99,12 +115,12 @@ internal static class UpdateChecker
             var exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
             if (exePath == null) return;
 
-            // Download binary (follow redirects for this request)
+            // Download binary (use the same base URL that returned the version)
             using var downloadClient = new HttpClient();
             downloadClient.DefaultRequestHeaders.Add("User-Agent", "OfficeCLI-UpdateChecker");
             downloadClient.Timeout = TimeSpan.FromMinutes(5);
 
-            var downloadUrl = $"https://github.com/{GitHubRepo}/releases/latest/download/{assetName}";
+            var downloadUrl = $"{resolvedBase}/releases/latest/download/{assetName}";
             var tempPath = exePath + ".update";
             using (var stream = downloadClient.GetStreamAsync(downloadUrl).GetAwaiter().GetResult())
             using (var fileStream = File.Create(tempPath))
