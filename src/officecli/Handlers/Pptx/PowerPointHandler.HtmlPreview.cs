@@ -1139,7 +1139,14 @@ public partial class PowerPointHandler
 
         if (chartType.Contains("pie") || chartType.Contains("doughnut"))
         {
-            RenderPieChartSvg(sb, seriesList, categories, seriesColors, svgW, chartSvgH);
+            var isDoughnut = chartType.Contains("doughnut");
+            var holeSize = 0.0;
+            if (isDoughnut)
+            {
+                var holeSizeEl = plotArea.Descendants<DocumentFormat.OpenXml.Drawing.Charts.HoleSize>().FirstOrDefault();
+                holeSize = (holeSizeEl?.Val?.Value ?? 50) / 100.0; // default 50%
+            }
+            RenderPieChartSvg(sb, seriesList, categories, seriesColors, svgW, chartSvgH, holeSize);
         }
         else if (chartType.Contains("area"))
         {
@@ -1155,11 +1162,11 @@ public partial class PowerPointHandler
         }
         else if (chartType == "bubble")
         {
-            RenderBubbleChartSvg(sb, seriesList, categories, seriesColors, margin.left, margin.top, plotW, plotH);
+            RenderBubbleChartSvg(sb, plotArea, seriesList, categories, seriesColors, margin.left, margin.top, plotW, plotH);
         }
         else if (chartType == "stock")
         {
-            RenderStockChartSvg(sb, seriesList, categories, seriesColors, margin.left, margin.top, plotW, plotH);
+            RenderStockChartSvg(sb, plotArea, seriesList, categories, seriesColors, margin.left, margin.top, plotW, plotH);
         }
         else if (chartType.Contains("line") || chartType == "scatter")
         {
@@ -1329,7 +1336,7 @@ public partial class PowerPointHandler
     }
 
     private static void RenderPieChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
-        string[] categories, List<string> colors, int svgW, int svgH)
+        string[] categories, List<string> colors, int svgW, int svgH, double holeRatio = 0.0)
     {
         // Use first series values
         var values = series.FirstOrDefault().values ?? [];
@@ -1340,32 +1347,49 @@ public partial class PowerPointHandler
         var cx = svgW / 2.0;
         var cy = svgH / 2.0;
         var r = Math.Min(svgW, svgH) * 0.35;
+        var innerR = r * holeRatio;
         var startAngle = -Math.PI / 2;
 
         for (int i = 0; i < values.Length; i++)
         {
             var sliceAngle = 2 * Math.PI * values[i] / total;
             var endAngle = startAngle + sliceAngle;
-            var x1 = cx + r * Math.Cos(startAngle);
-            var y1 = cy + r * Math.Sin(startAngle);
-            var x2 = cx + r * Math.Cos(endAngle);
-            var y2 = cy + r * Math.Sin(endAngle);
-            var largeArc = sliceAngle > Math.PI ? 1 : 0;
             var color = i < colors.Count ? colors[i] : ChartColors[i % ChartColors.Length];
 
-            if (values.Length == 1)
+            if (values.Length == 1 && holeRatio <= 0)
             {
                 sb.AppendLine($"        <circle cx=\"{cx:0.#}\" cy=\"{cy:0.#}\" r=\"{r:0.#}\" fill=\"{color}\" opacity=\"0.85\"/>");
             }
+            else if (holeRatio > 0)
+            {
+                // Doughnut: arc with inner hole
+                var ox1 = cx + r * Math.Cos(startAngle);
+                var oy1 = cy + r * Math.Sin(startAngle);
+                var ox2 = cx + r * Math.Cos(endAngle);
+                var oy2 = cy + r * Math.Sin(endAngle);
+                var ix1 = cx + innerR * Math.Cos(endAngle);
+                var iy1 = cy + innerR * Math.Sin(endAngle);
+                var ix2 = cx + innerR * Math.Cos(startAngle);
+                var iy2 = cy + innerR * Math.Sin(startAngle);
+                var largeArc = sliceAngle > Math.PI ? 1 : 0;
+                // Outer arc clockwise, line to inner, inner arc counter-clockwise, close
+                sb.AppendLine($"        <path d=\"M {ox1:0.#},{oy1:0.#} A {r:0.#},{r:0.#} 0 {largeArc},1 {ox2:0.#},{oy2:0.#} L {ix1:0.#},{iy1:0.#} A {innerR:0.#},{innerR:0.#} 0 {largeArc},0 {ix2:0.#},{iy2:0.#} Z\" fill=\"{color}\" opacity=\"0.85\"/>");
+            }
             else
             {
+                var x1 = cx + r * Math.Cos(startAngle);
+                var y1 = cy + r * Math.Sin(startAngle);
+                var x2 = cx + r * Math.Cos(endAngle);
+                var y2 = cy + r * Math.Sin(endAngle);
+                var largeArc = sliceAngle > Math.PI ? 1 : 0;
                 sb.AppendLine($"        <path d=\"M {cx:0.#},{cy:0.#} L {x1:0.#},{y1:0.#} A {r:0.#},{r:0.#} 0 {largeArc},1 {x2:0.#},{y2:0.#} Z\" fill=\"{color}\" opacity=\"0.85\"/>");
             }
 
-            // Label
+            // Label — position between inner and outer radius for doughnut
             var midAngle = startAngle + sliceAngle / 2;
-            var lx = cx + r * 0.6 * Math.Cos(midAngle);
-            var ly = cy + r * 0.6 * Math.Sin(midAngle);
+            var labelR = holeRatio > 0 ? (r + innerR) / 2 : r * 0.6;
+            var lx = cx + labelR * Math.Cos(midAngle);
+            var ly = cy + labelR * Math.Sin(midAngle);
             var label = i < categories.Length ? categories[i] : "";
             if (!string.IsNullOrEmpty(label))
                 sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{ly:0.#}\" fill=\"white\" font-size=\"9\" text-anchor=\"middle\" dominant-baseline=\"middle\">{HtmlEncode(label)}</text>");
@@ -1430,19 +1454,23 @@ public partial class PowerPointHandler
         List<(string name, double[] values)> seriesList, string[] categories, List<string> colors,
         int ox, int oy, int pw, int ph)
     {
-        // Combo: render bar series as bars, line series as lines
-        // Detect which series are in BarChart vs LineChart
+        // Combo: detect series type from parent chart element
         var barIndices = new HashSet<int>();
         var lineIndices = new HashSet<int>();
+        var areaIndices = new HashSet<int>();
         var idx = 0;
         foreach (var chartEl in plotArea.ChildElements)
         {
             var serElements = chartEl.Descendants<OpenXmlCompositeElement>().Where(e => e.LocalName == "ser").ToList();
             if (serElements.Count == 0) continue;
-            var isBar = chartEl.LocalName.Contains("bar") || chartEl.LocalName.Contains("Bar");
+            var localName = chartEl.LocalName.ToLowerInvariant();
+            var isBar = localName.Contains("bar");
+            var isArea = localName.Contains("area");
             foreach (var _ in serElements)
             {
-                if (isBar) barIndices.Add(idx); else lineIndices.Add(idx);
+                if (isBar) barIndices.Add(idx);
+                else if (isArea) areaIndices.Add(idx);
+                else lineIndices.Add(idx);
                 idx++;
             }
         }
@@ -1476,6 +1504,26 @@ public partial class PowerPointHandler
                     var by = oy + ph - barH;
                     sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{barH:0.#}\" fill=\"{colors[s % colors.Count]}\" opacity=\"0.85\"/>");
                 }
+            }
+        }
+
+        // Area series (render before lines so lines appear on top)
+        foreach (var s in areaIndices.Where(i => i < seriesList.Count))
+        {
+            var points = new List<string>();
+            for (int c = 0; c < seriesList[s].values.Length && c < catCount; c++)
+            {
+                var px = ox + (catCount > 1 ? (double)pw * c / (catCount - 1) : pw / 2.0);
+                var py = oy + ph - (seriesList[s].values[c] / maxVal) * ph;
+                points.Add($"{px:0.#},{py:0.#}");
+            }
+            if (points.Count > 0)
+            {
+                var firstX = ox + (catCount > 1 ? 0 : pw / 2.0);
+                var lastX = ox + (catCount > 1 ? (double)pw * (seriesList[s].values.Length - 1) / (catCount - 1) : pw / 2.0);
+                var polygonPoints = $"{firstX:0.#},{oy + ph} {string.Join(" ", points)} {lastX:0.#},{oy + ph}";
+                sb.AppendLine($"        <polygon points=\"{polygonPoints}\" fill=\"{colors[s % colors.Count]}\" opacity=\"0.3\"/>");
+                sb.AppendLine($"        <polyline points=\"{string.Join(" ", points)}\" fill=\"none\" stroke=\"{colors[s % colors.Count]}\" stroke-width=\"2\"/>");
             }
         }
 
@@ -1587,56 +1635,99 @@ public partial class PowerPointHandler
         }
     }
 
-    private static void RenderBubbleChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
+    private static void RenderBubbleChartSvg(StringBuilder sb,
+        DocumentFormat.OpenXml.Drawing.Charts.PlotArea plotArea,
+        List<(string name, double[] values)> series,
         string[] categories, List<string> colors, int ox, int oy, int pw, int ph)
     {
-        // Bubble chart: X = category index, Y = value, size = value (simplified)
-        var allValues = series.SelectMany(s => s.values).ToArray();
-        if (allValues.Length == 0) return;
-        var maxVal = allValues.Max();
-        if (maxVal <= 0) maxVal = 1;
-        var catCount = Math.Max(categories.Length, series.Max(s => s.values.Length));
+        // Read X, Y, and bubble size from each series in the BubbleChart
+        var bubbleSeries = plotArea.Descendants<OpenXmlCompositeElement>()
+            .Where(e => e.LocalName == "ser" && e.Parent?.LocalName == "bubbleChart").ToList();
+
+        var allX = new List<double>();
+        var allY = new List<double>();
+        var allSize = new List<double>();
+        var seriesData = new List<(double[] x, double[] y, double[] size)>();
+
+        for (int s = 0; s < bubbleSeries.Count; s++)
+        {
+            var ser = bubbleSeries[s];
+            var xVals = ChartHelper.ReadNumericData(ser.Elements<OpenXmlCompositeElement>().FirstOrDefault(e => e.LocalName == "xVal")) ?? [];
+            var yVals = ChartHelper.ReadNumericData(ser.Elements<OpenXmlCompositeElement>().FirstOrDefault(e => e.LocalName == "yVal")) ?? [];
+            var sizeVals = ChartHelper.ReadNumericData(ser.Elements<OpenXmlCompositeElement>().FirstOrDefault(e => e.LocalName == "bubbleSize")) ?? yVals;
+            seriesData.Add((xVals, yVals, sizeVals));
+            allX.AddRange(xVals);
+            allY.AddRange(yVals);
+            allSize.AddRange(sizeVals);
+        }
+
+        // Fallback if no bubble series found
+        if (seriesData.Count == 0)
+        {
+            // Use regular series data as Y, index as X
+            foreach (var s in series)
+            {
+                var xVals = Enumerable.Range(0, s.values.Length).Select(i => (double)i).ToArray();
+                seriesData.Add((xVals, s.values, s.values));
+                allX.AddRange(xVals);
+                allY.AddRange(s.values);
+                allSize.AddRange(s.values);
+            }
+        }
+
+        if (allY.Count == 0) return;
+        var minX = allX.Count > 0 ? allX.Min() : 0;
+        var maxX = allX.Count > 0 ? allX.Max() : 1;
+        if (maxX <= minX) maxX = minX + 1;
+        var minY = allY.Min();
+        var maxY = allY.Max();
+        if (maxY <= minY) maxY = minY + 1;
+        var maxSize = allSize.Count > 0 ? allSize.Max() : 1;
+        if (maxSize <= 0) maxSize = 1;
         var maxRadius = Math.Min(pw, ph) * 0.08;
 
         // Axis lines
         sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
         sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
 
-        for (int s = 0; s < series.Count; s++)
+        for (int s = 0; s < seriesData.Count; s++)
         {
-            for (int c = 0; c < series[s].values.Length && c < catCount; c++)
+            var (xVals, yVals, sizeVals) = seriesData[s];
+            var count = Math.Min(xVals.Length, yVals.Length);
+            for (int i = 0; i < count; i++)
             {
-                var val = series[s].values[c];
-                var cx = ox + (catCount > 1 ? (double)pw * c / (catCount - 1) : pw / 2.0);
-                var cy = oy + ph - (val / maxVal) * ph;
-                var r = (val / maxVal) * maxRadius + 4;
-                sb.AppendLine($"        <circle cx=\"{cx:0.#}\" cy=\"{cy:0.#}\" r=\"{r:0.#}\" fill=\"{colors[s % colors.Count]}\" opacity=\"0.6\"/>");
+                var bx = ox + ((xVals[i] - minX) / (maxX - minX)) * pw;
+                var by = oy + ph - ((yVals[i] - minY) / (maxY - minY)) * ph;
+                var sz = i < sizeVals.Length ? sizeVals[i] : yVals[i];
+                var r = (sz / maxSize) * maxRadius + 4;
+                sb.AppendLine($"        <circle cx=\"{bx:0.#}\" cy=\"{by:0.#}\" r=\"{r:0.#}\" fill=\"{colors[s % colors.Count]}\" opacity=\"0.5\"/>");
             }
         }
 
-        // Category labels
-        for (int c = 0; c < catCount; c++)
-        {
-            var label = c < categories.Length ? categories[c] : "";
-            var lx = ox + (catCount > 1 ? (double)pw * c / (catCount - 1) : pw / 2.0);
-            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"#999\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
-        }
-
-        // Value axis labels
+        // X axis labels (5 ticks)
         for (int t = 0; t <= 4; t++)
         {
-            var val = maxVal * t / 4;
+            var val = minX + (maxX - minX) * t / 4;
+            var label = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
+            var tx = ox + (double)pw * t / 4;
+            sb.AppendLine($"        <text x=\"{tx:0.#}\" y=\"{oy + ph + 14}\" fill=\"#999\" font-size=\"8\" text-anchor=\"middle\">{label}</text>");
+        }
+
+        // Y axis labels
+        for (int t = 0; t <= 4; t++)
+        {
+            var val = minY + (maxY - minY) * t / 4;
             var label = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
             var ty = oy + ph - (double)ph * t / 4;
             sb.AppendLine($"        <text x=\"{ox - 4}\" y=\"{ty:0.#}\" fill=\"#777\" font-size=\"8\" text-anchor=\"end\" dominant-baseline=\"middle\">{label}</text>");
         }
     }
 
-    private static void RenderStockChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
+    private static void RenderStockChartSvg(StringBuilder sb,
+        DocumentFormat.OpenXml.Drawing.Charts.PlotArea plotArea,
+        List<(string name, double[] values)> series,
         string[] categories, List<string> colors, int ox, int oy, int pw, int ph)
     {
-        // Stock chart: render as candlestick-like bars
-        // Typically 4 series: Open, High, Low, Close — or fewer
         var allValues = series.SelectMany(s => s.values).ToArray();
         if (allValues.Length == 0) return;
         var maxVal = allValues.Max();
@@ -1644,6 +1735,20 @@ public partial class PowerPointHandler
         if (maxVal <= minVal) { maxVal = minVal + 1; }
         var range = maxVal - minVal;
         var catCount = Math.Max(categories.Length, series.Max(s => s.values.Length));
+
+        // Read up/down bar colors from StockChart
+        var upColor = "#2ECC71";
+        var downColor = "#E74C3C";
+        var stockChart = plotArea.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.StockChart>();
+        if (stockChart != null)
+        {
+            var upBars = stockChart.Descendants<OpenXmlCompositeElement>().FirstOrDefault(e => e.LocalName == "upBars");
+            var upFill = upBars?.Descendants<Drawing.SolidFill>().FirstOrDefault()?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+            if (upFill != null) upColor = $"#{upFill}";
+            var downBars = stockChart.Descendants<OpenXmlCompositeElement>().FirstOrDefault(e => e.LocalName == "downBars");
+            var downFill = downBars?.Descendants<Drawing.SolidFill>().FirstOrDefault()?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+            if (downFill != null) downColor = $"#{downFill}";
+        }
 
         // Axis lines
         sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
@@ -1665,7 +1770,7 @@ public partial class PowerPointHandler
                 var yLow = oy + ph - ((low - minVal) / range) * ph;
                 var yOpen = oy + ph - ((open - minVal) / range) * ph;
                 var yClose = oy + ph - ((close - minVal) / range) * ph;
-                var color = close >= open ? "#2ECC71" : "#E74C3C";
+                var color = close >= open ? upColor : downColor;
                 var barW = groupW * 0.5;
 
                 // High-Low line
