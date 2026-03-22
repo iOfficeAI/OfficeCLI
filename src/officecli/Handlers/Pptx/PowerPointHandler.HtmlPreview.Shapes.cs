@@ -22,12 +22,33 @@ public partial class PowerPointHandler
         Dictionary<string, string> themeColors, (long x, long y, long cx, long cy)? overridePos = null)
     {
         var xfrm = shape.ShapeProperties?.Transform2D;
-        if (xfrm?.Offset == null || xfrm?.Extents == null) return;
 
-        var x = overridePos?.x ?? xfrm.Offset.X?.Value ?? 0;
-        var y = overridePos?.y ?? xfrm.Offset.Y?.Value ?? 0;
-        var cx = overridePos?.cx ?? xfrm.Extents.Cx?.Value ?? 0;
-        var cy = overridePos?.cy ?? xfrm.Extents.Cy?.Value ?? 0;
+        long x, y, cx, cy;
+        if (overridePos != null)
+        {
+            (x, y, cx, cy) = overridePos.Value;
+        }
+        else if (xfrm?.Offset != null && xfrm?.Extents != null)
+        {
+            x = xfrm.Offset.X?.Value ?? 0;
+            y = xfrm.Offset.Y?.Value ?? 0;
+            cx = xfrm.Extents.Cx?.Value ?? 0;
+            cy = xfrm.Extents.Cy?.Value ?? 0;
+        }
+        else
+        {
+            // No xfrm — try to inherit position from matching layout/master placeholder
+            var resolved = ResolveInheritedPosition(shape, part);
+            if (resolved == null)
+            {
+                // No text content → skip silently
+                if (string.IsNullOrWhiteSpace(GetShapeText(shape))) return;
+                // Has text but no position can be resolved → use default placeholder position
+                resolved = GetDefaultPlaceholderPosition(shape, part);
+                if (resolved == null) return;
+            }
+            (x, y, cx, cy) = resolved.Value;
+        }
 
         var styles = new List<string>
         {
@@ -55,18 +76,18 @@ public partial class PowerPointHandler
         var transforms = new List<string>();
 
         // 2D rotation
-        if (xfrm.Rotation != null && xfrm.Rotation.Value != 0)
+        if (xfrm?.Rotation != null && xfrm.Rotation.Value != 0)
         {
             var deg = xfrm.Rotation.Value / 60000.0;
             transforms.Add($"rotate({deg:0.##}deg)");
         }
 
         // Flip
-        if (xfrm.HorizontalFlip?.Value == true && xfrm.VerticalFlip?.Value == true)
+        if (xfrm?.HorizontalFlip?.Value == true && xfrm.VerticalFlip?.Value == true)
             transforms.Add("scale(-1,-1)");
-        else if (xfrm.HorizontalFlip?.Value == true)
+        else if (xfrm?.HorizontalFlip?.Value == true)
             transforms.Add("scaleX(-1)");
-        else if (xfrm.VerticalFlip?.Value == true)
+        else if (xfrm?.VerticalFlip?.Value == true)
             transforms.Add("scaleY(-1)");
 
         // 3D rotation (scene3d camera rotation) → CSS perspective transform
@@ -229,6 +250,141 @@ public partial class PowerPointHandler
         }
 
         sb.AppendLine("</div>");
+    }
+
+    // ==================== Placeholder Position Inheritance ====================
+
+    /// <summary>
+    /// When a shape has no Transform2D, try to find position from matching placeholder
+    /// on the slide layout or slide master (OOXML placeholder inheritance chain).
+    /// </summary>
+    private static (long x, long y, long cx, long cy)? ResolveInheritedPosition(Shape shape, OpenXmlPart part)
+    {
+        var ph = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
+            ?.GetFirstChild<PlaceholderShape>();
+
+        // Only placeholder shapes can inherit position from layout/master
+        if (ph == null) return null;
+
+        var slidePart = part as SlidePart;
+        if (slidePart == null) return null;
+
+        // Search layout then master for a matching placeholder
+        var layoutShapeTree = slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.ShapeTree;
+        var masterShapeTree = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.ShapeTree;
+
+        foreach (var tree in new[] { layoutShapeTree, masterShapeTree })
+        {
+            if (tree == null) continue;
+            foreach (var candidate in tree.Elements<Shape>())
+            {
+                var candidatePh = candidate.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
+                    ?.GetFirstChild<PlaceholderShape>();
+                if (candidatePh == null) continue;
+
+                if (!PlaceholderMatches(ph, candidatePh)) continue;
+
+                var cxfrm = candidate.ShapeProperties?.Transform2D;
+                if (cxfrm?.Offset != null && cxfrm?.Extents != null)
+                {
+                    return (
+                        cxfrm.Offset.X?.Value ?? 0,
+                        cxfrm.Offset.Y?.Value ?? 0,
+                        cxfrm.Extents.Cx?.Value ?? 0,
+                        cxfrm.Extents.Cy?.Value ?? 0
+                    );
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Check if two placeholder shapes match by type and/or index.
+    /// </summary>
+    private static bool PlaceholderMatches(PlaceholderShape slidePh, PlaceholderShape layoutPh)
+    {
+        // Match by index first (most specific)
+        if (slidePh.Index?.HasValue == true && layoutPh.Index?.HasValue == true)
+            return slidePh.Index.Value == layoutPh.Index.Value;
+
+        // Match by type
+        if (slidePh.Type?.HasValue == true && layoutPh.Type?.HasValue == true)
+            return slidePh.Type.Value == layoutPh.Type.Value;
+
+        // If slide ph has no type/idx, match by name or consider it a body placeholder
+        // Default placeholder type (when type is omitted) is "body" per OOXML spec
+        if (slidePh.Type?.HasValue != true && slidePh.Index?.HasValue != true)
+        {
+            // A typeless/indexless placeholder matches title if the layout has title,
+            // or body/subtitle by convention
+            if (layoutPh.Type?.HasValue == true)
+            {
+                var lt = layoutPh.Type.Value;
+                return lt == PlaceholderValues.Title || lt == PlaceholderValues.CenteredTitle
+                    || lt == PlaceholderValues.SubTitle || lt == PlaceholderValues.Body;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Last-resort fallback: provide default positions for placeholder shapes
+    /// with text content when no layout/master placeholder can be matched.
+    /// Uses standard PowerPoint default placeholder positions.
+    /// </summary>
+    private static (long x, long y, long cx, long cy)? GetDefaultPlaceholderPosition(Shape shape, OpenXmlPart part)
+    {
+        var ph = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
+            ?.GetFirstChild<PlaceholderShape>();
+
+        // Get slide dimensions for proportional positioning
+        long slideW = 12192000; // default 33.87cm
+        long slideH = 6858000;  // default 19.05cm
+        if (part is SlidePart sp)
+        {
+            var presDoc = sp.GetParentParts().OfType<PresentationPart>().FirstOrDefault();
+            var slideSize = presDoc?.Presentation?.SlideSize;
+            if (slideSize?.Cx?.HasValue == true) slideW = slideSize.Cx.Value;
+            if (slideSize?.Cy?.HasValue == true) slideH = slideSize.Cy.Value;
+        }
+
+        // Standard PowerPoint default positions (in EMU)
+        long margin = slideW / 16; // ~6.25% margin on each side
+        long contentW = slideW - margin * 2;
+
+        if (ph?.Type?.HasValue == true)
+        {
+            var t = ph.Type.Value;
+            if (t == PlaceholderValues.Title || t == PlaceholderValues.CenteredTitle)
+                return (margin, slideH / 8, contentW, slideH / 4);
+            if (t == PlaceholderValues.SubTitle)
+                return (margin, slideH * 3 / 8, contentW, slideH / 4);
+            if (t == PlaceholderValues.Body || t == PlaceholderValues.Object)
+                return (margin, slideH * 3 / 8, contentW, slideH / 2);
+            return null;
+        }
+
+        // Placeholder with no type attribute — use a generous centered area
+        if (ph != null)
+        {
+            // Determine position based on shape name as a hint
+            // Check Subtitle before Title since "Subtitle" contains "Title"
+            var name = shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Name?.Value ?? "";
+            if (name.Contains("Subtitle", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("副标题", StringComparison.Ordinal))
+                return (margin, slideH * 3 / 8, contentW, slideH / 4);
+            if (name.Contains("Title", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("标题", StringComparison.Ordinal))
+                return (margin, slideH / 8, contentW, slideH / 4);
+
+            // Generic placeholder — use body area
+            return (margin, slideH / 4, contentW, slideH / 2);
+        }
+
+        return null;
     }
 
     // ==================== Picture Rendering ====================

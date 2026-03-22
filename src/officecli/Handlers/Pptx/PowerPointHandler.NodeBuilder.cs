@@ -216,8 +216,8 @@ public partial class PowerPointHandler
                         if (cellFirstRun?.RunProperties != null)
                         {
                             var rp = cellFirstRun.RunProperties;
-                            var cellFont = rp.GetFirstChild<Drawing.LatinFont>()?.Typeface
-                                ?? rp.GetFirstChild<Drawing.EastAsianFont>()?.Typeface;
+                            var cellFont = rp.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value
+                                ?? rp.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
                             if (cellFont != null) cellNode.Format["font"] = cellFont;
 
                             if (rp.FontSize?.HasValue == true)
@@ -372,8 +372,8 @@ public partial class PowerPointHandler
         var firstRun = shape.TextBody?.Descendants<Drawing.Run>().FirstOrDefault();
         if (firstRun?.RunProperties != null)
         {
-            var font = firstRun.RunProperties.GetFirstChild<Drawing.LatinFont>()?.Typeface
-                ?? firstRun.RunProperties.GetFirstChild<Drawing.EastAsianFont>()?.Typeface;
+            var font = firstRun.RunProperties.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value
+                ?? firstRun.RunProperties.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
             if (font != null) node.Format["font"] = font;
 
             var fontSize = firstRun.RunProperties.FontSize?.Value;
@@ -699,8 +699,8 @@ public partial class PowerPointHandler
 
         if (run.RunProperties != null)
         {
-            var f = run.RunProperties.GetFirstChild<Drawing.LatinFont>()?.Typeface
-                ?? run.RunProperties.GetFirstChild<Drawing.EastAsianFont>()?.Typeface;
+            var f = run.RunProperties.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value
+                ?? run.RunProperties.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
             if (f != null) node.Format["font"] = f;
             var fs = run.RunProperties.FontSize?.Value;
             if (fs.HasValue) node.Format["size"] = $"{fs.Value / 100.0:0.##}pt";

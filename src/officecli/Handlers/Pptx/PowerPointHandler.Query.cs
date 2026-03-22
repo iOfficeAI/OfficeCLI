@@ -352,8 +352,8 @@ public partial class PowerPointHandler
             var firstRun = cell.Descendants<Drawing.Run>().FirstOrDefault();
             if (firstRun?.RunProperties != null)
             {
-                var f = firstRun.RunProperties.GetFirstChild<Drawing.LatinFont>()?.Typeface
-                    ?? firstRun.RunProperties.GetFirstChild<Drawing.EastAsianFont>()?.Typeface;
+                var f = firstRun.RunProperties.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value
+                    ?? firstRun.RunProperties.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
                 if (f != null) cellNode.Format["font"] = f;
                 var fs = firstRun.RunProperties.FontSize?.Value;
                 if (fs.HasValue) cellNode.Format["size"] = $"{fs.Value / 100.0:0.##}pt";
