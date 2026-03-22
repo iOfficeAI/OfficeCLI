@@ -302,7 +302,13 @@ public class WatchServer : IDisposable
                 var message = await reader.ReadLineAsync(token);
                 await writer.WriteLineAsync("ok".AsMemory(), token);
 
-                if (message != null && message.StartsWith("refresh"))
+                if (message == "close")
+                {
+                    Console.WriteLine("Watch closed by remote command.");
+                    _cts.Cancel();
+                    break;
+                }
+                else if (message != null && message.StartsWith("refresh"))
                 {
                     string? changedPath = null;
                     if (message.Contains(':'))

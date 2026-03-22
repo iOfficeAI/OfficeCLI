@@ -145,6 +145,22 @@ watchCommand.SetAction(result => SafeRun(() =>
 
 rootCommand.Add(watchCommand);
 
+// ==================== unwatch command ====================
+var unwatchFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.pptx)" };
+var unwatchCommand = new Command("unwatch", "Stop the watch preview server for the document");
+unwatchCommand.Add(unwatchFileArg);
+
+unwatchCommand.SetAction(result => SafeRun(() =>
+{
+    var file = result.GetValue(unwatchFileArg)!;
+    if (WatchNotifier.SendClose(file.FullName))
+        Console.WriteLine($"Watch stopped for {file.Name}");
+    else
+        Console.Error.WriteLine($"No watch running for {file.Name}");
+}));
+
+rootCommand.Add(unwatchCommand);
+
 // ==================== __resident-serve__ (internal, hidden) ====================
 var serveFileArg = new Argument<FileInfo>("file") { Description = "Office document path (required even with open/close mode)" };
 var serveCommand = new Command("__resident-serve__", "Internal: run resident server (do not call directly)");

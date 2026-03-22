@@ -33,4 +33,29 @@ public static class WatchNotifier
             // No watch process running — silently ignore
         }
     }
+
+    /// <summary>
+    /// Send a close command to a running watch process.
+    /// Returns true if the watch was successfully closed.
+    /// </summary>
+    public static bool SendClose(string filePath)
+    {
+        try
+        {
+            var pipeName = WatchServer.GetWatchPipeName(filePath);
+            using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut);
+            client.Connect(200);
+
+            using var writer = new StreamWriter(client, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
+            using var reader = new StreamReader(client, Encoding.UTF8, leaveOpen: true);
+
+            writer.WriteLine("close");
+            reader.ReadLine();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }
