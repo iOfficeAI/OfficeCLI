@@ -372,6 +372,8 @@ public partial class WordHandler
                 if (rp.Italic != null && !node.Format.ContainsKey("italic")) node.Format["italic"] = true;
                 if (rp.Color?.Val?.Value != null && !node.Format.ContainsKey("color"))
                     node.Format["color"] = ParseHelpers.FormatHexColor(rp.Color.Val.Value);
+                else if (rp.Color?.ThemeColor?.HasValue == true && !node.Format.ContainsKey("color"))
+                    node.Format["color"] = rp.Color.ThemeColor.InnerText;
                 if (rp.Underline?.Val != null && !node.Format.ContainsKey("underline"))
                     node.Format["underline"] = rp.Underline.Val.InnerText;
                 if (rp.Strike != null && !node.Format.ContainsKey("strike"))
@@ -399,6 +401,7 @@ public partial class WordHandler
             if (run.RunProperties?.Bold != null) node.Format["bold"] = true;
             if (run.RunProperties?.Italic != null) node.Format["italic"] = true;
             if (run.RunProperties?.Color?.Val?.Value != null) node.Format["color"] = ParseHelpers.FormatHexColor(run.RunProperties.Color.Val.Value);
+            else if (run.RunProperties?.Color?.ThemeColor?.HasValue == true) node.Format["color"] = run.RunProperties.Color.ThemeColor.InnerText;
             if (run.RunProperties?.Underline?.Val != null) node.Format["underline"] = run.RunProperties.Underline.Val.InnerText;
             if (run.RunProperties?.Strike != null) node.Format["strike"] = true;
             if (run.RunProperties?.Highlight?.Val != null) node.Format["highlight"] = run.RunProperties.Highlight.Val.InnerText;
@@ -812,6 +815,7 @@ public partial class WordHandler
             if (rPr.Bold != null) node.Format["bold"] = true;
             if (rPr.Italic != null) node.Format["italic"] = true;
             if (rPr.Color?.Val?.Value != null) node.Format["color"] = ParseHelpers.FormatHexColor(rPr.Color.Val.Value);
+            else if (rPr.Color?.ThemeColor?.HasValue == true) node.Format["color"] = rPr.Color.ThemeColor.InnerText;
             if (rPr.Underline?.Val != null) node.Format["underline"] = rPr.Underline.Val.InnerText;
             if (rPr.Strike != null) node.Format["strike"] = true;
             if (rPr.Highlight?.Val != null) node.Format["highlight"] = rPr.Highlight.Val.InnerText;

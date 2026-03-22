@@ -263,6 +263,11 @@ public partial class ExcelHandler
                                 node.Format["font.underline"] = font.Underline.Val?.InnerText == "double" ? "double" : "single";
                             if (font.Color?.Rgb?.Value != null)
                                 node.Format["font.color"] = ParseHelpers.FormatHexColor(font.Color.Rgb.Value);
+                            else if (font.Color?.Theme?.Value != null)
+                            {
+                                var themeName = ParseHelpers.ExcelThemeIndexToName(font.Color.Theme.Value);
+                                if (themeName != null) node.Format["font.color"] = themeName;
+                            }
                             if (font.FontSize?.Val?.Value != null)
                                 node.Format["font.size"] = $"{font.FontSize.Val.Value:0.##}pt";
                             if (font.FontName?.Val?.Value != null) node.Format["font.name"] = font.FontName.Val.Value;
@@ -295,6 +300,11 @@ public partial class ExcelHandler
                                 var pf = fill.PatternFill;
                                 if (pf?.ForegroundColor?.Rgb?.Value != null)
                                     node.Format["fill"] = ParseHelpers.FormatHexColor(pf.ForegroundColor.Rgb.Value);
+                                else if (pf?.ForegroundColor?.Theme?.Value != null)
+                                {
+                                    var themeName = ParseHelpers.ExcelThemeIndexToName(pf.ForegroundColor.Theme.Value);
+                                    if (themeName != null) node.Format["fill"] = themeName;
+                                }
                             }
                         }
                     }
@@ -753,6 +763,11 @@ public partial class ExcelHandler
             var colorHex = solidFill?.GetFirstChild<Drawing.RgbColorModelHex>();
             if (colorHex?.Val?.Value != null)
                 node.Format["color"] = ParseHelpers.FormatHexColor(colorHex.Val.Value);
+            else
+            {
+                var schemeClr = solidFill?.GetFirstChild<Drawing.SchemeColor>()?.Val;
+                if (schemeClr?.HasValue == true) node.Format["color"] = schemeClr.InnerText;
+            }
 
             var latin = rPr.GetFirstChild<Drawing.LatinFont>();
             if (latin?.Typeface?.Value != null)
@@ -769,6 +784,11 @@ public partial class ExcelHandler
             var fillColor = shapeFill?.GetFirstChild<Drawing.RgbColorModelHex>();
             if (fillColor?.Val?.Value != null)
                 node.Format["fill"] = ParseHelpers.FormatHexColor(fillColor.Val.Value);
+            else
+            {
+                var schemeClr = shapeFill?.GetFirstChild<Drawing.SchemeColor>()?.Val;
+                if (schemeClr?.HasValue == true) node.Format["fill"] = schemeClr.InnerText;
+            }
         }
 
         // Effects — check shape-level then text-level

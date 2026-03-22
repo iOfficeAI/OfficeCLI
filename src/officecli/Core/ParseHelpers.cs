@@ -83,6 +83,28 @@ public static class ParseHelpers
             return "#" + rawValue[2..].ToUpperInvariant();
         return rawValue; // scheme colors ("accent1"), "none", "auto", etc.
     }
+
+    /// <summary>
+    /// Map Excel theme color index to a canonical scheme name.
+    /// OOXML theme indices: 0=lt1, 1=dk1, 2=lt2, 3=dk2, 4-9=accent1-6, 10=hlink, 11=folHlink.
+    /// </summary>
+    public static string? ExcelThemeIndexToName(uint themeIndex) => themeIndex switch
+    {
+        0 => "lt1",
+        1 => "dk1",
+        2 => "lt2",
+        3 => "dk2",
+        4 => "accent1",
+        5 => "accent2",
+        6 => "accent3",
+        7 => "accent4",
+        8 => "accent5",
+        9 => "accent6",
+        10 => "hlink",
+        11 => "folHlink",
+        _ => null,
+    };
+
     /// <summary>
     /// Accepts "true", "1", "yes", "on" (case-insensitive) as truthy.
     /// </summary>

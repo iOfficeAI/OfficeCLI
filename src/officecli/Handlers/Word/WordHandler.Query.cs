@@ -234,6 +234,7 @@ public partial class WordHandler
                 if (rPr.Bold != null) styleNode.Format["bold"] = true;
                 if (rPr.Italic != null) styleNode.Format["italic"] = true;
                 if (rPr.Color?.Val?.Value != null) styleNode.Format["color"] = ParseHelpers.FormatHexColor(rPr.Color.Val.Value);
+                else if (rPr.Color?.ThemeColor?.HasValue == true) styleNode.Format["color"] = rPr.Color.ThemeColor.InnerText;
             }
 
             // Read paragraph properties
@@ -436,6 +437,7 @@ public partial class WordHandler
             if (rp.Bold != null) node.Format["bold"] = true;
             if (rp.Italic != null) node.Format["italic"] = true;
             if (rp.Color?.Val?.Value != null) node.Format["color"] = ParseHelpers.FormatHexColor(rp.Color.Val.Value);
+            else if (rp.Color?.ThemeColor?.HasValue == true) node.Format["color"] = rp.Color.ThemeColor.InnerText;
         }
 
         var firstPara = header.Elements<Paragraph>().FirstOrDefault();
@@ -491,6 +493,7 @@ public partial class WordHandler
             if (rp.Bold != null) node.Format["bold"] = true;
             if (rp.Italic != null) node.Format["italic"] = true;
             if (rp.Color?.Val?.Value != null) node.Format["color"] = ParseHelpers.FormatHexColor(rp.Color.Val.Value);
+            else if (rp.Color?.ThemeColor?.HasValue == true) node.Format["color"] = rp.Color.ThemeColor.InnerText;
         }
 
         var firstPara = footer.Elements<Paragraph>().FirstOrDefault();
