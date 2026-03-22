@@ -129,16 +129,7 @@ public partial class WordHandler
                     tblProps.TableStyle = new TableStyle { Val = tv };
                     // Add TableLook so built-in styles apply banding correctly
                     tblProps.RemoveAllChildren<TableLook>();
-                    tblProps.AppendChild(new TableLook
-                    {
-                        Val = "04A0",
-                        FirstRow = true,
-                        LastRow = false,
-                        FirstColumn = true,
-                        LastColumn = false,
-                        NoHorizontalBand = false,
-                        NoVerticalBand = true
-                    });
+                    tblProps.AppendChild(new TableLook { Val = "04A0" });
                     break;
             }
         }
