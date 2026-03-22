@@ -1548,6 +1548,16 @@ public partial class PowerPointHandler
             // Heart (polygon approximation)
             "heart" => "clip-path:polygon(50% 18%,65% 0,85% 0,100% 15%,100% 35%,50% 100%,0 35%,0 15%,15% 0,35% 0)",
 
+            // Cloud (rounded blob)
+            "cloud" or "cloudCallout" => "border-radius:50% 50% 45% 55% / 60% 40% 55% 45%",
+
+            // Smiley (circle)
+            "smileyFace" or "smiley" => "border-radius:50%",
+
+            // Gear (polygon approximation of 6-tooth gear)
+            "gear6" => "clip-path:polygon(50% 0,61% 10%,75% 3%,80% 18%,97% 25%,88% 38%,100% 50%,88% 62%,97% 75%,80% 82%,75% 97%,61% 90%,50% 100%,39% 90%,25% 97%,20% 82%,3% 75%,12% 62%,0 50%,12% 38%,3% 25%,20% 18%,25% 3%,39% 10%)",
+            "gear9" => "clip-path:polygon(50% 0,56% 8%,65% 2%,68% 12%,78% 9%,78% 20%,88% 20%,85% 30%,95% 35%,90% 44%,100% 50%,90% 56%,95% 65%,85% 70%,88% 80%,78% 80%,78% 91%,68% 88%,65% 98%,56% 92%,50% 100%,44% 92%,35% 98%,32% 88%,22% 91%,22% 80%,12% 80%,15% 70%,5% 65%,10% 56%,0 50%,10% 44%,5% 35%,15% 30%,12% 20%,22% 20%,22% 9%,32% 12%,35% 2%,44% 8%)",
+
             // 3D-like shapes (rendered flat)
             "cube" => "",
             "can" or "cylinder" => "border-radius:50%/10%",
