@@ -128,7 +128,7 @@ public partial class PowerPointHandler
             var font = rp.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value
                 ?? rp.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
             if (font != null && !font.StartsWith("+", StringComparison.Ordinal))
-                styles.Add($"font-family:'{CssSanitize(font)}'");
+                styles.Add(CssFontFamilyWithFallback(font));
 
             // Size
             if (rp.FontSize?.HasValue == true)

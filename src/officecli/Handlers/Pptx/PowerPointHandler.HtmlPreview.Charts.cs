@@ -97,7 +97,7 @@ public partial class PowerPointHandler
         var catAxisTitle = catAxis?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Title>()?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
 
         // Container with optional chart background
-        var bgStyle = chartFillColor != null ? $"background:#{chartFillColor};" : "background:rgba(255,255,255,0.05);";
+        var bgStyle = chartFillColor != null ? $"background:#{chartFillColor};" : "background:transparent;";
         sb.AppendLine($"    <div class=\"shape\" style=\"left:{x}cm;top:{y}cm;width:{w}cm;height:{h}cm;{bgStyle}\">");
 
         // Title

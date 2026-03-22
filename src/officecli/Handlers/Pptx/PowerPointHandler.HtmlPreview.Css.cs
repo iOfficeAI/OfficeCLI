@@ -265,19 +265,47 @@ public partial class PowerPointHandler
 
     // ==================== CSS Helper: Preset Geometry ====================
 
-    private static string PresetGeometryToCss(string preset)
+    private static string PresetGeometryToCss(string preset) =>
+        PresetGeometryToCss(preset, 0, 0, null);
+
+    private static string PresetGeometryToCss(string preset, long widthEmu, long heightEmu,
+        Drawing.PresetGeometry? presetGeom)
     {
+        // Calculate roundRect corner radius from avLst or default (16.667% of shorter side)
+        if (preset is "roundRect" or "round1Rect" or "round2SameRect" or "round2DiagRect")
+        {
+            var minSide = Math.Min(widthEmu, heightEmu);
+            // Default adjustment value is 16667 (= 16.667%)
+            long avVal = 16667;
+            var avList = presetGeom?.GetFirstChild<Drawing.AdjustValueList>();
+            var gd = avList?.GetFirstChild<Drawing.ShapeGuide>();
+            if (gd?.Formula?.Value != null && gd.Formula.Value.StartsWith("val "))
+            {
+                if (long.TryParse(gd.Formula.Value.AsSpan(4), out var parsed))
+                    avVal = parsed;
+            }
+            var radiusEmu = minSide * avVal / 100000;
+            var radiusCm = radiusEmu / 360000.0;
+            var r = $"{radiusCm:0.##}cm";
+            if (minSide <= 0) r = "8px"; // fallback if no dimensions
+
+            return preset switch
+            {
+                "roundRect" => $"border-radius:{r}",
+                "round1Rect" => $"border-radius:{r} 0 0 0",
+                "round2SameRect" => $"border-radius:{r} {r} 0 0",
+                "round2DiagRect" => $"border-radius:{r} 0 {r} 0",
+                _ => ""
+            };
+        }
+
         return preset switch
         {
             // Rectangles
             "rect" => "",
-            "roundRect" => "border-radius:8px",
             "snip1Rect" => "clip-path:polygon(0 0,92% 0,100% 8%,100% 100%,0 100%)",
             "snip2SameRect" => "clip-path:polygon(8% 0,92% 0,100% 8%,100% 100%,0 100%,0 8%)",
             "snip2DiagRect" => "clip-path:polygon(8% 0,100% 0,100% 92%,92% 100%,0 100%,0 8%)",
-            "round1Rect" => "border-radius:8px 0 0 0",
-            "round2SameRect" => "border-radius:8px 8px 0 0",
-            "round2DiagRect" => "border-radius:8px 0 8px 0",
 
             // Ellipses
             "ellipse" => "border-radius:50%",
@@ -627,6 +655,17 @@ public partial class PowerPointHandler
     /// Sanitize a value for use inside a CSS style attribute.
     /// Strips characters that could break out of the style context.
     /// </summary>
+    private static readonly string[] CjkFallbacks = { "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Hiragino Sans GB" };
+
+    private static string CssFontFamilyWithFallback(string font)
+    {
+        var sanitized = CssSanitize(font);
+        var fallbacks = string.Join(",", CjkFallbacks
+            .Where(f => !f.Equals(font, StringComparison.OrdinalIgnoreCase))
+            .Select(f => $"'{f}'"));
+        return $"font-family:'{sanitized}',{fallbacks},sans-serif";
+    }
+
     private static string CssSanitize(string value)
     {
         // Remove characters that could escape the style attribute or inject HTML

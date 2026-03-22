@@ -96,7 +96,7 @@ public partial class PowerPointHandler
         var presetGeom = shape.ShapeProperties?.GetFirstChild<Drawing.PresetGeometry>();
         if (presetGeom?.Preset?.HasValue == true)
         {
-            var geomCss = PresetGeometryToCss(presetGeom.Preset!.InnerText!);
+            var geomCss = PresetGeometryToCss(presetGeom.Preset!.InnerText!, cx, cy, presetGeom);
             if (!string.IsNullOrEmpty(geomCss))
             {
                 if (geomCss.StartsWith("clip-path:"))
@@ -279,7 +279,7 @@ public partial class PowerPointHandler
         var presetGeom = pic.ShapeProperties?.GetFirstChild<Drawing.PresetGeometry>();
         if (presetGeom?.Preset?.HasValue == true)
         {
-            var geomCss = PresetGeometryToCss(presetGeom.Preset!.InnerText!);
+            var geomCss = PresetGeometryToCss(presetGeom.Preset!.InnerText!, cx, cy, presetGeom);
             if (!string.IsNullOrEmpty(geomCss))
                 styles.Add(geomCss);
         }

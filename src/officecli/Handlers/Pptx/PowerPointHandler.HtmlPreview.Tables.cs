@@ -89,7 +89,7 @@ public partial class PowerPointHandler
                     var fontVal = rp.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value
                         ?? rp.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
                     if (fontVal != null && !fontVal.StartsWith("+", StringComparison.Ordinal))
-                        cellStyles.Add($"font-family:'{CssSanitize(fontVal)}'");
+                        cellStyles.Add(CssFontFamilyWithFallback(fontVal));
                     var runColor = ResolveFillColor(rp.GetFirstChild<Drawing.SolidFill>(), themeColors);
                     if (runColor != null)
                         cellStyles.Add($"color:{runColor}");
