@@ -346,8 +346,22 @@ public partial class PowerPointHandler
             "flowchartprocess" or "process" => Drawing.ShapeTypeValues.FlowChartProcess,
             "flowchartdecision" or "decision" => Drawing.ShapeTypeValues.FlowChartDecision,
             "flowchartterminator" or "terminator" => Drawing.ShapeTypeValues.FlowChartTerminator,
-            "flowchartdocument" => Drawing.ShapeTypeValues.FlowChartDocument,
-            "flowcharttinputoutput" or "io" => Drawing.ShapeTypeValues.FlowChartInputOutput,
+            "flowchartdocument" or "document" => Drawing.ShapeTypeValues.FlowChartDocument,
+            "flowchartinputoutput" or "flowchartio" or "io" => Drawing.ShapeTypeValues.FlowChartInputOutput,
+            "flowchartdata" or "data" => Drawing.ShapeTypeValues.FlowChartInputOutput,
+            "flowchartpredefinedprocess" or "predefinedprocess" => Drawing.ShapeTypeValues.FlowChartPredefinedProcess,
+            "flowchartpreparation" or "preparation" => Drawing.ShapeTypeValues.FlowChartPreparation,
+            "flowchartmanualinput" or "manualinput" => Drawing.ShapeTypeValues.FlowChartManualInput,
+            "flowchartmanualoperation" or "manualoperation" => Drawing.ShapeTypeValues.FlowChartManualOperation,
+            "flowchartconnector" or "flowconnector" => Drawing.ShapeTypeValues.FlowChartConnector,
+            "flowchartoffpageconnector" or "offpageconnector" => Drawing.ShapeTypeValues.FlowChartOffpageConnector,
+            "flowchartmultidocument" or "multidocument" => Drawing.ShapeTypeValues.FlowChartMultidocument,
+            "flowchartsort" or "sort" => Drawing.ShapeTypeValues.FlowChartSort,
+            "flowchartmerge" or "merge" => Drawing.ShapeTypeValues.FlowChartMerge,
+            "flowchartextract" or "extract" => Drawing.ShapeTypeValues.FlowChartExtract,
+            "flowchartdelay" or "delay" => Drawing.ShapeTypeValues.FlowChartDelay,
+            "flowchartdisplay" or "display" => Drawing.ShapeTypeValues.FlowChartDisplay,
+            "flowchartalternateprocess" or "alternateprocess" => Drawing.ShapeTypeValues.FlowChartAlternateProcess,
             "brace" or "leftbrace" => Drawing.ShapeTypeValues.LeftBrace,
             "rightbrace" => Drawing.ShapeTypeValues.RightBrace,
             "leftbracket" => Drawing.ShapeTypeValues.LeftBracket,
@@ -367,5 +381,16 @@ public partial class PowerPointHandler
                 $"Unknown preset shape: '{name}'. Common presets: rect, roundRect, ellipse, triangle, diamond, " +
                 "pentagon, hexagon, star5, rightArrow, leftArrow, chevron, plus, heart, cloud, cube, can, line, " +
                 "callout, process, decision, smiley, frame, gear6")
+        };
+
+    private static Drawing.LineEndValues ParseLineEndType(string name) =>
+        name.ToLowerInvariant() switch
+        {
+            "triangle" or "arrow" => Drawing.LineEndValues.Triangle,
+            "stealth" => Drawing.LineEndValues.Stealth,
+            "diamond" => Drawing.LineEndValues.Diamond,
+            "oval" or "circle" => Drawing.LineEndValues.Oval,
+            "none" => Drawing.LineEndValues.None,
+            _ => Drawing.LineEndValues.Triangle
         };
 }

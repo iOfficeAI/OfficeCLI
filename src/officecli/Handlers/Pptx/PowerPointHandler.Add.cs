@@ -327,8 +327,8 @@ public partial class PowerPointHandler
                 {
                     long xEmu = 0, yEmu = 0;
                     long cxEmu = 9144000, cyEmu = 742950; // default: ~25.4cm x ~2.06cm
-                    if (properties.TryGetValue("x", out var xStr)) xEmu = ParseEmu(xStr);
-                    if (properties.TryGetValue("y", out var yStr)) yEmu = ParseEmu(yStr);
+                    if (properties.TryGetValue("x", out var xStr) || properties.TryGetValue("left", out xStr)) xEmu = ParseEmu(xStr);
+                    if (properties.TryGetValue("y", out var yStr) || properties.TryGetValue("top", out yStr)) yEmu = ParseEmu(yStr);
                     if (properties.TryGetValue("width", out var wStr)) cxEmu = ParseEmu(wStr);
                     if (properties.TryGetValue("height", out var hStr)) cyEmu = ParseEmu(hStr);
 
@@ -400,7 +400,7 @@ public partial class PowerPointHandler
                 }
 
                 // Line/border (after fill per schema: xfrm → prstGeom → fill → ln)
-                if (properties.TryGetValue("line", out var lineColor) || properties.TryGetValue("linecolor", out lineColor) || properties.TryGetValue("lineColor", out lineColor) || properties.TryGetValue("line.color", out lineColor))
+                if (properties.TryGetValue("line", out var lineColor) || properties.TryGetValue("linecolor", out lineColor) || properties.TryGetValue("lineColor", out lineColor) || properties.TryGetValue("line.color", out lineColor) || properties.TryGetValue("border", out lineColor) || properties.TryGetValue("border.color", out lineColor))
                 {
                     var outline = EnsureOutline(newShape.ShapeProperties!);
                     if (lineColor.Equals("none", StringComparison.OrdinalIgnoreCase))
@@ -408,7 +408,7 @@ public partial class PowerPointHandler
                     else
                         outline.AppendChild(BuildSolidFill(lineColor));
                 }
-                if (properties.TryGetValue("linewidth", out var lwStr) || properties.TryGetValue("lineWidth", out lwStr) || properties.TryGetValue("line.width", out lwStr))
+                if (properties.TryGetValue("linewidth", out var lwStr) || properties.TryGetValue("lineWidth", out lwStr) || properties.TryGetValue("line.width", out lwStr) || properties.TryGetValue("border.width", out lwStr))
                 {
                     var outline = EnsureOutline(newShape.ShapeProperties!);
                     outline.Width = Core.EmuConverter.ParseLineWidth(lwStr);
@@ -510,9 +510,9 @@ public partial class PowerPointHandler
                 // Position (default: centered on standard 10x7.5 inch slide)
                 long xEmu = (9144000 - cxEmu) / 2;
                 long yEmu = (6858000 - cyEmu) / 2;
-                if (properties.TryGetValue("x", out var xStr))
+                if (properties.TryGetValue("x", out var xStr) || properties.TryGetValue("left", out xStr))
                     xEmu = ParseEmu(xStr);
-                if (properties.TryGetValue("y", out var yStr))
+                if (properties.TryGetValue("y", out var yStr) || properties.TryGetValue("top", out yStr))
                     yEmu = ParseEmu(yStr);
 
                 var imgShapeId = (uint)(imgShapeTree.Elements<Shape>().Count() + imgShapeTree.Elements<Picture>().Count() + 2);
@@ -538,8 +538,11 @@ public partial class PowerPointHandler
                 picture.ShapeProperties.Transform2D = new Drawing.Transform2D();
                 picture.ShapeProperties.Transform2D.Offset = new Drawing.Offset { X = xEmu, Y = yEmu };
                 picture.ShapeProperties.Transform2D.Extents = new Drawing.Extents { Cx = cxEmu, Cy = cyEmu };
+                var picGeomName = "rect";
+                if (properties.TryGetValue("geometry", out var picGeom) || properties.TryGetValue("shape", out picGeom))
+                    picGeomName = picGeom;
                 picture.ShapeProperties.AppendChild(
-                    new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = Drawing.ShapeTypeValues.Rectangle }
+                    new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = ParsePresetShape(picGeomName) }
                 );
 
                 imgShapeTree.AppendChild(picture);
@@ -1011,8 +1014,8 @@ public partial class PowerPointHandler
                 var cxnName = properties.GetValueOrDefault("name", $"Connector {cxnId}");
 
                 // Position: x1,y1 → x2,y2 or x,y,width,height
-                long cxnX = properties.TryGetValue("x", out var cx1) ? ParseEmu(cx1) : 2000000;
-                long cxnY = properties.TryGetValue("y", out var cy1) ? ParseEmu(cy1) : 3000000;
+                long cxnX = (properties.TryGetValue("x", out var cx1) || properties.TryGetValue("left", out cx1)) ? ParseEmu(cx1) : 2000000;
+                long cxnY = (properties.TryGetValue("y", out var cy1) || properties.TryGetValue("top", out cy1)) ? ParseEmu(cy1) : 3000000;
                 long cxnCx = properties.TryGetValue("width", out var cw) ? ParseEmu(cw) : 4000000;
                 long cxnCy = properties.TryGetValue("height", out var ch) ? ParseEmu(ch) : 0;
 
@@ -1059,11 +1062,13 @@ public partial class PowerPointHandler
                 // Line style
                 var cxnOutline = new Drawing.Outline { Width = 12700 }; // 1pt default
                 if (properties.TryGetValue("lineColor", out var cxnColor2) || properties.TryGetValue("linecolor", out cxnColor2)
-                    || properties.TryGetValue("line", out cxnColor2))
+                    || properties.TryGetValue("line", out cxnColor2) || properties.TryGetValue("color", out cxnColor2)
+                    || properties.TryGetValue("line.color", out cxnColor2))
                     cxnOutline.AppendChild(BuildSolidFill(cxnColor2));
                 else
                     cxnOutline.AppendChild(BuildSolidFill("000000"));
-                if (properties.TryGetValue("linewidth", out var lwVal) || properties.TryGetValue("lineWidth", out lwVal))
+                if (properties.TryGetValue("linewidth", out var lwVal) || properties.TryGetValue("lineWidth", out lwVal)
+                    || properties.TryGetValue("line.width", out lwVal))
                     cxnOutline.Width = Core.EmuConverter.ParseLineWidth(lwVal);
                 if (properties.TryGetValue("lineDash", out var cxnDash) || properties.TryGetValue("linedash", out cxnDash))
                 {
@@ -1083,6 +1088,16 @@ public partial class PowerPointHandler
                         }
                     });
                 }
+                // Arrow head/tail
+                if (properties.TryGetValue("headEnd", out var headVal) || properties.TryGetValue("headend", out headVal))
+                {
+                    cxnOutline.AppendChild(new Drawing.HeadEnd { Type = ParseLineEndType(headVal) });
+                }
+                if (properties.TryGetValue("tailEnd", out var tailVal) || properties.TryGetValue("tailend", out tailVal))
+                {
+                    cxnOutline.AppendChild(new Drawing.TailEnd { Type = ParseLineEndType(tailVal) });
+                }
+
                 if (properties.TryGetValue("rotation", out var cxnRot))
                 {
                     if (int.TryParse(cxnRot, out var rotDeg))
