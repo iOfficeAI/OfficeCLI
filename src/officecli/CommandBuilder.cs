@@ -885,6 +885,7 @@ static class CommandBuilder
     {
         var request = new ResidentRequest();
         configure(request);
+        if (json) request.Json = true;
 
         var response = ResidentClient.TrySend(filePath, request);
         if (response == null)
@@ -892,43 +893,9 @@ static class CommandBuilder
 
         if (json)
         {
-            // JSON mode: wrap resident output in envelope with warnings
-            List<CliWarning>? warnings = null;
-            if (!string.IsNullOrEmpty(response.Stderr))
-            {
-                warnings = response.Stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                    .Select(line => new CliWarning { Message = line, Code = "resident_warning" })
-                    .ToList();
-            }
-
-            if (response.ExitCode != 0)
-            {
-                // Error from resident — stdout may already contain structured JSON error
-                var stdout = response.Stdout ?? "";
-                if (stdout.TrimStart().StartsWith('{'))
-                {
-                    // Resident already returned structured error JSON; wrap in envelope
-                    Console.WriteLine(OutputFormatter.WrapErrorEnvelopeRaw(stdout));
-                }
-                else
-                {
-                    var errorMsg = !string.IsNullOrEmpty(response.Stderr) ? response.Stderr : (!string.IsNullOrEmpty(stdout) ? stdout : "Unknown resident error");
-                    Console.WriteLine(OutputFormatter.WrapErrorEnvelope(new CliException(errorMsg) { Code = "resident_error" }));
-                }
-            }
-            else if (!string.IsNullOrEmpty(response.Stdout))
-            {
-                // Check if stdout is already JSON (from resident's JSON-mode output)
-                var stdout = response.Stdout;
-                if (stdout.TrimStart().StartsWith('{') || stdout.TrimStart().StartsWith('['))
-                    Console.WriteLine(OutputFormatter.WrapEnvelope(stdout, warnings));
-                else
-                    Console.WriteLine(OutputFormatter.WrapEnvelopeText(stdout, warnings));
-            }
-            else
-            {
-                Console.WriteLine(OutputFormatter.WrapEnvelopeText("OK", warnings));
-            }
+            // JSON mode: resident already built the envelope, just pass through
+            if (!string.IsNullOrEmpty(response.Stdout))
+                Console.WriteLine(response.Stdout);
         }
         else
         {

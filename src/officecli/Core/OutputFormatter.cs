@@ -156,17 +156,6 @@ public static class OutputFormatter
         return envelope.ToJsonString(JsonOptions);
     }
 
-    /// <summary>
-    /// Wraps a pre-serialized error JSON (e.g. from resident) into an envelope.
-    /// </summary>
-    public static string WrapErrorEnvelopeRaw(string errorJson)
-    {
-        var envelope = new JsonObject { ["success"] = false };
-        try { envelope["error"] = JsonNode.Parse(errorJson); }
-        catch { envelope["error"] = errorJson; }
-        return envelope.ToJsonString(JsonOptions);
-    }
-
     public static string FormatError(Exception ex)
     {
         return JsonSerializer.Serialize(BuildErrorResult(ex), AppJsonContext.Default.ErrorResult);

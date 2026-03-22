@@ -220,15 +220,51 @@ public class ResidentServer : IDisposable
                 Console.SetError(origErr);
             }
 
-            return MakeResponse(0, stdoutWriter.ToString().TrimEnd('\r', '\n'), stderrWriter.ToString().TrimEnd('\r', '\n'));
+            var stdout = stdoutWriter.ToString().TrimEnd('\r', '\n');
+            var stderr = stderrWriter.ToString().TrimEnd('\r', '\n');
+
+            if (request.Json)
+            {
+                // JSON mode: server builds the envelope so client just passes through
+                var warnings = BuildWarnings(stderr);
+                var envelope = IsJson(stdout)
+                    ? OutputFormatter.WrapEnvelope(stdout, warnings)
+                    : OutputFormatter.WrapEnvelopeText(stdout, warnings);
+                return MakeResponse(0, envelope, "");
+            }
+
+            return MakeResponse(0, stdout, stderr);
         }
         catch (Exception ex)
         {
-            // When JSON mode is active, return structured error in stdout for AI agents
             if (request?.Json == true)
-                return MakeResponse(1, OutputFormatter.FormatError(ex), "");
+            {
+                // JSON mode: wrap error in envelope
+                return MakeResponse(1, OutputFormatter.WrapErrorEnvelope(ex), "");
+            }
             return MakeResponse(1, "", ex.Message);
         }
+    }
+
+    private static bool IsJson(string s)
+    {
+        var trimmed = s.AsSpan().TrimStart();
+        return trimmed.Length > 0 && (trimmed[0] == '{' || trimmed[0] == '[');
+    }
+
+    private static List<CliWarning>? BuildWarnings(string stderr)
+    {
+        if (string.IsNullOrEmpty(stderr)) return null;
+        var lines = stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        if (lines.Length == 0) return null;
+        return lines.Select(line =>
+        {
+            var warning = new CliWarning { Message = line.Trim() };
+            if (line.Contains("UNSUPPORTED")) warning.Code = "unsupported_property";
+            else if (line.Contains("VALIDATION")) warning.Code = "validation_error";
+            else warning.Code = "warning";
+            return warning;
+        }).ToList();
     }
 
     private void ExecuteCommand(ResidentRequest request)
