@@ -226,7 +226,7 @@ public static class RawXmlHelper
     /// </summary>
     public static List<ValidationError> ValidateDocument(OpenXmlPackage package)
     {
-        var validator = new OpenXmlValidator();
+        var validator = new OpenXmlValidator(DocumentFormat.OpenXml.FileFormatVersions.Microsoft365);
         return validator.Validate(package)
             .Select(e => new ValidationError(
                 e.ErrorType.ToString(),
