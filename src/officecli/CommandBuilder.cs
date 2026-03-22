@@ -409,7 +409,9 @@ static class CommandBuilder
 
             using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
             var unsupported = handler.Set(path, properties);
-            var applied = properties.Where(kv => !unsupported.Contains(kv.Key)).ToList();
+            // unsupported entries may contain help text like "key (valid props: ...)" — extract raw keys
+            var unsupportedKeys = unsupported.Select(u => u.Contains(' ') ? u[..u.IndexOf(' ')] : u).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var applied = properties.Where(kv => !unsupportedKeys.Contains(kv.Key)).ToList();
             var message = applied.Count > 0
                 ? $"Updated {path}: {string.Join(", ", applied.Select(kv => $"{kv.Key}={kv.Value}"))}"
                 : $"No properties applied to {path}";
@@ -427,7 +429,10 @@ static class CommandBuilder
                         };
                     }).ToList()
                     : null;
-                Console.WriteLine(OutputFormatter.WrapEnvelopeText(message, warnings));
+                bool allFailed = applied.Count == 0 && unsupported.Count > 0;
+                Console.WriteLine(allFailed
+                    ? OutputFormatter.WrapEnvelopeError(message, warnings)
+                    : OutputFormatter.WrapEnvelopeText(message, warnings));
             }
             else
             {

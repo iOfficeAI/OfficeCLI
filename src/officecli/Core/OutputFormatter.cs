@@ -149,6 +149,24 @@ public static class OutputFormatter
     }
 
     /// <summary>
+    /// Wraps a failed text result (e.g. all properties unsupported) into an envelope.
+    /// Output: { "success": false, "message": "...", "warnings": [...] }
+    /// </summary>
+    public static string WrapEnvelopeError(string message, List<CliWarning>? warnings = null)
+    {
+        var envelope = new JsonObject
+        {
+            ["success"] = false,
+            ["message"] = message
+        };
+
+        if (warnings is { Count: > 0 })
+            envelope["warnings"] = JsonSerializer.SerializeToNode(warnings, AppJsonContext.Default.ListCliWarning);
+
+        return envelope.ToJsonString(JsonOptions);
+    }
+
+    /// <summary>
     /// Wraps an error into an envelope.
     /// Output: { "success": false, "error": { ... } }
     /// </summary>

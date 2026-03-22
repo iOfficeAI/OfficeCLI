@@ -227,9 +227,13 @@ public class ResidentServer : IDisposable
             {
                 // JSON mode: server builds the envelope so client just passes through
                 var warnings = BuildWarnings(stderr);
+                var isFailure = string.IsNullOrEmpty(stdout) && warnings is { Count: > 0 }
+                    || stdout.StartsWith("No properties applied", StringComparison.Ordinal);
                 var envelope = IsJson(stdout)
                     ? OutputFormatter.WrapEnvelope(stdout, warnings)
-                    : OutputFormatter.WrapEnvelopeText(stdout, warnings);
+                    : isFailure
+                        ? OutputFormatter.WrapEnvelopeError(stdout, warnings)
+                        : OutputFormatter.WrapEnvelopeText(stdout, warnings);
                 return MakeResponse(0, envelope, "");
             }
 
@@ -414,6 +418,8 @@ public class ResidentServer : IDisposable
         var applied = properties.Where(kv => !unsupported.Contains(kv.Key)).ToList();
         if (applied.Count > 0)
             Console.WriteLine($"Updated {path}: {string.Join(", ", applied.Select(kv => $"{kv.Key}={kv.Value}"))}");
+        else if (unsupported.Count > 0)
+            Console.WriteLine($"No properties applied to {path}");
         if (unsupported.Count > 0)
             Console.Error.WriteLine($"UNSUPPORTED props (use raw-set instead): {string.Join(", ", unsupported)}");
     }
