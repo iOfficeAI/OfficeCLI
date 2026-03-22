@@ -10,6 +10,45 @@ if (args.Length == 1 && args[0] == "__update-check__")
     return 0;
 }
 
+// MCP commands: officecli mcp [target]
+if (args.Length >= 1 && args[0] == "mcp")
+{
+    if (args.Length == 1)
+    {
+        // officecli mcp → start MCP server
+        await OfficeCli.Core.McpServer.RunAsync();
+        return 0;
+    }
+    if (args.Length == 2 && args[1] == "list")
+    {
+        OfficeCli.Core.McpInstaller.Install("list");
+        return 0;
+    }
+    if (args.Length == 3 && args[1] == "uninstall")
+    {
+        OfficeCli.Core.McpInstaller.Uninstall(args[2]);
+        return 0;
+    }
+    if (args.Length == 2)
+    {
+        // officecli mcp <target> → register + show instructions
+        OfficeCli.Core.McpInstaller.Install(args[1]);
+        return 0;
+    }
+    Console.Error.WriteLine("Usage: officecli mcp              Start MCP server");
+    Console.Error.WriteLine("       officecli mcp <target>     Register (lms, claude, cursor, vscode)");
+    Console.Error.WriteLine("       officecli mcp uninstall <target>  Unregister");
+    Console.Error.WriteLine("       officecli mcp list         Show registration status");
+    return 1;
+}
+
+// Legacy alias
+if (args.Length == 1 && args[0] == "mcp-serve")
+{
+    await OfficeCli.Core.McpServer.RunAsync();
+    return 0;
+}
+
 // Config command: officecli config <key> [value]
 if (args.Length >= 2 && args[0] == "config")
 {
