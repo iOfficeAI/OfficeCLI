@@ -322,7 +322,7 @@ public partial class PowerPointHandler
             catch
             {
                 // Image extraction failed - show placeholder
-                sb.Append("<div style=\"width:100%;height:100%;background:#e0e0e0;display:flex;align-items:center;justify-content:center;color:#999;font-size:12px\">Image</div>");
+                sb.Append("<div style=\"width:100%;height:100%;background:rgba(128,128,128,0.15);display:flex;align-items:center;justify-content:center;color:rgba(128,128,128,0.5);font-size:12px\">Image</div>");
             }
         }
 
@@ -346,7 +346,9 @@ public partial class PowerPointHandler
 
         // SVG line
         var outline = cxn.ShapeProperties?.GetFirstChild<Drawing.Outline>();
-        var lineColor = "#000000";
+        var defaultLineColor = themeColors.TryGetValue("tx1", out var txc) ? $"#{txc}"
+            : themeColors.TryGetValue("dk1", out var dkc) ? $"#{dkc}" : "#000000";
+        var lineColor = defaultLineColor;
         var lineWidth = 1.0;
         if (outline != null)
         {

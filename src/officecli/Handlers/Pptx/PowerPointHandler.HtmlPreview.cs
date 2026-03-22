@@ -22,10 +22,8 @@ public partial class PowerPointHandler
         var sb = new StringBuilder();
         var slideParts = GetSlideParts().ToList();
 
-        // Get slide dimensions (default: standard 16:9 = 33.867cm x 19.05cm)
-        var sldSz = _doc.PresentationPart?.Presentation?.GetFirstChild<SlideSize>();
-        long slideWidthEmu = sldSz?.Cx?.Value ?? 12192000;
-        long slideHeightEmu = sldSz?.Cy?.Value ?? 6858000;
+        // Get slide dimensions
+        var (slideWidthEmu, slideHeightEmu) = GetSlideSize();
         double slideWidthCm = slideWidthEmu / 360000.0;
         double slideHeightCm = slideHeightEmu / 360000.0;
 
@@ -144,9 +142,7 @@ public partial class PowerPointHandler
         var slideParts = GetSlideParts().ToList();
         if (slideNum < 1 || slideNum > slideParts.Count) return null;
 
-        var sldSz = _doc.PresentationPart?.Presentation?.GetFirstChild<SlideSize>();
-        long slideWidthEmu = sldSz?.Cx?.Value ?? 12192000;
-        long slideHeightEmu = sldSz?.Cy?.Value ?? 6858000;
+        var (slideWidthEmu, slideHeightEmu) = GetSlideSize();
         var themeColors = ResolveThemeColorMap();
         var slidePart = slideParts[slideNum - 1];
 

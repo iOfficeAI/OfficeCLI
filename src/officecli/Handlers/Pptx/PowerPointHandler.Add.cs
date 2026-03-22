@@ -326,7 +326,8 @@ public partial class PowerPointHandler
                 // Position and size (in EMU, 1cm = 360000 EMU; or parse as cm/in)
                 {
                     long xEmu = 0, yEmu = 0;
-                    long cxEmu = 9144000, cyEmu = 742950; // default: ~25.4cm x ~2.06cm
+                    var (titleSlideW, _) = GetSlideSize();
+                    long cxEmu = titleSlideW, cyEmu = 742950; // default: slide width x ~2.06cm
                     if (properties.TryGetValue("x", out var xStr) || properties.TryGetValue("left", out xStr)) xEmu = ParseEmu(xStr);
                     if (properties.TryGetValue("y", out var yStr) || properties.TryGetValue("top", out yStr)) yEmu = ParseEmu(yStr);
                     if (properties.TryGetValue("width", out var wStr)) cxEmu = ParseEmu(wStr);
@@ -507,9 +508,10 @@ public partial class PowerPointHandler
                 if (properties.TryGetValue("height", out var heightStr))
                     cyEmu = ParseEmu(heightStr);
 
-                // Position (default: centered on standard 10x7.5 inch slide)
-                long xEmu = (9144000 - cxEmu) / 2;
-                long yEmu = (6858000 - cyEmu) / 2;
+                // Position (default: centered on slide)
+                var (slideW, slideH) = GetSlideSize();
+                long xEmu = (slideW - cxEmu) / 2;
+                long yEmu = (slideH - cyEmu) / 2;
                 if (properties.TryGetValue("x", out var xStr) || properties.TryGetValue("left", out xStr))
                     xEmu = ParseEmu(xStr);
                 if (properties.TryGetValue("y", out var yStr) || properties.TryGetValue("top", out yStr))
@@ -913,10 +915,11 @@ public partial class PowerPointHandler
                 var posterRelId = mediaSlidePart.GetIdOfPart(posterPart);
 
                 // Position
-                long mX = properties.TryGetValue("x", out var mxv) ? ParseEmu(mxv) : 1524000;
-                long mY = properties.TryGetValue("y", out var myv) ? ParseEmu(myv) : 857250;
-                long mCx = properties.TryGetValue("width", out var mwv) ? ParseEmu(mwv) : 9144000;
-                long mCy = properties.TryGetValue("height", out var mhv) ? ParseEmu(mhv) : 5143500;
+                var (mediaSlideW, mediaSlideH) = GetSlideSize();
+                long mCx = properties.TryGetValue("width", out var mwv) ? ParseEmu(mwv) : (long)(mediaSlideW * 0.75);
+                long mCy = properties.TryGetValue("height", out var mhv) ? ParseEmu(mhv) : (long)(mediaSlideH * 0.75);
+                long mX = properties.TryGetValue("x", out var mxv) ? ParseEmu(mxv) : (mediaSlideW - mCx) / 2;
+                long mY = properties.TryGetValue("y", out var myv) ? ParseEmu(myv) : (mediaSlideH - mCy) / 2;
 
                 var mediaId = (uint)(mediaShapeTree.ChildElements.Count + 2);
                 var mediaName = properties.GetValueOrDefault("name", isVideo ? "video" : "audio");
@@ -1570,8 +1573,9 @@ public partial class PowerPointHandler
                 long zmCy = 1714500; // ~4.5cm
                 if (properties.TryGetValue("width", out var zmW)) zmCx = ParseEmu(zmW);
                 if (properties.TryGetValue("height", out var zmH)) zmCy = ParseEmu(zmH);
-                long zmX = (12192000 - zmCx) / 2;
-                long zmY = (6858000 - zmCy) / 2;
+                var (zmSlideW, zmSlideH) = GetSlideSize();
+                long zmX = (zmSlideW - zmCx) / 2;
+                long zmY = (zmSlideH - zmCy) / 2;
                 if (properties.TryGetValue("x", out var zmXStr)) zmX = ParseEmu(zmXStr);
                 if (properties.TryGetValue("y", out var zmYStr)) zmY = ParseEmu(zmYStr);
 

@@ -23,6 +23,15 @@ public partial class PowerPointHandler : IDocumentHandler
         _doc = PresentationDocument.Open(filePath, editable);
     }
 
+    /// <summary>
+    /// Get the slide dimensions from the presentation. Falls back to 16:9 (33.867cm × 19.05cm).
+    /// </summary>
+    private (long width, long height) GetSlideSize()
+    {
+        var sldSz = _doc.PresentationPart?.Presentation?.GetFirstChild<SlideSize>();
+        return (sldSz?.Cx?.Value ?? 12192000L, sldSz?.Cy?.Value ?? 6858000L);
+    }
+
     private (SlidePart slidePart, Shape shape) ResolveShape(int slideIdx, int shapeIdx)
     {
         var slideParts = GetSlideParts().ToList();

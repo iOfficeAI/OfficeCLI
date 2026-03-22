@@ -182,7 +182,7 @@ public partial class PowerPointHandler
                 else
                 {
                     var scheme = gs.GetFirstChild<Drawing.SchemeColor>()?.Val?.InnerText;
-                    color = scheme != null && themeColors.TryGetValue(scheme, out var tc) ? $"#{tc}" : "#808080";
+                    color = scheme != null && themeColors.TryGetValue(scheme, out var tc) ? $"#{tc}" : "transparent";
                 }
             }
             var pos = gs.Position?.Value;
@@ -241,16 +241,33 @@ public partial class PowerPointHandler
         var shadow = effectList.GetFirstChild<Drawing.OuterShadow>();
         if (shadow == null) return "";
 
-        var color = "rgba(0,0,0,0.3)";
-        var rgb = shadow.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
         var alpha = shadow.Descendants<Drawing.Alpha>().FirstOrDefault()?.Val?.Value ?? 50000;
         var opacity = alpha / 100000.0;
+        var rgb = shadow.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+        string color;
         if (rgb != null)
         {
             var r = Convert.ToInt32(rgb[..2], 16);
             var g = Convert.ToInt32(rgb[2..4], 16);
             var b = Convert.ToInt32(rgb[4..6], 16);
             color = $"rgba({r},{g},{b},{opacity:0.##})";
+        }
+        else
+        {
+            // Try scheme color
+            var schemeColor = shadow.GetFirstChild<Drawing.SchemeColor>()?.Val?.InnerText;
+            var resolved = schemeColor != null && themeColors.TryGetValue(schemeColor, out var sc) ? sc : null;
+            if (resolved != null)
+            {
+                var r = Convert.ToInt32(resolved[..2], 16);
+                var g = Convert.ToInt32(resolved[2..4], 16);
+                var b = Convert.ToInt32(resolved[4..6], 16);
+                color = $"rgba({r},{g},{b},{opacity:0.##})";
+            }
+            else
+            {
+                color = $"rgba(0,0,0,{opacity:0.##})";
+            }
         }
 
         var blurPt = shadow.BlurRadius?.HasValue == true ? shadow.BlurRadius.Value / 12700.0 : 4;
@@ -372,7 +389,7 @@ public partial class PowerPointHandler
             // 3D-like shapes (rendered flat)
             "cube" => "",
             "can" or "cylinder" => "border-radius:50%/10%",
-            "bevel" => "border:3px outset #888",
+            "bevel" => "border:3px outset currentColor",
             "foldedCorner" => "clip-path:polygon(0 0,85% 0,100% 15%,100% 100%,0 100%)",
             "lightningBolt" => "clip-path:polygon(35% 0,55% 35%,100% 30%,45% 55%,80% 100%,25% 60%,0 80%,30% 45%)",
 
@@ -664,6 +681,20 @@ public partial class PowerPointHandler
             .Where(f => !f.Equals(font, StringComparison.OrdinalIgnoreCase))
             .Select(f => $"'{f}'"));
         return $"font-family:'{sanitized}',{fallbacks},sans-serif";
+    }
+
+    /// <summary>
+    /// Returns true if the hex color is dark (low luminance).
+    /// </summary>
+    private static bool IsColorDark(string hex)
+    {
+        hex = hex.TrimStart('#');
+        if (hex.Length < 6) return false;
+        var r = Convert.ToInt32(hex[..2], 16);
+        var g = Convert.ToInt32(hex[2..4], 16);
+        var b = Convert.ToInt32(hex[4..6], 16);
+        // Relative luminance approximation
+        return (r * 0.299 + g * 0.587 + b * 0.114) < 128;
     }
 
     private static string CssSanitize(string value)

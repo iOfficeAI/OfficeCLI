@@ -27,8 +27,7 @@ public partial class PowerPointHandler
 
         var boxes = shapes.Select(GetTransform2D).ToList();
 
-        var slideWidth = _doc.PresentationPart?.Presentation?.GetFirstChild<SlideSize>()?.Cx?.Value ?? 9144000L;
-        var slideHeight = _doc.PresentationPart?.Presentation?.GetFirstChild<SlideSize>()?.Cy?.Value ?? 6858000L;
+        var (slideWidth, slideHeight) = GetSlideSize();
 
         bool relative = alignValue.StartsWith("slide-", StringComparison.OrdinalIgnoreCase);
         var mode = relative ? alignValue[6..].ToLowerInvariant() : alignValue.ToLowerInvariant();

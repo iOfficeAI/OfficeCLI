@@ -14,10 +14,18 @@ public partial class PowerPointHandler
 {
     // ==================== Chart Rendering ====================
 
+    // Default chart colors matching PowerPoint Office theme accent colors
     private static readonly string[] ChartColors = [
-        "#E74C3C", "#3498DB", "#2ECC71", "#F39C12", "#9B59B6", "#1ABC9C",
-        "#E67E22", "#34495E", "#E91E63", "#00BCD4", "#8BC34A", "#FF9800"
+        "#4472C4", "#ED7D31", "#A5A5A5", "#FFC000", "#5B9BD5", "#70AD47",
+        "#264478", "#9E480E", "#636363", "#997300", "#255E91", "#43682B"
     ];
+
+    // Chart text colors — set per-chart in RenderChart, used by all sub-render methods
+    private string _chartValueColor = "#D0D8E0";   // data value labels
+    private string _chartCatColor = "#C8D0D8";      // category axis labels
+    private string _chartAxisColor = "#B0B8C0";     // value axis labels
+    private string _chartGridColor = "#333";        // gridlines
+    private string _chartAxisLineColor = "#555";    // axis lines
 
     private void RenderChart(StringBuilder sb, GraphicFrame gf, SlidePart slidePart, Dictionary<string, string> themeColors)
     {
@@ -69,14 +77,23 @@ public partial class PowerPointHandler
         // Derive text color from theme: use tx1 or dk1 (with #), fallback to light gray
         var chartTextColor = themeColors.TryGetValue("tx1", out var tx1) ? $"#{tx1}"
             : themeColors.TryGetValue("dk1", out var dk1) ? $"#{dk1}" : "#D0D8E0";
-        // If text color is dark (likely light slide background), use it; otherwise use it directly
-        // For dark slides, tx1/dk1 is usually light (e.g. FFFFFF)
         var chartLabelColor = chartTextColor;
         var chartAxisColor = chartTextColor;
 
+        // Set instance fields for sub-render methods to use theme-derived colors
+        _chartValueColor = chartTextColor;
+        _chartCatColor = chartTextColor;
+        _chartAxisColor = chartTextColor;
+        // Derive gridline/axis line colors: dim version of text color
+        var isDarkText = IsColorDark(chartTextColor.TrimStart('#'));
+        _chartGridColor = isDarkText ? "#ccc" : "#333";
+        _chartAxisLineColor = isDarkText ? "#aaa" : "#555";
+
         // Title
-        var titleText = chart?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Title>()
-            ?.Descendants<Drawing.Text>().FirstOrDefault()?.Text ?? "";
+        var chartTitle = chart?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Title>();
+        var titleText = chartTitle?.Descendants<Drawing.Text>().FirstOrDefault()?.Text ?? "";
+        var titleFontSize = chartTitle?.Descendants<Drawing.RunProperties>().FirstOrDefault()?.FontSize;
+        var titleSizeCss = titleFontSize?.HasValue == true ? $"{titleFontSize.Value / 100.0:0.##}pt" : "11px";
 
         // Check if dataLabels are enabled
         var dataLabels = plotArea.Descendants<DocumentFormat.OpenXml.Drawing.Charts.DataLabels>().FirstOrDefault();
@@ -102,7 +119,7 @@ public partial class PowerPointHandler
 
         // Title
         if (!string.IsNullOrEmpty(titleText))
-            sb.AppendLine($"      <div style=\"text-align:center;font-size:11px;font-weight:bold;padding:4px;color:{chartTextColor}\">{HtmlEncode(titleText)}</div>");
+            sb.AppendLine($"      <div style=\"text-align:center;font-size:{titleSizeCss};font-weight:bold;padding:4px;color:{chartTextColor}\">{HtmlEncode(titleText)}</div>");
 
         // SVG chart area — proportional to actual shape dimensions
         var widthEmu = ext.Cx?.Value ?? 3600000;
@@ -121,7 +138,7 @@ public partial class PowerPointHandler
 
         // Plot area background
         if (plotFillColor != null)
-            sb.AppendLine($"        <rect x=\"{margin.left}\" y=\"{margin.top}\" width=\"{plotW}\" height=\"{plotH}\" fill=\"#{plotFillColor}\" opacity=\"0.3\"/>");
+            sb.AppendLine($"        <rect x=\"{margin.left}\" y=\"{margin.top}\" width=\"{plotW}\" height=\"{plotH}\" fill=\"#{plotFillColor}\"/>");
 
         if (is3D && (chartType.Contains("pie") || chartType.Contains("doughnut")))
         {
@@ -189,9 +206,12 @@ public partial class PowerPointHandler
         sb.AppendLine("      </svg>");
 
         // Legend
+        var legend = chart?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Legend>();
+        var legendFontSize = legend?.Descendants<Drawing.RunProperties>().FirstOrDefault()?.FontSize;
+        var legendSizeCss = legendFontSize?.HasValue == true ? $"{legendFontSize.Value / 100.0:0.##}pt" : "8px";
         if (seriesList.Count > 1)
         {
-            sb.Append($"      <div style=\"display:flex;justify-content:center;gap:8px;font-size:8px;color:{chartLabelColor};padding:2px\">");
+            sb.Append($"      <div style=\"display:flex;justify-content:center;gap:8px;font-size:{legendSizeCss};color:{chartLabelColor};padding:2px\">");
             for (int i = 0; i < seriesList.Count; i++)
             {
                 sb.Append($"<span><span style=\"display:inline-block;width:8px;height:8px;background:{seriesColors[i]};margin-right:2px;border-radius:1px\"></span>{HtmlEncode(seriesList[i].name)}</span>");
@@ -202,7 +222,7 @@ public partial class PowerPointHandler
         sb.AppendLine("    </div>");
     }
 
-    private static void RenderBarChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
+    private void RenderBarChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
         string[] categories, List<string> colors, int ox, int oy, int pw, int ph,
         bool horizontal, bool stacked = false, bool percentStacked = false)
     {
@@ -245,12 +265,12 @@ public partial class PowerPointHandler
             for (int t = 1; t <= 4; t++)
             {
                 var gx = plotOx + (double)plotPw * t / 4;
-                sb.AppendLine($"        <line x1=\"{gx:0.#}\" y1=\"{oy}\" x2=\"{gx:0.#}\" y2=\"{oy + ph}\" stroke=\"#333\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>");
+                sb.AppendLine($"        <line x1=\"{gx:0.#}\" y1=\"{oy}\" x2=\"{gx:0.#}\" y2=\"{oy + ph}\" stroke=\"{_chartGridColor}\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>");
             }
 
             // Axis lines
-            sb.AppendLine($"        <line x1=\"{plotOx}\" y1=\"{oy}\" x2=\"{plotOx}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
-            sb.AppendLine($"        <line x1=\"{plotOx}\" y1=\"{oy + ph}\" x2=\"{plotOx + plotPw}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
+            sb.AppendLine($"        <line x1=\"{plotOx}\" y1=\"{oy}\" x2=\"{plotOx}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
+            sb.AppendLine($"        <line x1=\"{plotOx}\" y1=\"{oy + ph}\" x2=\"{plotOx + plotPw}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
 
             // Bars + value labels
             for (int c = 0; c < catCount; c++)
@@ -280,7 +300,7 @@ public partial class PowerPointHandler
                         var by = oy + c * groupH + gap + s * barH;
                         sb.AppendLine($"        <rect x=\"{bx}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{barH:0.#}\" fill=\"{colors[s % colors.Count]}\" opacity=\"0.85\"/>");
                         var vlabel = rawVal % 1 == 0 ? $"{(int)rawVal}" : $"{rawVal:0.#}";
-                        sb.AppendLine($"        <text x=\"{bx + barW + 4:0.#}\" y=\"{by + barH / 2:0.#}\" fill=\"#D0D8E0\" font-size=\"7\" text-anchor=\"start\" dominant-baseline=\"middle\">{vlabel}</text>");
+                        sb.AppendLine($"        <text x=\"{bx + barW + 4:0.#}\" y=\"{by + barH / 2:0.#}\" fill=\"{_chartValueColor}\" font-size=\"7\" text-anchor=\"start\" dominant-baseline=\"middle\">{vlabel}</text>");
                     }
                 }
             }
@@ -290,7 +310,7 @@ public partial class PowerPointHandler
             {
                 var label = c < categories.Length ? categories[c] : "";
                 var ly = oy + c * groupH + groupH / 2;
-                sb.AppendLine($"        <text x=\"{plotOx - 4}\" y=\"{ly:0.#}\" fill=\"#C8D0D8\" font-size=\"9\" text-anchor=\"end\" dominant-baseline=\"middle\">{HtmlEncode(label)}</text>");
+                sb.AppendLine($"        <text x=\"{plotOx - 4}\" y=\"{ly:0.#}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"end\" dominant-baseline=\"middle\">{HtmlEncode(label)}</text>");
             }
 
             // Value axis labels
@@ -299,7 +319,7 @@ public partial class PowerPointHandler
                 var val = maxVal * t / 4;
                 var label = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
                 var tx = plotOx + (double)plotPw * t / 4;
-                sb.AppendLine($"        <text x=\"{tx:0.#}\" y=\"{oy + ph + 14}\" fill=\"#B0B8C0\" font-size=\"8\" text-anchor=\"middle\">{label}</text>");
+                sb.AppendLine($"        <text x=\"{tx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartAxisColor}\" font-size=\"8\" text-anchor=\"middle\">{label}</text>");
             }
         }
         else
@@ -312,12 +332,12 @@ public partial class PowerPointHandler
             for (int t = 1; t <= 4; t++)
             {
                 var gy = oy + ph - (double)ph * t / 4;
-                sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"#333\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>");
+                sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"{_chartGridColor}\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>");
             }
 
             // Axis lines
-            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
-            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
+            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
+            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
 
             // Bars + value labels
             for (int c = 0; c < catCount; c++)
@@ -347,7 +367,7 @@ public partial class PowerPointHandler
                         var by = oy + ph - barH;
                         sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{barH:0.#}\" fill=\"{colors[s % colors.Count]}\" opacity=\"0.85\"/>");
                         var vlabel = rawVal % 1 == 0 ? $"{(int)rawVal}" : $"{rawVal:0.#}";
-                        sb.AppendLine($"        <text x=\"{bx + barW / 2:0.#}\" y=\"{by - 3:0.#}\" fill=\"#D0D8E0\" font-size=\"7\" text-anchor=\"middle\">{vlabel}</text>");
+                        sb.AppendLine($"        <text x=\"{bx + barW / 2:0.#}\" y=\"{by - 3:0.#}\" fill=\"{_chartValueColor}\" font-size=\"7\" text-anchor=\"middle\">{vlabel}</text>");
                     }
                 }
             }
@@ -357,7 +377,7 @@ public partial class PowerPointHandler
             {
                 var label = c < categories.Length ? categories[c] : "";
                 var lx = ox + c * groupW + groupW / 2;
-                sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"#C8D0D8\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
+                sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
             }
 
             // Value axis labels
@@ -366,12 +386,12 @@ public partial class PowerPointHandler
                 var val = maxVal * t / 4;
                 var label = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
                 var ty = oy + ph - (double)ph * t / 4;
-                sb.AppendLine($"        <text x=\"{ox - 4}\" y=\"{ty:0.#}\" fill=\"#B0B8C0\" font-size=\"8\" text-anchor=\"end\" dominant-baseline=\"middle\">{label}</text>");
+                sb.AppendLine($"        <text x=\"{ox - 4}\" y=\"{ty:0.#}\" fill=\"{_chartAxisColor}\" font-size=\"8\" text-anchor=\"end\" dominant-baseline=\"middle\">{label}</text>");
             }
         }
     }
 
-    private static void RenderLineChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
+    private void RenderLineChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
         string[] categories, List<string> colors, int ox, int oy, int pw, int ph)
     {
         var allValues = series.SelectMany(s => s.values).ToArray();
@@ -384,12 +404,12 @@ public partial class PowerPointHandler
         for (int t = 1; t <= 4; t++)
         {
             var gy = oy + ph - (double)ph * t / 4;
-            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"#333\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>");
+            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"{_chartGridColor}\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>");
         }
 
         // Axis lines
-        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
-        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
+        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
+        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
 
         for (int s = 0; s < series.Count; s++)
         {
@@ -410,7 +430,7 @@ public partial class PowerPointHandler
                     sb.AppendLine($"        <circle cx=\"{parts[0]}\" cy=\"{parts[1]}\" r=\"3\" fill=\"{colors[s]}\"/>");
                     var val = series[s].values[p];
                     var vlabel = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
-                    sb.AppendLine($"        <text x=\"{parts[0]}\" y=\"{double.Parse(parts[1]) - 6:0.#}\" fill=\"#D0D8E0\" font-size=\"7\" text-anchor=\"middle\">{vlabel}</text>");
+                    sb.AppendLine($"        <text x=\"{parts[0]}\" y=\"{double.Parse(parts[1]) - 6:0.#}\" fill=\"{_chartValueColor}\" font-size=\"7\" text-anchor=\"middle\">{vlabel}</text>");
                 }
             }
         }
@@ -420,11 +440,11 @@ public partial class PowerPointHandler
         {
             var label = c < categories.Length ? categories[c] : "";
             var lx = ox + (catCount > 1 ? (double)pw * c / (catCount - 1) : pw / 2.0);
-            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"#C8D0D8\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
+            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
         }
     }
 
-    private static void RenderPieChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
+    private void RenderPieChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
         string[] categories, List<string> colors, int svgW, int svgH, double holeRatio = 0.0)
     {
         // Use first series values
@@ -489,7 +509,7 @@ public partial class PowerPointHandler
                 var lx = cx + labelR * Math.Cos(midAngle);
                 var ly = cy + labelR * Math.Sin(midAngle);
                 var anchor = outside ? (Math.Cos(midAngle) >= 0 ? "start" : "end") : "middle";
-                var fill = outside ? "#ccc" : "white";
+                var fill = outside ? _chartCatColor : "white";
                 labels.Add((lx, ly, label, anchor, fill));
             }
 
@@ -501,7 +521,7 @@ public partial class PowerPointHandler
             sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{ly:0.#}\" fill=\"{fill}\" font-size=\"9\" font-weight=\"bold\" text-anchor=\"{anchor}\" dominant-baseline=\"middle\">{HtmlEncode(label)}</text>");
     }
 
-    private static void RenderAreaChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
+    private void RenderAreaChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
         string[] categories, List<string> colors, int ox, int oy, int pw, int ph)
     {
         var allValues = series.SelectMany(s => s.values).ToArray();
@@ -514,12 +534,12 @@ public partial class PowerPointHandler
         for (int t = 1; t <= 4; t++)
         {
             var gy = oy + ph - (double)ph * t / 4;
-            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"#333\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>");
+            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"{_chartGridColor}\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>");
         }
 
         // Axis lines
-        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
-        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
+        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
+        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
 
         // Render in reverse order so first series is on top
         for (int s = series.Count - 1; s >= 0; s--)
@@ -545,7 +565,7 @@ public partial class PowerPointHandler
                     foreach (var p in points)
                     {
                         var vlabel = p.val % 1 == 0 ? $"{(int)p.val}" : $"{p.val:0.#}";
-                        sb.AppendLine($"        <text x=\"{p.x:0.#}\" y=\"{p.y - 6:0.#}\" fill=\"#D0D8E0\" font-size=\"7\" text-anchor=\"middle\">{vlabel}</text>");
+                        sb.AppendLine($"        <text x=\"{p.x:0.#}\" y=\"{p.y - 6:0.#}\" fill=\"{_chartValueColor}\" font-size=\"7\" text-anchor=\"middle\">{vlabel}</text>");
                     }
                 }
             }
@@ -556,7 +576,7 @@ public partial class PowerPointHandler
         {
             var label = c < categories.Length ? categories[c] : "";
             var lx = ox + (catCount > 1 ? (double)pw * c / (catCount - 1) : pw / 2.0);
-            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"#C8D0D8\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
+            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
         }
 
         // Value axis labels
@@ -565,7 +585,7 @@ public partial class PowerPointHandler
             var val = maxVal * t / 4;
             var label = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
             var ty = oy + ph - (double)ph * t / 4;
-            sb.AppendLine($"        <text x=\"{ox - 4}\" y=\"{ty:0.#}\" fill=\"#B0B8C0\" font-size=\"8\" text-anchor=\"end\" dominant-baseline=\"middle\">{label}</text>");
+            sb.AppendLine($"        <text x=\"{ox - 4}\" y=\"{ty:0.#}\" fill=\"{_chartAxisColor}\" font-size=\"8\" text-anchor=\"end\" dominant-baseline=\"middle\">{label}</text>");
         }
     }
 
@@ -601,8 +621,8 @@ public partial class PowerPointHandler
         var catCount = Math.Max(categories.Length, seriesList.Max(s => s.values.Length));
 
         // Axis lines
-        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
-        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
+        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
+        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
 
         // Bar series
         var barSeries = barIndices.Where(i => i < seriesList.Count).ToList();
@@ -672,7 +692,7 @@ public partial class PowerPointHandler
         {
             var label = c < categories.Length ? categories[c] : "";
             var lx = ox + (double)pw * c / Math.Max(catCount, 1) + (double)pw / Math.Max(catCount, 1) / 2;
-            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"#C8D0D8\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
+            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
         }
 
         // Value axis labels
@@ -681,11 +701,11 @@ public partial class PowerPointHandler
             var val = maxVal * t / 4;
             var label = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
             var ty = oy + ph - (double)ph * t / 4;
-            sb.AppendLine($"        <text x=\"{ox - 4}\" y=\"{ty:0.#}\" fill=\"#B0B8C0\" font-size=\"8\" text-anchor=\"end\" dominant-baseline=\"middle\">{label}</text>");
+            sb.AppendLine($"        <text x=\"{ox - 4}\" y=\"{ty:0.#}\" fill=\"{_chartAxisColor}\" font-size=\"8\" text-anchor=\"end\" dominant-baseline=\"middle\">{label}</text>");
         }
     }
 
-    private static void RenderRadarChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
+    private void RenderRadarChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
         string[] categories, List<string> colors, int svgW, int svgH)
     {
         var catCount = Math.Max(categories.Length, series.Max(s => s.values.Length));
@@ -750,11 +770,11 @@ public partial class PowerPointHandler
             var lx = cx + (r + 15) * Math.Cos(angle);
             var ly = cy + (r + 15) * Math.Sin(angle);
             var anchor = Math.Abs(Math.Cos(angle)) < 0.1 ? "middle" : (Math.Cos(angle) > 0 ? "start" : "end");
-            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{ly:0.#}\" fill=\"#C8D0D8\" font-size=\"9\" text-anchor=\"{anchor}\" dominant-baseline=\"middle\">{HtmlEncode(label)}</text>");
+            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{ly:0.#}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"{anchor}\" dominant-baseline=\"middle\">{HtmlEncode(label)}</text>");
         }
     }
 
-    private static void RenderBubbleChartSvg(StringBuilder sb,
+    private void RenderBubbleChartSvg(StringBuilder sb,
         DocumentFormat.OpenXml.Drawing.Charts.PlotArea plotArea,
         List<(string name, double[] values)> series,
         string[] categories, List<string> colors, int ox, int oy, int pw, int ph)
@@ -806,8 +826,8 @@ public partial class PowerPointHandler
         var maxRadius = Math.Min(pw, ph) * 0.08;
 
         // Axis lines
-        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
-        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
+        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
+        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
 
         for (int s = 0; s < seriesData.Count; s++)
         {
@@ -829,7 +849,7 @@ public partial class PowerPointHandler
             var val = minX + (maxX - minX) * t / 4;
             var label = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
             var tx = ox + (double)pw * t / 4;
-            sb.AppendLine($"        <text x=\"{tx:0.#}\" y=\"{oy + ph + 14}\" fill=\"#C8D0D8\" font-size=\"8\" text-anchor=\"middle\">{label}</text>");
+            sb.AppendLine($"        <text x=\"{tx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartCatColor}\" font-size=\"8\" text-anchor=\"middle\">{label}</text>");
         }
 
         // Y axis labels
@@ -838,11 +858,11 @@ public partial class PowerPointHandler
             var val = minY + (maxY - minY) * t / 4;
             var label = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
             var ty = oy + ph - (double)ph * t / 4;
-            sb.AppendLine($"        <text x=\"{ox - 4}\" y=\"{ty:0.#}\" fill=\"#B0B8C0\" font-size=\"8\" text-anchor=\"end\" dominant-baseline=\"middle\">{label}</text>");
+            sb.AppendLine($"        <text x=\"{ox - 4}\" y=\"{ty:0.#}\" fill=\"{_chartAxisColor}\" font-size=\"8\" text-anchor=\"end\" dominant-baseline=\"middle\">{label}</text>");
         }
     }
 
-    private static void RenderStockChartSvg(StringBuilder sb,
+    private void RenderStockChartSvg(StringBuilder sb,
         DocumentFormat.OpenXml.Drawing.Charts.PlotArea plotArea,
         List<(string name, double[] values)> series,
         string[] categories, List<string> colors, int ox, int oy, int pw, int ph)
@@ -870,8 +890,8 @@ public partial class PowerPointHandler
         }
 
         // Axis lines
-        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
-        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
+        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
+        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
 
         var groupW = (double)pw / Math.Max(catCount, 1);
 
@@ -913,7 +933,7 @@ public partial class PowerPointHandler
         {
             var label = c < categories.Length ? categories[c] : "";
             var lx = ox + c * groupW + groupW / 2;
-            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"#C8D0D8\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
+            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
         }
 
         // Value axis labels
@@ -922,7 +942,7 @@ public partial class PowerPointHandler
             var val = minVal + range * t / 4;
             var label = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
             var ty = oy + ph - (double)ph * t / 4;
-            sb.AppendLine($"        <text x=\"{ox - 4}\" y=\"{ty:0.#}\" fill=\"#B0B8C0\" font-size=\"8\" text-anchor=\"end\" dominant-baseline=\"middle\">{label}</text>");
+            sb.AppendLine($"        <text x=\"{ox - 4}\" y=\"{ty:0.#}\" fill=\"{_chartAxisColor}\" font-size=\"8\" text-anchor=\"end\" dominant-baseline=\"middle\">{label}</text>");
         }
     }
 
@@ -944,7 +964,7 @@ public partial class PowerPointHandler
     private const double DxIso = 8;    // horizontal offset for depth
     private const double DyIso = -6;   // vertical offset for depth (negative = upward)
 
-    private static void RenderBar3DSvg(StringBuilder sb, List<(string name, double[] values)> series,
+    private void RenderBar3DSvg(StringBuilder sb, List<(string name, double[] values)> series,
         string[] categories, List<string> colors, int ox, int oy, int pw, int ph, bool horizontal)
     {
         var allValues = series.SelectMany(s => s.values).ToArray();
@@ -967,11 +987,11 @@ public partial class PowerPointHandler
             for (int t = 1; t <= 4; t++)
             {
                 var gx = plotOx + (double)plotPw * t / 4;
-                sb.AppendLine($"        <line x1=\"{gx:0.#}\" y1=\"{oy}\" x2=\"{gx:0.#}\" y2=\"{oy + ph}\" stroke=\"#333\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>");
+                sb.AppendLine($"        <line x1=\"{gx:0.#}\" y1=\"{oy}\" x2=\"{gx:0.#}\" y2=\"{oy + ph}\" stroke=\"{_chartGridColor}\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>");
             }
             // Axis lines
-            sb.AppendLine($"        <line x1=\"{plotOx}\" y1=\"{oy}\" x2=\"{plotOx}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
-            sb.AppendLine($"        <line x1=\"{plotOx}\" y1=\"{oy + ph}\" x2=\"{plotOx + plotPw}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
+            sb.AppendLine($"        <line x1=\"{plotOx}\" y1=\"{oy}\" x2=\"{plotOx}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
+            sb.AppendLine($"        <line x1=\"{plotOx}\" y1=\"{oy + ph}\" x2=\"{plotOx + plotPw}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
 
             for (int s = 0; s < serCount; s++)
             {
@@ -989,21 +1009,21 @@ public partial class PowerPointHandler
                     sb.AppendLine($"        <polygon points=\"{bx + barW:0.#},{by:0.#} {bx + barW + DxIso:0.#},{by + DyIso:0.#} {bx + barW + DxIso:0.#},{by + barH + DyIso:0.#} {bx + barW:0.#},{by + barH:0.#}\" fill=\"{sideColor}\" opacity=\"0.9\"/>");
                     // Value label
                     var vlabel = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
-                    sb.AppendLine($"        <text x=\"{bx + barW + DxIso + 4:0.#}\" y=\"{by + barH / 2:0.#}\" fill=\"#D0D8E0\" font-size=\"7\" text-anchor=\"start\" dominant-baseline=\"middle\">{vlabel}</text>");
+                    sb.AppendLine($"        <text x=\"{bx + barW + DxIso + 4:0.#}\" y=\"{by + barH / 2:0.#}\" fill=\"{_chartValueColor}\" font-size=\"7\" text-anchor=\"start\" dominant-baseline=\"middle\">{vlabel}</text>");
                 }
             }
             for (int c = 0; c < catCount; c++)
             {
                 var label = c < categories.Length ? categories[c] : "";
                 var ly = oy + c * groupH + groupH / 2;
-                sb.AppendLine($"        <text x=\"{plotOx - 4}\" y=\"{ly:0.#}\" fill=\"#C8D0D8\" font-size=\"9\" text-anchor=\"end\" dominant-baseline=\"middle\">{HtmlEncode(label)}</text>");
+                sb.AppendLine($"        <text x=\"{plotOx - 4}\" y=\"{ly:0.#}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"end\" dominant-baseline=\"middle\">{HtmlEncode(label)}</text>");
             }
             for (int t = 0; t <= 4; t++)
             {
                 var val = maxVal * t / 4;
                 var label = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
                 var tx = plotOx + (double)plotPw * t / 4;
-                sb.AppendLine($"        <text x=\"{tx:0.#}\" y=\"{oy + ph + 14}\" fill=\"#B0B8C0\" font-size=\"8\" text-anchor=\"middle\">{label}</text>");
+                sb.AppendLine($"        <text x=\"{tx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartAxisColor}\" font-size=\"8\" text-anchor=\"middle\">{label}</text>");
             }
         }
         else
@@ -1016,11 +1036,11 @@ public partial class PowerPointHandler
             for (int t = 1; t <= 4; t++)
             {
                 var gy = oy + ph - (double)ph * t / 4;
-                sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"#333\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>");
+                sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"{_chartGridColor}\" stroke-width=\"0.5\" stroke-dasharray=\"3,3\"/>");
             }
             // Axis lines
-            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
-            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
+            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
+            sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
 
             for (int c = 0; c < catCount; c++)
             {
@@ -1040,26 +1060,26 @@ public partial class PowerPointHandler
                     sb.AppendLine($"        <polygon points=\"{bx + barW:0.#},{by:0.#} {bx + barW + DxIso:0.#},{by + DyIso:0.#} {bx + barW + DxIso:0.#},{oy + ph + DyIso:0.#} {bx + barW:0.#},{oy + ph:0.#}\" fill=\"{sideColor}\" opacity=\"0.9\"/>");
                     // Value label above top face
                     var vlabel = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
-                    sb.AppendLine($"        <text x=\"{bx + barW / 2 + DxIso / 2:0.#}\" y=\"{by + DyIso - 3:0.#}\" fill=\"#D0D8E0\" font-size=\"7\" text-anchor=\"middle\">{vlabel}</text>");
+                    sb.AppendLine($"        <text x=\"{bx + barW / 2 + DxIso / 2:0.#}\" y=\"{by + DyIso - 3:0.#}\" fill=\"{_chartValueColor}\" font-size=\"7\" text-anchor=\"middle\">{vlabel}</text>");
                 }
             }
             for (int c = 0; c < catCount; c++)
             {
                 var label = c < categories.Length ? categories[c] : "";
                 var lx = ox + c * groupW + groupW / 2;
-                sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"#C8D0D8\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
+                sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
             }
             for (int t = 0; t <= 4; t++)
             {
                 var val = maxVal * t / 4;
                 var label = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
                 var ty = oy + ph - (double)ph * t / 4;
-                sb.AppendLine($"        <text x=\"{ox - 4}\" y=\"{ty:0.#}\" fill=\"#B0B8C0\" font-size=\"8\" text-anchor=\"end\" dominant-baseline=\"middle\">{label}</text>");
+                sb.AppendLine($"        <text x=\"{ox - 4}\" y=\"{ty:0.#}\" fill=\"{_chartAxisColor}\" font-size=\"8\" text-anchor=\"end\" dominant-baseline=\"middle\">{label}</text>");
             }
         }
     }
 
-    private static void RenderPie3DSvg(StringBuilder sb, List<(string name, double[] values)> series,
+    private void RenderPie3DSvg(StringBuilder sb, List<(string name, double[] values)> series,
         string[] categories, List<string> colors, int svgW, int svgH)
     {
         var values = series.FirstOrDefault().values ?? [];
@@ -1150,7 +1170,7 @@ public partial class PowerPointHandler
         }
     }
 
-    private static void RenderLine3DSvg(StringBuilder sb, List<(string name, double[] values)> series,
+    private void RenderLine3DSvg(StringBuilder sb, List<(string name, double[] values)> series,
         string[] categories, List<string> colors, int ox, int oy, int pw, int ph)
     {
         var allValues = series.SelectMany(s => s.values).ToArray();
@@ -1160,8 +1180,8 @@ public partial class PowerPointHandler
         var catCount = Math.Max(categories.Length, series.Max(s => s.values.Length));
 
         // Axis lines
-        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
-        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"#555\" stroke-width=\"1\"/>");
+        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy}\" x2=\"{ox}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
+        sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{oy + ph}\" x2=\"{ox + pw}\" y2=\"{oy + ph}\" stroke=\"{_chartAxisLineColor}\" stroke-width=\"1\"/>");
 
         // Render series back to front
         for (int s = series.Count - 1; s >= 0; s--)
@@ -1201,7 +1221,7 @@ public partial class PowerPointHandler
         {
             var label = c < categories.Length ? categories[c] : "";
             var lx = ox + (catCount > 1 ? (double)pw * c / (catCount - 1) : pw / 2.0);
-            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"#C8D0D8\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
+            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
         }
     }
 }
