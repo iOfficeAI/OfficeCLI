@@ -53,6 +53,9 @@ public static class EmuConverter
                 throw new ArgumentException($"Invalid EMU value '{value}'. Expected a number with optional unit suffix (cm, in, pt, px).");
         }
 
+        if (result < 0)
+            throw new ArgumentException($"Negative dimensions are not allowed: '{value}'.");
+
         return result;
     }
 
