@@ -660,8 +660,8 @@ public partial class ExcelHandler
                 var imgPath = properties.GetValueOrDefault("path", "") ?? "";
                 if (string.IsNullOrEmpty(imgPath))
                     imgPath = properties.GetValueOrDefault("src", "");
-                if (string.IsNullOrEmpty(imgPath) || !File.Exists(imgPath))
-                    throw new ArgumentException("picture requires a valid 'path' or 'src' property");
+                if (string.IsNullOrEmpty(imgPath))
+                    throw new ArgumentException("picture requires a 'path' or 'src' property");
 
                 var (px, py, pw, ph) = ParseAnchorBounds(properties, "0", "0", "5", "5");
                 var alt = properties.GetValueOrDefault("alt", "");
@@ -682,22 +682,11 @@ public partial class ExcelHandler
                     }
                 }
 
-                var ext = Path.GetExtension(imgPath).ToLowerInvariant();
-                var imgPartType = ext switch
-                {
-                    ".png" => ImagePartType.Png,
-                    ".jpg" or ".jpeg" => ImagePartType.Jpeg,
-                    ".gif" => ImagePartType.Gif,
-                    ".bmp" => ImagePartType.Bmp,
-                    ".tiff" or ".tif" => ImagePartType.Tiff,
-                    ".emf" => ImagePartType.Emf,
-                    ".wmf" => ImagePartType.Wmf,
-                    _ => throw new ArgumentException($"Unsupported image format: {ext}")
-                };
+                var (xlImgStream, imgPartType) = OfficeCli.Core.ImageSource.Resolve(imgPath);
+                using var xlImgDispose = xlImgStream;
 
                 var imgPart = picDrawingsPart.AddImagePart(imgPartType);
-                using (var stream = File.OpenRead(imgPath))
-                    imgPart.FeedData(stream);
+                imgPart.FeedData(xlImgStream);
                 var imgRelId = picDrawingsPart.GetIdOfPart(imgPart);
 
                 var picId = (uint)(picDrawingsPart.WorksheetDrawing.Elements<XDR.TwoCellAnchor>().Count() + 1);

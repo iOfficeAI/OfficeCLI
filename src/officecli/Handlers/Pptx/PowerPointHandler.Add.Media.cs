@@ -19,8 +19,6 @@ public partial class PowerPointHandler
                 if (!properties.TryGetValue("path", out var imgPath)
                     && !properties.TryGetValue("src", out imgPath))
                     throw new ArgumentException("'path' or 'src' property is required for picture type");
-                if (!File.Exists(imgPath))
-                    throw new FileNotFoundException($"Image file not found: {imgPath}");
 
                 var imgSlideMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]$");
                 if (!imgSlideMatch.Success)
@@ -35,25 +33,13 @@ public partial class PowerPointHandler
                 var imgShapeTree = GetSlide(imgSlidePart).CommonSlideData?.ShapeTree
                     ?? throw new InvalidOperationException("Slide has no shape tree");
 
-                // Determine image type
-                var imgExtension = Path.GetExtension(imgPath).ToLowerInvariant();
-                var imgPartType = imgExtension switch
-                {
-                    ".png" => ImagePartType.Png,
-                    ".jpg" or ".jpeg" => ImagePartType.Jpeg,
-                    ".gif" => ImagePartType.Gif,
-                    ".bmp" => ImagePartType.Bmp,
-                    ".tif" or ".tiff" => ImagePartType.Tiff,
-                    ".emf" => ImagePartType.Emf,
-                    ".wmf" => ImagePartType.Wmf,
-                    ".svg" => ImagePartType.Svg,
-                    _ => throw new ArgumentException($"Unsupported image format: {imgExtension}")
-                };
+                // Resolve image from file/base64/URL
+                var (imgStream, imgPartType) = OfficeCli.Core.ImageSource.Resolve(imgPath);
+                using var imgStreamDispose = imgStream;
 
                 // Embed image into slide part
                 var imagePart = imgSlidePart.AddImagePart(imgPartType);
-                using (var imgStream = File.OpenRead(imgPath))
-                    imagePart.FeedData(imgStream);
+                imagePart.FeedData(imgStream);
                 var imgRelId = imgSlidePart.GetIdOfPart(imagePart);
 
                 // Dimensions (default: 6in x 4in)
@@ -223,15 +209,18 @@ public partial class PowerPointHandler
                 }
 
                 // 3. Add poster/thumbnail image
-                var posterPart = mediaSlidePart.AddImagePart(ImagePartType.Png);
-                if (properties.TryGetValue("poster", out var posterPath) && File.Exists(posterPath))
+                ImagePart posterPart;
+                if (properties.TryGetValue("poster", out var posterPath))
                 {
-                    using var posterStream = File.OpenRead(posterPath);
+                    var (posterStream, posterType) = OfficeCli.Core.ImageSource.Resolve(posterPath);
+                    using var posterDispose = posterStream;
+                    posterPart = mediaSlidePart.AddImagePart(posterType);
                     posterPart.FeedData(posterStream);
                 }
                 else
                 {
                     // Minimal 1x1 transparent PNG placeholder
+                    posterPart = mediaSlidePart.AddImagePart(ImagePartType.Png);
                     var posterPng = new byte[]
                     {
                         0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,

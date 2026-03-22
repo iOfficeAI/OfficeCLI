@@ -80,26 +80,11 @@ public partial class PowerPointHandler
     private static void ApplyBackgroundImageFill(
         BackgroundProperties bgPr, SlidePart slidePart, string imagePath)
     {
-        if (!File.Exists(imagePath))
-            throw new ArgumentException($"Image file not found: {imagePath}");
-
-        var ext = Path.GetExtension(imagePath).ToLowerInvariant();
-        var partType = ext switch
-        {
-            ".png"          => ImagePartType.Png,
-            ".jpg" or ".jpeg" => ImagePartType.Jpeg,
-            ".gif"          => ImagePartType.Gif,
-            ".bmp"          => ImagePartType.Bmp,
-            ".tif" or ".tiff" => ImagePartType.Tiff,
-            ".emf"          => ImagePartType.Emf,
-            ".wmf"          => ImagePartType.Wmf,
-            _ => throw new ArgumentException(
-                $"Unsupported image format: {ext}. Supported: png, jpg, gif, bmp, tif, emf, wmf")
-        };
+        var (stream, partType) = OfficeCli.Core.ImageSource.Resolve(imagePath);
+        using var streamDispose = stream;
 
         var imagePart = slidePart.AddImagePart(partType);
-        using (var stream = File.OpenRead(imagePath))
-            imagePart.FeedData(stream);
+        imagePart.FeedData(stream);
         var relId = slidePart.GetIdOfPart(imagePart);
 
         var blipFill = new Drawing.BlipFill();

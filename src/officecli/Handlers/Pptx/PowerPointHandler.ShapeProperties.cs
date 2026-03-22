@@ -1166,26 +1166,16 @@ public partial class PowerPointHandler
                     tcPr.RemoveAllChildren<Drawing.NoFill>();
                     tcPr.RemoveAllChildren<Drawing.GradientFill>();
                     tcPr.RemoveAllChildren<Drawing.BlipFill>();
-                    var imgExt = Path.GetExtension(value).ToLowerInvariant();
-                    var imgType = imgExt switch
-                    {
-                        ".png" => ImagePartType.Png,
-                        ".jpg" or ".jpeg" => ImagePartType.Jpeg,
-                        ".gif" => ImagePartType.Gif,
-                        ".bmp" => ImagePartType.Bmp,
-                        ".tif" or ".tiff" => ImagePartType.Tiff,
-                        _ => throw new ArgumentException($"Unsupported image format: {imgExt}")
-                    };
+                    var (cellImgStream, cellImgType) = OfficeCli.Core.ImageSource.Resolve(value);
+                    using var cellImgDispose = cellImgStream;
                     // Find the SlidePart — the method is called from Set which has the slidePart context
-                    // We pass it via the part parameter if available, or traverse to root element
                     var rootElement = cell.Ancestors<OpenXmlElement>().LastOrDefault() ?? cell;
                     var ownerPart = rootElement is DocumentFormat.OpenXml.Presentation.Slide slide
                         ? slide.SlidePart : null;
                     if (ownerPart == null) { unsupported.Add(key); break; }
 
-                    var imgPart = ownerPart.AddImagePart(imgType);
-                    using (var stream = File.OpenRead(value))
-                        imgPart.FeedData(stream);
+                    var imgPart = ownerPart.AddImagePart(cellImgType);
+                    imgPart.FeedData(cellImgStream);
                     var relId = ownerPart.GetIdOfPart(imgPart);
 
                     tcPr.Append(new Drawing.BlipFill(

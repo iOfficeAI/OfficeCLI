@@ -151,25 +151,11 @@ public partial class PowerPointHandler
     /// </summary>
     private static void ApplyShapeImageFill(ShapeProperties spPr, string imagePath, SlidePart part)
     {
-        if (!File.Exists(imagePath))
-            throw new ArgumentException($"Image file not found: {imagePath}");
-
-        var ext = Path.GetExtension(imagePath).ToLowerInvariant();
-        var partType = ext switch
-        {
-            ".png" => ImagePartType.Png,
-            ".jpg" or ".jpeg" => ImagePartType.Jpeg,
-            ".gif" => ImagePartType.Gif,
-            ".bmp" => ImagePartType.Bmp,
-            ".tif" or ".tiff" => ImagePartType.Tiff,
-            ".emf" => ImagePartType.Emf,
-            ".wmf" => ImagePartType.Wmf,
-            _ => throw new ArgumentException($"Unsupported image format: {ext}")
-        };
+        var (stream, partType) = OfficeCli.Core.ImageSource.Resolve(imagePath);
+        using var streamDispose = stream;
 
         var imagePart = part.AddImagePart(partType);
-        using (var stream = File.OpenRead(imagePath))
-            imagePart.FeedData(stream);
+        imagePart.FeedData(stream);
         var relId = part.GetIdOfPart(imagePart);
 
         spPr.RemoveAllChildren<Drawing.SolidFill>();

@@ -684,21 +684,8 @@ public partial class PowerPointHandler
                         var blipFill = pic.BlipFill;
                         var blip = blipFill?.GetFirstChild<Drawing.Blip>();
                         if (blip == null) { unsupported.Add(key); break; }
-                        if (!File.Exists(value))
-                            throw new FileNotFoundException($"Image file not found: {value}");
-
-                        var imgExt = Path.GetExtension(value).ToLowerInvariant();
-                        var imgType = imgExt switch
-                        {
-                            ".png" => ImagePartType.Png,
-                            ".jpg" or ".jpeg" => ImagePartType.Jpeg,
-                            ".gif" => ImagePartType.Gif,
-                            ".bmp" => ImagePartType.Bmp,
-                            ".tif" or ".tiff" => ImagePartType.Tiff,
-                            ".emf" => ImagePartType.Emf,
-                            ".wmf" => ImagePartType.Wmf,
-                            _ => throw new ArgumentException($"Unsupported image format: {imgExt}")
-                        };
+                        var (imgStream, imgType) = OfficeCli.Core.ImageSource.Resolve(value);
+                        using var imgStreamDispose2 = imgStream;
                         // Remove old image part to avoid storage bloat
                         var oldEmbedId = blip.Embed?.Value;
                         if (oldEmbedId != null)
@@ -706,8 +693,7 @@ public partial class PowerPointHandler
                             try { slidePart.DeletePart(oldEmbedId); } catch { }
                         }
                         var newImgPart = slidePart.AddImagePart(imgType);
-                        using (var stream = File.OpenRead(value))
-                            newImgPart.FeedData(stream);
+                        newImgPart.FeedData(imgStream);
                         blip.Embed = slidePart.GetIdOfPart(newImgPart);
                         break;
                     }
@@ -959,21 +945,11 @@ public partial class PowerPointHandler
                     }
                     case "image" or "path" or "src" or "cover":
                     {
-                        if (!File.Exists(value))
-                            throw new FileNotFoundException($"Image file not found: {value}");
-                        var imgExt = Path.GetExtension(value).ToLowerInvariant();
-                        var imgPartType = imgExt switch
-                        {
-                            ".png" => ImagePartType.Png,
-                            ".jpg" or ".jpeg" => ImagePartType.Jpeg,
-                            ".gif" => ImagePartType.Gif,
-                            ".bmp" => ImagePartType.Bmp,
-                            _ => throw new ArgumentException($"Unsupported image format: {imgExt}")
-                        };
+                        var (zmImgStream, zmImgPartType) = OfficeCli.Core.ImageSource.Resolve(value);
+                        using var zmImgDispose = zmImgStream;
                         // Add new image part
-                        var newImagePart = zmSlidePart.AddImagePart(imgPartType);
-                        using (var imgStream = File.OpenRead(value))
-                            newImagePart.FeedData(imgStream);
+                        var newImagePart = zmSlidePart.AddImagePart(zmImgPartType);
+                        newImagePart.FeedData(zmImgStream);
                         var newImgRelId = zmSlidePart.GetIdOfPart(newImagePart);
                         var rNs2 = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
                         // Update blip in zmPr > blipFill

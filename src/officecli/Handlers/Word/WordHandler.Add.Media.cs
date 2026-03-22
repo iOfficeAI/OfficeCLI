@@ -96,27 +96,13 @@ public partial class WordHandler
     {
         if (!properties.TryGetValue("path", out var imgPath) && !properties.TryGetValue("src", out imgPath))
             throw new ArgumentException("'path' (or 'src') property is required for picture type");
-        if (!File.Exists(imgPath))
-            throw new FileNotFoundException($"Image file not found: {imgPath}");
 
-        var imgExtension = Path.GetExtension(imgPath).ToLowerInvariant();
-        var imgPartType = imgExtension switch
-        {
-            ".png" => ImagePartType.Png,
-            ".jpg" or ".jpeg" => ImagePartType.Jpeg,
-            ".gif" => ImagePartType.Gif,
-            ".bmp" => ImagePartType.Bmp,
-            ".tif" or ".tiff" => ImagePartType.Tiff,
-            ".emf" => ImagePartType.Emf,
-            ".wmf" => ImagePartType.Wmf,
-            ".svg" => ImagePartType.Svg,
-            _ => throw new ArgumentException($"Unsupported image format: {imgExtension}")
-        };
+        var (imgStream, imgPartType) = OfficeCli.Core.ImageSource.Resolve(imgPath);
+        using var imgStreamDispose = imgStream;
 
         var mainPart = _doc.MainDocumentPart!;
         var imagePart = mainPart.AddImagePart(imgPartType);
-        using (var stream = File.OpenRead(imgPath))
-            imagePart.FeedData(stream);
+        imagePart.FeedData(imgStream);
         var relId = mainPart.GetIdOfPart(imagePart);
 
         // Determine dimensions (default: 6 inches wide, auto height)

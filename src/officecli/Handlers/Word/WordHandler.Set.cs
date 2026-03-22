@@ -841,23 +841,10 @@ public partial class WordHandler
                         var drawingSrc = run.GetFirstChild<Drawing>();
                         var blip = drawingSrc?.Descendants<A.Blip>().FirstOrDefault();
                         if (blip == null) { unsupported.Add(key); break; }
-                        if (!File.Exists(value))
-                            throw new FileNotFoundException($"Image file not found: {value}");
 
                         var mainPartImg = _doc.MainDocumentPart!;
-                        var imgExt = Path.GetExtension(value).ToLowerInvariant();
-                        var imgType = imgExt switch
-                        {
-                            ".png" => DocumentFormat.OpenXml.Packaging.ImagePartType.Png,
-                            ".jpg" or ".jpeg" => DocumentFormat.OpenXml.Packaging.ImagePartType.Jpeg,
-                            ".gif" => DocumentFormat.OpenXml.Packaging.ImagePartType.Gif,
-                            ".bmp" => DocumentFormat.OpenXml.Packaging.ImagePartType.Bmp,
-                            ".tif" or ".tiff" => DocumentFormat.OpenXml.Packaging.ImagePartType.Tiff,
-                            ".emf" => DocumentFormat.OpenXml.Packaging.ImagePartType.Emf,
-                            ".wmf" => DocumentFormat.OpenXml.Packaging.ImagePartType.Wmf,
-                            ".svg" => DocumentFormat.OpenXml.Packaging.ImagePartType.Svg,
-                            _ => throw new ArgumentException($"Unsupported image format: {imgExt}")
-                        };
+                        var (wordImgStream, imgType) = OfficeCli.Core.ImageSource.Resolve(value);
+                        using var wordImgDispose = wordImgStream;
 
                         // Remove old image part to avoid storage bloat
                         var oldEmbedId = blip.Embed?.Value;
@@ -867,8 +854,7 @@ public partial class WordHandler
                         }
 
                         var newImgPart = mainPartImg.AddImagePart(imgType);
-                        using (var stream = File.OpenRead(value))
-                            newImgPart.FeedData(stream);
+                        newImgPart.FeedData(wordImgStream);
                         blip.Embed = mainPartImg.GetIdOfPart(newImgPart);
                         break;
                     }
