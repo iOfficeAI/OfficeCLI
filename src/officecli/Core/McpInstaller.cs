@@ -143,13 +143,9 @@ public static class McpInstaller
         {
             try
             {
-                var existing = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(
-                    File.ReadAllText(configPath));
-                if (existing != null)
-                {
-                    foreach (var kv in existing)
-                        root[kv.Key] = kv.Value;
-                }
+                using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
+                foreach (var prop in doc.RootElement.EnumerateObject())
+                    root[prop.Name] = prop.Value.Clone();
             }
             catch { /* start fresh if parse fails */ }
         }
