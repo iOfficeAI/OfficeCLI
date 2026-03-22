@@ -28,6 +28,7 @@
         });
     }
     scaleSlides();
+    window.scaleSlides = scaleSlides;
     window.addEventListener('resize', scaleSlides);
 
     // ===== Sidebar thumbnails =====
@@ -142,15 +143,17 @@
         });
     }
     buildThumbs();
+    window.buildThumbs = buildThumbs;
+    window.scaleThumbs = scaleThumbs;
     window.addEventListener('resize', scaleThumbs);
 
     // ===== Sidebar toggle (exposed globally for onclick) =====
     window.toggleSidebar = function() {
         document.body.classList.toggle('sidebar-visible');
         document.body.classList.toggle('sidebar-hidden');
-        // Re-build and scale thumbs after sidebar becomes visible
-        // (first open on narrow viewport: thumb-inner had zero width)
+        // Re-scale after sidebar toggle changes main area width
         requestAnimationFrame(() => {
+            scaleSlides();
             buildThumbs();
             scaleThumbs();
         });
