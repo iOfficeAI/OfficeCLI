@@ -122,7 +122,7 @@ public partial class ExcelHandler
             // Include zoom
             var sheetView = ws.GetFirstChild<SheetViews>()?.GetFirstChild<SheetView>();
             if (sheetView?.ZoomScale?.HasValue == true && sheetView.ZoomScale.Value != 100)
-                sheetNode.Format["zoom"] = sheetView.ZoomScale.Value;
+                sheetNode.Format["zoom"] = (int)sheetView.ZoomScale.Value;
 
             // Include tab color
             var tabColor = ws.GetFirstChild<SheetProperties>()?.GetFirstChild<TabColor>();
@@ -148,7 +148,7 @@ public partial class ExcelHandler
                 if (pageSetup.Orientation?.HasValue == true)
                     sheetNode.Format["orientation"] = pageSetup.Orientation.InnerText;
                 if (pageSetup.PaperSize?.HasValue == true)
-                    sheetNode.Format["paperSize"] = pageSetup.PaperSize.Value;
+                    sheetNode.Format["paperSize"] = (int)pageSetup.PaperSize.Value;
                 if (pageSetup.FitToWidth?.HasValue == true)
                     sheetNode.Format["fitToPage"] = $"{pageSetup.FitToWidth.Value}x{pageSetup.FitToHeight?.Value ?? 1}";
             }
@@ -227,7 +227,7 @@ public partial class ExcelHandler
             return new DocumentNode
             {
                 Path = path, Type = "rowbreak",
-                Format = { ["row"] = brk.Id?.Value ?? 0u, ["manual"] = brk.ManualPageBreak?.Value ?? false }
+                Format = { ["row"] = (int)(brk.Id?.Value ?? 0u), ["manual"] = brk.ManualPageBreak?.Value ?? false }
             };
         }
         var cbMatch = Regex.Match(cellRef, @"^colbreak\[(\d+)\]$", RegexOptions.IgnoreCase);
@@ -242,7 +242,7 @@ public partial class ExcelHandler
             return new DocumentNode
             {
                 Path = path, Type = "colbreak",
-                Format = { ["col"] = brk.Id?.Value ?? 0u, ["manual"] = brk.ManualPageBreak?.Value ?? false }
+                Format = { ["col"] = (int)(brk.Id?.Value ?? 0u), ["manual"] = brk.ManualPageBreak?.Value ?? false }
             };
         }
 
@@ -281,7 +281,7 @@ public partial class ExcelHandler
                     if (col.Hidden?.Value == true) colNode.Format["hidden"] = true;
                     if (col.CustomWidth?.Value == true) colNode.Format["customWidth"] = true;
                     if (col.OutlineLevel?.HasValue == true && col.OutlineLevel.Value > 0)
-                        colNode.Format["outlineLevel"] = col.OutlineLevel.Value;
+                        colNode.Format["outlineLevel"] = (int)col.OutlineLevel.Value;
                     if (col.Collapsed?.Value == true) colNode.Format["collapsed"] = true;
                 }
             }
@@ -319,7 +319,7 @@ public partial class ExcelHandler
             if (row.Height?.Value != null) rowNode.Format["height"] = row.Height.Value;
             if (row.Hidden?.Value == true) rowNode.Format["hidden"] = true;
             if (row.OutlineLevel?.HasValue == true && row.OutlineLevel.Value > 0)
-                rowNode.Format["outlineLevel"] = row.OutlineLevel.Value;
+                rowNode.Format["outlineLevel"] = (int)row.OutlineLevel.Value;
             if (row.Collapsed?.Value == true) rowNode.Format["collapsed"] = true;
             if (depth > 0)
                 foreach (var c in row.Elements<Cell>())
@@ -526,7 +526,7 @@ public partial class ExcelHandler
             if (picMatch.Success)
             {
                 var picIndex = int.Parse(picMatch.Groups[1].Value);
-                return GetPictureNode(sheetNameFromPath, worksheet, picIndex, path);
+                return GetPictureNode(sheetNameFromPath, worksheet, picIndex, path)!;
             }
 
             // Handle shape[N] path segment
@@ -534,8 +534,9 @@ public partial class ExcelHandler
             if (shpMatch.Success)
             {
                 var shpIndex = int.Parse(shpMatch.Groups[1].Value);
-                return GetShapeNode(sheetNameFromPath, worksheet, shpIndex, path);
+                return GetShapeNode(sheetNameFromPath, worksheet, shpIndex, path)!;
             }
+
 
             // If it looks like it could be a malformed cell reference (digits only, etc.), reject it
             if (Regex.IsMatch(cellRef, @"^\d+$"))
@@ -583,7 +584,7 @@ public partial class ExcelHandler
         var elementMatch = Regex.Match(selectorForType, @"^(\w+)");
         var elementName = elementMatch.Success ? elementMatch.Groups[1].Value : "";
         bool isKnownType = string.IsNullOrEmpty(elementName)
-            || elementName is "cell" or "row" or "sheet" or "validation" or "comment" or "note" or "table" or "listobject" or "chart" or "pivottable" or "pivot"
+            || elementName is "cell" or "row" or "sheet" or "validation" or "comment" or "note" or "table" or "listobject" or "chart" or "pivottable" or "pivot" or "shape" or "picture"
             || (elementName.Length <= 3 && Regex.IsMatch(elementName, @"^[A-Z]+$", RegexOptions.IgnoreCase));
         if (!isKnownType)
         {
@@ -726,6 +727,73 @@ public partial class ExcelHandler
                             continue;
                     }
                     results.Add(node);
+                }
+            }
+            return results;
+        }
+
+        // Handle shape queries
+        if (elementName == "shape")
+        {
+            foreach (var (sheetName, worksheetPart) in GetWorksheets())
+            {
+                if (parsed.Sheet != null && !sheetName.Equals(parsed.Sheet, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var drawingsPart = worksheetPart.DrawingsPart;
+                if (drawingsPart?.WorksheetDrawing == null) continue;
+
+                var shpAnchors = drawingsPart.WorksheetDrawing
+                    .Elements<DocumentFormat.OpenXml.Drawing.Spreadsheet.TwoCellAnchor>()
+                    .Where(a => a.Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Shape>().Any())
+                    .ToList();
+
+                for (int i = 0; i < shpAnchors.Count; i++)
+                {
+                    var node = GetShapeNode(sheetName, worksheetPart, i + 1, $"/{sheetName}/shape[{i + 1}]");
+                    if (node == null) continue;
+
+                    if (parsed.ValueContains != null)
+                    {
+                        if (node.Text == null || !node.Text.Contains(parsed.ValueContains, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                    }
+                    if (MatchesFormatAttributes(node, parsed))
+                        results.Add(node);
+                }
+            }
+            return results;
+        }
+
+        // Handle picture queries
+        if (elementName == "picture")
+        {
+            foreach (var (sheetName, worksheetPart) in GetWorksheets())
+            {
+                if (parsed.Sheet != null && !sheetName.Equals(parsed.Sheet, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var drawingsPart = worksheetPart.DrawingsPart;
+                if (drawingsPart?.WorksheetDrawing == null) continue;
+
+                var picAnchors = drawingsPart.WorksheetDrawing
+                    .Elements<DocumentFormat.OpenXml.Drawing.Spreadsheet.TwoCellAnchor>()
+                    .Where(a => a.Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Picture>().Any())
+                    .ToList();
+
+                for (int i = 0; i < picAnchors.Count; i++)
+                {
+                    var node = GetPictureNode(sheetName, worksheetPart, i + 1, $"/{sheetName}/picture[{i + 1}]");
+                    if (node == null) continue;
+
+                    if (parsed.ValueContains != null)
+                    {
+                        var alt = node.Format.TryGetValue("alt", out var a) ? a?.ToString() : null;
+                        if (alt == null || !alt.Contains(parsed.ValueContains, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                    }
+                    if (MatchesFormatAttributes(node, parsed))
+                        results.Add(node);
                 }
             }
             return results;

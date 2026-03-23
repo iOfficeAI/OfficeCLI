@@ -47,7 +47,7 @@ internal static partial class ChartHelper
 
         // Chart style
         var style = chart.Parent?.GetFirstChild<C.Style>();
-        if (style?.Val?.HasValue == true) node.Format["style"] = style.Val.Value;
+        if (style?.Val?.HasValue == true) node.Format["style"] = (int)style.Val.Value;
 
         // Plot area fill (plotArea uses C.ShapeProperties, not C.ChartShapeProperties)
         var plotSpPr = plotArea.GetFirstChild<C.ShapeProperties>();

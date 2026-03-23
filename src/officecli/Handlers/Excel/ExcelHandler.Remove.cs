@@ -136,6 +136,53 @@ public partial class ExcelHandler
             return null;
         }
 
+        // shape[N] — remove shape anchor from DrawingsPart
+        var shapeRemoveMatch = Regex.Match(cellRef, @"^shape\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (shapeRemoveMatch.Success)
+        {
+            var shpIdx = int.Parse(shapeRemoveMatch.Groups[1].Value);
+            var drawingsPart = worksheet.DrawingsPart
+                ?? throw new ArgumentException("Sheet has no drawings/shapes");
+            var wsDrawing = drawingsPart.WorksheetDrawing
+                ?? throw new ArgumentException("Sheet has no drawings/shapes");
+            var shpAnchors = wsDrawing.Elements<DocumentFormat.OpenXml.Drawing.Spreadsheet.TwoCellAnchor>()
+                .Where(a => a.Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Shape>().Any())
+                .ToList();
+            if (shpIdx < 1 || shpIdx > shpAnchors.Count)
+                throw new ArgumentException($"Shape index {shpIdx} out of range (1..{shpAnchors.Count})");
+            shpAnchors[shpIdx - 1].Remove();
+            wsDrawing.Save();
+            SaveWorksheet(worksheet);
+            return null;
+        }
+
+        // picture[N] — remove picture anchor from DrawingsPart
+        var picRemoveMatch = Regex.Match(cellRef, @"^picture\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (picRemoveMatch.Success)
+        {
+            var picIdx = int.Parse(picRemoveMatch.Groups[1].Value);
+            var drawingsPart = worksheet.DrawingsPart
+                ?? throw new ArgumentException("Sheet has no drawings/pictures");
+            var wsDrawing = drawingsPart.WorksheetDrawing
+                ?? throw new ArgumentException("Sheet has no drawings/pictures");
+            var picAnchors = wsDrawing.Elements<DocumentFormat.OpenXml.Drawing.Spreadsheet.TwoCellAnchor>()
+                .Where(a => a.Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Picture>().Any())
+                .ToList();
+            if (picIdx < 1 || picIdx > picAnchors.Count)
+                throw new ArgumentException($"Picture index {picIdx} out of range (1..{picAnchors.Count})");
+            // Remove associated image part to avoid storage bloat
+            var pic = picAnchors[picIdx - 1].Descendants<DocumentFormat.OpenXml.Drawing.Spreadsheet.Picture>().First();
+            var blipFill = pic.BlipFill?.Blip?.Embed?.Value;
+            picAnchors[picIdx - 1].Remove();
+            if (blipFill != null)
+            {
+                try { drawingsPart.DeletePart(drawingsPart.GetPartById(blipFill)); } catch { }
+            }
+            wsDrawing.Save();
+            SaveWorksheet(worksheet);
+            return null;
+        }
+
         // Single cell
         var cell = FindCell(sheetData, cellRef)
             ?? throw new ArgumentException($"Cell {cellRef} not found");

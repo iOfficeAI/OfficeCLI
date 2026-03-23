@@ -567,10 +567,12 @@ public partial class PowerPointHandler
                 {
                     var spPr = shape.ShapeProperties;
                     if (spPr == null) { unsupported.Add(key); break; }
+                    var shadowVal = value;
+                    if (IsTruthy(shadowVal)) shadowVal = "000000";
                     if (IsNoFillShape(spPr) && runs.Count > 0)
-                        foreach (var run in runs) ApplyTextShadow(run, value);
+                        foreach (var run in runs) ApplyTextShadow(run, shadowVal);
                     else
-                        ApplyShadow(spPr, value);
+                        ApplyShadow(spPr, shadowVal);
                     break;
                 }
 
@@ -578,10 +580,12 @@ public partial class PowerPointHandler
                 {
                     var spPr = shape.ShapeProperties;
                     if (spPr == null) { unsupported.Add(key); break; }
+                    var glowVal = value;
+                    if (IsTruthy(glowVal)) glowVal = "4472C4";
                     if (IsNoFillShape(spPr) && runs.Count > 0)
-                        foreach (var run in runs) ApplyTextGlow(run, value);
+                        foreach (var run in runs) ApplyTextGlow(run, glowVal);
                     else
-                        ApplyGlow(spPr, value);
+                        ApplyGlow(spPr, glowVal);
                     break;
                 }
 
