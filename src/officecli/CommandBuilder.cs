@@ -30,8 +30,9 @@ static class CommandBuilder
         var openFileArg = new Argument<FileInfo>("file") { Description = "Office document path (required even with open/close mode)" };
         var openCommand = new Command("open", "Start a resident process to keep the document in memory for faster subsequent commands");
         openCommand.Add(openFileArg);
+        openCommand.Add(jsonOption);
 
-        openCommand.SetAction(result => SafeRun(() =>
+        openCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(openFileArg)!;
             var filePath = file.FullName;
@@ -39,17 +40,16 @@ static class CommandBuilder
             // If already running, reuse the existing resident
             if (ResidentClient.TryConnect(filePath, out _))
             {
-                Console.WriteLine($"Opened {file.Name} (already running, do NOT call close)");
+                var msg = $"Opened {file.Name} (already running, do NOT call close)";
+                if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(msg));
+                else Console.WriteLine(msg);
                 return;
             }
 
             // Fork a background process running the resident server
             var exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
             if (exePath == null)
-            {
-                Console.Error.WriteLine("Error: Cannot determine executable path.");
-                return;
-            }
+                throw new InvalidOperationException("Cannot determine executable path.");
 
             var startInfo = new ProcessStartInfo
             {
@@ -63,10 +63,7 @@ static class CommandBuilder
 
             var process = Process.Start(startInfo);
             if (process == null)
-            {
-                Console.Error.WriteLine("Error: Failed to start resident process.");
-                return;
-            }
+                throw new InvalidOperationException("Failed to start resident process.");
 
             // Wait briefly for the server to start accepting connections
             for (int i = 0; i < 50; i++) // up to 5 seconds
@@ -74,19 +71,20 @@ static class CommandBuilder
                 Thread.Sleep(100);
                 if (ResidentClient.TryConnect(filePath, out _))
                 {
-                    Console.WriteLine($"Opened {file.Name} (remember to call close when done)");
+                    var msg = $"Opened {file.Name} (remember to call close when done)";
+                    if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(msg));
+                    else Console.WriteLine(msg);
                     return;
                 }
                 if (process.HasExited)
                 {
                     var stderr = process.StandardError.ReadToEnd();
-                    Console.Error.WriteLine($"Error: Resident process exited. {stderr}");
-                    return;
+                    throw new InvalidOperationException($"Resident process exited. {stderr}");
                 }
             }
 
-            Console.Error.WriteLine("Error: Resident process started but not responding.");
-        }));
+            throw new InvalidOperationException("Resident process started but not responding.");
+        }, json); });
 
         rootCommand.Add(openCommand);
 
@@ -94,15 +92,22 @@ static class CommandBuilder
         var closeFileArg = new Argument<FileInfo>("file") { Description = "Office document path (required even with open/close mode)" };
         var closeCommand = new Command("close", "Stop the resident process for the document");
         closeCommand.Add(closeFileArg);
+        closeCommand.Add(jsonOption);
 
-        closeCommand.SetAction(result => SafeRun(() =>
+        closeCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(closeFileArg)!;
             if (ResidentClient.SendClose(file.FullName))
-                Console.WriteLine($"Resident closed for {file.Name}");
+            {
+                var msg = $"Resident closed for {file.Name}";
+                if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(msg));
+                else Console.WriteLine(msg);
+            }
             else
-                Console.Error.WriteLine($"No resident running for {file.Name}");
-        }));
+            {
+                throw new InvalidOperationException($"No resident running for {file.Name}");
+            }
+        }, json); });
 
         rootCommand.Add(closeCommand);
 
@@ -897,6 +902,21 @@ static class CommandBuilder
             }
 
             OfficeCli.BlankDocCreator.Create(file);
+            var fullCreatedPath = Path.GetFullPath(file);
+            if (json)
+            {
+                Console.WriteLine(OutputFormatter.WrapEnvelopeText($"Created: {fullCreatedPath}"));
+            }
+            else
+            {
+                Console.WriteLine($"Created: {file}");
+                if (Path.GetExtension(file).Equals(".pptx", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine($"  totalSlides: 0");
+                    Console.WriteLine($"  slideWidth: {Core.EmuConverter.FormatEmu(12192000)}");
+                    Console.WriteLine($"  slideHeight: {Core.EmuConverter.FormatEmu(6858000)}");
+                }
+            }
         }, json); });
 
         rootCommand.Add(createCommand);
