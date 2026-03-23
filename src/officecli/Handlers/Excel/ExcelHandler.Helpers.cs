@@ -435,13 +435,19 @@ public partial class ExcelHandler
                             node.Format["alignment.vertical"] = alignment.Vertical.InnerText;
                             node.Format["valign"] = alignment.Vertical.InnerText;
                         }
+                        if (alignment.TextRotation?.HasValue == true && alignment.TextRotation.Value != 0)
+                            node.Format["alignment.textRotation"] = alignment.TextRotation.Value.ToString();
+                        if (alignment.Indent?.HasValue == true && alignment.Indent.Value > 0)
+                            node.Format["alignment.indent"] = alignment.Indent.Value.ToString();
+                        if (alignment.ShrinkToFit?.Value == true)
+                            node.Format["alignment.shrinkToFit"] = true;
                     }
 
                     // Number format readback
                     var numFmtId = xf.NumberFormatId?.Value ?? 0;
                     if (numFmtId > 0)
                     {
-                        node.Format["numFmtId"] = numFmtId;
+                        node.Format["numFmtId"] = (int)numFmtId;
                         var numFmts = wbStylesPart.Stylesheet.NumberingFormats;
                         var customFmt = numFmts?.Elements<NumberingFormat>()
                             .FirstOrDefault(nf => nf.NumberFormatId?.Value == numFmtId);
@@ -481,7 +487,7 @@ public partial class ExcelHandler
                                 47 => "mmss.0",
                                 48 => "##0.0E+0",
                                 49 => "@",
-                                _ => (object)numFmtId // fallback to ID for truly unknown formats
+                                _ => (object)(int)numFmtId // fallback to ID for truly unknown formats
                             };
                         }
                         node.Format["numberformat"] = fmtVal;
@@ -853,20 +859,20 @@ public partial class ExcelHandler
 
     // ==================== Picture Helpers ====================
 
-    private DocumentNode GetPictureNode(string sheetName, WorksheetPart worksheetPart, int index, string path)
+    private DocumentNode? GetPictureNode(string sheetName, WorksheetPart worksheetPart, int index, string path)
     {
-        var drawingsPart = worksheetPart.DrawingsPart
-            ?? throw new ArgumentException("Sheet has no drawings/pictures");
+        var drawingsPart = worksheetPart.DrawingsPart;
+        if (drawingsPart == null) return null;
 
-        var wsDrawing = drawingsPart.WorksheetDrawing
-            ?? throw new ArgumentException("Sheet has no drawings/pictures");
+        var wsDrawing = drawingsPart.WorksheetDrawing;
+        if (wsDrawing == null) return null;
 
         var picAnchors = wsDrawing.Elements<XDR.TwoCellAnchor>()
             .Where(a => a.Descendants<XDR.Picture>().Any())
             .ToList();
 
         if (index < 1 || index > picAnchors.Count)
-            throw new ArgumentException($"Picture index {index} out of range (1..{picAnchors.Count})");
+            return null;
 
         var anchor = picAnchors[index - 1];
         var picture = anchor.Descendants<XDR.Picture>().First();
@@ -890,18 +896,18 @@ public partial class ExcelHandler
         return node;
     }
 
-    private DocumentNode GetShapeNode(string sheetName, WorksheetPart worksheetPart, int index, string path)
+    private DocumentNode? GetShapeNode(string sheetName, WorksheetPart worksheetPart, int index, string path)
     {
-        var drawingsPart = worksheetPart.DrawingsPart
-            ?? throw new ArgumentException("Sheet has no drawings/shapes");
-        var wsDrawing = drawingsPart.WorksheetDrawing
-            ?? throw new ArgumentException("Sheet has no drawings/shapes");
+        var drawingsPart = worksheetPart.DrawingsPart;
+        if (drawingsPart == null) return null;
+        var wsDrawing = drawingsPart.WorksheetDrawing;
+        if (wsDrawing == null) return null;
 
         var shpAnchors = wsDrawing.Elements<XDR.TwoCellAnchor>()
             .Where(a => a.Descendants<XDR.Shape>().Any()).ToList();
 
         if (index < 1 || index > shpAnchors.Count)
-            throw new ArgumentException($"Shape index {index} out of range (1..{shpAnchors.Count})");
+            return null;
 
         var anchor = shpAnchors[index - 1];
         var shape = anchor.Descendants<XDR.Shape>().First();
