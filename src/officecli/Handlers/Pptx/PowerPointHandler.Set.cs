@@ -768,6 +768,13 @@ public partial class PowerPointHandler
                         blip.Embed = slidePart.GetIdOfPart(newImgPart);
                         break;
                     }
+                    case "rotation" or "rotate":
+                    {
+                        var spPr = pic.ShapeProperties ?? (pic.ShapeProperties = new ShapeProperties());
+                        var xfrm = spPr.Transform2D ?? (spPr.Transform2D = new Drawing.Transform2D());
+                        xfrm.Rotation = (int)(ParseHelpers.SafeParseDouble(value, "rotation") * 60000);
+                        break;
+                    }
                     case "crop" or "cropleft" or "cropright" or "croptop" or "cropbottom":
                     {
                         var blipFill = pic.BlipFill;
@@ -1330,11 +1337,29 @@ public partial class PowerPointHandler
                         prstGeom.Preset = new Drawing.ShapeTypeValues(value);
                         break;
                     }
+                    case "headend" or "headEnd":
+                    {
+                        var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
+                        var outline = spPr.GetFirstChild<Drawing.Outline>()
+                            ?? spPr.AppendChild(new Drawing.Outline());
+                        outline.RemoveAllChildren<Drawing.HeadEnd>();
+                        outline.AppendChild(new Drawing.HeadEnd { Type = ParseLineEndType(value) });
+                        break;
+                    }
+                    case "tailend" or "tailEnd":
+                    {
+                        var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
+                        var outline = spPr.GetFirstChild<Drawing.Outline>()
+                            ?? spPr.AppendChild(new Drawing.Outline());
+                        outline.RemoveAllChildren<Drawing.TailEnd>();
+                        outline.AppendChild(new Drawing.TailEnd { Type = ParseLineEndType(value) });
+                        break;
+                    }
                     default:
                         if (!GenericXmlQuery.SetGenericAttribute(cxn, key, value))
                         {
                             if (unsupported.Count == 0)
-                                unsupported.Add($"{key} (valid connector props: line, color, fill, x, y, width, height, rotation, name, geometry)");
+                                unsupported.Add($"{key} (valid connector props: line, color, fill, x, y, width, height, rotation, name, headEnd, tailEnd, geometry)");
                             else
                                 unsupported.Add(key);
                         }

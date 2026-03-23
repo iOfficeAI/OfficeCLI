@@ -376,6 +376,7 @@ public partial class PowerPointHandler
             "stealth" => Drawing.LineEndValues.Stealth,
             "diamond" => Drawing.LineEndValues.Diamond,
             "oval" or "circle" => Drawing.LineEndValues.Oval,
+            "open" => Drawing.LineEndValues.Arrow,
             "none" => Drawing.LineEndValues.None,
             _ => Drawing.LineEndValues.Triangle
         };

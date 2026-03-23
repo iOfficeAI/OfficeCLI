@@ -41,6 +41,11 @@ public partial class PowerPointHandler
             value.Equals("false", StringComparison.OrdinalIgnoreCase))
         {
             slide.Transition = null;
+            // Also remove morph/p14 mc:AlternateContent wrappers
+            foreach (var ac in slide.ChildElements
+                .Where(c => c.LocalName == "AlternateContent")
+                .ToList())
+                ac.Remove();
             return;
         }
 

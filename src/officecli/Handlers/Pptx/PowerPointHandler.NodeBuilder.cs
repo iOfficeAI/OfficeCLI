@@ -812,6 +812,8 @@ public partial class PowerPointHandler
             if (picXfrm.Extents.Cx is not null) node.Format["width"] = FormatEmu(picXfrm.Extents.Cx!);
             if (picXfrm.Extents.Cy is not null) node.Format["height"] = FormatEmu(picXfrm.Extents.Cy!);
         }
+        if (picXfrm?.Rotation != null && picXfrm.Rotation.Value != 0)
+            node.Format["rotation"] = $"{picXfrm.Rotation.Value / 60000.0:0.##}";
 
         // Crop
         var srcRect = pic.BlipFill?.GetFirstChild<Drawing.SourceRectangle>();
