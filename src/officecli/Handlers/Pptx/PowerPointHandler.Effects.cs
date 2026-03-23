@@ -189,10 +189,23 @@ public partial class PowerPointHandler
         var camera = scene3d.Camera!;
         camera.Rotation = new Drawing.Rotation
         {
-            Latitude = (int)(rotX * 60000),
-            Longitude = (int)(rotY * 60000),
-            Revolution = (int)(rotZ * 60000)
+            Latitude = NormalizeDegrees60k(rotX),
+            Longitude = NormalizeDegrees60k(rotY),
+            Revolution = NormalizeDegrees60k(rotZ)
         };
+    }
+
+    /// <summary>
+    /// Normalize degrees to OOXML 60000ths-of-a-degree range [0, 21600000).
+    /// Accepts negative values (e.g. -20° → 340° → 20400000).
+    /// </summary>
+    private static int NormalizeDegrees60k(double degrees)
+    {
+        var val = (int)(degrees * 60000);
+        const int full = 360 * 60000; // 21600000
+        val %= full;
+        if (val < 0) val += full;
+        return val;
     }
 
     /// <summary>
@@ -205,7 +218,7 @@ public partial class PowerPointHandler
         var rot = camera.Rotation ?? (camera.Rotation = new Drawing.Rotation());
         if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var degVal) || double.IsNaN(degVal) || double.IsInfinity(degVal))
             throw new ArgumentException($"Invalid '3drotation.{axis}' value: '{value}'. Expected a finite number in degrees.");
-        var deg = (int)(degVal * 60000);
+        var deg = NormalizeDegrees60k(degVal);
 
         switch (axis)
         {
