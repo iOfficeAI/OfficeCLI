@@ -48,6 +48,12 @@ public partial class ExcelHandler
                     ?? GetSheet(worksheet).AppendChild(new SheetData());
 
                 var rowIdx = index ?? ((int)(sheetData.Elements<Row>().LastOrDefault()?.RowIndex?.Value ?? 0) + 1);
+
+                // If inserting at an existing position, shift rows down first
+                bool needsShift = index.HasValue && sheetData.Elements<Row>().Any(r => r.RowIndex?.Value >= (uint)rowIdx);
+                if (needsShift)
+                    ShiftRowsDown(worksheet, rowIdx);
+
                 var newRow = new Row { RowIndex = (uint)rowIdx };
 
                 // Create cells if cols specified
@@ -62,6 +68,9 @@ public partial class ExcelHandler
                     }
                 }
 
+                // Re-fetch sheetData after potential shift
+                sheetData = GetSheet(worksheet).GetFirstChild<SheetData>()
+                    ?? GetSheet(worksheet).AppendChild(new SheetData());
                 var afterRow = sheetData.Elements<Row>().LastOrDefault(r => (r.RowIndex?.Value ?? 0) < (uint)rowIdx);
                 if (afterRow != null)
                     afterRow.InsertAfterSelf(newRow);
@@ -1194,6 +1203,75 @@ public partial class ExcelHandler
                     sourceSheetName, sourceRef, position, properties);
 
                 return $"/{ptSheetName}/pivottable[{ptIdx}]";
+            }
+
+            case "col" or "column":
+            {
+                var colSegments = parentPath.TrimStart('/').Split('/', 2);
+                var colSheetName = colSegments[0];
+                var colWorksheet = FindWorksheet(colSheetName)
+                    ?? throw new ArgumentException($"Sheet not found: {colSheetName}");
+
+                // Determine insert column: index (1-based) or name from properties
+                string insertColName;
+                if (properties.TryGetValue("name", out var colNameProp) && !string.IsNullOrEmpty(colNameProp))
+                {
+                    insertColName = colNameProp.ToUpperInvariant();
+                }
+                else if (index.HasValue)
+                {
+                    insertColName = IndexToColumnName(index.Value);
+                }
+                else
+                {
+                    // Append after last used column
+                    var ws = GetSheet(colWorksheet);
+                    var sheetDataForCol = ws.GetFirstChild<SheetData>();
+                    int maxColIdx = 0;
+                    if (sheetDataForCol != null)
+                    {
+                        foreach (var r in sheetDataForCol.Elements<Row>())
+                            foreach (var cx in r.Elements<Cell>())
+                            {
+                                if (cx.CellReference?.Value == null) continue;
+                                var (c, _) = ParseCellReference(cx.CellReference.Value);
+                                var ci = ColumnNameToIndex(c);
+                                if (ci > maxColIdx) maxColIdx = ci;
+                            }
+                    }
+                    insertColName = IndexToColumnName(maxColIdx + 1);
+                }
+
+                var insertColIdx = ColumnNameToIndex(insertColName);
+
+                // Shift existing columns right if needed
+                var colSheetData = GetSheet(colWorksheet).GetFirstChild<SheetData>();
+                bool colNeedsShift = colSheetData != null && colSheetData.Elements<Row>()
+                    .Any(r => r.Elements<Cell>().Any(c =>
+                    {
+                        if (c.CellReference?.Value == null) return false;
+                        var (col, _) = ParseCellReference(c.CellReference.Value);
+                        return ColumnNameToIndex(col) >= insertColIdx;
+                    }));
+                if (colNeedsShift)
+                    ShiftColumnsRight(colWorksheet, insertColIdx);
+
+                // Optionally set column width
+                if (properties.TryGetValue("width", out var widthStr) && double.TryParse(widthStr, out var width))
+                {
+                    var ws = GetSheet(colWorksheet);
+                    var columns = ws.GetFirstChild<Columns>() ?? ws.PrependChild(new Columns());
+                    columns.AppendChild(new Column
+                    {
+                        Min = (uint)insertColIdx,
+                        Max = (uint)insertColIdx,
+                        Width = width,
+                        CustomWidth = true
+                    });
+                }
+
+                SaveWorksheet(colWorksheet);
+                return $"/{colSheetName}/col[{insertColName}]";
             }
 
             default:

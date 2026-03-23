@@ -20,6 +20,8 @@ public partial class ExcelHandler
     /// Sheet1!A1 → /Sheet1/A1
     /// Sheet1!A1:D10 → /Sheet1/A1:D10
     /// Sheet1!row[2] → /Sheet1/row[2]
+    /// Sheet1!1:1 → /Sheet1/row[1]   (whole row)
+    /// Sheet1!A:A → /Sheet1/col[A]   (whole column)
     /// Paths already starting with '/' are returned unchanged.
     /// </summary>
     internal static string NormalizeExcelPath(string path)
@@ -27,7 +29,23 @@ public partial class ExcelHandler
         if (path.StartsWith('/')) return path;
         var bang = path.IndexOf('!');
         if (bang > 0)
-            return $"/{path[..bang]}/{path[(bang + 1)..]}";
+        {
+            var sheet = path[..bang];
+            var selector = path[(bang + 1)..];
+
+            // Whole-row notation: "1:1" or "3:3"
+            var wholeRow = System.Text.RegularExpressions.Regex.Match(selector, @"^(\d+):\1$");
+            if (wholeRow.Success)
+                return $"/{sheet}/row[{wholeRow.Groups[1].Value}]";
+
+            // Whole-column notation: "A:A" or "AB:AB"
+            var wholeCol = System.Text.RegularExpressions.Regex.Match(selector, @"^([A-Za-z]+):\1$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (wholeCol.Success)
+                return $"/{sheet}/col[{wholeCol.Groups[1].Value.ToUpperInvariant()}]";
+
+            return $"/{sheet}/{selector}";
+        }
         return path;
     }
 

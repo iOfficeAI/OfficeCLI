@@ -104,6 +104,222 @@ public partial class ExcelHandler
         return null;
     }
 
+    // ==================== Row/Column insert shift ====================
+
+    /// <summary>
+    /// Shift all rows >= insertRow down by 1 to make room for a new row insert.
+    /// Mirrors ShiftRowsUp but in the opposite direction.
+    /// </summary>
+    internal void ShiftRowsDown(WorksheetPart worksheet, int insertRow)
+    {
+        var ws = GetSheet(worksheet);
+        var sheetData = ws.GetFirstChild<SheetData>();
+
+        if (sheetData != null)
+        {
+            // Process in reverse order to avoid collision
+            foreach (var row in sheetData.Elements<Row>().OrderByDescending(r => r.RowIndex?.Value ?? 0).ToList())
+            {
+                var rowIdx = (int)(row.RowIndex?.Value ?? 0);
+                if (rowIdx < insertRow) continue;
+
+                foreach (var cell in row.Elements<Cell>())
+                {
+                    if (cell.CellReference?.Value != null)
+                    {
+                        var (col, _) = ParseCellReference(cell.CellReference.Value);
+                        cell.CellReference = $"{col}{rowIdx + 1}";
+                    }
+                }
+                row.RowIndex = (uint)(rowIdx + 1);
+            }
+        }
+
+        // Merge cells
+        var mergeCells = ws.GetFirstChild<MergeCells>();
+        if (mergeCells != null)
+        {
+            foreach (var mc in mergeCells.Elements<MergeCell>().ToList())
+            {
+                var shifted = ShiftRowInRefDown(mc.Reference?.Value, insertRow);
+                if (shifted != null) mc.Reference = shifted;
+            }
+        }
+
+        // Conditional formatting sqref
+        foreach (var cf in ws.Elements<ConditionalFormatting>().ToList())
+        {
+            if (cf.SequenceOfReferences?.HasValue != true) continue;
+            var newRefs = cf.SequenceOfReferences.Items
+                .Select(r => ShiftRowInRefDown(r.Value, insertRow) ?? r.Value).ToList();
+            cf.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
+        }
+
+        // Data validations sqref
+        var dvs = ws.GetFirstChild<DataValidations>();
+        if (dvs != null)
+        {
+            foreach (var dv in dvs.Elements<DataValidation>().ToList())
+            {
+                if (dv.SequenceOfReferences?.HasValue != true) continue;
+                var newRefs = dv.SequenceOfReferences.Items
+                    .Select(r => ShiftRowInRefDown(r.Value, insertRow) ?? r.Value).ToList();
+                dv.SequenceOfReferences = new ListValue<StringValue>(newRefs.Select(r => new StringValue(r)));
+            }
+        }
+
+        // AutoFilter
+        var af = ws.GetFirstChild<AutoFilter>();
+        if (af?.Reference?.Value != null)
+        {
+            var shifted = ShiftRowInRefDown(af.Reference.Value, insertRow);
+            if (shifted != null) af.Reference = shifted;
+        }
+
+        // Named ranges
+        ShiftNamedRangeRowsDown(worksheet, insertRow);
+    }
+
+    /// <summary>
+    /// Shift all columns >= insertColIdx right by 1 to make room for a new column insert.
+    /// </summary>
+    internal void ShiftColumnsRight(WorksheetPart worksheet, int insertColIdx)
+    {
+        var ws = GetSheet(worksheet);
+        var sheetData = ws.GetFirstChild<SheetData>();
+
+        if (sheetData != null)
+        {
+            foreach (var row in sheetData.Elements<Row>())
+            {
+                foreach (var cell in row.Elements<Cell>().ToList())
+                {
+                    if (cell.CellReference?.Value == null) continue;
+                    var (col, rowIdx) = ParseCellReference(cell.CellReference.Value);
+                    var colIdx = ColumnNameToIndex(col);
+                    if (colIdx >= insertColIdx)
+                        cell.CellReference = $"{IndexToColumnName(colIdx + 1)}{rowIdx}";
+                }
+            }
+        }
+
+        // Column width/style definitions
+        var columns = ws.GetFirstChild<Columns>();
+        if (columns != null)
+        {
+            foreach (var col in columns.Elements<Column>().OrderByDescending(c => c.Min?.Value ?? 0).ToList())
+            {
+                var min = (int)(col.Min?.Value ?? 0);
+                var max = (int)(col.Max?.Value ?? 0);
+                if (min >= insertColIdx)
+                {
+                    col.Min = (uint)(min + 1);
+                    col.Max = (uint)(max + 1);
+                }
+                else if (max >= insertColIdx)
+                {
+                    col.Max = (uint)(max + 1);
+                }
+            }
+        }
+
+        // Merge cells
+        var mergeCells = ws.GetFirstChild<MergeCells>();
+        if (mergeCells != null)
+        {
+            foreach (var mc in mergeCells.Elements<MergeCell>().ToList())
+            {
+                var shifted = ShiftColInRefRight(mc.Reference?.Value, insertColIdx);
+                if (shifted != null) mc.Reference = shifted;
+            }
+        }
+
+        // Named ranges
+        ShiftNamedRangeColsRight(worksheet, insertColIdx);
+    }
+
+    private static string? ShiftRowInRefDown(string? refStr, int insertRow)
+    {
+        if (string.IsNullOrEmpty(refStr)) return null;
+        var parts = refStr.Split(':');
+        var shifted = new List<string>(parts.Length);
+        foreach (var part in parts)
+        {
+            try
+            {
+                var (col, row) = ParseCellReference(part);
+                shifted.Add(row >= insertRow ? $"{col}{row + 1}" : part);
+            }
+            catch { shifted.Add(part); }
+        }
+        return string.Join(":", shifted);
+    }
+
+    private static string? ShiftColInRefRight(string? refStr, int insertColIdx)
+    {
+        if (string.IsNullOrEmpty(refStr)) return null;
+        var parts = refStr.Split(':');
+        var shifted = new List<string>(parts.Length);
+        foreach (var part in parts)
+        {
+            try
+            {
+                var (col, row) = ParseCellReference(part);
+                var colIdx = ColumnNameToIndex(col);
+                shifted.Add(colIdx >= insertColIdx ? $"{IndexToColumnName(colIdx + 1)}{row}" : part);
+            }
+            catch { shifted.Add(part); }
+        }
+        return string.Join(":", shifted);
+    }
+
+    private void ShiftNamedRangeRowsDown(WorksheetPart worksheet, int insertRow)
+    {
+        var sheetName = GetWorksheets().FirstOrDefault(w => w.Part == worksheet).Name;
+        if (string.IsNullOrEmpty(sheetName)) return;
+        var definedNames = GetWorkbook().GetFirstChild<DefinedNames>();
+        if (definedNames == null) return;
+        foreach (var dn in definedNames.Elements<DefinedName>())
+        {
+            if (dn.Text == null) continue;
+            dn.Text = Regex.Replace(dn.Text,
+                $@"(?<={Regex.Escape(sheetName)}!\$?[A-Z]+\$?)(\d+)",
+                m =>
+                {
+                    var row = int.Parse(m.Value);
+                    return row >= insertRow ? (row + 1).ToString() : m.Value;
+                },
+                RegexOptions.IgnoreCase);
+        }
+        GetWorkbook().Save();
+    }
+
+    private void ShiftNamedRangeColsRight(WorksheetPart worksheet, int insertColIdx)
+    {
+        var sheetName = GetWorksheets().FirstOrDefault(w => w.Part == worksheet).Name;
+        if (string.IsNullOrEmpty(sheetName)) return;
+        var definedNames = GetWorkbook().GetFirstChild<DefinedNames>();
+        if (definedNames == null) return;
+        foreach (var dn in definedNames.Elements<DefinedName>())
+        {
+            if (dn.Text == null) continue;
+            dn.Text = Regex.Replace(dn.Text,
+                $@"(?<={Regex.Escape(sheetName)}!)\$?([A-Z]+)\$?(\d+)",
+                m =>
+                {
+                    var col = m.Groups[1].Value.ToUpperInvariant();
+                    var row = m.Groups[2].Value;
+                    var colIdx = ColumnNameToIndex(col);
+                    if (colIdx < insertColIdx) return m.Value;
+                    var dollar1 = m.Value.StartsWith("$") ? "$" : "";
+                    var dollar2 = m.Value.Contains("$" + col + "$") ? "$" : "";
+                    return $"{dollar1}{IndexToColumnName(colIdx + 1)}{dollar2}{row}";
+                },
+                RegexOptions.IgnoreCase);
+        }
+        GetWorkbook().Save();
+    }
+
     // ==================== Row shift ====================
 
     private void ShiftRowsUp(WorksheetPart worksheet, int deletedRow)
@@ -381,13 +597,14 @@ public partial class ExcelHandler
 
     // ==================== Formula impact detection ====================
 
+    private record FormulaImpact(string CellRef, bool IsRefError);
+
     /// <summary>
-    /// Find all cells with formulas that reference rows >= deletedRow (will shift or become #REF!).
-    /// Returns list of cell references like ["C3", "D5"].
+    /// Find all surviving cells with formulas that reference the deleted row (→ #REF!) or rows after it (→ shifted).
     /// </summary>
-    private List<string> CollectFormulaCellsAffectedByRowDelete(WorksheetPart worksheet, int deletedRow)
+    private List<FormulaImpact> CollectFormulaCellsAffectedByRowDelete(WorksheetPart worksheet, int deletedRow)
     {
-        var affected = new List<string>();
+        var affected = new List<FormulaImpact>();
         var sheetData = GetSheet(worksheet).GetFirstChild<SheetData>();
         if (sheetData == null) return affected;
 
@@ -397,35 +614,43 @@ public partial class ExcelHandler
             {
                 var formula = cell.CellFormula?.Text;
                 if (string.IsNullOrEmpty(formula)) continue;
-                // Formula references a row >= deletedRow
-                if (Regex.IsMatch(formula, $@"\$?[A-Z]+\$?({deletedRow}|[{deletedRow + 1}-9]\d*|\d{{2,}})", RegexOptions.IgnoreCase)
-                    || Regex.IsMatch(formula, $@"\$?[A-Z]+\$?[{deletedRow}-9]\d*", RegexOptions.IgnoreCase))
-                {
-                    // Simpler: any row number >= deletedRow in the formula
-                    if (FormulaReferencesRowOrAbove(formula, deletedRow))
-                        affected.Add(cell.CellReference?.Value ?? "?");
-                }
+
+                bool refError = FormulaReferencesExactRow(formula, deletedRow);
+                bool shifted = !refError && FormulaReferencesRowAbove(formula, deletedRow);
+
+                if (refError || shifted)
+                    affected.Add(new FormulaImpact(cell.CellReference?.Value ?? "?", refError));
             }
         }
         return affected;
     }
 
-    private static bool FormulaReferencesRowOrAbove(string formula, int deletedRow)
+    private static bool FormulaReferencesExactRow(string formula, int row)
     {
         foreach (Match m in Regex.Matches(formula, @"\$?[A-Z]+\$?(\d+)", RegexOptions.IgnoreCase))
         {
-            if (int.TryParse(m.Groups[1].Value, out var row) && row >= deletedRow)
+            if (int.TryParse(m.Groups[1].Value, out var r) && r == row)
+                return true;
+        }
+        return false;
+    }
+
+    private static bool FormulaReferencesRowAbove(string formula, int deletedRow)
+    {
+        foreach (Match m in Regex.Matches(formula, @"\$?[A-Z]+\$?(\d+)", RegexOptions.IgnoreCase))
+        {
+            if (int.TryParse(m.Groups[1].Value, out var row) && row > deletedRow)
                 return true;
         }
         return false;
     }
 
     /// <summary>
-    /// Find all cells with formulas that reference columns >= deletedColIdx.
+    /// Find all surviving cells with formulas that reference the deleted column (→ #REF!) or columns after it (→ shifted).
     /// </summary>
-    private List<string> CollectFormulaCellsAffectedByColDelete(WorksheetPart worksheet, int deletedColIdx)
+    private List<FormulaImpact> CollectFormulaCellsAffectedByColDelete(WorksheetPart worksheet, int deletedColIdx)
     {
-        var affected = new List<string>();
+        var affected = new List<FormulaImpact>();
         var sheetData = GetSheet(worksheet).GetFirstChild<SheetData>();
         if (sheetData == null) return affected;
 
@@ -435,28 +660,51 @@ public partial class ExcelHandler
             {
                 var formula = cell.CellFormula?.Text;
                 if (string.IsNullOrEmpty(formula)) continue;
-                if (FormulaReferencesColOrAbove(formula, deletedColIdx))
-                    affected.Add(cell.CellReference?.Value ?? "?");
+
+                bool refError = FormulaReferencesExactCol(formula, deletedColIdx);
+                bool shifted = !refError && FormulaReferencesColAbove(formula, deletedColIdx);
+
+                if (refError || shifted)
+                    affected.Add(new FormulaImpact(cell.CellReference?.Value ?? "?", refError));
             }
         }
         return affected;
     }
 
-    private static bool FormulaReferencesColOrAbove(string formula, int deletedColIdx)
+    private static bool FormulaReferencesExactCol(string formula, int colIdx)
     {
         foreach (Match m in Regex.Matches(formula, @"\$?([A-Z]+)\$?\d+", RegexOptions.IgnoreCase))
         {
-            var colIdx = ColumnNameToIndex(m.Groups[1].Value.ToUpperInvariant());
-            if (colIdx >= deletedColIdx) return true;
+            if (ColumnNameToIndex(m.Groups[1].Value.ToUpperInvariant()) == colIdx)
+                return true;
         }
         return false;
     }
 
-    private static string? FormatFormulaWarning(List<string> affected)
+    private static bool FormulaReferencesColAbove(string formula, int deletedColIdx)
+    {
+        foreach (Match m in Regex.Matches(formula, @"\$?([A-Z]+)\$?\d+", RegexOptions.IgnoreCase))
+        {
+            if (ColumnNameToIndex(m.Groups[1].Value.ToUpperInvariant()) > deletedColIdx)
+                return true;
+        }
+        return false;
+    }
+
+    private static string? FormatFormulaWarning(List<FormulaImpact> affected)
     {
         if (affected.Count == 0) return null;
-        var cells = string.Join(", ", affected);
-        return $"Warning: {affected.Count} formula cell(s) may reference shifted cells — verify: {cells}";
+
+        var refErrors = affected.Where(a => a.IsRefError).Select(a => a.CellRef).ToList();
+        var shifted = affected.Where(a => !a.IsRefError).Select(a => a.CellRef).ToList();
+
+        var parts = new List<string>();
+        if (refErrors.Count > 0)
+            parts.Add($"{refErrors.Count} cell(s) will become #REF!: {string.Join(", ", refErrors)}");
+        if (shifted.Count > 0)
+            parts.Add($"{shifted.Count} cell(s) reference shifted rows/cols (formula text unchanged): {string.Join(", ", shifted)}");
+
+        return $"Warning: {affected.Count} formula cell(s) affected — {string.Join("; ", parts)}";
     }
 
     /// <summary>

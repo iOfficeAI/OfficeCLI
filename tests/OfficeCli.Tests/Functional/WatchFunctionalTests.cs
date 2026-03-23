@@ -280,6 +280,59 @@ public class WatchFunctionalTests : IDisposable
         _handler = new PowerPointHandler(_path, editable: true);
     }
 
+    // ==================== Batch + Watch integration ====================
+
+    [Fact]
+    public async Task Batch_SendsWatchNotification_WhenWatchIsRunning()
+    {
+        // Arrange: create a slide so the file is valid
+        _handler.Add("/", "slide", null, new());
+        _handler.Dispose();
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var pipeName = WatchServer.GetWatchPipeName(_path);
+        string? receivedMessage = null;
+
+        // Simulate WatchServer listening on the named pipe
+        var listenerTask = Task.Run(async () =>
+        {
+            var server = new NamedPipeServerStream(
+                pipeName, PipeDirection.InOut,
+                NamedPipeServerStream.MaxAllowedServerInstances,
+                PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+            try
+            {
+                await server.WaitForConnectionAsync(cts.Token);
+                using var reader = new StreamReader(server, Encoding.UTF8, leaveOpen: true);
+                using var writer = new StreamWriter(server, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
+                receivedMessage = await reader.ReadLineAsync(cts.Token);
+                await writer.WriteLineAsync("ok".AsMemory(), cts.Token);
+            }
+            finally { await server.DisposeAsync(); }
+        }, cts.Token);
+
+        await Task.Delay(200, cts.Token); // let listener start
+
+        // Act: run batch command via CLI
+        var batchJson = System.Text.Json.JsonSerializer.Serialize(new[]
+        {
+            new { command = "add", parent = "/", type = "slide", props = new Dictionary<string, string>() },
+        });
+        var batchFile = Path.Combine(Path.GetTempPath(), $"batch_{Guid.NewGuid():N}.json");
+        await File.WriteAllTextAsync(batchFile, batchJson, cts.Token);
+        try
+        {
+            var root = CommandBuilder.BuildRootCommand();
+            root.Parse(["batch", _path, "--input", batchFile]).Invoke();
+        }
+        finally { File.Delete(batchFile); }
+
+        await listenerTask;
+
+        // Assert: watch received a "refresh" notification
+        receivedMessage.Should().StartWith("refresh");
+    }
+
     // ==================== SSE endpoint ====================
 
     [Fact]
