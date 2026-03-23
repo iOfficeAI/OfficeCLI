@@ -13,14 +13,14 @@ namespace OfficeCli.Core;
 /// </summary>
 public static class AttributeFilter
 {
-    public enum FilterOp { Equal, NotEqual, Contains, GreaterOrEqual, LessOrEqual, Exists }
+    public enum FilterOp { Equal, NotEqual, Contains, GreaterOrEqual, LessOrEqual, GreaterThan, LessThan, Exists }
 
     public record Condition(string Key, FilterOp Op, string Value);
 
-    // Regex: [key op value] where op is ~=, >=, <=, !=, or =
-    // Order matters: multi-char operators before single = to avoid partial match
+    // Regex: [key op value] where op is ~=, >=, <=, !=, =, >, or <
+    // Order matters: multi-char operators before single-char to avoid partial match
     private static readonly Regex AttrRegex = new(
-        @"\[([\w.]+)\s*(~=|>=|<=|\\?!=|=)\s*([^\]]*)\]",
+        @"\[([\w.]+)\s*(~=|>=|<=|\\?!=|=|>|<)\s*([^\]]*)\]",
         RegexOptions.Compiled);
 
     // Regex: [key] (has-attribute, no operator)
@@ -60,7 +60,7 @@ public static class AttributeFilter
 
             // Detect corrupted values from mis-parsed operators (e.g. === parsed as = with value ==X)
             if (val.StartsWith("=") || val.StartsWith("~") || val.StartsWith("!"))
-                throw new CliException($"Malformed selector: invalid operator in \"[{m.Groups[0].Value.Trim('[', ']')}]\". Supported operators: =, !=, ~=, >=, <=")
+                throw new CliException($"Malformed selector: invalid operator in \"[{m.Groups[0].Value.Trim('[', ']')}]\". Supported operators: =, !=, ~=, >=, <=, >, <")
                 {
                     Code = "invalid_selector",
                     Suggestion = $"Did you mean [{key}={val.TrimStart('=', '~', '!')}]?"
@@ -71,6 +71,8 @@ public static class AttributeFilter
                 "~=" => FilterOp.Contains,
                 ">=" => FilterOp.GreaterOrEqual,
                 "<=" => FilterOp.LessOrEqual,
+                ">" => FilterOp.GreaterThan,
+                "<" => FilterOp.LessThan,
                 "!=" => FilterOp.NotEqual,
                 _ => FilterOp.Equal
             };
@@ -101,7 +103,7 @@ public static class AttributeFilter
                 continue;
             }
             // Unrecognized bracket content
-            throw new CliException($"Malformed selector: cannot parse \"[{content}]\". Expected [key=value] with operator =, !=, ~=, >=, or <=")
+            throw new CliException($"Malformed selector: cannot parse \"[{content}]\". Expected [key=value] with operator =, !=, ~=, >=, <=, >, or <")
             {
                 Code = "invalid_selector",
                 Suggestion = "Example: paragraph[style=Heading 1], shape[fill!=#FF0000], cell[formula]"
@@ -123,7 +125,7 @@ public static class AttributeFilter
 
         var toApply = applyAll
             ? conditions
-            : conditions.Where(c => c.Op is FilterOp.Contains or FilterOp.GreaterOrEqual or FilterOp.LessOrEqual or FilterOp.Exists).ToList();
+            : conditions.Where(c => c.Op is FilterOp.Contains or FilterOp.GreaterOrEqual or FilterOp.LessOrEqual or FilterOp.GreaterThan or FilterOp.LessThan or FilterOp.Exists).ToList();
 
         if (toApply.Count == 0) return nodes;
 
@@ -133,7 +135,7 @@ public static class AttributeFilter
     /// <summary>
     /// Filter nodes and collect diagnostic warnings.
     /// Warns when: a filter key doesn't exist in ANY node's Format,
-    /// or when >= / <= is used on a non-numeric value.
+    /// or when >= / <= / > / < is used on a non-numeric value.
     /// </summary>
     public static (List<DocumentNode> Results, List<string> Warnings) ApplyWithWarnings(
         List<DocumentNode> nodes, List<Condition> conditions, bool applyAll = true)
@@ -143,7 +145,7 @@ public static class AttributeFilter
 
         var toApply = applyAll
             ? conditions
-            : conditions.Where(c => c.Op is FilterOp.Contains or FilterOp.GreaterOrEqual or FilterOp.LessOrEqual or FilterOp.Exists).ToList();
+            : conditions.Where(c => c.Op is FilterOp.Contains or FilterOp.GreaterOrEqual or FilterOp.LessOrEqual or FilterOp.GreaterThan or FilterOp.LessThan or FilterOp.Exists).ToList();
 
         if (toApply.Count == 0) return (nodes, warnings);
 
@@ -159,8 +161,8 @@ public static class AttributeFilter
             }
         }
 
-        // Check for non-numeric values on >= / <=
-        foreach (var cond in toApply.Where(c => c.Op is FilterOp.GreaterOrEqual or FilterOp.LessOrEqual))
+        // Check for non-numeric values on >= / <= / > / <
+        foreach (var cond in toApply.Where(c => c.Op is FilterOp.GreaterOrEqual or FilterOp.LessOrEqual or FilterOp.GreaterThan or FilterOp.LessThan))
         {
             if (ExtractNumber(cond.Value) == null && !EmuConverter.TryParseEmu(cond.Value, out _))
             {
@@ -191,6 +193,8 @@ public static class AttributeFilter
         FilterOp.Contains => "~=",
         FilterOp.GreaterOrEqual => ">=",
         FilterOp.LessOrEqual => "<=",
+        FilterOp.GreaterThan => ">",
+        FilterOp.LessThan => "<",
         FilterOp.Exists => "(exists)",
         _ => "?"
     };
@@ -251,6 +255,14 @@ public static class AttributeFilter
             case FilterOp.LessOrEqual:
                 if (!hasKey) return false;
                 return CompareNumeric(actualStr, cond.Value) <= 0;
+
+            case FilterOp.GreaterThan:
+                if (!hasKey) return false;
+                return CompareNumeric(actualStr, cond.Value) > 0;
+
+            case FilterOp.LessThan:
+                if (!hasKey) return false;
+                return CompareNumeric(actualStr, cond.Value) < 0;
 
             default:
                 return true;

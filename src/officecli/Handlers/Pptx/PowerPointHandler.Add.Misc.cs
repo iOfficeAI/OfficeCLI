@@ -249,6 +249,19 @@ public partial class PowerPointHandler
                 };
 
                 var animValue = $"{effect}-{cls}-{duration}-{triggerPart}";
+
+                // Append delay/easing properties if specified
+                if (properties.TryGetValue("delay", out var delay))
+                    animValue += $"-delay={delay}";
+                if (properties.TryGetValue("easein", out var easein))
+                    animValue += $"-easein={easein}";
+                if (properties.TryGetValue("easeout", out var easeout))
+                    animValue += $"-easeout={easeout}";
+                if (properties.TryGetValue("easing", out var easing))
+                    animValue += $"-easing={easing}";
+                if (properties.TryGetValue("direction", out var dir))
+                    animValue += $"-{dir}";
+
                 ApplyShapeAnimation(animSlidePart, animShape, animValue);
                 GetSlide(animSlidePart).Save();
 

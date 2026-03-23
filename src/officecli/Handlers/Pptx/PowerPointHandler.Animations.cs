@@ -1208,6 +1208,61 @@ public partial class PowerPointHandler
 
     private static void ParseTransitionFromXml(string xml, OfficeCli.Core.DocumentNode node)
     {
+        // Also check for morph/p14 transitions inside mc:AlternateContent
+        var mcMatch = System.Text.RegularExpressions.Regex.Match(
+            xml, @"<mc:AlternateContent[^>]*>(.*?)</mc:AlternateContent>",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        if (mcMatch.Success)
+        {
+            var mcInner = mcMatch.Groups[1].Value;
+            // Look for morph: <p159:morph option="byWord"/>
+            var morphMatch = System.Text.RegularExpressions.Regex.Match(mcInner, @"<p159:morph(?:\s+([^/]*))?/?>");
+            if (morphMatch.Success)
+            {
+                var morphAttrs = morphMatch.Groups[1].Value;
+                var optMatch = System.Text.RegularExpressions.Regex.Match(morphAttrs, @"option=""(\w+)""");
+                var option = optMatch.Success ? optMatch.Groups[1].Value : null;
+                node.Format["transition"] = option != null && option != "byObject"
+                    ? $"morph-{option}"
+                    : "morph";
+
+                // Also extract speed/advance from the transition element inside mc:Choice
+                var transInMc = System.Text.RegularExpressions.Regex.Match(mcInner, @"<p:transition([^>]*?)(?:/>|>)");
+                if (transInMc.Success)
+                {
+                    var transAttrs = transInMc.Groups[1].Value;
+                    var spdM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"spd=""(\w+)""");
+                    if (spdM.Success) node.Format["transitionSpeed"] = spdM.Groups[1].Value;
+                    var advM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"advTm=""(\d+)""");
+                    if (advM.Success) node.Format["advanceTime"] = advM.Groups[1].Value;
+                    var clickM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"advClick=""(\d+)""");
+                    if (clickM.Success) node.Format["advanceClick"] = clickM.Groups[1].Value == "1";
+                }
+                return;
+            }
+
+            // Look for p14 transitions (vortex, switch, flip, etc.) with dir attribute
+            var p14Match = System.Text.RegularExpressions.Regex.Match(mcInner, @"<p14:(\w+)(?:\s+([^/]*))?/?>");
+            if (p14Match.Success)
+            {
+                var typeName = p14Match.Groups[1].Value.ToLowerInvariant();
+                var p14Attrs = p14Match.Groups[2].Value;
+                var dirMatch = System.Text.RegularExpressions.Regex.Match(p14Attrs, @"dir=""(\w+)""");
+                if (dirMatch.Success)
+                    typeName = $"{typeName}-{dirMatch.Groups[1].Value.ToLowerInvariant()}";
+                node.Format["transition"] = typeName;
+
+                var transInMc = System.Text.RegularExpressions.Regex.Match(mcInner, @"<p:transition([^>]*?)(?:/>|>)");
+                if (transInMc.Success)
+                {
+                    var transAttrs = transInMc.Groups[1].Value;
+                    var spdM = System.Text.RegularExpressions.Regex.Match(transAttrs, @"spd=""(\w+)""");
+                    if (spdM.Success) node.Format["transitionSpeed"] = spdM.Groups[1].Value;
+                }
+                return;
+            }
+        }
+
         var typeMatch = System.Text.RegularExpressions.Regex.Match(
             xml, @"<p:transition([^>]*?)(?:/>|>(.*?)</p:transition>)",
             System.Text.RegularExpressions.RegexOptions.Singleline);
@@ -1217,11 +1272,19 @@ public partial class PowerPointHandler
         var inner = typeMatch.Groups[2].Value;
 
         // Extract transition type from first child element: <p:fade/> or <p14:vortex/> → "fade" / "vortex"
-        var childMatch = System.Text.RegularExpressions.Regex.Match(inner, @"<(?:p|p14|p159):(\w+)[\s/>]");
+        var childMatch = System.Text.RegularExpressions.Regex.Match(inner, @"<(?:p|p14|p159):(\w+)([^/>]*)[\s/>]");
         if (childMatch.Success)
         {
             var typeName = childMatch.Groups[1].Value.ToLowerInvariant();
-            node.Format["transition"] = typeName == "randombar" ? "bars" : typeName;
+            typeName = typeName == "randombar" ? "bars" : typeName;
+
+            // Extract direction attribute from the child element
+            var childAttrs = childMatch.Groups[2].Value;
+            var dirMatch = System.Text.RegularExpressions.Regex.Match(childAttrs, @"dir=""(\w+)""");
+            if (dirMatch.Success)
+                typeName = $"{typeName}-{dirMatch.Groups[1].Value.ToLowerInvariant()}";
+
+            node.Format["transition"] = typeName;
         }
 
         // Extract speed attribute
@@ -1273,13 +1336,101 @@ public partial class PowerPointHandler
                 "flash"     => "flash",
                 _           => transElem.LocalName.ToLowerInvariant()
             };
+
+            // Read direction from the transition child element
+            var direction = ReadTransitionDirection(transElem);
+            if (direction != null)
+                typeName = $"{typeName}-{direction}";
+
             node.Format["transition"] = typeName;
         }
+
+        // Speed
+        if (trans.Speed?.HasValue == true)
+            node.Format["transitionSpeed"] = trans.Speed.InnerText;
 
         if (trans.AdvanceAfterTime != null)
             node.Format["advanceTime"] = trans.AdvanceAfterTime.Value;
         if (trans.AdvanceOnClick?.Value == false)
             node.Format["advanceClick"] = false;
+    }
+
+    /// <summary>
+    /// Read the direction attribute from a typed transition element.
+    /// Returns a direction string like "left", "right", "horizontal", "in", etc.
+    /// Returns null if the direction is the default for that transition type (to avoid appending redundant info).
+    /// </summary>
+    private static string? ReadTransitionDirection(OpenXmlElement transElem)
+    {
+        // Slide direction transitions: always include direction (users commonly specify these)
+        if (transElem is WipeTransition wipe && wipe.Direction?.HasValue == true)
+            return MapSlideDirection(wipe.Direction.Value);
+        if (transElem is PushTransition push && push.Direction?.HasValue == true)
+            return MapSlideDirection(push.Direction.Value);
+        if (transElem is CoverTransition cover && cover.Direction != null)
+            return cover.Direction.Value?.ToLowerInvariant();
+        if (transElem is PullTransition pull && pull.Direction != null)
+            return pull.Direction.Value?.ToLowerInvariant();
+
+        // In/out direction: zoom (default: in)
+        if (transElem is ZoomTransition zoom && zoom.Direction?.HasValue == true)
+            return zoom.Direction.Value == TransitionInOutDirectionValues.Out ? "out" : null;
+
+        // Split: orientation + in/out (default: horizontal-in)
+        if (transElem is SplitTransition split)
+        {
+            var orient = split.Orientation?.HasValue == true && split.Orientation.Value == DirectionValues.Vertical
+                ? "vertical" : "horizontal";
+            var dir = split.Direction?.HasValue == true && split.Direction.Value == TransitionInOutDirectionValues.Out
+                ? "out" : "in";
+            var combined = $"{orient}-{dir}";
+            return combined == "horizontal-in" ? null : combined;
+        }
+
+        // Orientation-based: blinds, checker, comb, randombar (default: horizontal)
+        if (transElem is BlindsTransition blinds && blinds.Direction?.HasValue == true)
+            return blinds.Direction.Value == DirectionValues.Vertical ? "vertical" : null;
+        if (transElem is CheckerTransition checker && checker.Direction?.HasValue == true)
+            return checker.Direction.Value == DirectionValues.Vertical ? "vertical" : null;
+        if (transElem is CombTransition comb && comb.Direction?.HasValue == true)
+            return comb.Direction.Value == DirectionValues.Vertical ? "vertical" : null;
+        if (transElem is RandomBarTransition rbar && rbar.Direction?.HasValue == true)
+            return rbar.Direction.Value == DirectionValues.Vertical ? "vertical" : null;
+
+        // Corner direction: strips (default: rd/rightdown)
+        if (transElem is StripsTransition strips && strips.Direction?.HasValue == true)
+        {
+            var cv = strips.Direction.Value;
+            if (cv == TransitionCornerDirectionValues.RightDown) return null; // default
+            if (cv == TransitionCornerDirectionValues.LeftUp) return "leftup";
+            if (cv == TransitionCornerDirectionValues.RightUp) return "rightup";
+            if (cv == TransitionCornerDirectionValues.LeftDown) return "leftdown";
+        }
+
+        // p14/p159 transitions: read dir attribute from XML (vortex, switch, flip, glitter, pan, doors, window)
+        var dirAttr = transElem.GetAttributes().FirstOrDefault(a => a.LocalName == "dir");
+        if (!string.IsNullOrEmpty(dirAttr.Value))
+        {
+            var d = dirAttr.Value.ToLowerInvariant();
+            // Default for most p14 transitions is "l" or "left"
+            return d == "l" ? null : d;
+        }
+
+        // Morph option attribute
+        var optAttr = transElem.GetAttributes().FirstOrDefault(a => a.LocalName == "option");
+        if (!string.IsNullOrEmpty(optAttr.Value) && optAttr.Value != "byObject")
+            return optAttr.Value;
+
+        return null;
+    }
+
+    private static string MapSlideDirection(TransitionSlideDirectionValues dir)
+    {
+        if (dir == TransitionSlideDirectionValues.Left) return "left";
+        if (dir == TransitionSlideDirectionValues.Right) return "right";
+        if (dir == TransitionSlideDirectionValues.Up) return "up";
+        if (dir == TransitionSlideDirectionValues.Down) return "down";
+        return "left";
     }
 
     /// <summary>Returns a preset subtype for the given effect name, or 0 for default.</summary>

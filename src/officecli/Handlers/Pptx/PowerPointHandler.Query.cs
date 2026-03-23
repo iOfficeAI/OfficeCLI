@@ -253,8 +253,20 @@ public partial class PowerPointHandler
                             animNode.Format["easeout"] = (int)(effectCTn.Deceleration.Value / 1000);
 
                         // Delay (stored on midCTn start condition)
-                        // Tree: effectCTn → effectPar → midCTn.ChildTimeNodeList → midCTn
-                        var midCTn = effectCTn.Parent?.Parent?.Parent as CommonTimeNode;
+                        // Walk up from effectCTn to find the wrapping midCTn that holds the delay.
+                        // The nesting depth can vary: effectCTn > ParallelTimeNode > ChildTimeNodeList > midCTn
+                        CommonTimeNode? midCTn = null;
+                        var cur = effectCTn.Parent;
+                        for (int walkDepth = 0; walkDepth < 5 && cur != null; walkDepth++)
+                        {
+                            if (cur is CommonTimeNode candidate && candidate != effectCTn
+                                && candidate.PresetId == null) // midCTn has no presetId
+                            {
+                                midCTn = candidate;
+                                break;
+                            }
+                            cur = cur.Parent;
+                        }
                         var midDelayVal = midCTn?.StartConditionList?.GetFirstChild<Condition>()?.Delay?.Value;
                         if (midDelayVal != null && midDelayVal != "0"
                             && int.TryParse(midDelayVal, out var dMs) && dMs > 0)

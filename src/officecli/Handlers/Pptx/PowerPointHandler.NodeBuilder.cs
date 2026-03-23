@@ -352,6 +352,17 @@ public partial class PowerPointHandler
             node.Format["preset"] = presetGeom.Preset.InnerText;
             node.Format["geometry"] = presetGeom.Preset.InnerText;
         }
+        else
+        {
+            var custGeom = shape.ShapeProperties?.GetFirstChild<Drawing.CustomGeometry>();
+            if (custGeom != null)
+            {
+                node.Format["preset"] = "custom";
+                // Reconstruct SVG-like path string from the custom geometry path list
+                var pathData = ReconstructCustomGeometryPath(custGeom);
+                node.Format["geometry"] = !string.IsNullOrEmpty(pathData) ? pathData : "custom";
+            }
+        }
 
         // Gradient fill
         var gradFill = shape.ShapeProperties?.GetFirstChild<Drawing.GradientFill>();
@@ -972,5 +983,53 @@ public partial class PowerPointHandler
             node.Format["rotation"] = $"{xfrm.Rotation.Value / 60000.0:0.##}";
 
         return node;
+    }
+
+    /// <summary>
+    /// Reconstruct an SVG-like path string from a CustomGeometry element's path list.
+    /// </summary>
+    private static string ReconstructCustomGeometryPath(Drawing.CustomGeometry custGeom)
+    {
+        var sb = new StringBuilder();
+        var pathList = custGeom.GetFirstChild<Drawing.PathList>();
+        if (pathList == null) return "custom";
+
+        foreach (var path in pathList.Elements<Drawing.Path>())
+        {
+            foreach (var child in path.ChildElements)
+            {
+                switch (child)
+                {
+                    case Drawing.MoveTo mt:
+                        var mPt = mt.GetFirstChild<Drawing.Point>();
+                        if (mPt != null)
+                            sb.Append($"M{mPt.X?.Value ?? "0"},{mPt.Y?.Value ?? "0"} ");
+                        break;
+                    case Drawing.LineTo lt:
+                        var lPt = lt.GetFirstChild<Drawing.Point>();
+                        if (lPt != null)
+                            sb.Append($"L{lPt.X?.Value ?? "0"},{lPt.Y?.Value ?? "0"} ");
+                        break;
+                    case Drawing.CubicBezierCurveTo cb:
+                        var pts = cb.Elements<Drawing.Point>().ToList();
+                        if (pts.Count >= 3)
+                            sb.Append($"C{pts[0].X?.Value ?? "0"},{pts[0].Y?.Value ?? "0"} {pts[1].X?.Value ?? "0"},{pts[1].Y?.Value ?? "0"} {pts[2].X?.Value ?? "0"},{pts[2].Y?.Value ?? "0"} ");
+                        break;
+                    case Drawing.QuadraticBezierCurveTo qb:
+                        var qPts = qb.Elements<Drawing.Point>().ToList();
+                        if (qPts.Count >= 2)
+                            sb.Append($"Q{qPts[0].X?.Value ?? "0"},{qPts[0].Y?.Value ?? "0"} {qPts[1].X?.Value ?? "0"},{qPts[1].Y?.Value ?? "0"} ");
+                        break;
+                    case Drawing.ArcTo at:
+                        sb.Append($"A{at.WidthRadius?.Value ?? "0"},{at.HeightRadius?.Value ?? "0"} ");
+                        break;
+                    case Drawing.CloseShapePath:
+                        sb.Append("Z ");
+                        break;
+                }
+            }
+        }
+
+        return sb.ToString().Trim();
     }
 }
