@@ -1117,73 +1117,83 @@ public partial class PowerPointHandler
         if (timing == null) return;
 
         var shapeIdStr = shapeId.Value.ToString();
-        var shapeTarget = timing.Descendants<ShapeTarget>()
-            .FirstOrDefault(st => st.ShapeId?.Value == shapeIdStr);
-        if (shapeTarget == null) return;
+        var allShapeTargets = timing.Descendants<ShapeTarget>()
+            .Where(st => st.ShapeId?.Value == shapeIdStr)
+            .ToList();
+        if (allShapeTargets.Count == 0) return;
 
-        // Find the effect CommonTimeNode (the one with PresetClass + PresetId)
-        // Skip motion path CTns (presetClass="motion" — not a valid SDK enum)
-        CommonTimeNode? effectCTn = null;
-        OpenXmlElement? cur = shapeTarget;
-        while (cur != null)
+        // Collect all distinct animations for this shape
+        var seenCTns = new HashSet<CommonTimeNode>();
+        int animIdx = 0;
+        foreach (var shapeTarget in allShapeTargets)
         {
-            if (cur is CommonTimeNode ctn && ctn.PresetClass != null && ctn.PresetId != null)
+            // Find the effect CommonTimeNode (the one with PresetClass + PresetId)
+            // Skip motion path CTns (presetClass="motion" — not a valid SDK enum)
+            CommonTimeNode? effectCTn = null;
+            OpenXmlElement? cur = shapeTarget;
+            while (cur != null)
             {
-                var rawCls = ctn.GetAttributes().FirstOrDefault(a => a.LocalName == "presetClass").Value ?? "";
-                if (rawCls != "motion") { effectCTn = ctn; break; }
+                if (cur is CommonTimeNode ctn && ctn.PresetClass != null && ctn.PresetId != null)
+                {
+                    var rawCls2 = ctn.GetAttributes().FirstOrDefault(a => a.LocalName == "presetClass").Value ?? "";
+                    if (rawCls2 != "motion") { effectCTn = ctn; break; }
+                }
+                cur = cur.Parent;
             }
-            cur = cur.Parent;
+            if (effectCTn == null) continue;
+            if (!seenCTns.Add(effectCTn)) continue; // skip duplicate CTn references
+
+            var rawPresetClass = effectCTn.GetAttributes().FirstOrDefault(a => a.LocalName == "presetClass").Value ?? "";
+            var cls = rawPresetClass == "exit" ? "exit"
+                    : rawPresetClass == "emphasis" ? "emphasis"
+                    : "entrance";
+
+            // Duration: check animEffect, animScale, animRot, or anim children
+            var dur = 500;
+            var animEffect = effectCTn.Descendants<AnimateEffect>().FirstOrDefault();
+            if (int.TryParse(animEffect?.CommonBehavior?.CommonTimeNode?.Duration, out var d)) dur = d;
+            else if (int.TryParse(effectCTn.Descendants<AnimateScale>().FirstOrDefault()?.CommonBehavior?.CommonTimeNode?.Duration, out var d2)) dur = d2;
+            else if (int.TryParse(effectCTn.Descendants<AnimateRotation>().FirstOrDefault()?.CommonBehavior?.CommonTimeNode?.Duration, out var d3)) dur = d3;
+            else if (int.TryParse(effectCTn.Descendants<Animate>().FirstOrDefault()?.CommonBehavior?.CommonTimeNode?.Duration, out var d4)) dur = d4;
+
+            // Effect name from filter string or presetId
+            var filter = animEffect?.Filter?.Value ?? "";
+            var presetId = effectCTn.PresetId?.Value ?? 0;
+            var effectName = filter switch
+            {
+                var f when f.StartsWith("blinds")           => "blinds",
+                "box"                                       => "box",
+                var f when f.StartsWith("checkerboard")     => "checkerboard",
+                "circle"                                    => "circle",
+                var f when f.StartsWith("crawl")            => "crawl",
+                "diamond"                                   => "diamond",
+                "dissolve"                                  => "dissolve",
+                "fade" when presetId != 17                  => "fade", // exclude swivel which uses fade+animRot
+                "flash"                                     => "flash",
+                "plus"                                      => "plus",
+                "random"                                    => "random",
+                var f when f.StartsWith("barn")             => "split",
+                var f when f.StartsWith("strips")           => "strips",
+                "wedge"                                     => "wedge",
+                var f when f.StartsWith("wheel")            => "wheel",
+                var f when f.StartsWith("wipe")             => "wipe",
+                _ => presetId switch
+                {
+                    1  => "appear",
+                    2  => "fly",
+                    10 => "fade",
+                    12 => "float",
+                    17 => "swivel",
+                    21 => "zoom",
+                    24 => "bounce",
+                    _  => "unknown"
+                }
+            };
+
+            animIdx++;
+            var key = animIdx == 1 ? "animation" : $"animation{animIdx}";
+            node.Format[key] = $"{effectName}-{cls}-{dur}";
         }
-        if (effectCTn == null) return;
-
-        var rawPresetClass = effectCTn.GetAttributes().FirstOrDefault(a => a.LocalName == "presetClass").Value ?? "";
-        var cls = rawPresetClass == "exit" ? "exit"
-                : rawPresetClass == "emphasis" ? "emphasis"
-                : "entrance";
-
-        // Duration: check animEffect, animScale, animRot, or anim children
-        var dur = 500;
-        var animEffect = effectCTn.Descendants<AnimateEffect>().FirstOrDefault();
-        if (int.TryParse(animEffect?.CommonBehavior?.CommonTimeNode?.Duration, out var d)) dur = d;
-        else if (int.TryParse(effectCTn.Descendants<AnimateScale>().FirstOrDefault()?.CommonBehavior?.CommonTimeNode?.Duration, out var d2)) dur = d2;
-        else if (int.TryParse(effectCTn.Descendants<AnimateRotation>().FirstOrDefault()?.CommonBehavior?.CommonTimeNode?.Duration, out var d3)) dur = d3;
-        else if (int.TryParse(effectCTn.Descendants<Animate>().FirstOrDefault()?.CommonBehavior?.CommonTimeNode?.Duration, out var d4)) dur = d4;
-
-        // Effect name from filter string or presetId
-        var filter = animEffect?.Filter?.Value ?? "";
-        var presetId = effectCTn.PresetId?.Value ?? 0;
-        var effectName = filter switch
-        {
-            var f when f.StartsWith("blinds")           => "blinds",
-            "box"                                       => "box",
-            var f when f.StartsWith("checkerboard")     => "checkerboard",
-            "circle"                                    => "circle",
-            var f when f.StartsWith("crawl")            => "crawl",
-            "diamond"                                   => "diamond",
-            "dissolve"                                  => "dissolve",
-            "fade" when presetId != 17                  => "fade", // exclude swivel which uses fade+animRot
-            "flash"                                     => "flash",
-            "plus"                                      => "plus",
-            "random"                                    => "random",
-            var f when f.StartsWith("barn")             => "split",
-            var f when f.StartsWith("strips")           => "strips",
-            "wedge"                                     => "wedge",
-            var f when f.StartsWith("wheel")            => "wheel",
-            var f when f.StartsWith("wipe")             => "wipe",
-            _ => presetId switch
-            {
-                1  => "appear",
-                2  => "fly",
-                10 => "fade",
-                12 => "float",
-                17 => "swivel",
-                21 => "zoom",
-                24 => "bounce",
-                _  => "unknown"
-            }
-        };
-
-        node.Format["animation"] = $"{effectName}-{cls}-{dur}";
     }
 
     /// <summary>

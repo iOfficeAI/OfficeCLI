@@ -433,9 +433,62 @@ public partial class PowerPointHandler
             return node;
         }
 
-        // Try resolving logical paths with deeper segments (e.g. /slide[1]/table[1]/tr[1])
+        // Handle table sub-paths: /slide[N]/table[M]/tr[R] or /slide[N]/table[M]/tr[R]/tc[C]
+        // Must come before generic XML fallback to use proper Format keys and unit formatting
+        var tableSubMatch = Regex.Match(path, @"^/slide\[(\d+)\]/table\[(\d+)\]/(\w+)\[(\d+)\](?:/(\w+)\[(\d+)\])?$");
+        if (tableSubMatch.Success)
+        {
+            var tSlideIdx = int.Parse(tableSubMatch.Groups[1].Value);
+            var tTableIdx = int.Parse(tableSubMatch.Groups[2].Value);
+            var tSubType = tableSubMatch.Groups[3].Value;  // "tr"
+            var tSubIdx = int.Parse(tableSubMatch.Groups[4].Value);
+
+            var tSlideParts = GetSlideParts().ToList();
+            if (tSlideIdx < 1 || tSlideIdx > tSlideParts.Count)
+                throw new ArgumentException($"Slide {tSlideIdx} not found (total: {tSlideParts.Count})");
+
+            var tShapeTree = GetSlide(tSlideParts[tSlideIdx - 1]).CommonSlideData?.ShapeTree;
+            if (tShapeTree == null) throw new ArgumentException($"Slide {tSlideIdx} has no shapes");
+
+            var tTables = tShapeTree.Elements<GraphicFrame>()
+                .Where(gf => gf.Descendants<Drawing.Table>().Any()).ToList();
+            if (tTableIdx < 1 || tTableIdx > tTables.Count)
+                throw new ArgumentException($"Table {tTableIdx} not found (total: {tTables.Count})");
+
+            // Build table node with sufficient depth to include rows and cells
+            var tableNode = TableToNode(tTables[tTableIdx - 1], tSlideIdx, tTableIdx, 2);
+
+            // Find the row
+            if (tSubType.Equals("tr", StringComparison.OrdinalIgnoreCase))
+            {
+                var rowNodes = tableNode.Children.Where(c => c.Type == "tr").ToList();
+                if (tSubIdx < 1 || tSubIdx > rowNodes.Count)
+                    throw new ArgumentException($"Row {tSubIdx} not found (total: {rowNodes.Count})");
+                var rowNode = rowNodes[tSubIdx - 1];
+
+                // If there's a further sub-path (e.g., /tc[C])
+                if (tableSubMatch.Groups[5].Success)
+                {
+                    var tcType = tableSubMatch.Groups[5].Value;  // "tc"
+                    var tcIdx = int.Parse(tableSubMatch.Groups[6].Value);
+                    if (tcType.Equals("tc", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var cellNodes = rowNode.Children.Where(c => c.Type == "tc").ToList();
+                        if (tcIdx < 1 || tcIdx > cellNodes.Count)
+                            throw new ArgumentException($"Cell {tcIdx} not found (total: {cellNodes.Count})");
+                        return cellNodes[tcIdx - 1];
+                    }
+                }
+
+                return rowNode;
+            }
+
+            throw new ArgumentException($"Unknown table sub-element: {tSubType}");
+        }
+
+        // Try resolving logical paths with deeper segments (e.g. /slide[1]/placeholder[1]/...)
         // Only for paths not handled by dedicated handlers above
-        if (Regex.IsMatch(path, @"^/slide\[\d+\]/(table\[\d+\]/(tr|tc)|placeholder\[\w+\]/)"))
+        if (Regex.IsMatch(path, @"^/slide\[\d+\]/placeholder\[\w+\]/"))
         {
             var logicalResolved = ResolveLogicalPath(path);
             if (logicalResolved.HasValue)
@@ -462,7 +515,7 @@ public partial class PowerPointHandler
             {
                 var target = GenericXmlQuery.NavigateByPath(fbCurrent, remaining);
                 if (target == null)
-                    return new DocumentNode { Path = path, Type = "error", Text = $"Element not found: {path}" };
+                    throw new ArgumentException($"Element not found: {path}");
                 return GenericXmlQuery.ElementToNode(target, path, depth);
             }
             return GenericXmlQuery.ElementToNode(fbCurrent, path, depth);

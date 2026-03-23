@@ -1127,12 +1127,12 @@ public partial class PowerPointHandler
 
                     var edges = k switch
                     {
-                        "border.left" => new[] { "left" },
-                        "border.right" => new[] { "right" },
-                        "border.top" => new[] { "top" },
-                        "border.bottom" => new[] { "bottom" },
-                        "border.tl2br" => new[] { "tl2br" },
-                        "border.tr2bl" => new[] { "tr2bl" },
+                        "border.left" or "border.left.width" or "border.left.color" or "border.left.dash" => new[] { "left" },
+                        "border.right" or "border.right.width" or "border.right.color" or "border.right.dash" => new[] { "right" },
+                        "border.top" or "border.top.width" or "border.top.color" or "border.top.dash" => new[] { "top" },
+                        "border.bottom" or "border.bottom.width" or "border.bottom.color" or "border.bottom.dash" => new[] { "bottom" },
+                        "border.tl2br" or "border.tl2br.width" or "border.tl2br.color" or "border.tl2br.dash" => new[] { "tl2br" },
+                        "border.tr2bl" or "border.tr2bl.width" or "border.tr2bl.color" or "border.tr2bl.dash" => new[] { "tr2bl" },
                         _ => new[] { "left", "right", "top", "bottom" }  // "border" or "border.all"
                     };
 

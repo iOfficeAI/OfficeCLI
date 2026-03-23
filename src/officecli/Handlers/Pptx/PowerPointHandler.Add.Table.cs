@@ -42,9 +42,19 @@ public partial class PowerPointHandler
                 long tblX = properties.TryGetValue("x", out var txStr) ? ParseEmu(txStr) : 457200; // ~1.27cm
                 long tblY = properties.TryGetValue("y", out var tyStr) ? ParseEmu(tyStr) : 1600200; // ~4.44cm
                 long tblCx = properties.TryGetValue("width", out var twStr) ? ParseEmu(twStr) : 8229600; // ~22.86cm
-                long tblCy = properties.TryGetValue("height", out var thStr) ? ParseEmu(thStr) : (long)(rows * 370840); // ~1.03cm per row
+                long rowHeight;
+                long tblCy;
+                if (properties.TryGetValue("rowHeight", out var rhStr) || properties.TryGetValue("rowheight", out rhStr))
+                {
+                    rowHeight = ParseEmu(rhStr);
+                    tblCy = properties.TryGetValue("height", out var thStr) ? ParseEmu(thStr) : rowHeight * rows;
+                }
+                else
+                {
+                    tblCy = properties.TryGetValue("height", out var thStr) ? ParseEmu(thStr) : (long)(rows * 370840); // ~1.03cm per row
+                    rowHeight = tblCy / rows;
+                }
                 long colWidth = tblCx / cols;
-                long rowHeight = tblCy / rows;
 
                 var tblId = (uint)(tblShapeTree.ChildElements.Count + 2);
 

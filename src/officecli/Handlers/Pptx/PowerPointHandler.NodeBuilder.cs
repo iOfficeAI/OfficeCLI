@@ -127,10 +127,17 @@ public partial class PowerPointHandler
         var tableStyleId = tblPr?.GetFirstChild<Drawing.TableStyleId>()?.InnerText;
         if (!string.IsNullOrEmpty(tableStyleId))
         {
-            node.Format["tableStyleId"] = tableStyleId;
             var styleName = TableStyleGuidToName(tableStyleId);
+            node.Format["tableStyleId"] = styleName ?? tableStyleId;
             if (styleName != null)
+            {
+                node.Format["tableStyle"] = styleName;
                 node.Format["style"] = styleName;
+            }
+            else
+            {
+                node.Format["tableStyle"] = tableStyleId;
+            }
         }
 
         // Position
