@@ -157,6 +157,11 @@ public partial class ExcelHandler
 
     private string GetCellDisplayValue(Cell cell)
     {
+        if (cell.DataType?.Value == CellValues.InlineString)
+        {
+            return cell.InlineString?.InnerText ?? "";
+        }
+
         var value = cell.CellValue?.Text ?? "";
 
         if (cell.DataType?.Value == CellValues.SharedString)
@@ -631,16 +636,17 @@ public partial class ExcelHandler
     }
 
     /// <summary>
-    /// Parse a cell value for sorting: numeric values sort as numbers, strings sort as strings.
-    /// Returns IComparable that handles mixed numeric/string comparison.
+    /// Parse a cell value for sorting: returns a tuple (rank, numVal, strVal) so that
+    /// nulls/empties sort last, numbers sort before strings, and cross-type comparison never occurs.
+    /// rank=0 for numbers, rank=1 for strings, rank=2 for empty/null.
     /// </summary>
-    private static IComparable ParseSortValue(string value)
+    private static (int Rank, double NumVal, string StrVal) ParseSortValue(string value)
     {
-        if (string.IsNullOrEmpty(value)) return "";
+        if (string.IsNullOrEmpty(value)) return (2, 0.0, "");
         if (double.TryParse(value, System.Globalization.NumberStyles.Any,
             System.Globalization.CultureInfo.InvariantCulture, out var num))
-            return num;
-        return value;
+            return (0, num, "");
+        return (1, 0.0, value);
     }
 
     private static Cell? FindCell(SheetData sheetData, string cellRef)
@@ -760,7 +766,7 @@ public partial class ExcelHandler
             node.Format["style"] = styleInfo.Name.Value;
 
         node.Format["headerRow"] = (tbl.HeaderRowCount?.Value ?? 1) != 0;
-        node.Format["totalRow"] = tbl.TotalsRowShown?.Value ?? false;
+        node.Format["totalRow"] = (tbl.TotalsRowCount?.Value ?? 0) > 0 || (tbl.TotalsRowShown?.Value ?? false);
 
         var tableColumns = tbl.GetFirstChild<TableColumns>();
         if (tableColumns != null)

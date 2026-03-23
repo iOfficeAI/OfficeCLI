@@ -1300,9 +1300,13 @@ public partial class ExcelHandler
                         {
                             var col = colIdx;
                             var d = desc;
+                            // Always sort by rank ascending (empties last), then by value in requested direction
+                            sorted = sorted.ThenBy(r => ParseSortValue(GetCellSortValue(r, col)).Rank);
                             sorted = d
-                                ? sorted.ThenByDescending(r => ParseSortValue(GetCellSortValue(r, col)))
-                                : sorted.ThenBy(r => ParseSortValue(GetCellSortValue(r, col)));
+                                ? sorted.ThenByDescending(r => ParseSortValue(GetCellSortValue(r, col)).NumVal)
+                                         .ThenByDescending(r => ParseSortValue(GetCellSortValue(r, col)).StrVal)
+                                : sorted.ThenBy(r => ParseSortValue(GetCellSortValue(r, col)).NumVal)
+                                         .ThenBy(r => ParseSortValue(GetCellSortValue(r, col)).StrVal);
                         }
                         var sortedList = sorted.ToList();
 

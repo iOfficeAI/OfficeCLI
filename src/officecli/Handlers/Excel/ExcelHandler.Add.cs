@@ -97,6 +97,10 @@ public partial class ExcelHandler
                 {
                     cellRef = properties["ref"];
                 }
+                else if (properties.ContainsKey("address"))
+                {
+                    cellRef = properties["address"];
+                }
                 else
                 {
                     // Auto-assign next available cell in row 1
@@ -173,8 +177,21 @@ public partial class ExcelHandler
                 var refVal = properties.GetValueOrDefault("ref", "");
 
                 var workbook = GetWorkbook();
-                var definedNames = workbook.GetFirstChild<DefinedNames>()
-                    ?? workbook.AppendChild(new DefinedNames());
+                var definedNames = workbook.GetFirstChild<DefinedNames>();
+                if (definedNames == null)
+                {
+                    definedNames = new DefinedNames();
+                    // OOXML schema order: ...sheets, functionGroups, externalReferences, definedNames, calcPr, oleSize, customWorkbookViews, pivotCaches...
+                    // Insert before calcPr, oleSize, customWorkbookViews, pivotCaches, or any later element
+                    var insertBefore = (DocumentFormat.OpenXml.OpenXmlElement?)workbook.GetFirstChild<CalculationProperties>()
+                        ?? (DocumentFormat.OpenXml.OpenXmlElement?)workbook.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.OleSize>()
+                        ?? (DocumentFormat.OpenXml.OpenXmlElement?)workbook.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.CustomWorkbookViews>()
+                        ?? (DocumentFormat.OpenXml.OpenXmlElement?)workbook.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.PivotCaches>();
+                    if (insertBefore != null)
+                        workbook.InsertBefore(definedNames, insertBefore);
+                    else
+                        workbook.AppendChild(definedNames);
+                }
 
                 var dn = new DefinedName(refVal) { Name = nrName };
 
@@ -819,13 +836,17 @@ public partial class ExcelHandler
                 {
                     if (properties.TryGetValue("shadow", out var shpShadow) && !shpShadow.Equals("none", StringComparison.OrdinalIgnoreCase))
                     {
+                        var normalizedShadow = shpShadow.Replace(':', '-');
+                        if (IsTruthy(normalizedShadow)) normalizedShadow = "000000";
                         shpEffectList ??= new Drawing.EffectList();
-                        shpEffectList.AppendChild(OfficeCli.Core.DrawingEffectsHelper.BuildOuterShadow(shpShadow.Replace(':', '-'), OfficeCli.Core.DrawingEffectsHelper.BuildRgbColor));
+                        shpEffectList.AppendChild(OfficeCli.Core.DrawingEffectsHelper.BuildOuterShadow(normalizedShadow, OfficeCli.Core.DrawingEffectsHelper.BuildRgbColor));
                     }
                     if (properties.TryGetValue("glow", out var shpGlow) && !shpGlow.Equals("none", StringComparison.OrdinalIgnoreCase))
                     {
+                        var normalizedGlow = shpGlow.Replace(':', '-');
+                        if (IsTruthy(normalizedGlow)) normalizedGlow = "4472C4";
                         shpEffectList ??= new Drawing.EffectList();
-                        shpEffectList.AppendChild(OfficeCli.Core.DrawingEffectsHelper.BuildGlow(shpGlow.Replace(':', '-'), OfficeCli.Core.DrawingEffectsHelper.BuildRgbColor));
+                        shpEffectList.AppendChild(OfficeCli.Core.DrawingEffectsHelper.BuildGlow(normalizedGlow, OfficeCli.Core.DrawingEffectsHelper.BuildRgbColor));
                     }
                 }
                 if (properties.TryGetValue("reflection", out var shpRefl) && !shpRefl.Equals("none", StringComparison.OrdinalIgnoreCase))
@@ -878,13 +899,17 @@ public partial class ExcelHandler
                         Drawing.EffectList? txtEffects = null;
                         if (properties.TryGetValue("shadow", out var ts) && !ts.Equals("none", StringComparison.OrdinalIgnoreCase))
                         {
+                            var normalizedTs = ts.Replace(':', '-');
+                            if (IsTruthy(normalizedTs)) normalizedTs = "000000";
                             txtEffects ??= new Drawing.EffectList();
-                            txtEffects.AppendChild(OfficeCli.Core.DrawingEffectsHelper.BuildOuterShadow(ts.Replace(':', '-'), OfficeCli.Core.DrawingEffectsHelper.BuildRgbColor));
+                            txtEffects.AppendChild(OfficeCli.Core.DrawingEffectsHelper.BuildOuterShadow(normalizedTs, OfficeCli.Core.DrawingEffectsHelper.BuildRgbColor));
                         }
                         if (properties.TryGetValue("glow", out var tg) && !tg.Equals("none", StringComparison.OrdinalIgnoreCase))
                         {
+                            var normalizedTg = tg.Replace(':', '-');
+                            if (IsTruthy(normalizedTg)) normalizedTg = "4472C4";
                             txtEffects ??= new Drawing.EffectList();
-                            txtEffects.AppendChild(OfficeCli.Core.DrawingEffectsHelper.BuildGlow(tg.Replace(':', '-'), OfficeCli.Core.DrawingEffectsHelper.BuildRgbColor));
+                            txtEffects.AppendChild(OfficeCli.Core.DrawingEffectsHelper.BuildGlow(normalizedTg, OfficeCli.Core.DrawingEffectsHelper.BuildRgbColor));
                         }
                         if (txtEffects != null)
                             rPr.AppendChild(txtEffects);
@@ -973,7 +998,7 @@ public partial class ExcelHandler
 
                 var rangeParts = rangeRef.Split(':');
                 var (startCol, startRow) = ParseCellReference(rangeParts[0]);
-                var (endCol, _) = ParseCellReference(rangeParts[1]);
+                var (endCol, endRow) = ParseCellReference(rangeParts[1]);
                 var startColIdx = ColumnNameToIndex(startCol);
                 var endColIdx = ColumnNameToIndex(endCol);
                 var colCount = endColIdx - startColIdx + 1;
@@ -1020,6 +1045,8 @@ public partial class ExcelHandler
                     Reference = rangeRef,
                     TotalsRowShown = hasTotalRow
                 };
+                if (hasTotalRow)
+                    table.TotalsRowCount = 1;
 
                 table.AppendChild(new AutoFilter { Reference = rangeRef });
 
@@ -1036,6 +1063,59 @@ public partial class ExcelHandler
                     ShowRowStripes = true,
                     ShowColumnStripes = false
                 });
+
+                // Generate total row content in SheetData when totalRow is enabled
+                if (hasTotalRow)
+                {
+                    var tblSheetData = GetSheet(tblWorksheet).GetFirstChild<SheetData>()
+                        ?? GetSheet(tblWorksheet).AppendChild(new SheetData());
+                    var totalRowIdx = (uint)endRow;
+                    var totalRow = tblSheetData.Elements<Row>()
+                        .FirstOrDefault(r => r.RowIndex?.Value == totalRowIdx);
+                    if (totalRow == null)
+                    {
+                        totalRow = new Row { RowIndex = totalRowIdx };
+                        // Insert in correct position
+                        var lastRow = tblSheetData.Elements<Row>()
+                            .Where(r => r.RowIndex?.Value < totalRowIdx)
+                            .LastOrDefault();
+                        if (lastRow != null)
+                            lastRow.InsertAfterSelf(totalRow);
+                        else
+                            tblSheetData.AppendChild(totalRow);
+                    }
+
+                    var tblCols = tableColumns.Elements<TableColumn>().ToList();
+                    for (int ci = 0; ci < tblCols.Count; ci++)
+                    {
+                        var colLetter = IndexToColumnName(startColIdx + ci);
+                        var cellRefStr = $"{colLetter}{totalRowIdx}";
+                        var existingCell = totalRow.Elements<Cell>()
+                            .FirstOrDefault(c => c.CellReference?.Value == cellRefStr);
+                        if (existingCell == null)
+                        {
+                            existingCell = new Cell { CellReference = cellRefStr };
+                            totalRow.AppendChild(existingCell);
+                        }
+
+                        if (ci == 0)
+                        {
+                            // First column: label "Total"
+                            tblCols[ci].TotalsRowLabel = "Total";
+                            existingCell.CellValue = new CellValue("Total");
+                            existingCell.DataType = new EnumValue<CellValues>(CellValues.String);
+                        }
+                        else
+                        {
+                            // Other columns: SUBTOTAL(109, range) formula for SUM
+                            tblCols[ci].TotalsRowFunction = TotalsRowFunctionValues.Sum;
+                            var dataStartRow = hasHeader ? startRow + 1 : startRow;
+                            var dataEndRow = (int)totalRowIdx - 1;
+                            var formulaRange = $"{colLetter}{dataStartRow}:{colLetter}{dataEndRow}";
+                            existingCell.CellFormula = new CellFormula($"SUBTOTAL(109,{formulaRange})");
+                        }
+                    }
+                }
 
                 tableDefPart.Table = table;
                 tableDefPart.Table.Save();
@@ -1276,6 +1356,83 @@ public partial class ExcelHandler
 
                 SaveWorksheet(colWorksheet);
                 return $"/{colSheetName}/col[{insertColName}]";
+            }
+
+            case "pagebreak":
+            {
+                // Route to rowbreak or colbreak based on properties
+                if (properties.ContainsKey("col") || properties.ContainsKey("column"))
+                    return Add(parentPath, "colbreak", index, properties);
+                return Add(parentPath, "rowbreak", index, properties);
+            }
+
+            case "rowbreak":
+            {
+                var rbSegments = parentPath.TrimStart('/').Split('/', 2);
+                var rbSheetName = rbSegments[0];
+                var rbWorksheet = FindWorksheet(rbSheetName)
+                    ?? throw new ArgumentException($"Sheet not found: {rbSheetName}");
+                var rbWs = GetSheet(rbWorksheet);
+
+                var rbRowIdx = uint.Parse(properties.GetValueOrDefault("row") ?? properties.GetValueOrDefault("index")
+                    ?? throw new ArgumentException("'row' property is required for rowbreak"));
+
+                var rowBreaks = rbWs.GetFirstChild<RowBreaks>();
+                if (rowBreaks == null)
+                {
+                    rowBreaks = new RowBreaks();
+                    rbWs.AppendChild(rowBreaks);
+                }
+                rowBreaks.AppendChild(new Break
+                {
+                    Id = rbRowIdx,
+                    Max = 16383u,
+                    ManualPageBreak = true
+                });
+                rowBreaks.Count = (uint)rowBreaks.Elements<Break>().Count();
+                rowBreaks.ManualBreakCount = rowBreaks.Count;
+                SaveWorksheet(rbWorksheet);
+
+                var rbIdx = rowBreaks.Elements<Break>().ToList()
+                    .FindIndex(b => b.Id?.Value == rbRowIdx) + 1;
+                return $"/{rbSheetName}/rowbreak[{rbIdx}]";
+            }
+
+            case "colbreak":
+            {
+                var cbSegments = parentPath.TrimStart('/').Split('/', 2);
+                var cbSheetName = cbSegments[0];
+                var cbWorksheet = FindWorksheet(cbSheetName)
+                    ?? throw new ArgumentException($"Sheet not found: {cbSheetName}");
+                var cbWs = GetSheet(cbWorksheet);
+
+                var cbColStr = properties.GetValueOrDefault("col") ?? properties.GetValueOrDefault("column")
+                    ?? properties.GetValueOrDefault("index")
+                    ?? throw new ArgumentException("'col' property is required for colbreak");
+                // Accept both numeric index (e.g. "3") and column letter (e.g. "C")
+                var cbColIdx = uint.TryParse(cbColStr, out var cbNumVal)
+                    ? cbNumVal
+                    : (uint)ColumnNameToIndex(cbColStr.ToUpperInvariant());
+
+                var colBreaks = cbWs.GetFirstChild<ColumnBreaks>();
+                if (colBreaks == null)
+                {
+                    colBreaks = new ColumnBreaks();
+                    cbWs.AppendChild(colBreaks);
+                }
+                colBreaks.AppendChild(new Break
+                {
+                    Id = cbColIdx,
+                    Max = 1048575u,
+                    ManualPageBreak = true
+                });
+                colBreaks.Count = (uint)colBreaks.Elements<Break>().Count();
+                colBreaks.ManualBreakCount = colBreaks.Count;
+                SaveWorksheet(cbWorksheet);
+
+                var cbBrkIdx = colBreaks.Elements<Break>().ToList()
+                    .FindIndex(b => b.Id?.Value == cbColIdx) + 1;
+                return $"/{cbSheetName}/colbreak[{cbBrkIdx}]";
             }
 
             default:

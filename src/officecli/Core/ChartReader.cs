@@ -142,7 +142,7 @@ internal static partial class ChartHelper
                     seriesNode.Format["marker"] = markerSymbol.InnerText;
                 var markerSize = marker?.GetFirstChild<C.Size>()?.Val;
                 if (markerSize?.HasValue == true)
-                    seriesNode.Format["markerSize"] = markerSize.Value;
+                    seriesNode.Format["markerSize"] = (int)markerSize.Value;
                 node.Children.Add(seriesNode);
             }
             node.ChildCount = seriesList.Count;
