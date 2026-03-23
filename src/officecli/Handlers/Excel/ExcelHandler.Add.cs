@@ -16,6 +16,7 @@ public partial class ExcelHandler
 {
     public string Add(string parentPath, string type, int? index, Dictionary<string, string> properties)
     {
+        parentPath = NormalizeExcelPath(parentPath);
         switch (type.ToLowerInvariant())
         {
             case "sheet":
@@ -1231,6 +1232,7 @@ public partial class ExcelHandler
 
     public void Remove(string path)
     {
+        path = NormalizeExcelPath(path);
         var segments = path.TrimStart('/').Split('/', 2);
         var sheetName = segments[0];
 

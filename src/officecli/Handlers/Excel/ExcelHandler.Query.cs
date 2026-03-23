@@ -16,6 +16,7 @@ public partial class ExcelHandler
     {
         if (string.IsNullOrEmpty(path))
             throw new ArgumentException("Path cannot be empty.");
+        path = NormalizeExcelPath(path);
         if (path == "/")
         {
             var node = new DocumentNode { Path = "/", Type = "workbook" };
@@ -405,6 +406,11 @@ public partial class ExcelHandler
     public List<DocumentNode> Query(string selector)
     {
         var results = new List<DocumentNode>();
+
+        // Handle Excel-native direct cell ref: Sheet1!A1 or Sheet1!A1:D10
+        var nativeCellRef = Regex.Match(selector, @"^([^/!]+)!([A-Z]+\d+(:[A-Z]+\d+)?)$", RegexOptions.IgnoreCase);
+        if (nativeCellRef.Success)
+            return [Get($"/{nativeCellRef.Groups[1].Value}/{nativeCellRef.Groups[2].Value}")];
 
         // Check if element type is known (Scheme A) or should fall back to generic XML (Scheme B)
         // Strip sheet prefix (Sheet1!cell[...]) but not != operator

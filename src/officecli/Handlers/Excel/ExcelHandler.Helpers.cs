@@ -13,6 +13,24 @@ namespace OfficeCli.Handlers;
 
 public partial class ExcelHandler
 {
+    // ==================== Path Normalization ====================
+
+    /// <summary>
+    /// Normalize Excel-native path notation to DOM style.
+    /// Sheet1!A1 → /Sheet1/A1
+    /// Sheet1!A1:D10 → /Sheet1/A1:D10
+    /// Sheet1!row[2] → /Sheet1/row[2]
+    /// Paths already starting with '/' are returned unchanged.
+    /// </summary>
+    internal static string NormalizeExcelPath(string path)
+    {
+        if (path.StartsWith('/')) return path;
+        var bang = path.IndexOf('!');
+        if (bang > 0)
+            return $"/{path[..bang]}/{path[(bang + 1)..]}";
+        return path;
+    }
+
     // ==================== Private Helpers ====================
 
     private static Worksheet GetSheet(WorksheetPart part) =>

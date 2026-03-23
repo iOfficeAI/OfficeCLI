@@ -16,6 +16,7 @@ public partial class ExcelHandler
 {
     public List<string> Set(string path, Dictionary<string, string> properties)
     {
+        path = NormalizeExcelPath(path);
         // Handle /namedrange[N] or /namedrange[Name]
         var namedRangeMatch = Regex.Match(path.TrimStart('/'), @"^namedrange\[(.+?)\]$", RegexOptions.IgnoreCase);
         if (namedRangeMatch.Success)
@@ -657,6 +658,17 @@ public partial class ExcelHandler
 
     private List<string> SetCellProperties(Cell cell, string cellRef, WorksheetPart worksheet, Dictionary<string, string> properties)
     {
+        var unsupported = ApplyCellProperties(cell, cellRef, worksheet, properties);
+        SaveWorksheet(worksheet);
+        return unsupported;
+    }
+
+    /// <summary>Apply cell properties without saving — caller is responsible for SaveWorksheet.</summary>
+    private List<string> ApplyCellProperties(Cell cell, WorksheetPart worksheet, Dictionary<string, string> properties)
+        => ApplyCellProperties(cell, cell.CellReference?.Value ?? "", worksheet, properties);
+
+    private List<string> ApplyCellProperties(Cell cell, string cellRef, WorksheetPart worksheet, Dictionary<string, string> properties)
+    {
         // Separate content props from style props
         var styleProps = new Dictionary<string, string>();
         var unsupported = new List<string>();
@@ -767,7 +779,6 @@ public partial class ExcelHandler
             cell.StyleIndex = styleManager.ApplyStyle(cell, styleProps);
         }
 
-        SaveWorksheet(worksheet);
         return unsupported;
     }
 
@@ -971,6 +982,8 @@ public partial class ExcelHandler
         var unsupported = new List<string>();
         var ws = GetSheet(worksheet);
 
+        // Separate range-level props from cell-level props
+        var cellProps = new Dictionary<string, string>();
         foreach (var (key, value) in properties)
         {
             switch (key.ToLowerInvariant())
@@ -1015,8 +1028,39 @@ public partial class ExcelHandler
                     break;
                 }
                 default:
-                    unsupported.Add(key);
+                    // Treat as cell-level property to apply to every cell in the range
+                    cellProps[key] = value;
                     break;
+            }
+        }
+
+        // Apply cell-level properties to every cell in the range
+        if (cellProps.Count > 0)
+        {
+            var parts = rangeRef.Split(':');
+            var (startCol, startRow) = ParseCellReference(parts[0]);
+            var (endCol, endRow) = ParseCellReference(parts[1]);
+            var startColIdx = ColumnNameToIndex(startCol);
+            var endColIdx = ColumnNameToIndex(endCol);
+
+            var sheetData = ws.GetFirstChild<SheetData>();
+            if (sheetData == null)
+            {
+                sheetData = new SheetData();
+                ws.Append(sheetData);
+            }
+
+            for (int row = startRow; row <= endRow; row++)
+            {
+                for (int colIdx = startColIdx; colIdx <= endColIdx; colIdx++)
+                {
+                    var cellRef = $"{IndexToColumnName(colIdx)}{row}";
+                    var cell = FindOrCreateCell(sheetData, cellRef);
+                    var cellUnsupported = ApplyCellProperties(cell, worksheet, cellProps);
+                    // Only add to unsupported once (first cell)
+                    if (row == startRow && colIdx == startColIdx)
+                        unsupported.AddRange(cellUnsupported);
+                }
             }
         }
 
