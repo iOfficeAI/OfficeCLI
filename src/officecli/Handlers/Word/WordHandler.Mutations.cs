@@ -26,6 +26,45 @@ public partial class WordHandler
         }
 
         var parts = ParsePath(path);
+
+        // Handle header/footer removal by deleting the part itself
+        if (parts.Count == 1 && parts[0].Name.ToLowerInvariant() is "header" or "footer")
+        {
+            var mainPart = _doc.MainDocumentPart
+                ?? throw new InvalidOperationException("MainDocumentPart not found");
+            var idx = (parts[0].Index ?? 1) - 1;
+            var isHeader = parts[0].Name.ToLowerInvariant() == "header";
+
+            if (isHeader)
+            {
+                var headerPart = mainPart.HeaderParts.ElementAtOrDefault(idx)
+                    ?? throw new ArgumentException($"Path not found: {path}");
+                // Remove header references from section properties
+                var partId = mainPart.GetIdOfPart(headerPart);
+                foreach (var sectProps in mainPart.Document?.Body?.Descendants<SectionProperties>() ?? Enumerable.Empty<SectionProperties>())
+                {
+                    var refs = sectProps.Elements<HeaderReference>().Where(r => r.Id?.Value == partId).ToList();
+                    foreach (var r in refs) r.Remove();
+                }
+                mainPart.DeletePart(headerPart);
+            }
+            else
+            {
+                var footerPart = mainPart.FooterParts.ElementAtOrDefault(idx)
+                    ?? throw new ArgumentException($"Path not found: {path}");
+                var partId = mainPart.GetIdOfPart(footerPart);
+                foreach (var sectProps in mainPart.Document?.Body?.Descendants<SectionProperties>() ?? Enumerable.Empty<SectionProperties>())
+                {
+                    var refs = sectProps.Elements<FooterReference>().Where(r => r.Id?.Value == partId).ToList();
+                    foreach (var r in refs) r.Remove();
+                }
+                mainPart.DeletePart(footerPart);
+            }
+
+            mainPart.Document?.Save();
+            return null;
+        }
+
         var element = NavigateToElement(parts, out var ctx)
             ?? throw new ArgumentException($"Path not found: {path}" + (ctx != null ? $". {ctx}" : ""));
 

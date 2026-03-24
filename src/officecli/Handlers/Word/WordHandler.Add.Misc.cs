@@ -155,9 +155,17 @@ public partial class WordHandler
 
         // Insert a field code (PAGE, NUMPAGES, DATE, etc.) as a run
         // Determines field instruction from type or "field" property
-        var fieldInstr = type.ToLowerInvariant() switch
+        // When type is "field", check fieldType/type property for dispatch
+        var effectiveType = type.ToLowerInvariant();
+        if (effectiveType == "field")
         {
-            "pagenum" or "pagenumber" => " PAGE ",
+            var ft = properties.GetValueOrDefault("fieldType", null)
+                  ?? properties.GetValueOrDefault("fieldtype", null);
+            if (ft != null) effectiveType = ft.ToLowerInvariant();
+        }
+        var fieldInstr = effectiveType switch
+        {
+            "pagenum" or "pagenumber" or "page" => " PAGE ",
             "numpages" => " NUMPAGES ",
             "date" => " DATE \\@ \"yyyy-MM-dd\" ",
             _ => properties.GetValueOrDefault("instruction", " PAGE ")
