@@ -201,6 +201,15 @@ public class WatchServer : IDisposable
             }
         }
 
+        // Pipe listener may not cancel promptly on Windows (WaitForConnectionAsync
+        // ignores CancellationToken on some OS versions). Connect-and-drop to unblock it.
+        try
+        {
+            using var kickPipe = new System.IO.Pipes.NamedPipeClientStream(".", _pipeName, System.IO.Pipes.PipeDirection.InOut);
+            kickPipe.Connect(500);
+        }
+        catch { }
+
         try { await pipeTask; } catch (OperationCanceledException) { }
         try { await idleTask; } catch (OperationCanceledException) { }
     }
@@ -500,6 +509,16 @@ public class WatchServer : IDisposable
             _disposed = true;
             _cts.Cancel();
             try { _tcpListener.Stop(); } catch { }
+
+            // Kick the pipe listener out of WaitForConnectionAsync — it may not
+            // honour CancellationToken on some Windows versions.
+            try
+            {
+                using var kick = new System.IO.Pipes.NamedPipeClientStream(".", _pipeName, System.IO.Pipes.PipeDirection.InOut);
+                kick.Connect(500);
+            }
+            catch { }
+
             _cts.Dispose();
         }
     }
