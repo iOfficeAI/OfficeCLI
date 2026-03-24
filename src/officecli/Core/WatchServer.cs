@@ -195,6 +195,7 @@ public class WatchServer : IDisposable
             }
             catch (OperationCanceledException) { break; }
             catch (SocketException) { break; }
+            catch (ObjectDisposedException) { break; }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"Watch HTTP error: {ex.Message}");
