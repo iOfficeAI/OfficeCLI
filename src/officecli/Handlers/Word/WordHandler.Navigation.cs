@@ -5,6 +5,7 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Wordprocessing;
 using OfficeCli.Core;
 using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
+using M = DocumentFormat.OpenXml.Math;
 
 namespace OfficeCli.Handlers;
 
@@ -178,6 +179,22 @@ public partial class WordHandler
                 children = seg.Name.ToLowerInvariant() == "p"
                     ? GetBodyElements(body2).OfType<Paragraph>().Cast<OpenXmlElement>()
                     : GetBodyElements(body2).OfType<Table>().Cast<OpenXmlElement>();
+            }
+            else if (current is Body body3 && seg.Name == "oMathPara")
+            {
+                // oMathPara can be direct body children or wrapped inside w:p elements
+                var mathParas = new List<OpenXmlElement>();
+                foreach (var el in body3.ChildElements)
+                {
+                    if (el.LocalName == "oMathPara" || el is M.Paragraph)
+                        mathParas.Add(el);
+                    else if (el is Paragraph wp)
+                    {
+                        var inner = wp.ChildElements.FirstOrDefault(c => c.LocalName == "oMathPara" || c is M.Paragraph);
+                        if (inner != null) mathParas.Add(inner);
+                    }
+                }
+                children = mathParas;
             }
             else
             {
@@ -640,10 +657,10 @@ public partial class WordHandler
                 var sdtId = sdtProps.GetFirstChild<SdtId>();
                 if (sdtId?.Val?.Value != null) node.Format["id"] = sdtId.Val.Value;
 
-                if (sdtProps.GetFirstChild<SdtContentText>() != null) node.Format["sdtType"] = "text";
-                else if (sdtProps.GetFirstChild<SdtContentDropDownList>() != null) node.Format["sdtType"] = "dropdown";
+                if (sdtProps.GetFirstChild<SdtContentDropDownList>() != null) node.Format["sdtType"] = "dropdown";
                 else if (sdtProps.GetFirstChild<SdtContentComboBox>() != null) node.Format["sdtType"] = "combobox";
                 else if (sdtProps.GetFirstChild<SdtContentDate>() != null) node.Format["sdtType"] = "date";
+                else if (sdtProps.GetFirstChild<SdtContentText>() != null) node.Format["sdtType"] = "text";
                 else node.Format["sdtType"] = "richtext";
 
                 var ddl = sdtProps.GetFirstChild<SdtContentDropDownList>();
