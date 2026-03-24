@@ -841,7 +841,17 @@ public partial class WordHandler
                     var colorMatch = System.Text.RegularExpressions.Regex.Match(
                         child.InnerXml, @"val=""([0-9A-Fa-f]{6})""");
                     var color = colorMatch.Success ? ParseHelpers.FormatHexColor(colorMatch.Groups[1].Value) : "#000000";
-                    node.Format["w14shadow"] = color;
+                    var blurEmu = attrs.TryGetValue("blurRad", out var br) && long.TryParse(br, out var blurVal) ? blurVal : 0;
+                    var blurPt = blurEmu / 12700.0;
+                    var dirVal = attrs.TryGetValue("dir", out var dir) && long.TryParse(dir, out var dirLong) ? dirLong : 0;
+                    var angleDeg = dirVal / 60000.0;
+                    var distEmu = attrs.TryGetValue("dist", out var dist) && long.TryParse(dist, out var distLong) ? distLong : 0;
+                    var distPt = distEmu / 12700.0;
+                    // Read alpha (opacity) from inner srgbClr child
+                    var alphaMatch = System.Text.RegularExpressions.Regex.Match(
+                        child.InnerXml, @"alpha[^>]*val=""(\d+)""");
+                    var opacity = alphaMatch.Success && double.TryParse(alphaMatch.Groups[1].Value, out var alphaVal) ? alphaVal / 1000.0 : 100.0;
+                    node.Format["w14shadow"] = $"{color};{blurPt:0.##};{angleDeg:0.##};{distPt:0.##};{opacity:0.##}";
                     break;
                 }
                 case "glow":
@@ -852,7 +862,11 @@ public partial class WordHandler
                     var colorMatch = System.Text.RegularExpressions.Regex.Match(
                         child.InnerXml, @"val=""([0-9A-Fa-f]{6})""");
                     var color = colorMatch.Success ? ParseHelpers.FormatHexColor(colorMatch.Groups[1].Value) : "#000000";
-                    node.Format["w14glow"] = $"{color};{radiusPt:0.##}";
+                    // Read alpha (opacity) from inner srgbClr child
+                    var alphaMatch = System.Text.RegularExpressions.Regex.Match(
+                        child.InnerXml, @"alpha[^>]*val=""(\d+)""");
+                    var opacity = alphaMatch.Success && double.TryParse(alphaMatch.Groups[1].Value, out var av) ? av / 1000.0 : 100.0;
+                    node.Format["w14glow"] = $"{color};{radiusPt:0.##};{opacity:0.##}";
                     break;
                 }
                 case "reflection":

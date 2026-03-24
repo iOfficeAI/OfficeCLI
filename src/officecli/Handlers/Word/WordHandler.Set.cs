@@ -1614,7 +1614,7 @@ public partial class WordHandler
                 return true;
             case "widowcontrol":
                 if (IsTruthy(value)) pProps.WidowControl ??= new WidowControl();
-                else pProps.WidowControl = null;
+                else pProps.WidowControl = new WidowControl { Val = false };
                 return true;
             case "shading" or "shd":
                 var shdParts = value.Split(';');

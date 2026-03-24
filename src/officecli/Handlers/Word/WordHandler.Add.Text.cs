@@ -95,14 +95,19 @@ public partial class WordHandler
             ind.FirstLine = null;
         }
         // firstlineindent already handled above (line ~66-74) with × 480 conversion
-        if (properties.TryGetValue("keepnext", out var addKN) && IsTruthy(addKN))
+        if ((properties.TryGetValue("keepnext", out var addKN) || properties.TryGetValue("keepNext", out addKN)) && IsTruthy(addKN))
             pProps.KeepNext = new KeepNext();
-        if ((properties.TryGetValue("keeplines", out var addKL) || properties.TryGetValue("keeptogether", out addKL)) && IsTruthy(addKL))
+        if ((properties.TryGetValue("keeplines", out var addKL) || properties.TryGetValue("keeptogether", out addKL) || properties.TryGetValue("keepLines", out addKL) || properties.TryGetValue("keepTogether", out addKL)) && IsTruthy(addKL))
             pProps.KeepLines = new KeepLines();
-        if (properties.TryGetValue("pagebreakbefore", out var addPBB) && IsTruthy(addPBB))
+        if ((properties.TryGetValue("pagebreakbefore", out var addPBB) || properties.TryGetValue("pageBreakBefore", out addPBB)) && IsTruthy(addPBB))
             pProps.PageBreakBefore = new PageBreakBefore();
-        if (properties.TryGetValue("widowcontrol", out var addWC) && IsTruthy(addWC))
-            pProps.WidowControl = new WidowControl();
+        if (properties.TryGetValue("widowcontrol", out var addWC) || properties.TryGetValue("widowControl", out addWC))
+        {
+            if (IsTruthy(addWC))
+                pProps.WidowControl = new WidowControl();
+            else
+                pProps.WidowControl = new WidowControl { Val = false };
+        }
         foreach (var (pk, pv) in properties)
         {
             if (pk.StartsWith("pbdr", StringComparison.OrdinalIgnoreCase))

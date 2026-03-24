@@ -319,9 +319,13 @@ public partial class WordHandler
                     node.Format["keepLines"] = true;
                 }
                 if (pProps.PageBreakBefore != null)
-                    node.Format["pagebreakbefore"] = true;
+                    node.Format["pageBreakBefore"] = true;
                 if (pProps.WidowControl != null)
-                    node.Format["widowcontrol"] = true;
+                {
+                    // Val == null or Val == true means enabled; Val == false means explicitly disabled
+                    var wcVal = pProps.WidowControl.Val;
+                    node.Format["widowControl"] = wcVal == null || wcVal.Value;
+                }
                 if (pProps.Shading != null)
                 {
                     var shdVal = pProps.Shading.Val?.InnerText ?? "";
@@ -795,7 +799,7 @@ public partial class WordHandler
                 node.Format["vmerge"] = tcPr.VerticalMerge.Val?.Value == MergedCellValues.Restart ? "restart" : "continue";
             // Grid span
             if (tcPr.GridSpan?.Val?.Value != null && tcPr.GridSpan.Val.Value > 1)
-                node.Format["gridspan"] = tcPr.GridSpan.Val.Value;
+                node.Format["gridSpan"] = tcPr.GridSpan.Val.Value;
             // Cell padding/margins
             var mar = tcPr.TableCellMargin;
             if (mar != null)
