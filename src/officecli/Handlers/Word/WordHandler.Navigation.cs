@@ -375,6 +375,8 @@ public partial class WordHandler
                     node.Format["underline"] = rp.Underline.Val.InnerText;
                 if (rp.Strike != null && !node.Format.ContainsKey("strike"))
                     node.Format["strike"] = true;
+                if (rp.Highlight?.Val != null && !node.Format.ContainsKey("highlight"))
+                    node.Format["highlight"] = rp.Highlight.Val.InnerText;
             }
 
             if (depth > 0)

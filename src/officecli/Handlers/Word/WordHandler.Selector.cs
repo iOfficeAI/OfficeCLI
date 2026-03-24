@@ -140,6 +140,10 @@ public partial class WordHandler
 
     private bool MatchesParagraphAttrs(Paragraph para, Dictionary<string, string> attrs)
     {
+        // Cache first text-bearing run for run-level property checks
+        Run? firstRun = null;
+        bool firstRunResolved = false;
+
         foreach (var (key, rawVal) in attrs)
         {
             if (key == "__empty") continue;
@@ -157,6 +161,16 @@ public partial class WordHandler
                 "numlevel" or "ilvl" => para.ParagraphProperties?.NumberingProperties?.NumberingLevelReference?.Val?.HasValue == true
                     ? para.ParagraphProperties.NumberingProperties.NumberingLevelReference.Val.Value.ToString() : null,
                 "liststyle" => GetParagraphListStyle(para),
+                // Run-level properties: check first text-bearing run (same approach as Get readback)
+                "bold" => GetFirstRunForSelector(para, ref firstRun, ref firstRunResolved)?.RunProperties?.Bold != null ? "true" : "false",
+                "italic" => GetFirstRunForSelector(para, ref firstRun, ref firstRunResolved)?.RunProperties?.Italic != null ? "true" : "false",
+                "font" => GetFirstRunForSelector(para, ref firstRun, ref firstRunResolved) is { } fr1 ? GetRunFont(fr1) : null,
+                "size" => GetFirstRunForSelector(para, ref firstRun, ref firstRunResolved) is { } fr2 ? GetRunFontSize(fr2) : null,
+                "color" => GetFirstRunForSelector(para, ref firstRun, ref firstRunResolved)?.RunProperties?.Color?.Val?.Value is { } cv
+                    ? ParseHelpers.FormatHexColor(cv) : null,
+                "underline" => GetFirstRunForSelector(para, ref firstRun, ref firstRunResolved)?.RunProperties?.Underline?.Val?.InnerText,
+                "strike" => GetFirstRunForSelector(para, ref firstRun, ref firstRunResolved)?.RunProperties?.Strike != null ? "true" : "false",
+                "highlight" => GetFirstRunForSelector(para, ref firstRun, ref firstRunResolved)?.RunProperties?.Highlight?.Val?.InnerText,
                 _ => GenericXmlQuery.GetAttributeValue(para, key)
                      ?? (para.ParagraphProperties != null ? GenericXmlQuery.GetAttributeValue(para.ParagraphProperties, key) : null)
             };
@@ -176,6 +190,16 @@ public partial class WordHandler
             if (negate ? matches : !matches) return false;
         }
         return true;
+    }
+
+    private static Run? GetFirstRunForSelector(Paragraph para, ref Run? cached, ref bool resolved)
+    {
+        if (!resolved)
+        {
+            cached = para.Elements<Run>().FirstOrDefault(r => r.GetFirstChild<Text>() != null);
+            resolved = true;
+        }
+        return cached;
     }
 
     private static bool MatchesRunSelector(Run run, Paragraph parent, SelectorPart selector)
