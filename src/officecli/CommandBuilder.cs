@@ -125,10 +125,23 @@ static class CommandBuilder
             var file = result.GetValue(watchFileArg)!;
             var port = result.GetValue(watchPortOpt);
 
+            // Render initial HTML from existing file content
+            string? initialHtml = null;
+            if (file.Exists)
+            {
+                try
+                {
+                    using var handler = DocumentHandlerFactory.Open(file.FullName, editable: false);
+                    if (handler is OfficeCli.Handlers.PowerPointHandler ppt)
+                        initialHtml = ppt.ViewAsHtml();
+                }
+                catch { /* ignore — will show waiting page */ }
+            }
+
             using var cts = new CancellationTokenSource();
             Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 
-            using var watch = new WatchServer(file.FullName, port);
+            using var watch = new WatchServer(file.FullName, port, initialHtml: initialHtml);
             watch.RunAsync(cts.Token).GetAwaiter().GetResult();
         }));
 

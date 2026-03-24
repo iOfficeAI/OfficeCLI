@@ -38,6 +38,39 @@ public class WatchServer : IDisposable
         <script>
         (function() {
             var es = new EventSource('/events');
+            function syncThumbs() {
+                var sidebar = document.querySelector('.sidebar');
+                if (!sidebar) return;
+                var slides = document.querySelectorAll('.main > .slide-container');
+                var thumbs = sidebar.querySelectorAll('.thumb');
+                // Remove extra thumbs
+                for (var i = thumbs.length - 1; i >= slides.length; i--) {
+                    thumbs[i].remove();
+                }
+                // Add missing thumbs
+                for (var i = thumbs.length; i < slides.length; i++) {
+                    var thumb = document.createElement('div');
+                    thumb.className = 'thumb';
+                    thumb.setAttribute('data-slide', i + 1);
+                    thumb.innerHTML = '<div class="thumb-inner"></div><span class="thumb-num">' + (i + 1) + '</span>';
+                    sidebar.appendChild(thumb);
+                }
+                // Renumber all thumbs
+                sidebar.querySelectorAll('.thumb').forEach(function(t, i) {
+                    t.setAttribute('data-slide', i + 1);
+                    var num = t.querySelector('.thumb-num');
+                    if (num) num.textContent = i + 1;
+                });
+                // Clear all thumb clones so buildThumbs re-creates them fresh
+                sidebar.querySelectorAll('.thumb-inner').forEach(function(inner) {
+                    var old = inner.querySelector('.thumb-slide');
+                    if (old) old.remove();
+                });
+                if (typeof buildThumbs === 'function') buildThumbs();
+                // Update page counter
+                var counter = document.querySelector('.page-counter');
+                if (counter) counter.textContent = '1 / ' + slides.length;
+            }
             es.addEventListener('update', function(e) {
                 var msg = JSON.parse(e.data);
                 if (msg.action === 'full') {
@@ -52,28 +85,19 @@ public class WatchServer : IDisposable
                         tmp.innerHTML = msg.html;
                         var newEl = tmp.firstElementChild;
                         el.parentNode.replaceChild(newEl, el);
-                        // re-scale the new slide
                         if (typeof scaleSlides === 'function') scaleSlides();
-                        if (typeof buildThumbs === 'function') buildThumbs();
+                        syncThumbs();
                     } else {
                         location.reload();
                     }
                 } else if (msg.action === 'remove') {
                     var el = document.querySelector('.slide-container[data-slide="' + slideNum + '"]');
-                    if (el) {
-                        el.remove();
-                        // renumber remaining slides
-                        document.querySelectorAll('.slide-container').forEach(function(c, i) {
-                            c.setAttribute('data-slide', i + 1);
-                        });
-                        if (typeof buildThumbs === 'function') buildThumbs();
-                    }
-                    // Update page counter
-                    var counter = document.querySelector('.page-counter');
-                    if (counter) {
-                        var total = document.querySelectorAll('.slide-container').length;
-                        counter.textContent = '1 / ' + total;
-                    }
+                    if (el) el.remove();
+                    // renumber remaining slides
+                    document.querySelectorAll('.slide-container').forEach(function(c, i) {
+                        c.setAttribute('data-slide', i + 1);
+                    });
+                    syncThumbs();
                 } else if (msg.action === 'add') {
                     var main = document.querySelector('.main');
                     if (main) {
@@ -82,26 +106,23 @@ public class WatchServer : IDisposable
                         var newEl = tmp.firstElementChild;
                         main.appendChild(newEl);
                         if (typeof scaleSlides === 'function') scaleSlides();
-                        if (typeof buildThumbs === 'function') buildThumbs();
                     }
-                    var counter = document.querySelector('.page-counter');
-                    if (counter) {
-                        var total = document.querySelectorAll('.slide-container').length;
-                        counter.textContent = '1 / ' + total;
-                    }
+                    syncThumbs();
                 }
             });
         })();
         </script>
         """;
 
-    public WatchServer(string filePath, int port, TimeSpan? idleTimeout = null)
+    public WatchServer(string filePath, int port, TimeSpan? idleTimeout = null, string? initialHtml = null)
     {
         _filePath = Path.GetFullPath(filePath);
         _pipeName = GetWatchPipeName(_filePath);
         _port = port;
         _idleTimeout = idleTimeout ?? TimeSpan.FromMinutes(5);
         _tcpListener = new TcpListener(IPAddress.Loopback, _port);
+        if (!string.IsNullOrEmpty(initialHtml))
+            _currentHtml = initialHtml;
     }
 
     public static string GetWatchPipeName(string filePath)

@@ -1,12 +1,15 @@
 // OfficeCli HTML Preview Script
 (function() {
     const main = document.querySelector('.main');
-    const containers = [...document.querySelectorAll('.slide-container')];
-    const thumbs = [...document.querySelectorAll('.thumb')];
+    const sidebar = document.querySelector('.sidebar');
     const counter = document.querySelector('.page-counter');
-    const total = containers.length;
     let currentSlide = 0;
     let isFullscreen = false;
+
+    // ===== Live DOM queries (SSE may add/remove elements) =====
+    function getContainers() { return [...document.querySelectorAll('.main > .slide-container')]; }
+    function getThumbs() { return [...document.querySelectorAll('.sidebar > .thumb')]; }
+    function getTotal() { return getContainers().length; }
 
     // ===== Responsive scaling =====
     function scaleSlides() {
@@ -33,22 +36,34 @@
 
     // ===== Sidebar thumbnails =====
     function setActiveThumb(idx) {
-        thumbs.forEach((t, i) => t.classList.toggle('active', i === idx));
+        getThumbs().forEach((t, i) => t.classList.toggle('active', i === idx));
         currentSlide = idx;
-        if (counter) counter.textContent = `${idx + 1} / ${total}`;
+        if (counter) counter.textContent = `${idx + 1} / ${getTotal()}`;
     }
-    thumbs.forEach((thumb, i) => {
-        thumb.addEventListener('click', () => {
-            if (isFullscreen) { showFullscreenSlide(i); return; }
-            containers[i].scrollIntoView({ behavior: 'smooth', block: 'center' });
-            setActiveThumb(i);
-        });
-    });
 
-    // Track visible slide on scroll (normal mode)
+    // Event delegation for thumb clicks (handles SSE-added thumbs)
+    if (sidebar) {
+        sidebar.addEventListener('click', function(e) {
+            const thumb = e.target.closest('.thumb');
+            if (!thumb) return;
+            const thumbs = getThumbs();
+            const idx = thumbs.indexOf(thumb);
+            if (idx < 0) return;
+            if (isFullscreen) { showFullscreenSlide(idx); return; }
+            const containers = getContainers();
+            if (containers[idx]) {
+                containers[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            setActiveThumb(idx);
+        });
+    }
+
+    // Track visible slide on scroll (normal mode) — use MutationObserver to auto-observe new slides
+    let scrollObserver;
     if (main) {
-        const observer = new IntersectionObserver(entries => {
+        scrollObserver = new IntersectionObserver(entries => {
             if (isFullscreen) return;
+            const containers = getContainers();
             entries.forEach(e => {
                 if (e.isIntersecting && e.intersectionRatio > 0.3) {
                     const idx = containers.indexOf(e.target);
@@ -56,11 +71,24 @@
                 }
             });
         }, { root: main, threshold: 0.3 });
-        containers.forEach(c => observer.observe(c));
+        getContainers().forEach(c => scrollObserver.observe(c));
+
+        // Auto-observe new slide-containers added to main
+        new MutationObserver(mutations => {
+            mutations.forEach(m => {
+                m.addedNodes.forEach(node => {
+                    if (node.nodeType === 1 && node.classList.contains('slide-container')) {
+                        scrollObserver.observe(node);
+                    }
+                });
+            });
+        }).observe(main, { childList: true });
     }
 
     // ===== Fullscreen mode =====
     function showFullscreenSlide(idx) {
+        const containers = getContainers();
+        const total = containers.length;
         idx = Math.max(0, Math.min(idx, total - 1));
         containers.forEach((c, i) => c.classList.toggle('fs-active', i === idx));
         setActiveThumb(idx);
@@ -82,9 +110,9 @@
     function exitFullscreen() {
         isFullscreen = false;
         document.body.classList.remove('fullscreen');
-        containers.forEach(c => { c.classList.remove('fs-active'); c.style.display = ''; });
+        getContainers().forEach(c => { c.classList.remove('fs-active'); c.style.display = ''; });
         scaleSlides();
-        containers[currentSlide]?.scrollIntoView({ block: 'center' });
+        getContainers()[currentSlide]?.scrollIntoView({ block: 'center' });
     }
 
     // ===== Keyboard navigation =====
@@ -104,13 +132,17 @@
         if (!next && !prev) return;
         e.preventDefault();
 
+        const total = getTotal();
         if (isFullscreen) {
             showFullscreenSlide(currentSlide + (next ? 1 : -1));
         } else {
             const target = next
                 ? Math.min(currentSlide + 1, total - 1)
                 : Math.max(currentSlide - 1, 0);
-            containers[target].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const containers = getContainers();
+            if (containers[target]) {
+                containers[target].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
             setActiveThumb(target);
         }
     });
@@ -160,5 +192,5 @@
     };
 
     // Init
-    if (total > 0) setActiveThumb(0);
+    if (getTotal() > 0) setActiveThumb(0);
 })();
