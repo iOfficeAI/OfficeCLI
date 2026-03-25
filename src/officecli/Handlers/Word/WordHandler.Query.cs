@@ -614,7 +614,8 @@ public partial class WordHandler
                 or "chart"
                 or "comment"
                 or "field"
-                or "table" or "tbl";
+                or "table" or "tbl"
+                or "revision" or "change" or "trackchange";
         if (!isKnownType && parsed.ChildSelector == null)
         {
             var root = _doc.MainDocumentPart?.Document;
@@ -675,6 +676,90 @@ public partial class WordHandler
                     if (comment.Date?.Value != null) cNode.Format["date"] = comment.Date.Value.ToString("o");
                     results.Add(cNode);
                 }
+            }
+            return results;
+        }
+
+        // Handle revision / track changes query
+        bool isRevisionSelector = parsed.ChildSelector == null &&
+            (parsed.Element is "revision" or "change" or "trackchange");
+        if (isRevisionSelector)
+        {
+            int revIdx = 0;
+            // w:ins (InsertedRun)
+            foreach (var ins in body.Descendants<InsertedRun>())
+            {
+                revIdx++;
+                var text = string.Join("", ins.Descendants<Text>().Select(t => t.Text));
+                if (parsed.ContainsText != null && !text.Contains(parsed.ContainsText, StringComparison.OrdinalIgnoreCase))
+                { revIdx--; continue; }
+                var node = new DocumentNode
+                {
+                    Path = $"/revision[{revIdx}]",
+                    Type = "revision",
+                    Text = text
+                };
+                node.Format["revisionType"] = "insertion";
+                if (ins.Author?.Value != null) node.Format["author"] = ins.Author.Value;
+                if (ins.Date?.Value != null) node.Format["date"] = ins.Date.Value.ToString("o");
+                results.Add(node);
+            }
+            // w:del (DeletedRun)
+            foreach (var del in body.Descendants<DeletedRun>())
+            {
+                revIdx++;
+                var text = string.Join("", del.Descendants<DeletedText>().Select(t => t.Text));
+                if (parsed.ContainsText != null && !text.Contains(parsed.ContainsText, StringComparison.OrdinalIgnoreCase))
+                { revIdx--; continue; }
+                var node = new DocumentNode
+                {
+                    Path = $"/revision[{revIdx}]",
+                    Type = "revision",
+                    Text = text
+                };
+                node.Format["revisionType"] = "deletion";
+                if (del.Author?.Value != null) node.Format["author"] = del.Author.Value;
+                if (del.Date?.Value != null) node.Format["date"] = del.Date.Value.ToString("o");
+                results.Add(node);
+            }
+            // w:rPrChange (RunPropertiesChange)
+            foreach (var rPrChange in body.Descendants<RunPropertiesChange>())
+            {
+                revIdx++;
+                // Get text from parent run
+                var parentRun = rPrChange.Ancestors<Run>().FirstOrDefault();
+                var text = parentRun != null ? string.Join("", parentRun.Descendants<Text>().Select(t => t.Text)) : "";
+                if (parsed.ContainsText != null && !text.Contains(parsed.ContainsText, StringComparison.OrdinalIgnoreCase))
+                { revIdx--; continue; }
+                var node = new DocumentNode
+                {
+                    Path = $"/revision[{revIdx}]",
+                    Type = "revision",
+                    Text = text
+                };
+                node.Format["revisionType"] = "formatChange";
+                if (rPrChange.Author?.Value != null) node.Format["author"] = rPrChange.Author.Value;
+                if (rPrChange.Date?.Value != null) node.Format["date"] = rPrChange.Date.Value.ToString("o");
+                results.Add(node);
+            }
+            // w:pPrChange (ParagraphPropertiesChange)
+            foreach (var pPrChange in body.Descendants<ParagraphPropertiesChange>())
+            {
+                revIdx++;
+                var parentPara = pPrChange.Ancestors<Paragraph>().FirstOrDefault();
+                var text = parentPara != null ? string.Join("", parentPara.Descendants<Text>().Select(t => t.Text)) : "";
+                if (parsed.ContainsText != null && !text.Contains(parsed.ContainsText, StringComparison.OrdinalIgnoreCase))
+                { revIdx--; continue; }
+                var node = new DocumentNode
+                {
+                    Path = $"/revision[{revIdx}]",
+                    Type = "revision",
+                    Text = text
+                };
+                node.Format["revisionType"] = "paragraphChange";
+                if (pPrChange.Author?.Value != null) node.Format["author"] = pPrChange.Author.Value;
+                if (pPrChange.Date?.Value != null) node.Format["date"] = pPrChange.Date.Value.ToString("o");
+                results.Add(node);
             }
             return results;
         }
