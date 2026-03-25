@@ -158,6 +158,10 @@
             const clone = slide.cloneNode(true);
             clone.className = 'thumb-slide';
             clone.style.transform = '';
+            // Remove IDs from cloned elements to avoid getElementById conflicts (e.g. 3D canvas)
+            clone.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+            // Remove cloned <script> tags (module scripts won't re-execute but keep DOM clean)
+            clone.querySelectorAll('script').forEach(el => el.remove());
             inner.appendChild(clone);
         });
         scaleThumbs();

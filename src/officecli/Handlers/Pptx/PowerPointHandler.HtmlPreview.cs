@@ -38,6 +38,8 @@ public partial class PowerPointHandler
         sb.AppendLine($"<title>{HtmlEncode(Path.GetFileName(_filePath))}</title>");
         sb.AppendLine("<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css\">");
         sb.AppendLine("<script defer src=\"https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js\"></script>");
+        // Three.js for 3D model rendering (importmap for ES module support)
+        sb.AppendLine(@"<script type=""importmap"">{""imports"":{""three"":""https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"",""three/addons/"":""https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/""}}</script>");
         sb.AppendLine("<style>");
         sb.AppendLine(GenerateCss(slideWidthCm, slideHeightCm));
         sb.AppendLine("</style>");
@@ -357,6 +359,11 @@ public partial class PowerPointHandler
                     break;
                 case GroupShape grp:
                     RenderGroup(sb, grp, slidePart, themeColors);
+                    break;
+                default:
+                    // mc:AlternateContent — render 3D models, zoom, etc.
+                    if (element.LocalName == "AlternateContent")
+                        RenderAlternateContent(sb, element, slidePart, themeColors);
                     break;
             }
         }
