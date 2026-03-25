@@ -228,7 +228,7 @@ public partial class WordHandler
         return null;
     }
 
-    private void ApplyListStyle(Paragraph para, string listStyleValue, int? startValue = null)
+    private void ApplyListStyle(Paragraph para, string listStyleValue, int? startValue = null, int? listLevel = null)
     {
         // Handle "none" — remove numbering
         if (listStyleValue.ToLowerInvariant() is "none" or "remove" or "clear")
@@ -244,7 +244,7 @@ public partial class WordHandler
         if (continuationNumId != null && startValue == null)
         {
             var pProps = para.ParagraphProperties ?? para.PrependChild(new ParagraphProperties());
-            var ilvl = para.ParagraphProperties?.NumberingProperties?.NumberingLevelReference?.Val?.Value ?? 0;
+            var ilvl = listLevel ?? para.ParagraphProperties?.NumberingProperties?.NumberingLevelReference?.Val?.Value ?? 0;
             pProps.NumberingProperties = new NumberingProperties
             {
                 NumberingId = new NumberingId { Val = continuationNumId.Value },
@@ -323,7 +323,7 @@ public partial class WordHandler
         pProps2.NumberingProperties = new NumberingProperties
         {
             NumberingId = new NumberingId { Val = maxNumId },
-            NumberingLevelReference = new NumberingLevelReference { Val = 0 }
+            NumberingLevelReference = new NumberingLevelReference { Val = listLevel ?? 0 }
         };
     }
 
