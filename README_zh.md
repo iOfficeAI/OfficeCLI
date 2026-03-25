@@ -15,7 +15,7 @@ OfficeCLI 是一个免费、开源的命令行工具，专为 AI 智能体设计
 
 <video src="assets/ppt-processs.mp4" poster="assets/ppt-process.png" autoplay loop muted playsinline width="100%"></video>
 
-<p align="center"><em>在 AionUI 上使用 OfficeCLI 的 PPT 制作过程</em></p>
+<p align="center"><em>在 <a href="https://github.com/iOfficeAI/AionUi">AionUi</a> 上使用 OfficeCLI 的 PPT 制作过程</em></p>
 
 ## AI 智能体接入
 
