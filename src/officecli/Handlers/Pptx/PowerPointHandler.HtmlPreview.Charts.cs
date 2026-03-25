@@ -344,7 +344,8 @@ public partial class PowerPointHandler
                     else
                     {
                         var bx = plotOx;
-                        var by = oy + c * groupH + gap + s * barH;
+                        // First series at bottom of group (closest to axis), matching PowerPoint behavior
+                        var by = oy + c * groupH + gap + (serCount - 1 - s) * barH;
                         sb.AppendLine($"        <rect x=\"{bx}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{barH:0.#}\" fill=\"{colors[s % colors.Count]}\" opacity=\"0.85\"/>");
                     }
                 }
