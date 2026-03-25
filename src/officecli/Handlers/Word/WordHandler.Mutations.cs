@@ -197,4 +197,248 @@ public partial class WordHandler
             parent.AppendChild(element);
         }
     }
+
+    // ==================== Track Changes ====================
+
+    /// <summary>
+    /// Accept all tracked changes in the document.
+    /// - w:ins (InsertedRun): unwrap — keep inner content, remove wrapper
+    /// - w:del (DeletedRun): remove entire element
+    /// - w:rPrChange (RunPropertiesChange): remove change marker, keep current formatting
+    /// - w:pPrChange (ParagraphPropertiesChange): remove change marker, keep current formatting
+    /// - w:sectPrChange (SectionPropertiesChange): remove change marker
+    /// - w:tblPrChange (TablePropertyExceptionChange): remove change marker
+    /// - w:trPr/w:ins (table row insertion): keep row, remove marker
+    /// </summary>
+    private int AcceptAllChanges()
+    {
+        var body = _doc.MainDocumentPart?.Document?.Body;
+        if (body == null) return 0;
+
+        int count = 0;
+
+        // Accept w:ins — unwrap (keep inner content)
+        foreach (var ins in body.Descendants<InsertedRun>().ToList())
+        {
+            var parent = ins.Parent;
+            if (parent == null) { ins.Remove(); count++; continue; }
+            foreach (var child in ins.ChildElements.ToList())
+                parent.InsertBefore(child.CloneNode(true), ins);
+            ins.Remove();
+            count++;
+        }
+
+        // Accept w:del — remove entirely (deletions are discarded)
+        foreach (var del in body.Descendants<DeletedRun>().ToList())
+        {
+            del.Remove();
+            count++;
+        }
+
+        // Accept w:rPrChange — remove the change element, keep current run properties
+        foreach (var rPrChange in body.Descendants<RunPropertiesChange>().ToList())
+        {
+            rPrChange.Remove();
+            count++;
+        }
+
+        // Accept w:pPrChange — remove the change element, keep current paragraph properties
+        foreach (var pPrChange in body.Descendants<ParagraphPropertiesChange>().ToList())
+        {
+            pPrChange.Remove();
+            count++;
+        }
+
+        // Accept w:sectPrChange — remove the change element
+        foreach (var sectPrChange in body.Descendants<SectionPropertiesChange>().ToList())
+        {
+            sectPrChange.Remove();
+            count++;
+        }
+
+        // Accept table property changes
+        foreach (var tblPrChange in body.Descendants<TablePropertiesChange>().ToList())
+        {
+            tblPrChange.Remove();
+            count++;
+        }
+
+        // Accept table row property changes (w:trPr containing w:ins)
+        foreach (var trPr in body.Descendants<TableRowProperties>().ToList())
+        {
+            var trIns = trPr.GetFirstChild<InsertedRun>();
+            if (trIns != null) { trIns.Remove(); count++; }
+        }
+
+        // Accept w:moveTo / w:moveFrom
+        foreach (var moveFrom in body.Descendants<MoveFromRun>().ToList())
+        {
+            moveFrom.Remove();
+            count++;
+        }
+        foreach (var moveTo in body.Descendants<MoveToRun>().ToList())
+        {
+            var parent = moveTo.Parent;
+            if (parent == null) { moveTo.Remove(); count++; continue; }
+            foreach (var child in moveTo.ChildElements.ToList())
+                parent.InsertBefore(child.CloneNode(true), moveTo);
+            moveTo.Remove();
+            count++;
+        }
+
+        // Remove move range markers
+        foreach (var marker in body.Descendants<MoveFromRangeStart>().ToList()) marker.Remove();
+        foreach (var marker in body.Descendants<MoveFromRangeEnd>().ToList()) marker.Remove();
+        foreach (var marker in body.Descendants<MoveToRangeStart>().ToList()) marker.Remove();
+        foreach (var marker in body.Descendants<MoveToRangeEnd>().ToList()) marker.Remove();
+
+        _doc.MainDocumentPart?.Document?.Save();
+        return count;
+    }
+
+    /// <summary>
+    /// Reject all tracked changes in the document.
+    /// - w:ins (InsertedRun): remove entire element (discard insertion)
+    /// - w:del (DeletedRun): unwrap — restore content, convert w:delText to w:t
+    /// - w:rPrChange: restore original formatting from inside the change element
+    /// - w:pPrChange: restore original paragraph properties
+    /// - w:sectPrChange: restore original section properties
+    /// </summary>
+    private int RejectAllChanges()
+    {
+        var body = _doc.MainDocumentPart?.Document?.Body;
+        if (body == null) return 0;
+
+        int count = 0;
+
+        // Reject w:ins — remove entirely (discard insertions)
+        foreach (var ins in body.Descendants<InsertedRun>().ToList())
+        {
+            ins.Remove();
+            count++;
+        }
+
+        // Reject w:del — unwrap, convert w:delText to w:t
+        foreach (var del in body.Descendants<DeletedRun>().ToList())
+        {
+            var parent = del.Parent;
+            if (parent == null) { del.Remove(); count++; continue; }
+            foreach (var child in del.ChildElements.ToList())
+            {
+                var clone = child.CloneNode(true);
+                // Convert DeletedText elements to Text elements
+                foreach (var delText in clone.Descendants<DeletedText>().ToList())
+                {
+                    var text = new Text(delText.Text);
+                    if (delText.Space != null)
+                        text.Space = delText.Space;
+                    delText.Parent?.ReplaceChild(text, delText);
+                }
+                parent.InsertBefore(clone, del);
+            }
+            del.Remove();
+            count++;
+        }
+
+        // Reject w:rPrChange — restore original run properties
+        foreach (var rPrChange in body.Descendants<RunPropertiesChange>().ToList())
+        {
+            var rPr = rPrChange.Parent as RunProperties;
+            if (rPr != null)
+            {
+                var originalProps = rPrChange.GetFirstChild<PreviousRunProperties>();
+                if (originalProps != null)
+                {
+                    // Replace current run properties with original ones
+                    var run = rPr.Parent;
+                    if (run != null)
+                    {
+                        var newRPr = new RunProperties();
+                        foreach (var child in originalProps.ChildElements.ToList())
+                            newRPr.AppendChild(child.CloneNode(true));
+                        run.ReplaceChild(newRPr, rPr);
+                    }
+                }
+                else
+                {
+                    rPrChange.Remove();
+                }
+            }
+            else
+            {
+                rPrChange.Remove();
+            }
+            count++;
+        }
+
+        // Reject w:pPrChange — restore original paragraph properties
+        foreach (var pPrChange in body.Descendants<ParagraphPropertiesChange>().ToList())
+        {
+            var pPr = pPrChange.Parent as ParagraphProperties;
+            if (pPr != null)
+            {
+                var originalProps = pPrChange.GetFirstChild<PreviousParagraphProperties>();
+                if (originalProps != null)
+                {
+                    var para = pPr.Parent;
+                    if (para != null)
+                    {
+                        var newPPr = new ParagraphProperties();
+                        foreach (var child in originalProps.ChildElements.ToList())
+                            newPPr.AppendChild(child.CloneNode(true));
+                        para.ReplaceChild(newPPr, pPr);
+                    }
+                }
+                else
+                {
+                    pPrChange.Remove();
+                }
+            }
+            else
+            {
+                pPrChange.Remove();
+            }
+            count++;
+        }
+
+        // Reject w:sectPrChange — restore original section properties
+        foreach (var sectPrChange in body.Descendants<SectionPropertiesChange>().ToList())
+        {
+            sectPrChange.Remove();
+            count++;
+        }
+
+        // Reject table property changes
+        foreach (var tblPrChange in body.Descendants<TablePropertiesChange>().ToList())
+        {
+            tblPrChange.Remove();
+            count++;
+        }
+
+        // Reject w:moveTo — remove (discard the move target)
+        foreach (var moveTo in body.Descendants<MoveToRun>().ToList())
+        {
+            moveTo.Remove();
+            count++;
+        }
+        // Reject w:moveFrom — unwrap (restore original position)
+        foreach (var moveFrom in body.Descendants<MoveFromRun>().ToList())
+        {
+            var parent = moveFrom.Parent;
+            if (parent == null) { moveFrom.Remove(); count++; continue; }
+            foreach (var child in moveFrom.ChildElements.ToList())
+                parent.InsertBefore(child.CloneNode(true), moveFrom);
+            moveFrom.Remove();
+            count++;
+        }
+
+        // Remove move range markers
+        foreach (var marker in body.Descendants<MoveFromRangeStart>().ToList()) marker.Remove();
+        foreach (var marker in body.Descendants<MoveFromRangeEnd>().ToList()) marker.Remove();
+        foreach (var marker in body.Descendants<MoveToRangeStart>().ToList()) marker.Remove();
+        foreach (var marker in body.Descendants<MoveToRangeEnd>().ToList()) marker.Remove();
+
+        _doc.MainDocumentPart?.Document?.Save();
+        return count;
+    }
 }

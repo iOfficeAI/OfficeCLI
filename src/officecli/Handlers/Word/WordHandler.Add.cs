@@ -193,6 +193,15 @@ public partial class WordHandler
                 case "revision":
                     _doc.PackageProperties.Revision = value;
                     break;
+
+                case "acceptallchanges":
+                    if (IsTruthy(value))
+                        AcceptAllChanges();
+                    break;
+                case "rejectallchanges":
+                    if (IsTruthy(value))
+                        RejectAllChanges();
+                    break;
             }
         }
     }

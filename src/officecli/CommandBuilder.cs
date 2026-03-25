@@ -1178,6 +1178,52 @@ static class CommandBuilder
 
         rootCommand.Add(createCommand);
 
+        // ==================== merge command (template merge) ====================
+        var mergeTemplateArg = new Argument<string>("template") { Description = "Template file path (.docx, .xlsx, .pptx) with {{key}} placeholders" };
+        var mergeOutputArg = new Argument<string>("output") { Description = "Output file path" };
+        var mergeDataOpt = new Option<string>("--data") { Description = "JSON data or path to .json file", Required = true };
+        var mergeCommand = new Command("merge", "Merge template with JSON data, replacing {{key}} placeholders");
+        mergeCommand.Add(mergeTemplateArg);
+        mergeCommand.Add(mergeOutputArg);
+        mergeCommand.Add(mergeDataOpt);
+        mergeCommand.Add(jsonOption);
+
+        mergeCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
+        {
+            var template = result.GetValue(mergeTemplateArg)!;
+            var output = result.GetValue(mergeOutputArg)!;
+            var dataArg = result.GetValue(mergeDataOpt)!;
+
+            var data = Core.TemplateMerger.ParseMergeData(dataArg);
+            var mergeResult = Core.TemplateMerger.Merge(template, output, data);
+
+            if (json)
+            {
+                var jsonObj = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["success"] = true,
+                    ["output"] = Path.GetFullPath(output),
+                    ["replacedKeys"] = mergeResult.UsedKeys.Count,
+                    ["unresolvedPlaceholders"] = new System.Text.Json.Nodes.JsonArray(
+                        mergeResult.UnresolvedPlaceholders.Select(p => (System.Text.Json.Nodes.JsonNode)p).ToArray())
+                };
+                Console.WriteLine(jsonObj.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = false }));
+            }
+            else
+            {
+                Console.WriteLine($"Merged: {output}");
+                Console.WriteLine($"  Replaced keys: {mergeResult.UsedKeys.Count}");
+                if (mergeResult.UnresolvedPlaceholders.Count > 0)
+                {
+                    Console.Error.WriteLine($"  Warning: {mergeResult.UnresolvedPlaceholders.Count} unresolved placeholder(s):");
+                    foreach (var p in mergeResult.UnresolvedPlaceholders)
+                        Console.Error.WriteLine($"    - {{{{{p}}}}}");
+                }
+            }
+        }, json); });
+
+        rootCommand.Add(mergeCommand);
+
         HelpCommands.Register(rootCommand);
 
         return rootCommand;
