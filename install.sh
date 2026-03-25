@@ -113,5 +113,28 @@ esac
 
 rm -f "/tmp/$BINARY_NAME"
 
+# Step 4: Install AI agent skills for detected tools
+SKILL_TARGETS=""
+for tool_dir in "$HOME/.claude:Claude Code" "$HOME/.copilot:GitHub Copilot" "$HOME/.agents:Codex CLI" "$HOME/.cursor:Cursor" "$HOME/.windsurf:Windsurf" "$HOME/.minimax:MiniMax CLI" "$HOME/.openclaw:OpenClaw" "$HOME/.nanobot/workspace:NanoBot" "$HOME/.zeroclaw/workspace:ZeroClaw"; do
+    dir="${tool_dir%%:*}"
+    name="${tool_dir##*:}"
+    if [ -d "$dir" ]; then
+        SKILL_TARGETS="$SKILL_TARGETS $dir/skills/officecli"
+        echo "$name detected."
+    fi
+done
+
+if [ -n "$SKILL_TARGETS" ]; then
+    echo "Downloading officecli skill..."
+    if curl -fsSL "https://raw.githubusercontent.com/$REPO/main/SKILL.md" -o "/tmp/officecli-skill.md" 2>/dev/null; then
+        for target in $SKILL_TARGETS; do
+            mkdir -p "$target"
+            cp "/tmp/officecli-skill.md" "$target/SKILL.md"
+            echo "  Installed: $target/SKILL.md"
+        done
+        rm -f "/tmp/officecli-skill.md"
+    fi
+fi
+
 echo "OfficeCli installed successfully!"
 echo "Run 'officecli --help' to get started."

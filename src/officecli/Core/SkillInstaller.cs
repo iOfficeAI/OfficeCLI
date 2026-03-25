@@ -10,29 +10,50 @@ namespace OfficeCli.Core;
 /// </summary>
 public static class SkillInstaller
 {
+    private static readonly (string[] Aliases, string DisplayName, string DetectDir, string SkillPath)[] Tools =
+    [
+        (["claude", "claude-code"],       "Claude Code",    ".claude",              Path.Combine(".claude", "skills", "officecli", "SKILL.md")),
+        (["copilot", "github-copilot"],   "GitHub Copilot", ".copilot",             Path.Combine(".copilot", "skills", "officecli", "SKILL.md")),
+        (["codex", "openai-codex"],       "Codex CLI",      ".agents",              Path.Combine(".agents", "skills", "officecli", "SKILL.md")),
+        (["cursor"],                      "Cursor",         ".cursor",              Path.Combine(".cursor", "skills", "officecli", "SKILL.md")),
+        (["windsurf"],                    "Windsurf",       ".windsurf",            Path.Combine(".windsurf", "skills", "officecli", "SKILL.md")),
+        (["minimax", "minimax-cli"],      "MiniMax CLI",    ".minimax",             Path.Combine(".minimax", "skills", "officecli", "SKILL.md")),
+        (["openclaw"],                    "OpenClaw",       ".openclaw",            Path.Combine(".openclaw", "skills", "officecli", "SKILL.md")),
+        (["nanobot"],                     "NanoBot",        Path.Combine(".nanobot", "workspace"),   Path.Combine(".nanobot", "workspace", "skills", "officecli", "SKILL.md")),
+        (["zeroclaw"],                    "ZeroClaw",       Path.Combine(".zeroclaw", "workspace"),  Path.Combine(".zeroclaw", "workspace", "skills", "officecli", "SKILL.md")),
+    ];
+
     public static void Install(string target)
     {
-        switch (target.ToLowerInvariant())
+        var key = target.ToLowerInvariant();
+
+        if (key == "all")
         {
-            case "claude" or "claude-code":
-                InstallTo("Claude Code", Path.Combine(Home, ".claude", "skills", "officecli", "SKILL.md"));
-                break;
-            case "copilot" or "github-copilot":
-                InstallTo("GitHub Copilot", Path.Combine(Home, ".copilot", "skills", "officecli", "SKILL.md"));
-                break;
-            case "codex" or "openai-codex":
-                InstallTo("Codex CLI", Path.Combine(Home, ".agents", "skills", "officecli", "SKILL.md"));
-                break;
-            case "all":
-                Install("claude");
-                Install("copilot");
-                Install("codex");
-                break;
-            default:
-                Console.Error.WriteLine($"Unknown target: {target}");
-                Console.Error.WriteLine("Supported: claude, copilot, codex, all");
-                break;
+            var found = false;
+            foreach (var tool in Tools)
+            {
+                if (Directory.Exists(Path.Combine(Home, tool.DetectDir)))
+                {
+                    found = true;
+                    InstallTo(tool.DisplayName, Path.Combine(Home, tool.SkillPath));
+                }
+            }
+            if (!found)
+                Console.WriteLine("  No supported AI tools detected.");
+            return;
         }
+
+        foreach (var tool in Tools)
+        {
+            if (tool.Aliases.Contains(key))
+            {
+                InstallTo(tool.DisplayName, Path.Combine(Home, tool.SkillPath));
+                return;
+            }
+        }
+
+        Console.Error.WriteLine($"Unknown target: {target}");
+        Console.Error.WriteLine("Supported: claude, copilot, codex, cursor, windsurf, minimax, openclaw, nanobot, zeroclaw, all");
     }
 
     private static void InstallTo(string displayName, string targetPath)

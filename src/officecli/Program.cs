@@ -58,7 +58,7 @@ if (args.Length >= 1 && args[0] == "skills")
         return 0;
     }
     Console.Error.WriteLine("Usage: officecli skills <target>     Install skills");
-    Console.Error.WriteLine("Targets: claude, copilot, codex, all");
+    Console.Error.WriteLine("Targets: claude, copilot, codex, cursor, windsurf, minimax, openclaw, nanobot, zeroclaw, all");
     return 1;
 }
 
