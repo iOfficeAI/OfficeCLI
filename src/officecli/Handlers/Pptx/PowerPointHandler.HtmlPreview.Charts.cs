@@ -164,7 +164,7 @@ public partial class PowerPointHandler
                 var holeSizeEl = plotArea.Descendants<DocumentFormat.OpenXml.Drawing.Charts.HoleSize>().FirstOrDefault();
                 holeSize = (holeSizeEl?.Val?.Value ?? 50) / 100.0;
             }
-            RenderPieChartSvg(sb, seriesList, categories, seriesColors, svgW, chartSvgH, holeSize);
+            RenderPieChartSvg(sb, seriesList, categories, seriesColors, svgW, chartSvgH, holeSize, showValues);
         }
         else if (chartType.Contains("area"))
         {
@@ -189,7 +189,7 @@ public partial class PowerPointHandler
         }
         else if (chartType.Contains("line") || chartType == "scatter")
         {
-            RenderLineChartSvg(sb, seriesList, categories, seriesColors, margin.left, margin.top, plotW, plotH);
+            RenderLineChartSvg(sb, seriesList, categories, seriesColors, margin.left, margin.top, plotW, plotH, showValues);
         }
         else
         {
@@ -417,7 +417,7 @@ public partial class PowerPointHandler
     }
 
     private void RenderLineChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
-        string[] categories, List<string> colors, int ox, int oy, int pw, int ph)
+        string[] categories, List<string> colors, int ox, int oy, int pw, int ph, bool showDataLabels = false)
     {
         var allValues = series.SelectMany(s => s.values).ToArray();
         if (allValues.Length == 0) return;
@@ -425,10 +425,21 @@ public partial class PowerPointHandler
         if (maxVal <= 0) maxVal = 1;
         var catCount = Math.Max(categories.Length, series.Max(s => s.values.Length));
 
+        // Nice axis scale
+        var mag = Math.Pow(10, Math.Floor(Math.Log10(maxVal)));
+        var res = maxVal / mag;
+        var tickStep = res <= 1.5 ? 0.2 * mag
+            : res <= 3 ? 0.5 * mag
+            : res <= 7 ? 1.0 * mag
+            : 2.0 * mag;
+        var niceMax = Math.Ceiling(maxVal / tickStep) * tickStep;
+        var nTicks = (int)Math.Round(niceMax / tickStep);
+        if (nTicks < 2) nTicks = 2;
+
         // Gridlines
-        for (int t = 1; t <= 4; t++)
+        for (int t = 1; t <= nTicks; t++)
         {
-            var gy = oy + ph - (double)ph * t / 4;
+            var gy = oy + ph - (double)ph * t / nTicks;
             sb.AppendLine($"        <line x1=\"{ox}\" y1=\"{gy:0.#}\" x2=\"{ox + pw}\" y2=\"{gy:0.#}\" stroke=\"{_chartGridColor}\" stroke-width=\"0.5\" stroke-dasharray=\"none\"/>");
         }
 
@@ -442,20 +453,23 @@ public partial class PowerPointHandler
             for (int c = 0; c < series[s].values.Length && c < catCount; c++)
             {
                 var px = ox + (catCount > 1 ? (double)pw * c / (catCount - 1) : pw / 2.0);
-                var py = oy + ph - (series[s].values[c] / maxVal) * ph;
+                var py = oy + ph - (series[s].values[c] / niceMax) * ph;
                 points.Add($"{px:0.#},{py:0.#}");
             }
             if (points.Count > 0)
             {
                 sb.AppendLine($"        <polyline points=\"{string.Join(" ", points)}\" fill=\"none\" stroke=\"{colors[s]}\" stroke-width=\"2\"/>");
-                // Dots + value labels
+                // Dots + optional value labels
                 for (int p = 0; p < points.Count; p++)
                 {
                     var parts = points[p].Split(',');
                     sb.AppendLine($"        <circle cx=\"{parts[0]}\" cy=\"{parts[1]}\" r=\"3\" fill=\"{colors[s]}\"/>");
-                    var val = series[s].values[p];
-                    var vlabel = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
-                    sb.AppendLine($"        <text x=\"{parts[0]}\" y=\"{double.Parse(parts[1]) - 6:0.#}\" fill=\"{_chartValueColor}\" font-size=\"7\" text-anchor=\"middle\">{vlabel}</text>");
+                    if (showDataLabels)
+                    {
+                        var val = series[s].values[p];
+                        var vlabel = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
+                        sb.AppendLine($"        <text x=\"{parts[0]}\" y=\"{double.Parse(parts[1]) - 6:0.#}\" fill=\"{_chartValueColor}\" font-size=\"7\" text-anchor=\"middle\">{vlabel}</text>");
+                    }
                 }
             }
         }
@@ -467,10 +481,19 @@ public partial class PowerPointHandler
             var lx = ox + (catCount > 1 ? (double)pw * c / (catCount - 1) : pw / 2.0);
             sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
         }
+
+        // Value axis labels
+        for (int t = 0; t <= nTicks; t++)
+        {
+            var val = tickStep * t;
+            var label = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
+            var ty = oy + ph - (double)ph * t / nTicks;
+            sb.AppendLine($"        <text x=\"{ox - 4}\" y=\"{ty:0.#}\" fill=\"{_chartAxisColor}\" font-size=\"8\" text-anchor=\"end\" dominant-baseline=\"middle\">{label}</text>");
+        }
     }
 
     private void RenderPieChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
-        string[] categories, List<string> colors, int svgW, int svgH, double holeRatio = 0.0)
+        string[] categories, List<string> colors, int svgW, int svgH, double holeRatio = 0.0, bool showDataLabels = false)
     {
         // Use first series values
         var values = series.FirstOrDefault().values ?? [];
@@ -480,7 +503,7 @@ public partial class PowerPointHandler
 
         var cx = svgW / 2.0;
         var cy = svgH / 2.0;
-        var r = Math.Min(svgW, svgH) * 0.35;
+        var r = Math.Min(svgW, svgH) * 0.38;
         var innerR = r * holeRatio;
         var startAngle = -Math.PI / 2;
 
@@ -519,6 +542,25 @@ public partial class PowerPointHandler
             }
 
             startAngle = endAngle;
+        }
+
+        // Percentage labels on slices
+        if (showDataLabels)
+        {
+            var labelAngle = -Math.PI / 2;
+            var labelR = holeRatio > 0 ? r * (1 + holeRatio) / 2 : r * 0.65;
+            for (int i = 0; i < values.Length; i++)
+            {
+                var sliceAngle = 2 * Math.PI * values[i] / total;
+                var midAngle = labelAngle + sliceAngle / 2;
+                var lx = cx + labelR * Math.Cos(midAngle);
+                var ly = cy + labelR * Math.Sin(midAngle);
+                var pct = values[i] / total * 100;
+                var label = pct >= 5 ? $"{pct:0}%" : ""; // skip tiny slices
+                if (!string.IsNullOrEmpty(label))
+                    sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{ly:0.#}\" fill=\"#fff\" font-size=\"8\" font-weight=\"bold\" text-anchor=\"middle\" dominant-baseline=\"central\">{label}</text>");
+                labelAngle += sliceAngle;
+            }
         }
     }
 
@@ -682,8 +724,8 @@ public partial class PowerPointHandler
         if (barCount > 0)
         {
             var groupW = (double)pw / Math.Max(catCount, 1);
-            var barW = groupW * 0.7 / barCount;
-            var gap = groupW * 0.15;
+            var barW = groupW * 0.6 / barCount;
+            var gap = (groupW - barCount * barW) / 2;
             for (int bi = 0; bi < barCount; bi++)
             {
                 var s = barSeries[bi];
