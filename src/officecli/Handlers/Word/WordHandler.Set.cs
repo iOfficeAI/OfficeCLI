@@ -379,10 +379,10 @@ public partial class WordHandler
                         };
                         break;
                     case "pagewidth" or "pageWidth":
-                        EnsureSectPrPageSize(sectPr).Width = ParseHelpers.SafeParseUint(value, "pagewidth");
+                        EnsureSectPrPageSize(sectPr).Width = ParseTwips(value);
                         break;
                     case "pageheight" or "pageHeight":
-                        EnsureSectPrPageSize(sectPr).Height = ParseHelpers.SafeParseUint(value, "pageheight");
+                        EnsureSectPrPageSize(sectPr).Height = ParseTwips(value);
                         break;
                     case "orientation":
                     {

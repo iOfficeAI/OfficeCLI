@@ -150,10 +150,10 @@ public partial class WordHandler
                     break;
 
                 case "pagewidth":
-                    EnsureSectionProperties().GetFirstChild<PageSize>()!.Width = ParseHelpers.SafeParseUint(value, "pagewidth");
+                    EnsureSectionProperties().GetFirstChild<PageSize>()!.Width = ParseTwips(value);
                     break;
                 case "pageheight":
-                    EnsureSectionProperties().GetFirstChild<PageSize>()!.Height = ParseHelpers.SafeParseUint(value, "pageheight");
+                    EnsureSectionProperties().GetFirstChild<PageSize>()!.Height = ParseTwips(value);
                     break;
                 case "margintop":
                     EnsurePageMargin().Top = ParseHelpers.SafeParseInt(value, "margintop");
