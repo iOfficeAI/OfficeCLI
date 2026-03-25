@@ -276,8 +276,8 @@ public partial class PowerPointHandler
                        : isBandedOdd ? (ApplyLumModOff(accent1, 40000, 60000), null)
                        : (ApplyLumModOff(accent1, 20000, 80000), null),
 
-            // Dark Style 1: header=dk1 lumMod75% lumOff25%, band1=dk1 lumMod50% lumOff50%, band2=dk1 lumMod40% lumOff60%
-            "dark1" => isHeader ? (ApplyLumModOff(dk1, 75000, 25000), "#FFFFFF")
+            // Dark Style 1: header=dk1 (raw), band1=dk1 lumMod50% lumOff50%, band2=dk1 lumMod40% lumOff60%
+            "dark1" => isHeader ? ($"#{dk1}", "#FFFFFF")
                      : isBandedOdd ? (ApplyLumModOff(dk1, 50000, 50000), "#FFFFFF")
                      : (ApplyLumModOff(dk1, 40000, 60000), "#FFFFFF"),
 

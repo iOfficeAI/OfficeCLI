@@ -307,7 +307,7 @@ public partial class PowerPointHandler
             var plotOx = ox + hLabelMargin;
             var plotPw = pw - hLabelMargin;
             var groupH = (double)ph / Math.Max(catCount, 1);
-            var barH = stacked ? groupH * 0.5 : groupH * 0.6 / serCount;
+            var barH = stacked ? groupH * 0.5 : groupH * 0.5 / serCount;
             var gap = groupH * 0.25;
 
             // Gridlines
@@ -363,13 +363,13 @@ public partial class PowerPointHandler
                 var val = tickStep * t;
                 var label = percentStacked ? $"{(int)val}%" : (val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}");
                 var tx = plotOx + (double)plotPw * t / nTicks;
-                sb.AppendLine($"        <text x=\"{tx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartAxisColor}\" font-size=\"8\" text-anchor=\"middle\">{label}</text>");
+                sb.AppendLine($"        <text x=\"{tx:0.#}\" y=\"{oy + ph + 16}\" fill=\"{_chartAxisColor}\" font-size=\"8\" text-anchor=\"middle\">{label}</text>");
             }
         }
         else
         {
             var groupW = (double)pw / Math.Max(catCount, 1);
-            var barW = stacked ? groupW * 0.5 : groupW * 0.6 / serCount;
+            var barW = stacked ? groupW * 0.5 : groupW * 0.5 / serCount;
             var gap = groupW * 0.25;
 
             // Gridlines
@@ -414,7 +414,7 @@ public partial class PowerPointHandler
             {
                 var label = c < categories.Length ? categories[c] : "";
                 var lx = ox + c * groupW + groupW / 2;
-                sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
+                sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 16}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
             }
 
             // Value axis labels
@@ -483,7 +483,7 @@ public partial class PowerPointHandler
         {
             var label = c < categories.Length ? categories[c] : "";
             var lx = ox + (catCount > 1 ? (double)pw * c / (catCount - 1) : pw / 2.0);
-            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
+            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 16}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
         }
 
         // Value axis labels
@@ -662,7 +662,7 @@ public partial class PowerPointHandler
         {
             var label = c < categories.Length ? categories[c] : "";
             var lx = ox + (catCount > 1 ? (double)pw * c / (catCount - 1) : pw / 2.0);
-            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
+            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 16}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
         }
 
         // Value axis labels
@@ -717,7 +717,7 @@ public partial class PowerPointHandler
         if (barCount > 0)
         {
             var groupW = (double)pw / Math.Max(catCount, 1);
-            var barW = groupW * 0.6 / barCount;
+            var barW = groupW * 0.5 / barCount;
             var gap = (groupW - barCount * barW) / 2;
             for (int bi = 0; bi < barCount; bi++)
             {
@@ -779,7 +779,7 @@ public partial class PowerPointHandler
         {
             var label = c < categories.Length ? categories[c] : "";
             var lx = ox + (double)pw * c / Math.Max(catCount, 1) + (double)pw / Math.Max(catCount, 1) / 2;
-            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
+            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 16}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
         }
 
         // Value axis labels
@@ -936,7 +936,7 @@ public partial class PowerPointHandler
             var val = minX + (maxX - minX) * t / 4;
             var label = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
             var tx = ox + (double)pw * t / 4;
-            sb.AppendLine($"        <text x=\"{tx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartCatColor}\" font-size=\"8\" text-anchor=\"middle\">{label}</text>");
+            sb.AppendLine($"        <text x=\"{tx:0.#}\" y=\"{oy + ph + 16}\" fill=\"{_chartCatColor}\" font-size=\"8\" text-anchor=\"middle\">{label}</text>");
         }
 
         // Y axis labels
@@ -1020,7 +1020,7 @@ public partial class PowerPointHandler
         {
             var label = c < categories.Length ? categories[c] : "";
             var lx = ox + c * groupW + groupW / 2;
-            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
+            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 16}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
         }
 
         // Value axis labels
@@ -1066,7 +1066,7 @@ public partial class PowerPointHandler
             var plotOx = ox + hLabelMargin;
             var plotPw = pw - hLabelMargin;
             var groupH = (double)ph / Math.Max(catCount, 1);
-            var barH = groupH * 0.6 / serCount;
+            var barH = groupH * 0.5 / serCount;
             var gap = groupH * 0.2;
 
             // Gridlines
@@ -1109,13 +1109,13 @@ public partial class PowerPointHandler
                 var val = maxVal * t / 4;
                 var label = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
                 var tx = plotOx + (double)plotPw * t / 4;
-                sb.AppendLine($"        <text x=\"{tx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartAxisColor}\" font-size=\"8\" text-anchor=\"middle\">{label}</text>");
+                sb.AppendLine($"        <text x=\"{tx:0.#}\" y=\"{oy + ph + 16}\" fill=\"{_chartAxisColor}\" font-size=\"8\" text-anchor=\"middle\">{label}</text>");
             }
         }
         else
         {
             var groupW = (double)pw / Math.Max(catCount, 1);
-            var barW = groupW * 0.6 / serCount;
+            var barW = groupW * 0.5 / serCount;
             var gap = groupW * 0.2;
 
             // Gridlines
@@ -1153,7 +1153,7 @@ public partial class PowerPointHandler
             {
                 var label = c < categories.Length ? categories[c] : "";
                 var lx = ox + c * groupW + groupW / 2;
-                sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
+                sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 16}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
             }
             for (int t = 0; t <= 4; t++)
             {
@@ -1306,7 +1306,7 @@ public partial class PowerPointHandler
         {
             var label = c < categories.Length ? categories[c] : "";
             var lx = ox + (catCount > 1 ? (double)pw * c / (catCount - 1) : pw / 2.0);
-            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 14}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
+            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 16}\" fill=\"{_chartCatColor}\" font-size=\"9\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
         }
     }
 
