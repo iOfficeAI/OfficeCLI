@@ -32,7 +32,17 @@
 
 <p align="center"><em>以上所有演示文稿均由 AI 智能体使用 OfficeCLI 全自动创建 — 无模板、无人工编辑。</em></p>
 
-> **AI 智能体：** OfficeCLI 附带 [SKILL.md](SKILL.md)（239 行，约 8K tokens），涵盖命令语法、架构设计和常见陷阱。将其加入智能体上下文即可获得最佳效果。
+## AI 智能体 — 一行搞定
+
+把这行粘贴到你的 AI 智能体对话框 — 它会自动读取技能文件并完成安装：
+
+```
+curl -fsSL https://officecli.ai/SKILL.md
+```
+
+就这一步。技能文件会教智能体如何安装二进制文件并使用所有命令。
+
+> **技术细节：** OfficeCLI 附带 [SKILL.md](SKILL.md)（239 行，约 8K tokens），涵盖命令语法、架构设计和常见陷阱。安装后，您的智能体可以立即创建、读取和修改任何 Office 文档。
 
 ## 快速开始
 
@@ -114,6 +124,12 @@ officecli add deck.pptx / --type slide --prop title="Q4 Report"
 | Excel (.xlsx) | ✅ | ✅ | ✅ |
 | PowerPoint (.pptx) | ✅ | ✅ | ✅ |
 
+**Word** — 段落、文本片段、表格、样式、页眉/页脚、图片、公式、批注、列表、水印、书签、目录
+
+**Excel** — 单元格、公式、工作表、样式、条件格式、图表、数据透视表、命名范围、数据验证、`$Sheet:A1` 单元格寻址
+
+**PowerPoint** — 幻灯片、形状、文本框、图片、表格、图表、动画、morph 过渡、3D 模型（.glb）、幻灯片缩放、公式、主题、连接线、视频/音频
+
 ## 使用场景
 
 **开发者：**
@@ -135,25 +151,105 @@ officecli add deck.pptx / --type slide --prop title="Q4 Report"
 
 单一自包含可执行文件，.NET 运行时已内嵌 -- 无需安装任何依赖，无需管理运行时。
 
-**macOS / Linux：**
+**一键安装：**
 
 ```bash
+# macOS / Linux
 curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
-```
 
-**Windows (PowerShell)：**
-
-```powershell
+# Windows (PowerShell)
 irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
 ```
 
-**手动下载：** 从 [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases) 获取适合您平台的二进制文件。
+**或手动下载** [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases)：
+
+| 平台 | 文件名 |
+|------|--------|
+| macOS Apple Silicon | `officecli-mac-arm64` |
+| macOS Intel | `officecli-mac-x64` |
+| Linux x64 | `officecli-linux-x64` |
+| Linux ARM64 | `officecli-linux-arm64` |
+| Windows x64 | `officecli-win-x64.exe` |
+| Windows ARM64 | `officecli-win-arm64.exe` |
 
 验证安装：`officecli --version`
 
 OfficeCLI 会在后台自动检查更新。通过 `officecli config autoUpdate false` 关闭，或通过 `OFFICECLI_SKIP_UPDATE=1` 跳过单次检查。配置文件位于 `~/.officecli/config.json`。
 
-## AI 智能体接入
+## 核心功能
+
+### 实时预览
+
+`watch` 启动本地 HTTP 服务器，实时预览 PowerPoint 文件。每次修改自动刷新浏览器 — 非常适合与 AI 智能体配合做迭代设计。
+
+```bash
+officecli watch deck.pptx
+# 打开 http://localhost:18080 — 每次 set/add/remove 自动刷新
+```
+
+支持形状、图表、公式、3D 模型（Three.js）、morph 过渡、缩放导航和所有形状效果的渲染。
+
+### 驻留模式与批量执行
+
+驻留模式将文档保持在内存中，批量模式在一次打开/保存周期内执行多条命令。
+
+```bash
+# 驻留模式 — 通过命名管道通信，延迟接近零
+officecli open report.docx
+officecli set report.docx /body/p[1]/r[1] --prop bold=true
+officecli set report.docx /body/p[2]/r[1] --prop color=FF0000
+officecli close report.docx
+
+# 批量模式 — 原子化多命令执行
+echo '[{"command":"set","path":"/slide[1]/shape[1]","props":{"text":"Hello"}},
+      {"command":"set","path":"/slide[1]/shape[2]","props":{"fill":"FF0000"}}]' \
+  | officecli batch deck.pptx --stop-on-error
+```
+
+### 三层架构
+
+从简单开始，仅在需要时深入。
+
+| 层 | 用途 | 命令 |
+|----|------|------|
+| **L1：读取** | 内容的语义视图 | `view`（text、annotated、outline、stats、issues、html） |
+| **L2：DOM** | 结构化元素操作 | `get`、`query`、`set`、`add`、`remove`、`move` |
+| **L3：原始 XML** | XPath 直接访问 — 通用兜底 | `raw`、`raw-set`、`add-part`、`validate` |
+
+```bash
+# L1 — 高级视图
+officecli view report.docx annotated
+officecli view budget.xlsx text --cols A,B,C --max-lines 50
+
+# L2 — 元素级操作
+officecli query report.docx "run:contains(TODO)"
+officecli add budget.xlsx / --type sheet --prop name="Q2 Report"
+officecli move report.docx /body/p[5] --to /body --index 1
+
+# L3 — L2 不够时用原始 XML
+officecli raw deck.pptx /slide[1]
+officecli raw-set report.docx document \
+  --xpath "//w:p[1]" --action append \
+  --xml '<w:r><w:t>Injected text</w:t></w:r>'
+```
+
+## AI 集成
+
+### MCP 服务器
+
+内置 [MCP](https://modelcontextprotocol.io) 服务器 — 一条命令注册：
+
+```bash
+officecli mcp claude       # Claude Code
+officecli mcp cursor       # Cursor
+officecli mcp vscode       # VS Code / Copilot
+officecli mcp lmstudio     # LM Studio
+officecli mcp list         # 查看注册状态
+```
+
+通过 JSON-RPC 暴露所有文档操作 — 无需 shell 访问。
+
+### 直接 CLI 集成
 
 两步将 OfficeCLI 集成到任何 AI 智能体：
 
@@ -181,28 +277,24 @@ curl -fsSL https://officecli.ai/SKILL.md -o ~/.claude/skills/officecli.md
 
 </details>
 
-### MCP 服务器 -- 将 OfficeCLI 作为原生 AI 工具使用
+**从任意语言调用：**
 
-将 OfficeCLI 作为 MCP 服务器运行，在 Claude Desktop、Cursor 或任何 MCP 兼容智能体中作为原生工具使用 -- 无需编写封装代码。
-
-```bash
-officecli mcp-serve
+```python
+# Python
+import subprocess, json
+def cli(*args): return subprocess.check_output(["officecli", *args], text=True)
+cli("create", "deck.pptx")
+cli("set", "deck.pptx", "/slide[1]/shape[1]", "--prop", "text=Hello")
 ```
 
-将以下配置添加到您的 MCP 客户端（Claude Desktop、Cursor 等）：
-
-```json
-{
-  "mcpServers": {
-    "officecli": {
-      "command": "officecli",
-      "args": ["mcp-serve"]
-    }
-  }
-}
+```js
+// JavaScript
+const { execFileSync } = require('child_process')
+const cli = (...args) => execFileSync('officecli', args, { encoding: 'utf8' })
+cli('set', 'deck.pptx', '/slide[1]/shape[1]', '--prop', 'text=Hello')
 ```
 
-OfficeCLI 将所有文档操作（create、view、get、query、set、add、remove、move、validate、batch、raw）暴露为 MCP 工具，支持结构化 JSON 输入和输出。
+每个命令都支持 `--json` 输出结构化数据。基于路径的寻址让智能体无需理解 XML 命名空间。
 
 ### 为什么智能体偏爱 OfficeCLI
 
@@ -215,13 +307,16 @@ OfficeCLI 将所有文档操作（create、view、get、query、set、add、remo
 
 ### 内置帮助
 
-属性名、取值格式不确定时，请用分层帮助查询，不要凭感觉写。将 `pptx` 换成 `docx` 或 `xlsx`；动词包括 `view`、`get`、`query`、`set`、`add`、`raw`。
+不确定属性名时，用分层帮助查询：
 
 ```bash
 officecli pptx set              # 全部可设置元素与属性
 officecli pptx set shape        # 某一类元素的详细说明
 officecli pptx set shape.fill   # 单个属性格式与示例
+officecli docx query            # 选择器说明：属性匹配、:contains、:has() 等
 ```
+
+将 `pptx` 换成 `docx` 或 `xlsx`；动词包括 `view`、`get`、`query`、`set`、`add`、`raw`。
 
 运行 `officecli --help` 查看完整概览。
 
@@ -272,193 +367,25 @@ officecli get report.docx /body --depth 1 --json
 
 ## 对比
 
-OfficeCLI 与其他 AI 智能体处理 Office 文档的方案相比如何？
-
 | | OfficeCLI | Microsoft Office | LibreOffice | python-docx / openpyxl |
 |---|---|---|---|---|
 | 开源免费 | ✓ (Apache 2.0) | ✗（付费授权） | ✓ | ✓ |
-| AI 友好的 CLI | ✓ | ✗ | 部分支持 | ✗ |
-| 结构化 JSON 输出 | ✓ | ✗ | ✗ | ✗ |
-| 零安装（单一可执行文件） | ✓ | ✗ | ✗ | ✗（需要 Python + pip） |
-| 任意语言调用 | ✓ (CLI) | ✗ (COM/Add-in) | ✗ (UNO API) | ✗（仅 Python） |
+| AI 原生 CLI + JSON | ✓ | ✗ | ✗ | ✗ |
+| 零安装（单一可执行文件） | ✓ | ✗ | ✗ | ✗（需 Python + pip） |
+| 任意语言调用 | ✓ (CLI) | ✗ (COM/Add-in) | ✗ (UNO API) | 仅 Python |
 | 基于路径的元素访问 | ✓ | ✗ | ✗ | ✗ |
 | 原始 XML 兜底 | ✓ | ✗ | ✗ | 部分支持 |
-| 驻留模式（内存常驻） | ✓ | ✗ | ✗ | ✗ |
-| 支持无头/CI 环境 | ✓ | ✗ | 部分支持 | ✓ |
-| 跨平台 | ✓ | ✗（Windows/Mac） | ✓ | ✓ |
+| 实时预览 | ✓ | ✓ | ✗ | ✗ |
+| 无头 / CI 环境 | ✓ | ✗ | 部分支持 | ✓ |
+| 跨平台 | ✓ | Windows/Mac | ✓ | ✓ |
 | Word + Excel + PowerPoint | ✓ | ✓ | ✓ | 需要多个库 |
-| 读取 + 写入 + 创建 | ✓ | ✓ | ✓ | ✓ |
 
-## 三层架构
-
-OfficeCLI 采用渐进式复杂度 -- 从简单开始，仅在需要时深入。
-
-### L1：读取与检查
-
-文档内容的高级语义视图。
+## 更新与配置
 
 ```bash
-# 带元素路径的纯文本
-officecli view report.docx text
+officecli config autoUpdate false              # 关闭自动更新检查
+OFFICECLI_SKIP_UPDATE=1 officecli ...          # 单次调用跳过检查（CI）
 ```
-
-输出：
-
-```
-/body/p[1]  Executive Summary
-/body/p[2]  Revenue increased by 25% year-over-year.
-/body/p[3]  Key drivers include new product launches and market expansion.
-```
-
-```bash
-# 带格式标注的文本
-officecli view report.docx annotated
-```
-
-输出：
-
-```
-[Heading1, Arial 18pt, bold] Executive Summary
-[Normal, Calibri 11pt] Revenue increased by 25% year-over-year.
-```
-
-```bash
-# 检测格式和样式问题（JSON 输出）
-officecli view budget.xlsx issues --json
-```
-
-输出：
-
-```json
-[
-  {"type": "format", "path": "/Sheet1/A1", "message": "Inconsistent font size"}
-]
-```
-
-```bash
-# Excel 按列筛选查看
-officecli view budget.xlsx text --cols A,B,C --max-lines 50
-
-# PowerPoint 大纲
-officecli view deck.pptx outline
-
-# 文档统计
-officecli view deck.pptx stats
-
-# CSS 风格查询
-officecli query report.docx "paragraph[style=Heading1]"
-
-# OpenXML 模式校验
-officecli validate report.docx
-```
-
-### L2：DOM 操作
-
-通过结构化元素路径和属性修改文档。
-
-**路径语法：** 路径使用 OfficeCLI 自有的元素寻址方式（非 XPath）。元素通过本地名称和 1-based 索引引用：`/slide[1]/shape[2]`、`/body/p[3]/r[1]`、`/Sheet1/A1`。Excel 也支持原生表示法：`Sheet1!A1` 与 `/Sheet1/A1` 等效。`view` 命令使用模式名称（`text`、`outline` 等），`get` 和 `set` 使用元素路径。
-
-高级功能：
-- **3D 模型** -- 插入带 morph 动画的 `.glb` 3D 模型，直接通过命令行操作
-- **灵活的图片来源** -- 支持文件路径、base64 data URI 和 HTTP(S) URL
-- **表格单元格合并** -- 通过 `merge.right` 和 `merge.down` 实现专业表格布局
-
-```bash
-# 设置任意元素的属性
-officecli set report.docx /body/p[1]/r[1] --prop bold=true --prop color=FF0000
-```
-
-输出：
-
-```
-Set 2 properties on /body/p[1]/r[1]
-```
-
-```bash
-# 添加元素
-officecli add report.docx /body --type paragraph --prop text="New section" --index 3
-
-# 添加幻灯片和形状
-officecli add deck.pptx / --type slide
-officecli add deck.pptx /slide[2] --type shape --prop text="Hello World"
-
-# 克隆元素
-officecli add deck.pptx / --from /slide[1]
-
-# 移动、交换、删除
-officecli move report.docx /body/p[5] --to /body --index 1
-officecli swap deck.pptx /slide[1] /slide[3]
-officecli remove report.docx /body/p[4]
-
-# Excel 单元格操作
-officecli set budget.xlsx /Sheet1/A1 --prop formula="=SUM(A2:A10)" --prop numFmt="0.00%"
-officecli add budget.xlsx / --type sheet --prop name="Q2 Report"
-```
-
-### L3：原始 XML
-
-通过 XPath 直接访问 XML -- 任何 OpenXML 操作的通用兜底方案。
-
-```bash
-# 查看文档部件的原始 XML
-officecli raw report.docx document
-
-# 直接修改 XML
-officecli raw-set report.docx document \
-  --xpath "//w:p[1]" \
-  --action append \
-  --xml '<w:r><w:t>Injected text</w:t></w:r>'
-
-# 添加新的文档部件（页眉、图表等）
-officecli add-part report.docx /body --type header
-officecli add-part budget.xlsx /Sheet1 --type chart
-```
-
-## 性能：驻留模式与批量模式
-
-### 驻留模式
-
-对于多步骤工作流（同一文件 3 条以上命令），驻留模式将文档保持在后台进程中，避免每次命令都重新加载文件。通过命名管道通信，命令间延迟接近零。
-
-```bash
-officecli open report.docx        # 启动驻留进程
-officecli view report.docx text   # 即时响应 -- 无需重新加载
-officecli set report.docx ...     # 即时响应 -- 无需重新加载
-officecli close report.docx       # 保存并退出
-```
-
-驻留进程绑定到特定文件 -- 使用 `officecli close` 保存并释放。如需丢弃更改，可直接终止进程而不调用 `close`。
-
-### 批量模式
-
-在一次打开/保存周期内执行多条操作，通过标准输入或 `--input` 传入 JSON 数组。
-
-```bash
-# 使用 --input 文件（跨平台，推荐）
-officecli batch data.xlsx --input commands.json --json
-
-# 使用标准输入 (Unix/macOS)
-echo '[
-  {"command":"set","path":"/Sheet1/A1","props":{"value":"Name","bold":true}},
-  {"command":"set","path":"/Sheet1/B1","props":{"value":"Score","bold":true}}
-]' | officecli batch data.xlsx --json
-```
-
-注意：在 Windows 上使用 `echo` 时需注意引号转义。`--input` 标志配合文件在所有平台上均可靠工作。
-
-**BatchItem 字段：** 每个命令对象支持 `command`（必需）、`path`、`props`（键值对象）、`type`、`from`、`to`、`index`、`xpath`、`action`、`xml`、`depth`、`mode` 和 `selector`。字段可用性取决于命令类型。
-
-使用 `--stop-on-error` 可在首次失败时中止。批量模式支持：`add`、`set`、`get`、`query`、`remove`、`move`、`view`、`raw`、`raw-set`、`validate`。
-
-## 实时预览
-
-在浏览器中预览文档，编辑时实时更新：
-
-```bash
-officecli watch deck.pptx
-```
-
-OfficeCLI 将幻灯片、图表、公式和形状渲染为实时 HTML -- 基于 SSE 自动刷新。您所做的每一处修改都会即时反映在浏览器中。
 
 ## 命令参考
 
@@ -526,35 +453,6 @@ officecli batch budget.xlsx --input updates.json --json
 
 # 交付前检查文档质量
 officecli validate report.docx && officecli view report.docx issues --json
-```
-
-## 从任意语言调用
-
-OfficeCLI 是标准的 CLI 工具 -- 通过子进程从任意语言调用。添加 `--json` 获取结构化输出。
-
-**Python：**
-
-```python
-import subprocess, json
-result = subprocess.check_output(["officecli", "view", "deck.pptx", "outline"], text=True)
-data = json.loads(subprocess.check_output(["officecli", "get", "deck.pptx", "/slide[1]", "--json"], text=True))
-```
-
-**JavaScript：**
-
-```js
-const { execFileSync } = require('child_process')
-const result = execFileSync('officecli', ['view', 'deck.pptx', 'outline'], { encoding: 'utf8' })
-const data = JSON.parse(execFileSync('officecli', ['get', 'deck.pptx', '/slide[1]', '--json'], { encoding: 'utf8' }))
-```
-
-**Bash：**
-
-```bash
-# 任何 Shell 脚本都可以直接调用 OfficeCLI
-officecli create report.docx
-officecli add report.docx /body --type paragraph --prop text="Hello from Bash"
-outline=$(officecli view report.docx outline)
 ```
 
 ## 从源码构建

@@ -162,9 +162,9 @@ public partial class WordHandler
         var effectiveType = type.ToLowerInvariant();
         if (effectiveType == "field")
         {
-            var ft = properties.GetValueOrDefault("fieldType", null)
-                  ?? properties.GetValueOrDefault("fieldtype", null)
-                  ?? properties.GetValueOrDefault("type", null);
+            var ft = properties.GetValueOrDefault("fieldType")
+                  ?? properties.GetValueOrDefault("fieldtype")
+                  ?? properties.GetValueOrDefault("type");
             if (ft != null) effectiveType = ft.ToLowerInvariant();
         }
         var fieldInstr = effectiveType switch

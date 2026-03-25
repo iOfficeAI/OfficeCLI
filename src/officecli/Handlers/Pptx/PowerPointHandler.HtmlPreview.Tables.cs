@@ -257,22 +257,22 @@ public partial class PowerPointHandler
         return styleName switch
         {
             // Medium Style 2: header=dk1 lumMod50% lumOff50%, band1=dk1 lumMod20% lumOff80%, band2=dk1 lumMod10% lumOff90%
-            "medium2" => isHeader ? (ApplyLumModOff(dk1, 50000, 50000), "#FFFFFF")
+            "medium2" => isHeader ? (ApplyLumModOff(dk1, 50000, 50000), (string?)"#FFFFFF")
                        : isBandedOdd ? (ApplyLumModOff(dk1, 20000, 80000), null)
                        : (ApplyLumModOff(dk1, 10000, 90000), null),
 
             // Medium Style 1 - Accent 1: header=accent1, band1=accent1 tint40%
-            "medium1" => isHeader ? ($"#{accent1}", "#FFFFFF")
+            "medium1" => isHeader ? ((string?)$"#{accent1}", (string?)"#FFFFFF")
                        : isBandedOdd ? (ApplyLumModOff(accent1, 20000, 80000), null)
                        : (null, null),
 
             // Medium Style 3 - Accent 1: header=accent1, band1=accent1 lumMod40% lumOff60%
-            "medium3" => isHeader ? ($"#{accent1}", "#FFFFFF")
+            "medium3" => isHeader ? ((string?)$"#{accent1}", (string?)"#FFFFFF")
                        : isBandedOdd ? (ApplyLumModOff(accent1, 40000, 60000), null)
                        : (null, null),
 
             // Medium Style 4 - Accent 1: header=accent1 lumMod75%, band1=accent1 lumMod40% lumOff60%, band2=accent1 lumMod20% lumOff80%
-            "medium4" => isHeader ? (ApplyLumModOff(accent1, 75000, 0), "#FFFFFF")
+            "medium4" => isHeader ? (ApplyLumModOff(accent1, 75000, 0), (string?)"#FFFFFF")
                        : isBandedOdd ? (ApplyLumModOff(accent1, 40000, 60000), null)
                        : (ApplyLumModOff(accent1, 20000, 80000), null),
 
