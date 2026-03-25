@@ -372,8 +372,8 @@ public partial class PowerPointHandler
         else
         {
             var groupW = (double)pw / Math.Max(catCount, 1);
-            var barW = stacked ? groupW * 0.5 : groupW * 0.5 / serCount;
-            var gap = groupW * 0.25;
+            var barW = stacked ? groupW * 0.45 : groupW * 0.5 / serCount;
+            var gap = stacked ? groupW * 0.275 : groupW * 0.25;
 
             // Gridlines
             for (int t = 1; t <= nTicks; t++)
