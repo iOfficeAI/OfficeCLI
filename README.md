@@ -19,49 +19,21 @@ OfficeCLI is a free, open-source command-line tool for AI agents to read, edit, 
 
 <p align="center"><em>PPT creation process using OfficeCLI on <a href="https://github.com/iOfficeAI/AionUi">AionUi</a></em></p>
 
-## For AI Agents
-
-OfficeCLI ships with a [SKILL.md](SKILL.md) that teaches AI agents how to use it effectively.
-
-Talk to your agent with this first:
-
-```bash
-curl -fsSL https://officecli.ai/SKILL.md
-```
-
-If your agent supports local skill installation, install it locally instead:
-
-**Claude Code:**
-
-```bash
-curl -fsSL https://officecli.ai/SKILL.md -o ~/.claude/skills/officecli.md
-```
-
-**Other agents:**
-
-Include the contents of that `SKILL.md` in your agent's system prompt or tool description.
-
 ## Installation
 
 OfficeCLI is a single binary — no runtime, no dependencies.
 
-**Option 1: One-line install script**
-
-macOS / Linux:
+**One-line install:**
 
 ```bash
+# macOS / Linux
 curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
-```
 
-Windows (PowerShell):
-
-```powershell
+# Windows (PowerShell)
 irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
 ```
 
-**Option 2: Download binary manually**
-
-Download the binary for your platform from [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases):
+**Or download manually** from [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases):
 
 | Platform | Binary |
 |----------|--------|
@@ -72,153 +44,115 @@ Download the binary for your platform from [GitHub Releases](https://github.com/
 | Windows x64 | `officecli-win-x64.exe` |
 | Windows ARM64 | `officecli-win-arm64.exe` |
 
-After downloading, install the built-in AI agent skills so your AI assistant (Claude Code, etc.) can automatically work with Office documents:
+After installing, set up AI agent integration (see [AI Integration](#ai-integration) below):
 
 ```powershell
-# Windows example
-.\officecli-win-x64.exe skills all
+officecli skills all       # Install skill files for all detected AI clients
 ```
-
-## Why OfficeCLI?
-
-AI agents are great at text — but Office documents are binary blobs of XML. OfficeCLI bridges this gap, letting agents:
-
-- **Create** documents from scratch — blank or with content
-- **Read** text, structure, styles, formulas — in plain text or structured JSON
-- **Analyze** formatting issues, style inconsistencies, and structural problems
-- **Modify** any element — text, fonts, colors, layout, formulas, charts, images
-- **Reorganize** content — add, remove, move, copy elements across documents
-
-All through simple CLI commands, with structured JSON output, no Office installation needed.
 
 ## Quick Start
 
 ```bash
-# Create a blank document
+# Create documents
 officecli create report.docx
 officecli create budget.xlsx
 officecli create deck.pptx
 
-# View document content
+# View content
 officecli view report.docx text
+officecli view deck.pptx outline
+officecli view budget.xlsx issues --json      # Check for formatting issues
 
-# Check for formatting issues
-officecli view report.docx issues --json
-
-# Read a specific cell
+# Read elements
 officecli get budget.xlsx /Sheet1/B5 --json
+officecli get budget.xlsx '$Sheet1:A1:D10'    # Excel cell range notation
+
+# Find elements with CSS-like selectors
+officecli query report.docx "paragraph[style=Heading1]"
+officecli query deck.pptx "shape[fill=FF0000]"
 
 # Modify content
 officecli set report.docx /body/p[1]/r[1] --prop text="Updated Title" --prop bold=true
+officecli set budget.xlsx '$Sheet1:B5' --prop value=42 --prop bold=true
+officecli set deck.pptx /slide[1]/shape[1] --prop text="New Title" --prop color=FF6600
 
-# Batch editing with resident mode (keeps doc in memory)
-officecli open presentation.pptx
-officecli set presentation.pptx /slide[1]/shape[1] --prop text="New Title"
-officecli set presentation.pptx /slide[2]/shape[3] --prop text="New Subtitle"
-officecli close presentation.pptx
+# Add elements
+officecli add report.docx /body --type paragraph --prop text="New paragraph" --index 3
+officecli add deck.pptx / --type slide
+officecli add deck.pptx /slide[2] --type shape --prop preset=star5 --prop fill=FFD700
+
+# Live preview — auto-refreshes on every change
+officecli watch deck.pptx
 ```
 
-## Built-in help
+## Built-in Help
 
-When property names or value formats are unclear, use the nested help instead of guessing. Replace `pptx` with `docx` or `xlsx`; verbs are `view`, `get`, `query`, `set`, `add`, and `raw`.
+Don't guess property names — drill into the help:
 
 ```bash
 officecli pptx set              # All settable elements and properties
 officecli pptx set shape        # Detail for one element type
 officecli pptx set shape.fill   # One property: format and examples
+officecli docx query            # Selector reference: attributes, :contains, :has(), etc.
 ```
 
-Run `officecli --help` for the same overview. Optional wiki content may be embedded in the binary when built with a `wiki/` directory.
+Replace `pptx` with `docx` or `xlsx`; verbs are `view`, `get`, `query`, `set`, `add`, and `raw`.
 
-## Three-Layer Architecture
+## Key Features
 
-OfficeCLI is designed with a progressive complexity model — start simple, go deep only when needed.
+### Live Preview
 
-### L1: Read & Inspect
-
-High-level, semantic views of document content.
+`watch` starts a local HTTP server with a live HTML preview of your PowerPoint file. Every modification auto-refreshes in the browser — ideal for iterative design with AI agents.
 
 ```bash
-# Word — plain text with element paths
-officecli view report.docx text
+officecli watch deck.pptx
+# Opens http://localhost:18080 — refreshes on every set/add/remove
+```
 
-# Word — text with formatting annotations
+Renders shapes, charts, equations, 3D models (Three.js), morph transitions, zoom navigation, and all shape effects.
+
+### Resident Mode & Batch
+
+For multi-step workflows, resident mode keeps the document in memory. Batch mode runs multiple operations in one open/save cycle.
+
+```bash
+# Resident mode — near-zero latency via named pipes
+officecli open report.docx
+officecli set report.docx /body/p[1]/r[1] --prop bold=true
+officecli set report.docx /body/p[2]/r[1] --prop color=FF0000
+officecli close report.docx
+
+# Batch mode — atomic multi-command execution
+echo '[{"command":"set","path":"/slide[1]/shape[1]","props":{"text":"Hello"}},
+      {"command":"set","path":"/slide[1]/shape[2]","props":{"fill":"FF0000"}}]' \
+  | officecli batch deck.pptx --stop-on-error
+```
+
+### Three-Layer Architecture
+
+Start simple, go deep only when needed.
+
+| Layer | Purpose | Commands |
+|-------|---------|----------|
+| **L1: Read** | Semantic views of content | `view` (text, annotated, outline, stats, issues, html) |
+| **L2: DOM** | Structured element operations | `get`, `query`, `set`, `add`, `remove`, `move` |
+| **L3: Raw XML** | Direct XPath access — universal fallback | `raw`, `raw-set`, `add-part`, `validate` |
+
+```bash
+# L1 — high-level views
 officecli view report.docx annotated
-
-# Excel — view with column filter
 officecli view budget.xlsx text --cols A,B,C --max-lines 50
 
-# Excel — detect formula and style issues
-officecli view budget.xlsx issues --json
-
-# PowerPoint — outline all slides
-officecli view deck.pptx outline
-
-# PowerPoint — stats on fonts and styles used
-officecli view deck.pptx stats
-```
-
-### L2: DOM Operations
-
-Modify documents through structured element paths and properties.
-
-```bash
-# Word — query headings and set formatting (CSS-like selectors; see help for full syntax)
-officecli query report.docx "paragraph[style=Heading1]"
-officecli docx query            # Selector reference: attributes, :contains, :has(), etc.
-officecli set report.docx /body/p[1]/r[1] --prop bold=true --prop color=FF0000
-
-# Word — add a paragraph, remove another
-officecli add report.docx /body --type paragraph --prop text="New paragraph" --index 3
-officecli remove report.docx /body/p[5]
-
-# Excel — read and modify cells
-officecli get budget.xlsx /Sheet1/B5 --json
-officecli set budget.xlsx /Sheet1/A1 --prop formula="=SUM(A2:A10)" --prop numFmt="0.00%"
-
-# Excel — add a new sheet, add rows
+# L2 — element-level operations
+officecli query report.docx "run:contains(TODO)"
 officecli add budget.xlsx / --type sheet --prop name="Q2 Report"
-officecli add budget.xlsx /Sheet1 --type row --prop values="Name,Amount,Date"
-
-# PowerPoint — modify slide content
-officecli set deck.pptx /slide[1]/shape[1] --prop text="New Title"
-officecli set deck.pptx /slide[2]/shape[3] --prop fontSize=24 --prop bold=true
-
-# PowerPoint — add a slide, copy a shape from another slide
-officecli add deck.pptx / --type slide
-officecli add deck.pptx /slide[3] --from /slide[1]/shape[2]
-
-# Move elements
 officecli move report.docx /body/p[5] --to /body --index 1
-```
 
-### L3: Raw XML
-
-Direct XML access via XPath — the universal fallback for any OpenXML operation.
-
-```bash
-# Word — view and modify raw XML
-officecli raw report.docx document
-officecli raw-set report.docx document \
-  --xpath "//w:p[1]" \
-  --action append \
-  --xml '<w:r><w:t>Injected text</w:t></w:r>'
-
-# Word — add a header
-officecli add-part report.docx /body --type header
-
-# Excel — view raw sheet XML
-officecli raw budget.xlsx /Sheet1
-
-# Excel — add a chart to a sheet
-officecli add-part budget.xlsx /Sheet1 --type chart
-
-# PowerPoint — view raw slide XML
+# L3 — raw XML when L2 isn't enough
 officecli raw deck.pptx /slide[1]
-
-# Validate any document
-officecli validate report.docx
-officecli validate budget.xlsx
+officecli raw-set report.docx document \
+  --xpath "//w:p[1]" --action append \
+  --xml '<w:r><w:t>Injected text</w:t></w:r>'
 ```
 
 ## Supported Formats
@@ -229,105 +163,89 @@ officecli validate budget.xlsx
 | Excel (.xlsx) | ✓ | ✓ | ✓ |
 | PowerPoint (.pptx) | ✓ | ✓ | ✓ |
 
-### Word — Paragraphs, runs, tables, styles, headers/footers, images, equations, comments, lists
+**Word** — paragraphs, runs, tables, styles, headers/footers, images, equations, comments, lists, watermarks, bookmarks, TOC
 
-### Excel — Cells, formulas, sheets, styles (fonts, fills, borders, number formats), conditional formatting, charts
+**Excel** — cells, formulas, sheets, styles, conditional formatting, charts, pivot tables, named ranges, data validation, `$Sheet:A1` cell addressing
 
-### PowerPoint — Slides, shapes, text boxes, images, animations, equations, themes, alignment, and shape effects
+**PowerPoint** — slides, shapes, text boxes, images, tables, charts, animations, morph transitions, 3D models (.glb), slide zoom, equations, themes, connectors, video/audio
 
-## Resident Mode
+## AI Integration
 
-For multi-step workflows, resident mode keeps the document open in a background process, eliminating reload overhead on every command.
+OfficeCLI offers three ways to connect with AI agents:
 
-```bash
-officecli open report.docx        # Start resident process
-officecli view report.docx text   # Instant — no file reload
-officecli set report.docx ...     # Instant — no file reload
-officecli close report.docx       # Save and stop
-```
+### 1. Skills (recommended for CLI agents)
 
-Communication happens via named pipes for near-zero latency between commands.
-
-## Batch mode
-
-Run multiple operations in **one** open/save cycle (or forward to an already resident process) by passing a JSON array of commands on stdin or via `--input`.
+Install skill definitions so agents discover OfficeCLI capabilities automatically:
 
 ```bash
-echo '[{"command":"view","mode":"outline"},{"command":"get","path":"/slide[1]","depth":1}]' \
-  | officecli batch deck.pptx
+officecli skills all       # Auto-detect and install for all clients
+officecli skills claude    # Claude Code
+officecli skills copilot   # GitHub Copilot
+officecli skills codex     # OpenAI Codex
+officecli skills cursor    # Cursor
+officecli skills windsurf  # Windsurf
 ```
 
-Use `--stop-on-error` to abort on the first failure. Supported `command` values in each item include `get`, `query`, `set`, `add`, `remove`, `move`, `view`, `raw`, `raw-set`, and `validate` (see `BatchItem` in the source for all fields).
+Or feed the skill file directly: `curl -fsSL https://officecli.ai/SKILL.md`
 
-## Updates & configuration
+### 2. MCP Server (for protocol-based agents)
 
-The CLI may check for updates in the background (non-blocking) and align with the latest release from GitHub. Configuration lives under `~/.officecli/config.json`.
+Built-in [MCP](https://modelcontextprotocol.io) server — register with one command:
 
-- **Disable automatic update checks:** `officecli config autoUpdate false` (read current value with `officecli config autoUpdate`).
-- **Skip the background check for a single invocation (e.g. CI):** `OFFICECLI_SKIP_UPDATE=1 officecli ...`
+```bash
+officecli mcp claude       # Claude Code
+officecli mcp cursor       # Cursor
+officecli mcp vscode       # VS Code / Copilot
+officecli mcp lmstudio     # LM Studio
+officecli mcp list         # Check registration status
+```
 
-Re-running the install script (`install.sh` / `install.ps1`) still installs or upgrades the binary as before.
+Exposes all document operations as tools over JSON-RPC — no shell access needed.
 
-## Python Usage
+### 3. Direct CLI (from any language)
 
 ```python
+# Python
 import subprocess, json
-
 def cli(*args): return subprocess.check_output(["officecli", *args], text=True)
-def cli_json(*args): return json.loads(cli(*args, "--json"))
-
 cli("create", "deck.pptx")
 cli("set", "deck.pptx", "/slide[1]/shape[1]", "--prop", "text=Hello")
-shapes = cli_json("query", "deck.pptx", "shape")
 ```
-
-## JavaScript Usage
 
 ```js
+// JavaScript
 const { execFileSync } = require('child_process')
-
 const cli = (...args) => execFileSync('officecli', args, { encoding: 'utf8' })
-const cliJson = (...args) => JSON.parse(cli(...args, '--json'))
-
-cli('create', 'deck.pptx')
 cli('set', 'deck.pptx', '/slide[1]/shape[1]', '--prop', 'text=Hello')
-const shapes = cliJson('query', 'deck.pptx', 'shape')
 ```
 
-## AI Agent Integration
-
-### Why OfficeCLI for agents?
-
-**Deterministic JSON output** — Every command supports `--json`, returning structured data with consistent schemas. No regex parsing needed.
-
-**Useful validation and diagnostics** — Commands like `validate`, `view issues`, and `raw-set` help agents detect problems and verify document correctness after changes.
-
-**Path-based addressing** — Every element in every document has a stable path. Agents can navigate documents without understanding XML namespaces.
-
-**Progressive complexity** — Agents start with L1 (read), escalate to L2 (modify), and fall back to L3 (raw XML) only when needed. This minimizes token usage while keeping all operations possible.
+Every command supports `--json` for structured output. Path-based addressing means agents don't need to understand XML namespaces.
 
 ## Comparison
-
-How does OfficeCLI compare to other approaches for AI agents working with Office documents?
 
 | | OfficeCLI | Microsoft Office | LibreOffice | python-docx / openpyxl |
 |---|---|---|---|---|
 | Open source & free | ✓ (Apache 2.0) | ✗ (paid license) | ✓ | ✓ |
-| AI-friendly CLI | ✓ | ✗ | Partial | ✗ |
-| Structured JSON output | ✓ | ✗ | ✗ | ✗ |
+| AI-native CLI + JSON | ✓ | ✗ | ✗ | ✗ |
 | Zero install (single binary) | ✓ | ✗ | ✗ | ✗ (Python + pip) |
-| Call from any language | ✓ (CLI) | ✗ (COM/Add-in) | ✗ (UNO API) | ✗ (Python only) |
+| Call from any language | ✓ (CLI) | ✗ (COM/Add-in) | ✗ (UNO API) | Python only |
 | Path-based element access | ✓ | ✗ | ✗ | ✗ |
 | Raw XML fallback | ✓ | ✗ | ✗ | Partial |
-| Resident mode (in-memory) | ✓ | ✗ | ✗ | ✗ |
-| Works in headless/CI environments | ✓ | ✗ | Partial | ✓ |
-| Cross-platform | ✓ | ✗ (Windows/Mac) | ✓ | ✓ |
+| Live preview | ✓ | ✓ | ✗ | ✗ |
+| Headless / CI | ✓ | ✗ | Partial | ✓ |
+| Cross-platform | ✓ | Windows/Mac | ✓ | ✓ |
 | Word + Excel + PowerPoint | ✓ | ✓ | ✓ | Separate libs |
-| Read + Write + Create | ✓ | ✓ | ✓ | ✓ |
+
+## Updates & Configuration
+
+```bash
+officecli config autoUpdate false              # Disable auto-update checks
+OFFICECLI_SKIP_UPDATE=1 officecli ...          # Skip check for one invocation (CI)
+```
 
 ## Build
 
-Requires [.NET 10 SDK](https://dotnet.microsoft.com/download) for local compilation. From the repository root:
+Requires [.NET 10 SDK](https://dotnet.microsoft.com/download). From the repository root:
 
 ```bash
 ./build.sh
