@@ -165,7 +165,7 @@ public partial class WordHandler
             var secIdx = int.Parse(secMatch.Groups[1].Value);
             var sectionProps = FindSectionProperties();
             if (secIdx < 1 || secIdx > sectionProps.Count)
-                return new DocumentNode { Path = path, Type = "error", Text = $"Section {secIdx} not found (total: {sectionProps.Count})" };
+                throw new ArgumentException($"Section {secIdx} not found (total: {sectionProps.Count})");
 
             var sectPr = sectionProps[secIdx - 1];
             var secNode = new DocumentNode { Path = path, Type = "section" };
@@ -181,10 +181,10 @@ public partial class WordHandler
             secNode.Format["pageHeight"] = pgH.ToString();
             if (pageSize?.Orient?.Value != null) secNode.Format["orientation"] = pageSize.Orient.InnerText;
             var margin = sectPr.GetFirstChild<PageMargin>();
-            if (margin?.Top?.Value != null) secNode.Format["margintop"] = margin.Top.Value;
-            if (margin?.Bottom?.Value != null) secNode.Format["marginbottom"] = margin.Bottom.Value;
-            if (margin?.Left?.Value != null) secNode.Format["marginleft"] = margin.Left.Value;
-            if (margin?.Right?.Value != null) secNode.Format["marginright"] = margin.Right.Value;
+            if (margin?.Top?.Value != null) secNode.Format["marginTop"] = margin.Top.Value;
+            if (margin?.Bottom?.Value != null) secNode.Format["marginBottom"] = margin.Bottom.Value;
+            if (margin?.Left?.Value != null) secNode.Format["marginLeft"] = margin.Left.Value;
+            if (margin?.Right?.Value != null) secNode.Format["marginRight"] = margin.Right.Value;
 
             // Column properties
             var cols = sectPr.GetFirstChild<Columns>();
