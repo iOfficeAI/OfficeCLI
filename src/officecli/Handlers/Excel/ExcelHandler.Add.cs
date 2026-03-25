@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
+using X14 = DocumentFormat.OpenXml.Office2010.Excel;
 using OfficeCli.Core;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using Drawing = DocumentFormat.OpenXml.Drawing;
@@ -303,6 +304,7 @@ public partial class ExcelHandler
                     cell.StyleIndex = styleManager.ApplyStyle(cell, cellStyleProps);
                 }
 
+                DeleteCalcChainIfPresent();
                 SaveWorksheet(cellWorksheet);
                 return $"/{cellSheetName}/{cellRef}";
 
@@ -1860,6 +1862,115 @@ public partial class ExcelHandler
                 SaveWorksheet(cfNewWorksheet);
                 var cfNewCount = cfNewWs.Elements<ConditionalFormatting>().Count();
                 return $"/{cfNewSheetName}/cf[{cfNewCount}]";
+            }
+
+            case "sparkline":
+            {
+                var spkSegments = parentPath.TrimStart('/').Split('/', 2);
+                var spkSheetName = spkSegments[0];
+                var spkWorksheet = FindWorksheet(spkSheetName)
+                    ?? throw new ArgumentException($"Sheet not found: {spkSheetName}");
+
+                var spkCell = properties.GetValueOrDefault("cell")
+                    ?? throw new ArgumentException("Sparkline requires 'cell' property (e.g. F1)");
+                var spkRange = properties.GetValueOrDefault("range")
+                    ?? throw new ArgumentException("Sparkline requires 'range' property (e.g. A1:E1)");
+
+                // Determine sparkline type
+                var spkTypeStr = properties.GetValueOrDefault("type", "line").ToLowerInvariant();
+                var spkType = spkTypeStr switch
+                {
+                    "column" => X14.SparklineTypeValues.Column,
+                    "stacked" => X14.SparklineTypeValues.Stacked,
+                    _ => X14.SparklineTypeValues.Line
+                };
+
+                // Build the SparklineGroup
+                var spkGroup = new X14.SparklineGroup();
+                // Only set Type attribute for non-line (line is default in OOXML)
+                if (spkType != X14.SparklineTypeValues.Line)
+                    spkGroup.Type = spkType;
+
+                // Series color
+                var spkColor = properties.GetValueOrDefault("color", "4472C4");
+                spkGroup.SeriesColor = new X14.SeriesColor { Rgb = ParseHelpers.NormalizeArgbColor(spkColor) };
+
+                // Negative color
+                if (properties.TryGetValue("negativecolor", out var negColor))
+                    spkGroup.NegativeColor = new X14.NegativeColor { Rgb = ParseHelpers.NormalizeArgbColor(negColor) };
+
+                // Boolean flags
+                if (properties.TryGetValue("markers", out var markersVal) && ParseHelpers.IsTruthy(markersVal))
+                    spkGroup.Markers = true;
+                if (properties.TryGetValue("highpoint", out var highVal) && ParseHelpers.IsTruthy(highVal))
+                    spkGroup.High = true;
+                if (properties.TryGetValue("lowpoint", out var lowVal) && ParseHelpers.IsTruthy(lowVal))
+                    spkGroup.Low = true;
+                if (properties.TryGetValue("firstpoint", out var firstVal) && ParseHelpers.IsTruthy(firstVal))
+                    spkGroup.First = true;
+                if (properties.TryGetValue("lastpoint", out var lastVal) && ParseHelpers.IsTruthy(lastVal))
+                    spkGroup.Last = true;
+                if (properties.TryGetValue("negative", out var negVal) && ParseHelpers.IsTruthy(negVal))
+                    spkGroup.Negative = true;
+
+                // Marker colors
+                if (properties.TryGetValue("highmarkercolor", out var highMC))
+                    spkGroup.HighMarkerColor = new X14.HighMarkerColor { Rgb = ParseHelpers.NormalizeArgbColor(highMC) };
+                if (properties.TryGetValue("lowmarkercolor", out var lowMC))
+                    spkGroup.LowMarkerColor = new X14.LowMarkerColor { Rgb = ParseHelpers.NormalizeArgbColor(lowMC) };
+                if (properties.TryGetValue("firstmarkercolor", out var firstMC))
+                    spkGroup.FirstMarkerColor = new X14.FirstMarkerColor { Rgb = ParseHelpers.NormalizeArgbColor(firstMC) };
+                if (properties.TryGetValue("lastmarkercolor", out var lastMC))
+                    spkGroup.LastMarkerColor = new X14.LastMarkerColor { Rgb = ParseHelpers.NormalizeArgbColor(lastMC) };
+                if (properties.TryGetValue("markerscolor", out var markersMC))
+                    spkGroup.MarkersColor = new X14.MarkersColor { Rgb = ParseHelpers.NormalizeArgbColor(markersMC) };
+
+                // Line weight
+                if (properties.TryGetValue("lineweight", out var lwVal) && double.TryParse(lwVal, out var lw))
+                    spkGroup.LineWeight = lw;
+
+                // Build the Sparkline element
+                // Ensure range includes sheet reference
+                var spkFormulaRef = spkRange.Contains('!') ? spkRange : $"{spkSheetName}!{spkRange}";
+                var sparkline = new X14.Sparkline
+                {
+                    Formula = new DocumentFormat.OpenXml.Office.Excel.Formula(spkFormulaRef),
+                    ReferenceSequence = new DocumentFormat.OpenXml.Office.Excel.ReferenceSequence(spkCell)
+                };
+                var sparklines = new X14.Sparklines();
+                sparklines.Append(sparkline);
+                spkGroup.Append(sparklines);
+
+                // Add to worksheet extension list
+                var spkWs = GetSheet(spkWorksheet);
+                var spkExtList = spkWs.GetFirstChild<WorksheetExtensionList>()
+                    ?? spkWs.AppendChild(new WorksheetExtensionList());
+
+                // Find existing sparkline extension or create new one
+                var spkExt = spkExtList.Elements<WorksheetExtension>()
+                    .FirstOrDefault(e => e.Uri == "{05C60535-1F16-4fd2-B633-E4A46CF9E463}");
+                X14.SparklineGroups spkGroups;
+                if (spkExt != null)
+                {
+                    spkGroups = spkExt.GetFirstChild<X14.SparklineGroups>()
+                        ?? spkExt.AppendChild(new X14.SparklineGroups());
+                }
+                else
+                {
+                    spkExt = new WorksheetExtension { Uri = "{05C60535-1F16-4fd2-B633-E4A46CF9E463}" };
+                    spkExt.AddNamespaceDeclaration("x14", "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main");
+                    spkGroups = new X14.SparklineGroups();
+                    spkExt.Append(spkGroups);
+                    spkExtList.Append(spkExt);
+                }
+
+                spkGroups.Append(spkGroup);
+                SaveWorksheet(spkWorksheet);
+
+                // Count all sparkline groups to determine index
+                var allSpkGroups = spkGroups.Elements<X14.SparklineGroup>().ToList();
+                var spkIdx = allSpkGroups.IndexOf(spkGroup) + 1;
+                return $"/{spkSheetName}/sparkline[{spkIdx}]";
             }
 
             default:

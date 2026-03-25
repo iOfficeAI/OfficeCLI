@@ -97,9 +97,34 @@ public partial class PowerPointHandler
                                 break;
                         }
                         break;
+                    // Core document properties
+                    case "title":
+                        _doc.PackageProperties.Title = value;
+                        break;
+                    case "author" or "creator":
+                        _doc.PackageProperties.Creator = value;
+                        break;
+                    case "subject":
+                        _doc.PackageProperties.Subject = value;
+                        break;
+                    case "description":
+                        _doc.PackageProperties.Description = value;
+                        break;
+                    case "category":
+                        _doc.PackageProperties.Category = value;
+                        break;
+                    case "keywords":
+                        _doc.PackageProperties.Keywords = value;
+                        break;
+                    case "lastmodifiedby":
+                        _doc.PackageProperties.LastModifiedBy = value;
+                        break;
+                    case "revision":
+                        _doc.PackageProperties.Revision = value;
+                        break;
                     default:
                         if (unsupported.Count == 0)
-                            unsupported.Add($"{key} (valid presentation props: slideWidth, slideHeight, slideSize, width, height)");
+                            unsupported.Add($"{key} (valid presentation props: slideWidth, slideHeight, slideSize, width, height, title, author, subject, description, category, keywords, lastModifiedBy, revision)");
                         else
                             unsupported.Add(key);
                         break;

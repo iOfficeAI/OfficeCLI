@@ -22,6 +22,9 @@ out/
 ## Test samples
 test-samples/
 
+## Diff
+diff/
+
 ## Claude
 .claude/
 CLAUDE.md

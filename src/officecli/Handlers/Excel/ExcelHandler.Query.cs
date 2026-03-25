@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using OfficeCli.Core;
+using X14 = DocumentFormat.OpenXml.Office2010.Excel;
 
 namespace OfficeCli.Handlers;
 
@@ -20,6 +21,20 @@ public partial class ExcelHandler
         if (path == "/")
         {
             var node = new DocumentNode { Path = "/", Type = "workbook" };
+
+            // Core document properties
+            var props = _doc.PackageProperties;
+            if (props.Title != null) node.Format["title"] = props.Title;
+            if (props.Creator != null) node.Format["author"] = props.Creator;
+            if (props.Subject != null) node.Format["subject"] = props.Subject;
+            if (props.Keywords != null) node.Format["keywords"] = props.Keywords;
+            if (props.Description != null) node.Format["description"] = props.Description;
+            if (props.Category != null) node.Format["category"] = props.Category;
+            if (props.LastModifiedBy != null) node.Format["lastModifiedBy"] = props.LastModifiedBy;
+            if (props.Revision != null) node.Format["revision"] = props.Revision;
+            if (props.Created != null) node.Format["created"] = props.Created.Value.ToString("o");
+            if (props.Modified != null) node.Format["modified"] = props.Modified.Value.ToString("o");
+
             foreach (var (name, part) in GetWorksheets())
             {
                 var sheetNode = new DocumentNode { Path = $"/{name}", Type = "sheet", Preview = name };
@@ -522,6 +537,16 @@ public partial class ExcelHandler
 
         if (!isCellRef)
         {
+            // Handle sparkline[N] path segment
+            var spkMatch = Regex.Match(cellRef, @"^sparkline\[(\d+)\]$", RegexOptions.IgnoreCase);
+            if (spkMatch.Success)
+            {
+                var spkIndex = int.Parse(spkMatch.Groups[1].Value);
+                var spkGroup = GetSparklineGroup(worksheet, spkIndex)
+                    ?? throw new ArgumentException($"Sparkline[{spkIndex}] not found in sheet '{sheetNameFromPath}'");
+                return SparklineGroupToNode(sheetNameFromPath, spkGroup, spkIndex);
+            }
+
             // Handle picture[N] path segment
             var picMatch = Regex.Match(cellRef, @"^picture\[(\d+)\]$", RegexOptions.IgnoreCase);
             if (picMatch.Success)
@@ -607,7 +632,7 @@ public partial class ExcelHandler
         var elementMatch = Regex.Match(selectorForType, @"^(\w+)");
         var elementName = elementMatch.Success ? elementMatch.Groups[1].Value : "";
         bool isKnownType = string.IsNullOrEmpty(elementName)
-            || elementName is "cell" or "row" or "sheet" or "validation" or "comment" or "note" or "table" or "listobject" or "chart" or "pivottable" or "pivot" or "shape" or "picture"
+            || elementName is "cell" or "row" or "sheet" or "validation" or "comment" or "note" or "table" or "listobject" or "chart" or "pivottable" or "pivot" or "shape" or "picture" or "sparkline"
             || (elementName.Length <= 3 && Regex.IsMatch(elementName, @"^[A-Z]+$", RegexOptions.IgnoreCase));
         if (!isKnownType)
         {
@@ -751,6 +776,32 @@ public partial class ExcelHandler
                     }
                     results.Add(node);
                 }
+            }
+            return results;
+        }
+
+        // Handle sparkline queries
+        if (elementName == "sparkline")
+        {
+            foreach (var (sheetName, worksheetPart) in GetWorksheets())
+            {
+                if (parsed.Sheet != null && !sheetName.Equals(parsed.Sheet, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var ws = GetSheet(worksheetPart);
+                var extList = ws.GetFirstChild<WorksheetExtensionList>();
+                if (extList == null) continue;
+
+                var spkExt = extList.Elements<WorksheetExtension>()
+                    .FirstOrDefault(e => e.Uri == "{05C60535-1F16-4fd2-B633-E4A46CF9E463}");
+                if (spkExt == null) continue;
+
+                var spkGroups = spkExt.GetFirstChild<X14.SparklineGroups>();
+                if (spkGroups == null) continue;
+
+                var groups = spkGroups.Elements<X14.SparklineGroup>().ToList();
+                for (int i = 0; i < groups.Count; i++)
+                    results.Add(SparklineGroupToNode(sheetName, groups[i], i + 1));
             }
             return results;
         }

@@ -428,6 +428,21 @@ public class ResidentServer : IDisposable
             return;
         }
 
+        if (mode!.ToLowerInvariant() is "svg" or "g")
+        {
+            if (_handler is OfficeCli.Handlers.PowerPointHandler pptSvgHandler)
+            {
+                var slideNum = start ?? 1;
+                var svg = pptSvgHandler.ViewAsSvg(slideNum);
+                Console.Write(svg);
+            }
+            else
+            {
+                Console.Error.WriteLine("SVG preview is only supported for .pptx files.");
+            }
+            return;
+        }
+
         if (req.Json)
         {
             var modeKey = mode!.ToLowerInvariant();

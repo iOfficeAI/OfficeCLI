@@ -195,13 +195,13 @@ public partial class PowerPointHandler
         // so text doesn't appear outside the visible shape area.
         if (!string.IsNullOrEmpty(clipPathCss) && presetGeom?.Preset?.HasValue == true)
         {
-            var insetPct = GetShapeTextInsetPercent(presetGeom.Preset!.InnerText!);
-            if (insetPct > 0)
+            var (pctL, pctT, pctR, pctB) = GetShapeTextInsetPercent(presetGeom.Preset!.InnerText!);
+            if (pctL > 0 || pctT > 0 || pctR > 0 || pctB > 0)
             {
-                var extraL = (long)(cx * insetPct);
-                var extraT = (long)(cy * insetPct);
-                var extraR = (long)(cx * insetPct);
-                var extraB = (long)(cy * insetPct);
+                var extraL = (long)(cx * pctL);
+                var extraT = (long)(cy * pctT);
+                var extraR = (long)(cx * pctR);
+                var extraB = (long)(cy * pctB);
                 lIns = Math.Max(lIns, extraL);
                 tIns = Math.Max(tIns, extraT);
                 rIns = Math.Max(rIns, extraR);
@@ -418,36 +418,39 @@ public partial class PowerPointHandler
     // ==================== Shape Text Inset for Clip-Path Shapes ====================
 
     /// <summary>
-    /// Returns the approximate inset percentage (0-1) for text inside a clip-path shape.
-    /// This keeps text within the visible shape interior (e.g. inside the diamond, not in the corners).
+    /// Returns per-side inset percentages (left, top, right, bottom) for text inside a clip-path shape.
+    /// Each value is 0-1, applied to the shape's width (left/right) or height (top/bottom).
+    /// This keeps text within the visible shape interior.
     /// </summary>
-    private static double GetShapeTextInsetPercent(string preset) => preset switch
+    private static (double L, double T, double R, double B) GetShapeTextInsetPercent(string preset) => preset switch
     {
-        "diamond" => 0.22,
-        "triangle" or "isosTriangle" => 0.20,
-        "rtTriangle" => 0.15,
-        "star4" => 0.28,
-        "star5" => 0.28,
-        "star6" => 0.25,
-        "star8" or "star10" or "star12" => 0.20,
-        "hexagon" => 0.10,
-        "pentagon" => 0.12,
-        "heptagon" or "octagon" or "decagon" or "dodecagon" => 0.08,
-        "parallelogram" => 0.12,
-        "trapezoid" => 0.12,
-        "rightArrow" or "leftArrow" or "notchedRightArrow" => 0.10,
-        "upArrow" or "downArrow" => 0.10,
-        "chevron" or "homePlate" => 0.10,
-        "heart" => 0.15,
-        "plus" or "cross" => 0.10,
-        "cloud" or "cloudCallout" => 0.12,
-        "sun" => 0.20,
-        "moon" => 0.15,
-        "cube" => 0.08,
-        "donut" => 0.25,
-        "wedgeRectCallout" or "wedgeRoundRectCallout" or "wedgeEllipseCallout" => 0.08,
-        "curvedRightArrow" or "curvedLeftArrow" or "curvedUpArrow" or "curvedDownArrow" => 0.12,
-        _ => 0
+        "diamond" => (0.25, 0.25, 0.25, 0.25),
+        "triangle" or "isosTriangle" => (0.20, 0.20, 0.20, 0),
+        "rtTriangle" => (0, 0.15, 0.15, 0),
+        "star4" => (0.28, 0.28, 0.28, 0.28),
+        "star5" => (0.28, 0.28, 0.28, 0.28),
+        "star6" => (0.25, 0.25, 0.25, 0.25),
+        "star8" or "star10" or "star12" => (0.20, 0.20, 0.20, 0.20),
+        "hexagon" => (0.25, 0, 0.25, 0),
+        "pentagon" => (0.12, 0.12, 0.12, 0),
+        "heptagon" or "octagon" or "decagon" or "dodecagon" => (0.08, 0.08, 0.08, 0.08),
+        "parallelogram" => (0.15, 0, 0.15, 0),
+        "trapezoid" => (0.12, 0, 0.12, 0),
+        "rightArrow" or "notchedRightArrow" => (0, 0, 0.25, 0),
+        "leftArrow" => (0.25, 0, 0, 0),
+        "upArrow" => (0, 0.25, 0, 0),
+        "downArrow" => (0, 0, 0, 0.25),
+        "chevron" or "homePlate" => (0, 0, 0.15, 0),
+        "heart" => (0.15, 0.15, 0.15, 0.15),
+        "plus" or "cross" => (0.10, 0.10, 0.10, 0.10),
+        "cloud" or "cloudCallout" => (0.12, 0.12, 0.12, 0.12),
+        "sun" => (0.20, 0.20, 0.20, 0.20),
+        "moon" => (0.15, 0, 0, 0),
+        "cube" => (0, 0.08, 0.08, 0),
+        "donut" => (0.25, 0.25, 0.25, 0.25),
+        "wedgeRectCallout" or "wedgeRoundRectCallout" or "wedgeEllipseCallout" => (0.08, 0.08, 0.08, 0.08),
+        "curvedRightArrow" or "curvedLeftArrow" or "curvedUpArrow" or "curvedDownArrow" => (0.12, 0.12, 0.12, 0.12),
+        _ => (0, 0, 0, 0)
     };
 
     // ==================== Placeholder Font Size Inheritance ====================

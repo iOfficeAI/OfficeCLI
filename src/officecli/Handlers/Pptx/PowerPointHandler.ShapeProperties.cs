@@ -326,7 +326,12 @@ public partial class PowerPointHandler
                     var outline = EnsureOutline(spPr);
                     outline.RemoveAllChildren<Drawing.SolidFill>();
                     outline.RemoveAllChildren<Drawing.NoFill>();
-                    outline.AppendChild(newLineFill);
+                    // CT_LineProperties schema: fill (solidFill/noFill/gradFill/pattFill) → prstDash → ...
+                    var prstDash = outline.GetFirstChild<Drawing.PresetDash>();
+                    if (prstDash != null)
+                        outline.InsertBefore(newLineFill, prstDash);
+                    else
+                        outline.AppendChild(newLineFill);
                     break;
                 }
 
@@ -487,12 +492,17 @@ public partial class PowerPointHandler
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.LineSpacing>();
-                        if (lsIsPct)
-                            pProps.AppendChild(new Drawing.LineSpacing(
-                                new Drawing.SpacingPercent { Val = lsIntVal }));
+                        var lnSpcElem = lsIsPct
+                            ? new Drawing.LineSpacing(new Drawing.SpacingPercent { Val = lsIntVal })
+                            : new Drawing.LineSpacing(new Drawing.SpacingPoints { Val = lsIntVal });
+                        // CT_TextParagraphProperties schema: lnSpc → spcBef → spcAft
+                        var spcBef = pProps.GetFirstChild<Drawing.SpaceBefore>();
+                        var spcAft = pProps.GetFirstChild<Drawing.SpaceAfter>();
+                        var insertBefore = spcBef ?? (OpenXmlElement?)spcAft;
+                        if (insertBefore != null)
+                            pProps.InsertBefore(lnSpcElem, insertBefore);
                         else
-                            pProps.AppendChild(new Drawing.LineSpacing(
-                                new Drawing.SpacingPoints { Val = lsIntVal }));
+                            pProps.AppendChild(lnSpcElem);
                     }
                     break;
                 }
@@ -504,7 +514,13 @@ public partial class PowerPointHandler
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                         pProps.RemoveAllChildren<Drawing.SpaceBefore>();
-                        pProps.AppendChild(new Drawing.SpaceBefore(new Drawing.SpacingPoints { Val = sbIntVal }));
+                        var spcBefElem = new Drawing.SpaceBefore(new Drawing.SpacingPoints { Val = sbIntVal });
+                        // CT_TextParagraphProperties schema: lnSpc → spcBef → spcAft
+                        var spcAftRef = pProps.GetFirstChild<Drawing.SpaceAfter>();
+                        if (spcAftRef != null)
+                            pProps.InsertBefore(spcBefElem, spcAftRef);
+                        else
+                            pProps.AppendChild(spcBefElem);
                     }
                     break;
                 }

@@ -435,6 +435,9 @@ public partial class PowerPointHandler
                 ? AnimTrigger.AfterPrevious : AnimTrigger.OnClick;
         }
 
+        // Remove any existing animations for this shape before adding new one
+        RemoveShapeAnimations(slide, shapeId);
+
         // Get filter string, preset ID, and subtype from effect name
         var (presetId, filter) = GetAnimPreset(effectName, presetClass);
         var presetSubtype = GetAnimPresetSubtype(effectName, direction);
@@ -1190,9 +1193,22 @@ public partial class PowerPointHandler
                 }
             };
 
+            // Read direction from presetSubtype
+            var presetSubtype = effectCTn.PresetSubtype?.Value ?? 0;
+            var dirStr = presetSubtype switch
+            {
+                8 => "left",
+                2 => "right",
+                1 when effectName is "fly" or "wipe" or "crawl" => "up",
+                4 when effectName is "fly" or "wipe" or "crawl" => "down",
+                _ => (string?)null
+            };
+
             animIdx++;
             var key = animIdx == 1 ? "animation" : $"animation{animIdx}";
-            node.Format[key] = $"{effectName}-{cls}-{dur}";
+            node.Format[key] = dirStr != null
+                ? $"{effectName}-{cls}-{dirStr}-{dur}"
+                : $"{effectName}-{cls}-{dur}";
         }
     }
 

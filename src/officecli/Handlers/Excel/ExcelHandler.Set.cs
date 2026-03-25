@@ -7,6 +7,7 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using OfficeCli.Core;
 using Drawing = DocumentFormat.OpenXml.Drawing;
+using X14 = DocumentFormat.OpenXml.Office2010.Excel;
 using XDR = DocumentFormat.OpenXml.Drawing.Spreadsheet;
 
 
@@ -22,6 +23,91 @@ public partial class ExcelHandler
         properties ??= new Dictionary<string, string>();
 
         path = NormalizeExcelPath(path);
+
+        // Handle root path "/" — document properties
+        if (path == "/")
+        {
+            var unsupported = new List<string>();
+            var pkg = _doc.PackageProperties;
+            foreach (var (key, value) in properties)
+            {
+                switch (key.ToLowerInvariant())
+                {
+                    case "title": pkg.Title = value; break;
+                    case "author" or "creator": pkg.Creator = value; break;
+                    case "subject": pkg.Subject = value; break;
+                    case "description": pkg.Description = value; break;
+                    case "category": pkg.Category = value; break;
+                    case "keywords": pkg.Keywords = value; break;
+                    case "lastmodifiedby": pkg.LastModifiedBy = value; break;
+                    case "revision": pkg.Revision = value; break;
+                    default:
+                        unsupported.Add(key);
+                        break;
+                }
+            }
+            return unsupported;
+        }
+
+        // Handle /SheetName/sparkline[N]
+        var sparklineSetMatch = Regex.Match(path.TrimStart('/'), @"^([^/]+)/sparkline\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (sparklineSetMatch.Success)
+        {
+            var spkSheet = sparklineSetMatch.Groups[1].Value;
+            var spkIdx = int.Parse(sparklineSetMatch.Groups[2].Value);
+            var spkWorksheet = FindWorksheet(spkSheet) ?? throw SheetNotFoundException(spkSheet);
+            var spkGroup = GetSparklineGroup(spkWorksheet, spkIdx)
+                ?? throw new ArgumentException($"Sparkline[{spkIdx}] not found in sheet '{spkSheet}'");
+
+            var unsup = new List<string>();
+            foreach (var (key, value) in properties)
+            {
+                switch (key.ToLowerInvariant())
+                {
+                    case "type":
+                        spkGroup.Type = value.ToLowerInvariant() switch
+                        {
+                            "column" => X14.SparklineTypeValues.Column,
+                            "stacked" => X14.SparklineTypeValues.Stacked,
+                            _ => null // null = line (default, no attribute)
+                        };
+                        break;
+                    case "color":
+                        spkGroup.SeriesColor = new X14.SeriesColor { Rgb = ParseHelpers.NormalizeArgbColor(value) };
+                        break;
+                    case "negativecolor":
+                        spkGroup.NegativeColor = new X14.NegativeColor { Rgb = ParseHelpers.NormalizeArgbColor(value) };
+                        break;
+                    case "markers":
+                        spkGroup.Markers = ParseHelpers.IsTruthy(value) ? (bool?)true : null;
+                        break;
+                    case "highpoint":
+                        spkGroup.High = ParseHelpers.IsTruthy(value) ? (bool?)true : null;
+                        break;
+                    case "lowpoint":
+                        spkGroup.Low = ParseHelpers.IsTruthy(value) ? (bool?)true : null;
+                        break;
+                    case "firstpoint":
+                        spkGroup.First = ParseHelpers.IsTruthy(value) ? (bool?)true : null;
+                        break;
+                    case "lastpoint":
+                        spkGroup.Last = ParseHelpers.IsTruthy(value) ? (bool?)true : null;
+                        break;
+                    case "negative":
+                        spkGroup.Negative = ParseHelpers.IsTruthy(value) ? (bool?)true : null;
+                        break;
+                    case "lineweight":
+                        if (double.TryParse(value, out var lw)) spkGroup.LineWeight = lw;
+                        break;
+                    default:
+                        unsup.Add(key);
+                        break;
+                }
+            }
+            SaveWorksheet(spkWorksheet);
+            return unsup;
+        }
+
         // Handle /namedrange[N] or /namedrange[Name]
         var namedRangeMatch = Regex.Match(path.TrimStart('/'), @"^namedrange\[(.+?)\]$", RegexOptions.IgnoreCase);
         if (namedRangeMatch.Success)
@@ -755,6 +841,8 @@ public partial class ExcelHandler
     private List<string> SetCellProperties(Cell cell, string cellRef, WorksheetPart worksheet, Dictionary<string, string> properties)
     {
         var unsupported = ApplyCellProperties(cell, cellRef, worksheet, properties);
+        // Any mutation to a cell (value, formula, clear) can invalidate the calc chain
+        DeleteCalcChainIfPresent();
         SaveWorksheet(worksheet);
         return unsupported;
     }

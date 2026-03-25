@@ -7,6 +7,7 @@ using DocumentFormat.OpenXml.Spreadsheet;
 using OfficeCli.Core;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using Drawing = DocumentFormat.OpenXml.Drawing;
+using X14 = DocumentFormat.OpenXml.Office2010.Excel;
 using XDR = DocumentFormat.OpenXml.Drawing.Spreadsheet;
 
 namespace OfficeCli.Handlers;
@@ -65,6 +66,105 @@ public partial class ExcelHandler
     {
         ReorderWorksheetChildren(GetSheet(part));
         GetSheet(part).Save();
+    }
+
+    /// <summary>
+    /// Get a sparkline group by 1-based index from a worksheet's extension list.
+    /// Returns null if not found.
+    /// </summary>
+    internal X14.SparklineGroup? GetSparklineGroup(WorksheetPart worksheet, int index)
+    {
+        var ws = GetSheet(worksheet);
+        var extList = ws.GetFirstChild<WorksheetExtensionList>();
+        if (extList == null) return null;
+
+        var spkExt = extList.Elements<WorksheetExtension>()
+            .FirstOrDefault(e => e.Uri == "{05C60535-1F16-4fd2-B633-E4A46CF9E463}");
+        if (spkExt == null) return null;
+
+        var spkGroups = spkExt.GetFirstChild<X14.SparklineGroups>();
+        if (spkGroups == null) return null;
+
+        var groups = spkGroups.Elements<X14.SparklineGroup>().ToList();
+        if (index < 1 || index > groups.Count) return null;
+        return groups[index - 1];
+    }
+
+    /// <summary>
+    /// Build a DocumentNode for a sparkline group.
+    /// </summary>
+    internal static DocumentNode SparklineGroupToNode(string sheetName, X14.SparklineGroup spkGroup, int index)
+    {
+        var node = new DocumentNode
+        {
+            Path = $"/{sheetName}/sparkline[{index}]",
+            Type = "sparkline"
+        };
+
+        // Type: default is line when attribute is absent
+        string spkType;
+        if (spkGroup.Type?.HasValue == true)
+        {
+            var tv = spkGroup.Type.Value;
+            spkType = tv == X14.SparklineTypeValues.Column ? "column"
+                : tv == X14.SparklineTypeValues.Stacked ? "stacked"
+                : "line";
+        }
+        else
+        {
+            spkType = "line";
+        }
+        node.Format["type"] = spkType;
+
+        // Color
+        var colorRgb = spkGroup.SeriesColor?.Rgb?.Value;
+        node.Format["color"] = colorRgb != null
+            ? ParseHelpers.FormatHexColor(colorRgb)
+            : "#4472C4";
+
+        // Negative color
+        var negColorRgb = spkGroup.NegativeColor?.Rgb?.Value;
+        if (negColorRgb != null)
+            node.Format["negativeColor"] = ParseHelpers.FormatHexColor(negColorRgb);
+
+        // Boolean flags
+        if (spkGroup.Markers?.Value == true) node.Format["markers"] = true;
+        if (spkGroup.High?.Value == true) node.Format["highPoint"] = true;
+        if (spkGroup.Low?.Value == true) node.Format["lowPoint"] = true;
+        if (spkGroup.First?.Value == true) node.Format["firstPoint"] = true;
+        if (spkGroup.Last?.Value == true) node.Format["lastPoint"] = true;
+        if (spkGroup.Negative?.Value == true) node.Format["negative"] = true;
+
+        // Line weight
+        if (spkGroup.LineWeight?.HasValue == true)
+            node.Format["lineWeight"] = spkGroup.LineWeight.Value;
+
+        // Cell / range from first sparkline element
+        var firstSparkline = spkGroup.GetFirstChild<X14.Sparklines>()?.GetFirstChild<X14.Sparkline>();
+        if (firstSparkline != null)
+        {
+            var cell = firstSparkline.ReferenceSequence?.Text ?? "";
+            node.Format["cell"] = cell;
+
+            // Strip sheet prefix from range (Sheet1!A1:E1 → A1:E1)
+            var formulaText = firstSparkline.Formula?.Text ?? "";
+            var excl = formulaText.IndexOf('!');
+            node.Format["range"] = excl >= 0 ? formulaText[(excl + 1)..] : formulaText;
+        }
+
+        return node;
+    }
+
+    /// <summary>
+    /// Delete the calculation chain part if present.
+    /// Excel will recalculate and recreate it on next open.
+    /// This avoids stale calc chain references after cell/formula mutations.
+    /// </summary>
+    private void DeleteCalcChainIfPresent()
+    {
+        var calcChainPart = _doc.WorkbookPart?.CalculationChainPart;
+        if (calcChainPart != null)
+            _doc.WorkbookPart!.DeletePart(calcChainPart);
     }
 
     /// <summary>

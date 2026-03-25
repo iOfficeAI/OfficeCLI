@@ -159,6 +159,8 @@ public static class McpServer
                 using var handler = DocumentHandlerFactory.Open(file);
                 if (mode is "html" or "h" && handler is Handlers.PowerPointHandler pptH)
                     return pptH.ViewAsHtml(start, end);
+                if (mode is "svg" or "g" && handler is Handlers.PowerPointHandler pptSvg)
+                    return pptSvg.ViewAsSvg(start ?? 1);
                 return mode.ToLowerInvariant() switch
                 {
                     "text" or "t" => handler.ViewAsText(start, end, maxLines, null),

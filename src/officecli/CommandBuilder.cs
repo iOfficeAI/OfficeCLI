@@ -180,7 +180,7 @@ static class CommandBuilder
 
         // ==================== view command ====================
         var viewFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.docx, .xlsx, .pptx)" };
-        var viewModeArg = new Argument<string>("mode") { Description = "View mode: text, annotated, outline, stats, issues, html" };
+        var viewModeArg = new Argument<string>("mode") { Description = "View mode: text, annotated, outline, stats, issues, html, svg" };
         var startLineOpt = new Option<int?>("--start") { Description = "Start line/paragraph number" };
         var endLineOpt = new Option<int?>("--end") { Description = "End line/paragraph number" };
         var maxLinesOpt = new Option<int?>("--max-lines") { Description = "Maximum number of lines/rows/slides to output (truncates with total count)" };
@@ -271,6 +271,42 @@ static class CommandBuilder
                 return;
             }
 
+            if (mode.ToLowerInvariant() is "svg" or "g")
+            {
+                if (handler is OfficeCli.Handlers.PowerPointHandler pptSvgHandler)
+                {
+                    var slideNum = start ?? 1;
+                    var svg = pptSvgHandler.ViewAsSvg(slideNum);
+
+                    if (browser)
+                    {
+                        var svgPath = Path.Combine(Path.GetTempPath(), $"officecli_slide{slideNum}_{Path.GetFileNameWithoutExtension(file.Name)}_{DateTime.Now:HHmmss}.svg");
+                        File.WriteAllText(svgPath, svg);
+                        Console.WriteLine(svgPath);
+                        try
+                        {
+                            var psi = new System.Diagnostics.ProcessStartInfo(svgPath) { UseShellExecute = true };
+                            System.Diagnostics.Process.Start(psi);
+                        }
+                        catch { /* silently ignore if browser can't be opened */ }
+                    }
+                    else
+                    {
+                        Console.Write(svg);
+                    }
+                }
+                else
+                {
+                    throw new OfficeCli.Core.CliException("SVG preview is only supported for .pptx files.")
+                    {
+                        Code = "unsupported_type",
+                        Suggestion = "Use a .pptx file, or use mode 'text' or 'annotated' for other formats.",
+                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg"]
+                    };
+                }
+                return;
+            }
+
             if (json)
             {
                 // Structured JSON output — no Content string wrapping
@@ -288,10 +324,10 @@ static class CommandBuilder
                     Console.WriteLine(OutputFormatter.WrapEnvelope(
                         OutputFormatter.FormatIssues(handler.ViewAsIssues(issueType, limit), OutputFormat.Json)));
                 else
-                    throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html")
+                    throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg")
                     {
                         Code = "invalid_value",
-                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html"]
+                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg"]
                     };
             }
             else
@@ -303,10 +339,10 @@ static class CommandBuilder
                     "outline" or "o" => handler.ViewAsOutline(),
                     "stats" or "s" => handler.ViewAsStats(),
                     "issues" or "i" => OutputFormatter.FormatIssues(handler.ViewAsIssues(issueType, limit), OutputFormat.Text),
-                    _ => throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html")
+                    _ => throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg")
                     {
                         Code = "invalid_value",
-                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html"]
+                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg"]
                     }
                 };
                 Console.WriteLine(output);
@@ -1306,6 +1342,10 @@ static class CommandBuilder
                 if (mode.ToLowerInvariant() is "html" or "h" && handler is OfficeCli.Handlers.PowerPointHandler pptH)
                 {
                     return pptH.ViewAsHtml();
+                }
+                if (mode.ToLowerInvariant() is "svg" or "g" && handler is OfficeCli.Handlers.PowerPointHandler pptSvg)
+                {
+                    return pptSvg.ViewAsSvg(1);
                 }
                 return mode.ToLowerInvariant() switch
                 {

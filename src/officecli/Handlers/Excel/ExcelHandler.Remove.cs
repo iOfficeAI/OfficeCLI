@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
+using X14 = DocumentFormat.OpenXml.Office2010.Excel;
 
 namespace OfficeCli.Handlers;
 
@@ -113,6 +114,7 @@ public partial class ExcelHandler
                 ?.Remove();
             var affected = CollectFormulaCellsAffectedByRowDelete(worksheet, rowIdx);
             ShiftRowsUp(worksheet, rowIdx);
+            DeleteCalcChainIfPresent();
             SaveWorksheet(worksheet);
             return FormatFormulaWarning(affected);
         }
@@ -125,8 +127,35 @@ public partial class ExcelHandler
             var deletedColIdx = ColumnNameToIndex(colName);
             var affected = CollectFormulaCellsAffectedByColDelete(worksheet, deletedColIdx);
             ShiftColumnsLeft(worksheet, colName);
+            DeleteCalcChainIfPresent();
             SaveWorksheet(worksheet);
             return FormatFormulaWarning(affected);
+        }
+
+        // sparkline[N] — remove sparkline group
+        var sparklineRemoveMatch = Regex.Match(cellRef, @"^sparkline\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (sparklineRemoveMatch.Success)
+        {
+            var spkIdx = int.Parse(sparklineRemoveMatch.Groups[1].Value);
+            var spkGroup = GetSparklineGroup(worksheet, spkIdx)
+                ?? throw new ArgumentException($"Sparkline[{spkIdx}] not found in sheet '{sheetName}'");
+            var spkGroups = spkGroup.Parent!;
+            spkGroup.Remove();
+            // If no more sparkline groups, clean up empty extension
+            if (!spkGroups.HasChildren)
+            {
+                var spkExt = spkGroups.Parent;
+                spkGroups.Remove();
+                if (spkExt != null && !spkExt.HasChildren)
+                {
+                    var extList = spkExt.Parent;
+                    spkExt.Remove();
+                    if (extList != null && !extList.HasChildren)
+                        extList.Remove();
+                }
+            }
+            SaveWorksheet(worksheet);
+            return null;
         }
 
         // rowbreak[N] / colbreak[N]
@@ -330,6 +359,7 @@ public partial class ExcelHandler
         var cell = FindCell(sheetData, cellRef)
             ?? throw new ArgumentException($"Cell {cellRef} not found");
         cell.Remove();
+        DeleteCalcChainIfPresent();
         SaveWorksheet(worksheet);
         return null;
     }
