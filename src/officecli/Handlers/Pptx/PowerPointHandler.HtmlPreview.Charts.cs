@@ -192,7 +192,8 @@ public partial class PowerPointHandler
         else if (chartType.Contains("area"))
         {
             var areaStacked = chartType.Contains("stacked") || chartType.Contains("Stacked");
-            RenderAreaChartSvg(sb, seriesList, categories, seriesColors, margin.left, margin.top, plotW, plotH, areaStacked);
+            var areaW = plotW - (int)(plotW * 0.03); // slight right padding for line/area charts
+            RenderAreaChartSvg(sb, seriesList, categories, seriesColors, margin.left, margin.top, areaW, plotH, areaStacked);
         }
         else if (chartType == "combo")
         {
@@ -212,7 +213,8 @@ public partial class PowerPointHandler
         }
         else if (chartType.Contains("line") || chartType == "scatter")
         {
-            RenderLineChartSvg(sb, seriesList, categories, seriesColors, margin.left, margin.top, plotW, plotH, showValues);
+            var lineW = plotW - (int)(plotW * 0.03); // slight right padding for line/area charts
+            RenderLineChartSvg(sb, seriesList, categories, seriesColors, margin.left, margin.top, lineW, plotH, showValues);
         }
         else
         {
