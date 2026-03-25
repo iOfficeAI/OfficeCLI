@@ -199,7 +199,74 @@ internal static partial class ChartHelper
         chart.AppendChild(new C.DisplayBlanksAs { Val = C.DisplayBlanksAsValues.Gap });
 
         chartSpace.AppendChild(chart);
+
+        // Apply cell references for dotted syntax (series1.values=Sheet1!B2:B13)
+        ApplySeriesReferences(plotArea, properties);
+
         return chartSpace;
+    }
+
+    /// <summary>
+    /// Replace literal Values/CategoryAxisData with NumberReference/StringReference
+    /// when dotted syntax cell references are used.
+    /// </summary>
+    private static void ApplySeriesReferences(C.PlotArea plotArea, Dictionary<string, string> properties)
+    {
+        var extSeries = ParseSeriesDataExtended(properties);
+        if (extSeries == null || extSeries.Count == 0) return;
+        if (!extSeries.Any(s => s.ValuesRef != null || s.CategoriesRef != null))
+        {
+            // Also check top-level categories ref
+            var topCatRef = ParseCategoriesRef(properties);
+            if (topCatRef == null) return;
+        }
+
+        var allSer = plotArea.Descendants<OpenXmlCompositeElement>()
+            .Where(e => e.LocalName == "ser").ToList();
+
+        // Top-level categories reference applies to all series
+        var topCategoriesRef = ParseCategoriesRef(properties);
+
+        for (int i = 0; i < Math.Min(extSeries.Count, allSer.Count); i++)
+        {
+            var info = extSeries[i];
+            var ser = allSer[i];
+
+            // Replace Values with NumberReference
+            if (!string.IsNullOrEmpty(info.ValuesRef))
+            {
+                var valEl = ser.GetFirstChild<C.Values>();
+                if (valEl != null)
+                {
+                    valEl.RemoveAllChildren();
+                    var numRef = new C.NumberReference(new C.Formula(info.ValuesRef));
+                    valEl.AppendChild(numRef);
+                }
+            }
+
+            // Replace CategoryAxisData with StringReference
+            var catRef = info.CategoriesRef ?? topCategoriesRef;
+            if (!string.IsNullOrEmpty(catRef))
+            {
+                var catEl = ser.GetFirstChild<C.CategoryAxisData>();
+                if (catEl != null)
+                {
+                    catEl.RemoveAllChildren();
+                    var strRef = new C.StringReference(new C.Formula(catRef));
+                    catEl.AppendChild(strRef);
+                }
+                else
+                {
+                    // Insert CategoryAxisData before Values
+                    var valEl = ser.GetFirstChild<C.Values>();
+                    var newCat = new C.CategoryAxisData(new C.StringReference(new C.Formula(catRef)));
+                    if (valEl != null)
+                        valEl.InsertBeforeSelf(newCat);
+                    else
+                        ser.AppendChild(newCat);
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -701,6 +768,24 @@ internal static partial class ChartHelper
         for (int i = 0; i < values.Length; i++)
             numLit.AppendChild(new C.NumericPoint(new C.NumericValue(values[i].ToString("G"))) { Index = (uint)i });
         return new C.Values(numLit);
+    }
+
+    /// <summary>
+    /// Build a Values element with a NumberReference (cell range formula, no cache).
+    /// </summary>
+    internal static C.Values BuildValuesRef(string formula)
+    {
+        var numRef = new C.NumberReference(new C.Formula(formula));
+        return new C.Values(numRef);
+    }
+
+    /// <summary>
+    /// Build a CategoryAxisData element with a StringReference (cell range formula, no cache).
+    /// </summary>
+    internal static C.CategoryAxisData BuildCategoryDataRef(string formula)
+    {
+        var strRef = new C.StringReference(new C.Formula(formula));
+        return new C.CategoryAxisData(strRef);
     }
 
     // ==================== Axis Builders ====================
