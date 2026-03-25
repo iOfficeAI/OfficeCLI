@@ -13,7 +13,7 @@ OfficeCLI is a free, open-source command-line tool for AI agents to read, edit, 
 
 > Built for AI agents. Usable by humans.
 
-![OfficeCLI Hero](assets/hero-en.png)
+<video src="assets/ppt-processs.mp4" poster="assets/ppt-process.png" autoplay loop muted playsinline width="100%"></video>
 
 ## For AI Agents
 
