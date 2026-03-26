@@ -46,6 +46,8 @@ public partial class WordHandler
                     var refs = sectProps.Elements<HeaderReference>().Where(r => r.Id?.Value == partId).ToList();
                     foreach (var r in refs) r.Remove();
                 }
+                // Clean up ImageParts referenced only by this header
+                CleanupImageParts(mainPart, headerPart.Header?.Descendants<A.Blip>(), headerPart);
                 mainPart.DeletePart(headerPart);
             }
             else
@@ -58,9 +60,47 @@ public partial class WordHandler
                     var refs = sectProps.Elements<FooterReference>().Where(r => r.Id?.Value == partId).ToList();
                     foreach (var r in refs) r.Remove();
                 }
+                // Clean up ImageParts referenced only by this footer
+                CleanupImageParts(mainPart, footerPart.Footer?.Descendants<A.Blip>(), footerPart);
                 mainPart.DeletePart(footerPart);
             }
 
+            mainPart.Document?.Save();
+            return null;
+        }
+
+        // Handle footnote/endnote removal
+        if (parts.Count == 1 && parts[0].Name.ToLowerInvariant() == "footnote")
+        {
+            var mainPart = _doc.MainDocumentPart
+                ?? throw new InvalidOperationException("MainDocumentPart not found");
+            var fnId = parts[0].Index ?? 1;
+            var fn = mainPart.FootnotesPart?.Footnotes?
+                .Elements<Footnote>().FirstOrDefault(f => f.Id?.Value == fnId)
+                ?? throw new ArgumentException($"Path not found: {path}");
+            // Remove footnote reference from body
+            foreach (var fnRef in mainPart.Document.Descendants<FootnoteReference>()
+                .Where(r => r.Id?.Value == fnId).ToList())
+                fnRef.Parent?.Remove();
+            fn.Remove();
+            mainPart.FootnotesPart?.Footnotes?.Save();
+            mainPart.Document?.Save();
+            return null;
+        }
+        if (parts.Count == 1 && parts[0].Name.ToLowerInvariant() == "endnote")
+        {
+            var mainPart = _doc.MainDocumentPart
+                ?? throw new InvalidOperationException("MainDocumentPart not found");
+            var enId = parts[0].Index ?? 1;
+            var en = mainPart.EndnotesPart?.Endnotes?
+                .Elements<Endnote>().FirstOrDefault(e => e.Id?.Value == enId)
+                ?? throw new ArgumentException($"Path not found: {path}");
+            // Remove endnote reference from body
+            foreach (var enRef in mainPart.Document.Descendants<EndnoteReference>()
+                .Where(r => r.Id?.Value == enId).ToList())
+                enRef.Parent?.Remove();
+            en.Remove();
+            mainPart.EndnotesPart?.Endnotes?.Save();
             mainPart.Document?.Save();
             return null;
         }
@@ -77,9 +117,13 @@ public partial class WordHandler
                 var embedId = blip.Embed?.Value;
                 if (!string.IsNullOrEmpty(embedId))
                 {
-                    // Count how many times this embedId is referenced in the entire document
+                    // Count how many times this embedId is referenced across body + headers + footers
                     var refCount = mainPart2.Document.Descendants<A.Blip>()
                         .Count(b => b.Embed?.Value == embedId);
+                    foreach (var hp in mainPart2.HeaderParts)
+                        refCount += hp.Header?.Descendants<A.Blip>().Count(b => b.Embed?.Value == embedId) ?? 0;
+                    foreach (var fp in mainPart2.FooterParts)
+                        refCount += fp.Footer?.Descendants<A.Blip>().Count(b => b.Embed?.Value == embedId) ?? 0;
                     if (refCount <= 1)
                     {
                         try { mainPart2.DeletePart(embedId); } catch { }
@@ -91,6 +135,31 @@ public partial class WordHandler
         element.Remove();
         _doc.MainDocumentPart?.Document?.Save();
         return null;
+    }
+
+    /// <summary>
+    /// Clean up ImageParts in a header/footer part that are not referenced elsewhere.
+    /// </summary>
+    private static void CleanupImageParts(MainDocumentPart mainPart, IEnumerable<A.Blip>? blips, OpenXmlPart ownerPart)
+    {
+        if (blips == null) return;
+        foreach (var blip in blips.ToList())
+        {
+            var embedId = blip.Embed?.Value;
+            if (string.IsNullOrEmpty(embedId)) continue;
+
+            // Count references across body + all headers + all footers (excluding the part being deleted)
+            var refCount = mainPart.Document?.Descendants<A.Blip>().Count(b => b.Embed?.Value == embedId) ?? 0;
+            foreach (var hp in mainPart.HeaderParts.Where(p => p != ownerPart))
+                refCount += hp.Header?.Descendants<A.Blip>().Count(b => b.Embed?.Value == embedId) ?? 0;
+            foreach (var fp in mainPart.FooterParts.Where(p => p != ownerPart))
+                refCount += fp.Footer?.Descendants<A.Blip>().Count(b => b.Embed?.Value == embedId) ?? 0;
+
+            if (refCount == 0)
+            {
+                try { ownerPart.DeletePart(embedId); } catch { }
+            }
+        }
     }
 
     public string Move(string sourcePath, string? targetParentPath, int? index)
