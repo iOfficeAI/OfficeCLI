@@ -592,12 +592,27 @@ public partial class WordHandler
         if (existing != null) return existing;
 
         var ps = new PageSize();
-        // Insert after SectionType if present, otherwise prepend
+        // Insert after SectionType if present, then after FooterReference/HeaderReference,
+        // otherwise prepend. OOXML schema order: headerReference*, footerReference*, ..., sectType, pgSz, pgMar
         var sectionType = sectPr.GetFirstChild<SectionType>();
         if (sectionType != null)
+        {
             sectionType.InsertAfterSelf(ps);
+        }
         else
-            sectPr.PrependChild(ps);
+        {
+            // Find the last HeaderReference or FooterReference to insert after
+            OpenXmlElement? lastRef = null;
+            foreach (var child in sectPr.ChildElements)
+            {
+                if (child is HeaderReference || child is FooterReference)
+                    lastRef = child;
+            }
+            if (lastRef != null)
+                lastRef.InsertAfterSelf(ps);
+            else
+                sectPr.PrependChild(ps);
+        }
         return ps;
     }
 
