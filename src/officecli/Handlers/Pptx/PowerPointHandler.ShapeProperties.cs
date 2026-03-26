@@ -561,8 +561,8 @@ public partial class PowerPointHandler
                     bodyPr.RemoveAllChildren<Drawing.NoAutoFit>();
                     switch (value.ToLowerInvariant())
                     {
-                        case "true" or "normal" or "normautofit": bodyPr.AppendChild(new Drawing.NormalAutoFit()); break;
-                        case "shape" or "spautofit": bodyPr.AppendChild(new Drawing.ShapeAutoFit()); break;
+                        case "true" or "normal" or "normautofit" or "auto" or "shrink": bodyPr.AppendChild(new Drawing.NormalAutoFit()); break;
+                        case "shape" or "spautofit" or "resize": bodyPr.AppendChild(new Drawing.ShapeAutoFit()); break;
                         case "false" or "none": bodyPr.AppendChild(new Drawing.NoAutoFit()); break;
                     }
                     break;
