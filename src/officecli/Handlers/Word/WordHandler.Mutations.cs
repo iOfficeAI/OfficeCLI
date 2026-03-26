@@ -132,6 +132,24 @@ public partial class WordHandler
             }
         }
 
+        // If removing a Comment, also clean up dangling references in the body
+        if (element is Comment comment && comment.Id?.Value is string commentId)
+        {
+            var body2 = _doc.MainDocumentPart?.Document?.Body;
+            if (body2 != null)
+            {
+                foreach (var rs in body2.Descendants<CommentRangeStart>()
+                    .Where(r => r.Id?.Value == commentId).ToList())
+                    rs.Remove();
+                foreach (var re in body2.Descendants<CommentRangeEnd>()
+                    .Where(r => r.Id?.Value == commentId).ToList())
+                    re.Remove();
+                foreach (var cr in body2.Descendants<CommentReference>()
+                    .Where(r => r.Id?.Value == commentId).ToList())
+                    cr.Parent?.Remove(); // Remove the containing Run
+            }
+        }
+
         element.Remove();
         _doc.MainDocumentPart?.Document?.Save();
         return null;
