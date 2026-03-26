@@ -101,7 +101,7 @@ public partial class PowerPointHandler
     {
         // Element type filter
         if (selector.ElementType is "picture" or "pic" or "video" or "audio" or "table" or "chart"
-            or "placeholder" or "connector" or "connection" or "group" or "notes")
+            or "placeholder" or "connector" or "connection" or "group" or "notes" or "zoom")
             return false;
 
         // Title filter
