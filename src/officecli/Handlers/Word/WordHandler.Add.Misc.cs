@@ -582,9 +582,9 @@ public partial class WordHandler
             ?? mainPartWM.AddNewPart<DocumentSettingsPart>();
         wmSettingsPart.Settings ??= new Settings();
         if (wmSettingsPart.Settings.GetFirstChild<EvenAndOddHeaders>() == null)
-            wmSettingsPart.Settings.AppendChild(new EvenAndOddHeaders());
+            wmSettingsPart.Settings.AddChild(new EvenAndOddHeaders(), throwOnError: false);
         if (wmSettingsPart.Settings.GetFirstChild<TitlePage>() == null)
-            wmSettingsPart.Settings.AppendChild(new TitlePage());
+            wmSettingsPart.Settings.AddChild(new TitlePage(), throwOnError: false);
 
         return "/watermark";
     }
