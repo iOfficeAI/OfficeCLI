@@ -1227,8 +1227,12 @@ public partial class PowerPointHandler
                         if (oMath != null)
                         {
                             var latex = FormulaParser.ToLatex(oMath);
-                            // Render LaTeX text with math font (data-formula for external KaTeX use)
-                            sb.Append($"<span data-formula=\"{HtmlEncode(latex)}\" style=\"font-family:'Cambria Math','Times New Roman',serif;font-style:italic;font-size:1.1em\">{HtmlEncode(latex)}</span>");
+                            // Convert OOXML Math to standard MathML for browser-native rendering
+                            var mathMl = OmmlToMathMl(oMath);
+                            if (mathMl != null)
+                                sb.Append($"<div style=\"font-size:1.2em\">{mathMl}</div>");
+                            else
+                                sb.Append($"<span data-formula=\"{HtmlEncode(latex)}\" style=\"font-family:'Cambria Math','Times New Roman',serif;font-style:italic;font-size:1.1em\">{HtmlEncode(latex)}</span>");
                         }
                     }
                     catch { }
@@ -1852,6 +1856,118 @@ public partial class PowerPointHandler
                 return parsed;
         }
         return defaultValue;
+    }
+
+    /// <summary>
+    /// Convert OOXML Math (OMML) to standard MathML for browser-native rendering.
+    /// </summary>
+    private static string? OmmlToMathMl(OpenXmlElement oMath)
+    {
+        try
+        {
+            var sb = new StringBuilder();
+            sb.Append("<math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\">");
+            ConvertOmmlNode(sb, oMath);
+            sb.Append("</math>");
+            return sb.ToString();
+        }
+        catch { return null; }
+    }
+
+    private static void ConvertOmmlNode(StringBuilder sb, OpenXmlElement node)
+    {
+        foreach (var child in node.ChildElements)
+        {
+            switch (child.LocalName)
+            {
+                case "r": // Run (text)
+                    sb.Append("<mi>");
+                    var text = child.Descendants().FirstOrDefault(e => e.LocalName == "t")?.InnerText ?? "";
+                    sb.Append(SvgEncode(text));
+                    sb.Append("</mi>");
+                    break;
+                case "f": // Fraction
+                    sb.Append("<mfrac>");
+                    var num = child.ChildElements.FirstOrDefault(e => e.LocalName == "num");
+                    var den = child.ChildElements.FirstOrDefault(e => e.LocalName == "den");
+                    sb.Append("<mrow>"); if (num != null) ConvertOmmlNode(sb, num); sb.Append("</mrow>");
+                    sb.Append("<mrow>"); if (den != null) ConvertOmmlNode(sb, den); sb.Append("</mrow>");
+                    sb.Append("</mfrac>");
+                    break;
+                case "rad": // Radical (sqrt)
+                    var deg = child.ChildElements.FirstOrDefault(e => e.LocalName == "deg");
+                    var radE = child.ChildElements.FirstOrDefault(e => e.LocalName == "e");
+                    if (deg != null && deg.Descendants().Any(e => e.LocalName == "t" && !string.IsNullOrEmpty(e.InnerText)))
+                    {
+                        sb.Append("<mroot>");
+                        sb.Append("<mrow>"); if (radE != null) ConvertOmmlNode(sb, radE); sb.Append("</mrow>");
+                        sb.Append("<mrow>"); ConvertOmmlNode(sb, deg); sb.Append("</mrow>");
+                        sb.Append("</mroot>");
+                    }
+                    else
+                    {
+                        sb.Append("<msqrt>");
+                        if (radE != null) ConvertOmmlNode(sb, radE);
+                        sb.Append("</msqrt>");
+                    }
+                    break;
+                case "sSup": // Superscript
+                    var supBase = child.ChildElements.FirstOrDefault(e => e.LocalName == "e");
+                    var sup = child.ChildElements.FirstOrDefault(e => e.LocalName == "sup");
+                    sb.Append("<msup>");
+                    sb.Append("<mrow>"); if (supBase != null) ConvertOmmlNode(sb, supBase); sb.Append("</mrow>");
+                    sb.Append("<mrow>"); if (sup != null) ConvertOmmlNode(sb, sup); sb.Append("</mrow>");
+                    sb.Append("</msup>");
+                    break;
+                case "sSub": // Subscript
+                    var subBase = child.ChildElements.FirstOrDefault(e => e.LocalName == "e");
+                    var sub = child.ChildElements.FirstOrDefault(e => e.LocalName == "sub");
+                    sb.Append("<msub>");
+                    sb.Append("<mrow>"); if (subBase != null) ConvertOmmlNode(sb, subBase); sb.Append("</mrow>");
+                    sb.Append("<mrow>"); if (sub != null) ConvertOmmlNode(sb, sub); sb.Append("</mrow>");
+                    sb.Append("</msub>");
+                    break;
+                case "sSubSup": // SubSuperscript
+                    var ssBase = child.ChildElements.FirstOrDefault(e => e.LocalName == "e");
+                    var ssSub = child.ChildElements.FirstOrDefault(e => e.LocalName == "sub");
+                    var ssSup = child.ChildElements.FirstOrDefault(e => e.LocalName == "sup");
+                    sb.Append("<msubsup>");
+                    sb.Append("<mrow>"); if (ssBase != null) ConvertOmmlNode(sb, ssBase); sb.Append("</mrow>");
+                    sb.Append("<mrow>"); if (ssSub != null) ConvertOmmlNode(sb, ssSub); sb.Append("</mrow>");
+                    sb.Append("<mrow>"); if (ssSup != null) ConvertOmmlNode(sb, ssSup); sb.Append("</mrow>");
+                    sb.Append("</msubsup>");
+                    break;
+                case "nary": // N-ary (sum, integral, product)
+                    var naryPr = child.ChildElements.FirstOrDefault(e => e.LocalName == "naryPr");
+                    var naryChar = naryPr?.Descendants().FirstOrDefault(e => e.LocalName == "chr")?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+                    var narySub = child.ChildElements.FirstOrDefault(e => e.LocalName == "sub");
+                    var narySup = child.ChildElements.FirstOrDefault(e => e.LocalName == "sup");
+                    var naryE = child.ChildElements.FirstOrDefault(e => e.LocalName == "e");
+                    sb.Append("<mrow>");
+                    sb.Append("<munderover>");
+                    sb.Append($"<mo>{SvgEncode(naryChar ?? "\u2211")}</mo>");
+                    sb.Append("<mrow>"); if (narySub != null) ConvertOmmlNode(sb, narySub); sb.Append("</mrow>");
+                    sb.Append("<mrow>"); if (narySup != null) ConvertOmmlNode(sb, narySup); sb.Append("</mrow>");
+                    sb.Append("</munderover>");
+                    if (naryE != null) ConvertOmmlNode(sb, naryE);
+                    sb.Append("</mrow>");
+                    break;
+                case "d": // Delimiter (parentheses)
+                    sb.Append("<mrow><mo>(</mo>");
+                    var dE = child.ChildElements.FirstOrDefault(e => e.LocalName == "e");
+                    if (dE != null) ConvertOmmlNode(sb, dE);
+                    sb.Append("<mo>)</mo></mrow>");
+                    break;
+                case "oMath" or "oMathPara":
+                    ConvertOmmlNode(sb, child);
+                    break;
+                default:
+                    // Recurse for unknown container elements
+                    if (child.HasChildren)
+                        ConvertOmmlNode(sb, child);
+                    break;
+            }
+        }
     }
 
     private static string SvgEncode(string text)
