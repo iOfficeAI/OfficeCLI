@@ -1326,8 +1326,26 @@ public partial class PowerPointHandler
                             ?? spPr.AppendChild(new Drawing.Outline());
                         var (rgb, _) = ParseHelpers.SanitizeColorForOoxml(value);
                         outline.RemoveAllChildren<Drawing.SolidFill>();
-                        outline.PrependChild(new Drawing.SolidFill(
-                            new Drawing.RgbColorModelHex { Val = rgb }));
+                        var newFill = new Drawing.SolidFill(
+                            new Drawing.RgbColorModelHex { Val = rgb });
+                        // CT_LineProperties schema: fill → prstDash → ... → headEnd → tailEnd
+                        var prstDash = outline.GetFirstChild<Drawing.PresetDash>();
+                        if (prstDash != null)
+                            outline.InsertBefore(newFill, prstDash);
+                        else
+                        {
+                            var headEnd = outline.GetFirstChild<Drawing.HeadEnd>();
+                            if (headEnd != null)
+                                outline.InsertBefore(newFill, headEnd);
+                            else
+                            {
+                                var tailEnd = outline.GetFirstChild<Drawing.TailEnd>();
+                                if (tailEnd != null)
+                                    outline.InsertBefore(newFill, tailEnd);
+                                else
+                                    outline.AppendChild(newFill);
+                            }
+                        }
                         break;
                     }
                     case "fill":
@@ -1342,7 +1360,7 @@ public partial class PowerPointHandler
                         var outline = spPr.GetFirstChild<Drawing.Outline>()
                             ?? spPr.AppendChild(new Drawing.Outline());
                         outline.RemoveAllChildren<Drawing.PresetDash>();
-                        outline.AppendChild(new Drawing.PresetDash { Val = value.ToLowerInvariant() switch
+                        var newDash = new Drawing.PresetDash { Val = value.ToLowerInvariant() switch
                         {
                             "solid" => Drawing.PresetLineDashValues.Solid,
                             "dot" => Drawing.PresetLineDashValues.Dot,
@@ -1351,7 +1369,19 @@ public partial class PowerPointHandler
                             "longdash" or "lgdash" or "lg_dash" => Drawing.PresetLineDashValues.LargeDash,
                             "longdashdot" or "lgdashdot" or "lg_dash_dot" => Drawing.PresetLineDashValues.LargeDashDot,
                             _ => throw new ArgumentException($"Invalid 'lineDash' value: '{value}'. Valid values: solid, dot, dash, dashdot, longdash, longdashdot.")
-                        }});
+                        }};
+                        // CT_LineProperties schema: fill → prstDash → ... → headEnd → tailEnd
+                        var headEnd = outline.GetFirstChild<Drawing.HeadEnd>();
+                        if (headEnd != null)
+                            outline.InsertBefore(newDash, headEnd);
+                        else
+                        {
+                            var tailEnd = outline.GetFirstChild<Drawing.TailEnd>();
+                            if (tailEnd != null)
+                                outline.InsertBefore(newDash, tailEnd);
+                            else
+                                outline.AppendChild(newDash);
+                        }
                         break;
                     }
                     case "lineopacity" or "line.opacity":
@@ -1366,8 +1396,25 @@ public partial class PowerPointHandler
                         if (solidFill == null)
                         {
                             // Auto-create a black line fill (matching Apache POI behavior)
+                            // CT_LineProperties schema: fill → prstDash → ... → headEnd → tailEnd
                             solidFill = new Drawing.SolidFill(new Drawing.RgbColorModelHex { Val = "000000" });
-                            outline.PrependChild(solidFill);
+                            var prstDashEl = outline.GetFirstChild<Drawing.PresetDash>();
+                            if (prstDashEl != null)
+                                outline.InsertBefore(solidFill, prstDashEl);
+                            else
+                            {
+                                var headEndEl = outline.GetFirstChild<Drawing.HeadEnd>();
+                                if (headEndEl != null)
+                                    outline.InsertBefore(solidFill, headEndEl);
+                                else
+                                {
+                                    var tailEndEl = outline.GetFirstChild<Drawing.TailEnd>();
+                                    if (tailEndEl != null)
+                                        outline.InsertBefore(solidFill, tailEndEl);
+                                    else
+                                        outline.AppendChild(solidFill);
+                                }
+                            }
                         }
                         {
                             var colorEl = solidFill.GetFirstChild<Drawing.RgbColorModelHex>() as OpenXmlElement
@@ -1401,7 +1448,13 @@ public partial class PowerPointHandler
                         var outline = spPr.GetFirstChild<Drawing.Outline>()
                             ?? spPr.AppendChild(new Drawing.Outline());
                         outline.RemoveAllChildren<Drawing.HeadEnd>();
-                        outline.AppendChild(new Drawing.HeadEnd { Type = ParseLineEndType(value) });
+                        var newHeadEnd = new Drawing.HeadEnd { Type = ParseLineEndType(value) };
+                        // CT_LineProperties: ... → headEnd → tailEnd (headEnd before tailEnd)
+                        var existingTailEnd = outline.GetFirstChild<Drawing.TailEnd>();
+                        if (existingTailEnd != null)
+                            outline.InsertBefore(newHeadEnd, existingTailEnd);
+                        else
+                            outline.AppendChild(newHeadEnd);
                         break;
                     }
                     case "tailend" or "tailEnd":
@@ -1410,6 +1463,7 @@ public partial class PowerPointHandler
                         var outline = spPr.GetFirstChild<Drawing.Outline>()
                             ?? spPr.AppendChild(new Drawing.Outline());
                         outline.RemoveAllChildren<Drawing.TailEnd>();
+                        // CT_LineProperties: tailEnd is last — always append
                         outline.AppendChild(new Drawing.TailEnd { Type = ParseLineEndType(value) });
                         break;
                     }
