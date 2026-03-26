@@ -494,7 +494,12 @@ public partial class PowerPointHandler
 
         // Update bldLst if not already there
         var shapeIdStr = shapeId.ToString();
-        if (bldLst != null && !bldLst.Elements<BuildParagraph>()
+        if (bldLst == null)
+        {
+            bldLst = new BuildList();
+            slide.GetFirstChild<Timing>()!.BuildList = bldLst;
+        }
+        if (!bldLst.Elements<BuildParagraph>()
                 .Any(b => b.ShapeId?.Value == shapeIdStr))
         {
             bldLst.AppendChild(new BuildParagraph
@@ -601,11 +606,6 @@ public partial class PowerPointHandler
             mainSeqCTn.ChildTimeNodeList = new ChildTimeNodeList();
 
         bldLst = timing.BuildList;
-        if (bldLst == null)
-        {
-            bldLst = new BuildList();
-            timing.BuildList = bldLst;
-        }
     }
 
     private static ParallelTimeNode BuildClickGroup(
