@@ -17,20 +17,36 @@ Open-source. Single binary. No Office installation. No dependencies. Works every
 
 <table>
 <tr>
-<td width="25%"><img src="assets/designwhatmovesyou.gif" alt="OfficeCLI design presentation"></td>
-<td width="25%"><img src="assets/mars.gif" alt="OfficeCLI space presentation"></td>
-<td width="25%"><img src="assets/horizon.gif" alt="OfficeCLI business presentation"></td>
-<td width="25%"><img src="assets/efforless.gif" alt="OfficeCLI tech presentation"></td>
+<td width="25%"><img src="assets/designwhatmovesyou.gif" alt="OfficeCLI design presentation (PowerPoint)"></td>
+<td width="25%"><img src="assets/mars.gif" alt="OfficeCLI space presentation (PowerPoint)"></td>
+<td width="25%"><img src="assets/horizon.gif" alt="OfficeCLI business presentation (PowerPoint)"></td>
+<td width="25%"><img src="assets/efforless.gif" alt="OfficeCLI tech presentation (PowerPoint)"></td>
 </tr>
 <tr>
-<td width="25%"><img src="assets/cat.gif" alt="OfficeCLI creative presentation"></td>
-<td width="25%"><img src="assets/first-ppt-aionui.gif" alt="OfficeCLI gaming presentation"></td>
-<td width="25%"><img src="assets/moridian.gif" alt="OfficeCLI minimal presentation"></td>
-<td width="25%"><img src="assets/move.gif" alt="OfficeCLI wellness presentation"></td>
+<td width="33%"><img src="assets/showcase/academic-paper.png" alt="OfficeCLI academic paper (Word)"></td>
+<td width="33%"><img src="assets/showcase/project-proposal.png" alt="OfficeCLI project proposal (Word)"></td>
+<td width="33%"><img src="assets/showcase/annual-report.png" alt="OfficeCLI annual report (Word)"></td>
+</tr>
+<tr>
+<td width="25%"><img src="assets/cat.gif" alt="OfficeCLI creative presentation (PowerPoint)"></td>
+<td width="25%"><img src="assets/first-ppt-aionui.gif" alt="OfficeCLI gaming presentation (PowerPoint)"></td>
+<td width="25%"><img src="assets/moridian.gif" alt="OfficeCLI minimal presentation (PowerPoint)"></td>
+<td width="25%"><img src="assets/move.gif" alt="OfficeCLI wellness presentation (PowerPoint)"></td>
+</tr>
+<tr>
+<td width="33%"><img src="assets/showcase/budget-tracker.png" alt="OfficeCLI budget tracker (Excel)"></td>
+<td width="33%"><img src="assets/showcase/gradebook.png" alt="OfficeCLI gradebook (Excel)"></td>
+<td width="33%"><img src="assets/showcase/sales-dashboard.png" alt="OfficeCLI sales dashboard (Excel)"></td>
+</tr>
+<tr>
+<td width="25%"><img src="assets/saturn+sun.gif" alt="OfficeCLI 3D morph transitions (PowerPoint)"></td>
+<td width="25%"></td>
+<td width="25%"></td>
+<td width="25%"></td>
 </tr>
 </table>
 
-<p align="center"><em>All presentations above were created entirely by AI agents using OfficeCLI — no templates, no manual editing.</em></p>
+<p align="center"><em>All documents above were created entirely by AI agents using OfficeCLI — no templates, no manual editing.</em></p>
 
 ## For AI Agents — Get Started in One Line
 
