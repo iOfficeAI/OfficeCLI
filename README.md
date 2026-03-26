@@ -9,11 +9,19 @@ Open-source. Single binary. No Office installation. No dependencies. Works every
 
 **English** | [中文](README_zh.md)
 
+<p align="center"><strong>Example output</strong></p>
 <p align="center">
-  <img src="assets/ppt-process.gif" alt="OfficeCLI creating a PowerPoint presentation on AionUi" width="100%">
+  <img src="assets/saturn+sun.gif" alt="PPT workflow on AionUi with Morph and OfficeCLI, output uses 3D and Morph from PowerPoint" width="100%">
 </p>
+<p align="center"><em><strong>This GIF</strong> — AionUi’s latest built-in <strong>Morph</strong> assistant lets you directly call <strong>OfficeCLI</strong> to generate a PPT with <strong>Morph</strong> effects.</em></p>
 
-<p align="center"><em>PPT creation process using OfficeCLI on <a href="https://github.com/iOfficeAI/AionUi">AionUi</a></em></p>
+<hr>
+
+<p align="center"><strong>Authoring in <a href="https://github.com/iOfficeAI/AionUi">AionUi</a></strong></p>
+<p align="center">
+  <img src="assets/ppt-process.gif" alt="Screen recording of building a presentation inside AionUi with OfficeCLI" width="100%">
+</p>
+<p align="center"><em><strong>This GIF</strong> — screen capture inside <a href="https://github.com/iOfficeAI/AionUi">AionUi</a> while editing; <strong>OfficeCLI</strong> handles document commands and live preview under the UI.</em></p>
 
 <table>
 <tr>
@@ -32,6 +40,10 @@ Open-source. Single binary. No Office installation. No dependencies. Works every
 
 <p align="center"><em>All presentations above were created entirely by AI agents using OfficeCLI — no templates, no manual editing.</em></p>
 
+## Quick Navigation
+[Get Started](#getting-started) | [Quick Start](#quick-start) | [Installation](#installation) | [Key Features](#key-features) | [AI Integration](#ai-integration) | [Command Reference](#command-reference) | [Workflow Example](#workflow-example) | [License](#license)
+
+<a id="getting-started"></a>
 ## For AI Agents — Get Started in One Line
 
 Paste this into your AI agent's chat — it will read the skill file and install everything automatically:
@@ -44,6 +56,7 @@ That's it. The skill file teaches the agent how to install the binary and use al
 
 > **Technical details:** OfficeCLI ships with a [SKILL.md](SKILL.md) (239 lines, ~8K tokens) that covers command syntax, architecture, and common pitfalls. After installation, your agent can immediately create, read, and modify any Office document.
 
+<a id="quick-start"></a>
 ## Quick Start
 
 From zero to a finished presentation in seconds:
@@ -89,6 +102,7 @@ officecli get deck.pptx /slide[1]/shape[1] --json
 }
 ```
 
+<a id="why-officecli"></a>
 ## Why OfficeCLI?
 
 What used to take 50 lines of Python and 3 separate libraries:
@@ -130,6 +144,7 @@ officecli add deck.pptx / --type slide --prop title="Q4 Report"
 
 **PowerPoint** — slides, shapes, text boxes, images, tables, charts, animations, morph transitions, 3D models (.glb), slide zoom, equations, themes, connectors, video/audio
 
+<a id="use-cases"></a>
 ## Use Cases
 
 **For Developers:**
@@ -147,6 +162,7 @@ officecli add deck.pptx / --type slide --prop title="Q4 Report"
 - Clone document templates and populate with data
 - Automated document validation in CI/CD pipelines
 
+<a id="installation"></a>
 ## Installation
 
 Ships as a single self-contained binary. The .NET runtime is embedded -- nothing to install, no runtime to manage.
@@ -176,6 +192,7 @@ Verify installation: `officecli --version`
 
 Updates are checked automatically in the background. Disable with `officecli config autoUpdate false` or skip per-invocation with `OFFICECLI_SKIP_UPDATE=1`. Configuration lives under `~/.officecli/config.json`.
 
+<a id="key-features"></a>
 ## Key Features
 
 ### Live Preview
@@ -233,6 +250,7 @@ officecli raw-set report.docx document \
   --xml '<w:r><w:t>Injected text</w:t></w:r>'
 ```
 
+<a id="ai-integration"></a>
 ## AI Integration
 
 ### MCP Server
@@ -363,6 +381,7 @@ officecli get report.docx /body --depth 1 --json
 
 See `officecli --help` for full details on exit codes and error formats.
 
+<a id="comparison"></a>
 ## Comparison
 
 | | OfficeCLI | Microsoft Office | LibreOffice | python-docx / openpyxl |
@@ -378,6 +397,7 @@ See `officecli --help` for full details on exit codes and error formats.
 | Cross-platform | ✓ | Windows/Mac | ✓ | ✓ |
 | Word + Excel + PowerPoint | ✓ | ✓ | ✓ | Separate libs |
 
+<a id="updates-configuration"></a>
 ## Updates & Configuration
 
 ```bash
@@ -385,6 +405,7 @@ officecli config autoUpdate false              # Disable auto-update checks
 OFFICECLI_SKIP_UPDATE=1 officecli ...          # Skip check for one invocation (CI)
 ```
 
+<a id="command-reference"></a>
 ## Command Reference
 
 | Command | Description |
@@ -410,6 +431,7 @@ OFFICECLI_SKIP_UPDATE=1 officecli ...          # Skip check for one invocation (
 | `config <key> [value]` | Get or set configuration |
 | `<format> <command> [element]` | Built-in help (e.g. `officecli pptx set shape`) |
 
+<a id="workflow-example"></a>
 ## End-to-End Workflow Example
 
 A typical self-healing agent workflow: create a presentation, populate it, verify, and fix issues -- all without human intervention.
@@ -436,6 +458,7 @@ officecli view report.pptx issues --json
 officecli set report.pptx /slide[1]/shape[1] --prop font=Arial
 ```
 
+<a id="common-patterns"></a>
 ## Common Patterns
 
 ```bash
@@ -453,6 +476,7 @@ officecli batch budget.xlsx --input updates.json --json
 officecli validate report.docx && officecli view report.docx issues --json
 ```
 
+<a id="build-from-source"></a>
 ## Build from Source
 
 Requires [.NET 10 SDK](https://dotnet.microsoft.com/download) for compilation only. The output is a self-contained, native binary -- .NET is embedded in the binary and is not needed at runtime.
@@ -461,6 +485,7 @@ Requires [.NET 10 SDK](https://dotnet.microsoft.com/download) for compilation on
 ./build.sh
 ```
 
+<a id="license"></a>
 ## License
 
 [Apache License 2.0](LICENSE)
