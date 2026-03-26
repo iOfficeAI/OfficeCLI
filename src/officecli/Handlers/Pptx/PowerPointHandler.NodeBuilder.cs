@@ -199,14 +199,19 @@ public partial class PowerPointHandler
                             var stops = gradFill.GradientStopList?.Elements<Drawing.GradientStop>().ToList();
                             if (stops != null && stops.Count >= 2)
                             {
-                                var gc1 = ParseHelpers.FormatHexColor(stops[0].GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "");
-                                var gc2 = ParseHelpers.FormatHexColor(stops[^1].GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "");
-                                var lin = gradFill.GetFirstChild<Drawing.LinearGradientFill>();
-                                var deg = lin?.Angle?.Value != null ? lin.Angle.Value / 60000.0 : 0.0;
-                                var degStr = deg % 1 == 0 ? $"{(int)deg}" : $"{deg:0.##}";
-                                var gradient = $"linear;{gc1};{gc2};{degStr}";
-                                cellNode.Format["gradient"] = gradient;
-                                cellNode.Format["fill"] = deg != 0 ? $"{gc1}-{gc2}-{degStr}" : $"{gc1}-{gc2}";
+                                var gc1 = stops[0].GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+                                var gc2 = stops[^1].GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+                                if (!string.IsNullOrEmpty(gc1) && !string.IsNullOrEmpty(gc2))
+                                {
+                                    var gc1Fmt = ParseHelpers.FormatHexColor(gc1);
+                                    var gc2Fmt = ParseHelpers.FormatHexColor(gc2);
+                                    var lin = gradFill.GetFirstChild<Drawing.LinearGradientFill>();
+                                    var deg = lin?.Angle?.Value != null ? lin.Angle.Value / 60000.0 : 0.0;
+                                    var degStr = deg % 1 == 0 ? $"{(int)deg}" : $"{deg:0.##}";
+                                    var gradient = $"linear;{gc1Fmt};{gc2Fmt};{degStr}";
+                                    cellNode.Format["gradient"] = gradient;
+                                    cellNode.Format["fill"] = deg != 0 ? $"{gc1Fmt}-{gc2Fmt}-{degStr}" : $"{gc1Fmt}-{gc2Fmt}";
+                                }
                             }
                         }
                         else
