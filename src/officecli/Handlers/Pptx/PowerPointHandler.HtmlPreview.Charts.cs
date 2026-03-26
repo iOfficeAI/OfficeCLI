@@ -335,8 +335,8 @@ public partial class PowerPointHandler
         else
         {
             niceMax = 100;
-            nTicks = 4; // 0%, 25%, 50%, 75%, 100%
-            tickStep = 25;
+            nTicks = 5; // 0%, 20%, 40%, 60%, 80%, 100% (matches PowerPoint default)
+            tickStep = 20;
         }
 
         if (horizontal)
