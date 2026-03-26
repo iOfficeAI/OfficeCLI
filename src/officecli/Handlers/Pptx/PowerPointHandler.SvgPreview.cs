@@ -326,10 +326,24 @@ public partial class PowerPointHandler
 
         // Draw shape based on geometry type
         var polygonPoints = GetPresetPolygonPoints(presetName, w, h);
-        if (presetName is "flowChartConnector" or "flowChartOffpageConnector")
+        if (presetName is "flowChartConnector" or "flowChartOffpageConnector" or "smileyFace" or "smiley")
         {
-            // These are elliptical flowchart shapes
             sb.Append($"<ellipse cx=\"{w / 2:0.##}\" cy=\"{h / 2:0.##}\" rx=\"{w / 2:0.##}\" ry=\"{h / 2:0.##}\" {fsStr}/>");
+        }
+        else if (presetName is "donut" or "noSmoking")
+        {
+            // Donut: outer circle + inner circle (hole)
+            var innerR = Math.Min(w, h) * 0.3;
+            sb.Append($"<ellipse cx=\"{w / 2:0.##}\" cy=\"{h / 2:0.##}\" rx=\"{w / 2:0.##}\" ry=\"{h / 2:0.##}\" {fsStr}/>");
+            sb.Append($"<ellipse cx=\"{w / 2:0.##}\" cy=\"{h / 2:0.##}\" rx=\"{innerR:0.##}\" ry=\"{innerR:0.##}\" fill=\"white\"/>");
+        }
+        else if (presetName is "can" or "cylinder")
+        {
+            // Cylinder: rect body + top/bottom ellipses
+            var capH = h * 0.12;
+            sb.Append($"<rect y=\"{capH:0.##}\" width=\"{w:0.##}\" height=\"{h - capH * 2:0.##}\" {fsStr}/>");
+            sb.Append($"<ellipse cx=\"{w / 2:0.##}\" cy=\"{capH:0.##}\" rx=\"{w / 2:0.##}\" ry=\"{capH:0.##}\" {fsStr}/>");
+            sb.Append($"<ellipse cx=\"{w / 2:0.##}\" cy=\"{h - capH:0.##}\" rx=\"{w / 2:0.##}\" ry=\"{capH:0.##}\" {fsStr}/>");
         }
         else if (presetName == "ellipse")
         {
@@ -1057,6 +1071,20 @@ public partial class PowerPointHandler
             "snip1Rect" => $"0,0 {w * 0.92:0.##},0 {w:0.##},{h * 0.08:0.##} {w:0.##},{h:0.##} 0,{h:0.##}",
             "snip2SameRect" => $"{w * 0.08:0.##},0 {w * 0.92:0.##},0 {w:0.##},{h * 0.08:0.##} {w:0.##},{h:0.##} 0,{h:0.##} 0,{h * 0.08:0.##}",
 
+            // Special shapes
+            "lightningBolt" => $"{w * 0.4:0.##},0 {w * 0.65:0.##},{h * 0.35:0.##} {w * 0.52:0.##},{h * 0.35:0.##} {w:0.##},{h * 0.6:0.##} {w * 0.55:0.##},{h * 0.6:0.##} {w * 0.7:0.##},{h:0.##} {w * 0.2:0.##},{h * 0.55:0.##} {w * 0.4:0.##},{h * 0.55:0.##} 0,{h * 0.35:0.##} {w * 0.3:0.##},{h * 0.35:0.##}",
+            "sun" => BuildSunPath(w, h),
+            "moon" => BuildMoonPath(w, h),
+            "smileyFace" or "smiley" => null, // handled as ellipse below
+            "donut" or "noSmoking" => null, // handled specially
+            "foldedCorner" => $"0,0 {w * 0.85:0.##},0 {w:0.##},{h * 0.15:0.##} {w:0.##},{h:0.##} 0,{h:0.##}",
+            "cube" => $"0,{h * 0.2:0.##} {w * 0.8:0.##},{h * 0.2:0.##} {w:0.##},0 {w:0.##},{h * 0.8:0.##} {w * 0.8:0.##},{h:0.##} 0,{h:0.##}",
+            "can" or "cylinder" => null, // handled specially
+
+            // Left/right arrow
+            "leftRightArrow" => $"0,{h / 2:0.##} {w * 0.15:0.##},0 {w * 0.15:0.##},{h * 0.25:0.##} {w * 0.85:0.##},{h * 0.25:0.##} {w * 0.85:0.##},0 {w:0.##},{h / 2:0.##} {w * 0.85:0.##},{h:0.##} {w * 0.85:0.##},{h * 0.75:0.##} {w * 0.15:0.##},{h * 0.75:0.##} {w * 0.15:0.##},{h:0.##}",
+            "notchedRightArrow" => $"0,{h * 0.25:0.##} {w * 0.7:0.##},{h * 0.25:0.##} {w * 0.7:0.##},0 {w:0.##},{h / 2:0.##} {w * 0.7:0.##},{h:0.##} {w * 0.7:0.##},{h * 0.75:0.##} 0,{h * 0.75:0.##} {w * 0.1:0.##},{h / 2:0.##}",
+
             // Cloud / callout - approximate with polygon
             "cloud" or "cloudCallout" => BuildCloudPath(w, h),
 
@@ -1110,6 +1138,47 @@ public partial class PowerPointHandler
             var hy = -(13 * Math.Cos(t) - 5 * Math.Cos(2 * t) - 2 * Math.Cos(3 * t) - Math.Cos(4 * t));
             var px = w / 2 + hx / 16 * w / 2;
             var py = h * 0.45 + hy / 17 * h / 2;
+            points.Add($"{px:0.##},{py:0.##}");
+        }
+        return string.Join(" ", points);
+    }
+
+    private static string BuildSunPath(double w, double h)
+    {
+        // Sun: circle body + triangle rays
+        var points = new List<string>();
+        var cx = w / 2; var cy = h / 2;
+        var outerR = Math.Min(w, h) / 2;
+        var innerR = outerR * 0.55;
+        int rays = 12;
+        for (int i = 0; i < rays * 2; i++)
+        {
+            var angle = -Math.PI / 2 + Math.PI * i / rays;
+            var r = i % 2 == 0 ? outerR : innerR;
+            points.Add($"{cx + r * Math.Cos(angle) * (w / Math.Min(w, h)):0.##},{cy + r * Math.Sin(angle) * (h / Math.Min(w, h)):0.##}");
+        }
+        return string.Join(" ", points);
+    }
+
+    private static string BuildMoonPath(double w, double h)
+    {
+        // Crescent moon
+        var points = new List<string>();
+        int n = 20;
+        // Outer arc (full circle left half)
+        for (int i = 0; i <= n; i++)
+        {
+            var angle = Math.PI / 2 + Math.PI * i / n;
+            var px = w / 2 + w * 0.45 * Math.Cos(angle);
+            var py = h / 2 + h * 0.45 * Math.Sin(angle);
+            points.Add($"{px:0.##},{py:0.##}");
+        }
+        // Inner arc (concave right side)
+        for (int i = n; i >= 0; i--)
+        {
+            var angle = Math.PI / 2 + Math.PI * i / n;
+            var px = w * 0.35 + w * 0.3 * Math.Cos(angle);
+            var py = h / 2 + h * 0.35 * Math.Sin(angle);
             points.Add($"{px:0.##},{py:0.##}");
         }
         return string.Join(" ", points);
