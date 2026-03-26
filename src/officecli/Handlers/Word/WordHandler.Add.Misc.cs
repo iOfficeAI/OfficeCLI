@@ -583,8 +583,10 @@ public partial class WordHandler
         wmSettingsPart.Settings ??= new Settings();
         if (wmSettingsPart.Settings.GetFirstChild<EvenAndOddHeaders>() == null)
             wmSettingsPart.Settings.AddChild(new EvenAndOddHeaders(), throwOnError: false);
-        if (wmSettingsPart.Settings.GetFirstChild<TitlePage>() == null)
-            wmSettingsPart.Settings.AddChild(new TitlePage(), throwOnError: false);
+        var wmSectPrForTitle = mainPartWM.Document!.Body!.Elements<SectionProperties>().LastOrDefault()
+            ?? mainPartWM.Document!.Body!.AppendChild(new SectionProperties());
+        if (wmSectPrForTitle.GetFirstChild<TitlePage>() == null)
+            wmSectPrForTitle.AddChild(new TitlePage(), throwOnError: false);
 
         return "/watermark";
     }
