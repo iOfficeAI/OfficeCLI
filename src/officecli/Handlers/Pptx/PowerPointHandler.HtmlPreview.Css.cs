@@ -239,28 +239,62 @@ public partial class PowerPointHandler
 
     // ==================== CSS Helper: Outline/Border ====================
 
-    private static string OutlineToCss(Drawing.Outline outline, Dictionary<string, string> themeColors)
+    /// <summary>
+    /// Parse outline into (widthPt, ooxmlDashType, color). Returns null if NoFill.
+    /// </summary>
+    private static (double widthPt, string dashType, string color)? ParseOutline(Drawing.Outline outline, Dictionary<string, string> themeColors)
     {
-        if (outline.GetFirstChild<Drawing.NoFill>() != null) return "";
+        if (outline.GetFirstChild<Drawing.NoFill>() != null) return null;
 
         var color = ResolveFillColor(outline.GetFirstChild<Drawing.SolidFill>(), themeColors) ?? "#000000";
         var widthPt = outline.Width?.HasValue == true ? outline.Width.Value / 12700.0 : 1.0;
         if (widthPt < 0.5) widthPt = 0.5;
 
         var dash = outline.GetFirstChild<Drawing.PresetDash>();
-        var borderStyle = "solid";
+        var dashType = "solid";
         if (dash?.Val?.HasValue == true)
+            dashType = dash.Val.InnerText ?? "solid";
+
+        return (widthPt, dashType, color);
+    }
+
+    private static string OutlineToCss(Drawing.Outline outline, Dictionary<string, string> themeColors)
+    {
+        var parsed = ParseOutline(outline, themeColors);
+        if (parsed == null) return "";
+        var (widthPt, dashType, color) = parsed.Value;
+
+        var borderStyle = dashType switch
         {
-            borderStyle = dash.Val.InnerText switch
-            {
-                "dash" or "lgDash" or "sysDash" => "dashed",
-                "dot" or "sysDot" => "dotted",
-                "dashDot" or "lgDashDot" or "sysDashDot" or "sysDashDotDot" => "dashed",
-                _ => "solid"
-            };
-        }
+            "dash" or "lgDash" or "sysDash" => "dashed",
+            "dot" or "sysDot" => "dotted",
+            "dashDot" or "lgDashDot" or "sysDashDot" or "sysDashDotDot" => "dashed",
+            _ => "solid"
+        };
 
         return $"border:{widthPt:0.##}pt {borderStyle} {color}";
+    }
+
+    /// <summary>
+    /// Convert OOXML dash type to SVG stroke-dasharray relative to stroke width.
+    /// </summary>
+    private static string DashTypeToSvgDasharray(string dashType, double strokeWidth)
+    {
+        var w = strokeWidth;
+        return dashType switch
+        {
+            "solid" => "",
+            "dot" or "sysDot" => $"0.1 {w * 2.5:0.##}",
+            "dash" => $"{w * 4:0.##} {w * 3:0.##}",
+            "lgDash" => $"{w * 8:0.##} {w * 3:0.##}",
+            "sysDash" => $"{w * 3:0.##} {w * 1:0.##}",
+            "dashDot" => $"{w * 4:0.##} {w * 2:0.##} 0.1 {w * 2:0.##}",
+            "lgDashDot" => $"{w * 8:0.##} {w * 2:0.##} 0.1 {w * 2:0.##}",
+            "sysDashDot" => $"{w * 3:0.##} {w * 1.5:0.##} 0.1 {w * 1.5:0.##}",
+            "sysDashDotDot" => $"{w * 3:0.##} {w * 1.5:0.##} 0.1 {w * 1.5:0.##} 0.1 {w * 1.5:0.##}",
+            "lgDashDotDot" => $"{w * 8:0.##} {w * 2:0.##} 0.1 {w * 2:0.##} 0.1 {w * 2:0.##}",
+            _ => ""
+        };
     }
 
     // ==================== CSS Helper: Shadow ====================

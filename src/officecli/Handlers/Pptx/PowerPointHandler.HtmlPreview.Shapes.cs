@@ -63,14 +63,14 @@ public partial class PowerPointHandler
         if (!string.IsNullOrEmpty(fillCss))
             styles.Add(fillCss);
 
-        // Border/outline
+        // Border/outline — parse for later; solid goes to CSS, non-solid to SVG
         var outline = shape.ShapeProperties?.GetFirstChild<Drawing.Outline>();
-        if (outline != null)
+        var parsedOutline = outline != null ? ParseOutline(outline, themeColors) : null;
+        if (parsedOutline != null && parsedOutline.Value.dashType == "solid")
         {
-            var borderCss = OutlineToCss(outline, themeColors);
-            if (!string.IsNullOrEmpty(borderCss))
-                styles.Add(borderCss);
+            styles.Add($"border:{parsedOutline.Value.widthPt:0.##}pt solid {parsedOutline.Value.color}");
         }
+        // Non-solid outlines rendered as SVG after the shape div
 
         // Build transform chain (must be combined into one transform property)
         var transforms = new List<string>();
@@ -254,31 +254,18 @@ public partial class PowerPointHandler
             // Fill layer (clipped)
             if (fillStyles.Count > 0)
                 sb.Append($"<div style=\"position:absolute;inset:0;{clipPathCss};{string.Join(";", fillStyles)}\"></div>");
-            // Border layer: use SVG polygon stroke for clip-path shapes
-            if (borderStyles.Count > 0 && clipPathCss.StartsWith("clip-path:polygon("))
+            // Border layer for clip-path shapes: always use SVG polygon stroke
+            if (parsedOutline != null && clipPathCss.StartsWith("clip-path:polygon("))
             {
-                var polyStr = clipPathCss["clip-path:polygon(".Length..^1]; // extract "50% 0,100% 50%,..."
+                var (bw, dt, bc) = parsedOutline.Value;
+                var polyStr = clipPathCss["clip-path:polygon(".Length..^1];
                 var svgPoints = polyStr.Replace("%", "");
-                // Parse border style
-                var bm = System.Text.RegularExpressions.Regex.Match(
-                    string.Join(";", borderStyles), @"border:([\d.]+)pt\s+(\w+)\s+(#?\w[\w,().]+)");
-                if (bm.Success)
-                {
-                    var strokeW = bm.Groups[1].Value;
-                    var dashStyle = bm.Groups[2].Value;
-                    var strokeColor = bm.Groups[3].Value;
-                    var dashAttr = dashStyle == "dashed" ? $" stroke-dasharray=\"{double.Parse(strokeW) * 3} {double.Parse(strokeW) * 2}\""
-                                 : dashStyle == "dotted" ? $" stroke-dasharray=\"{strokeW} {strokeW}\""
-                                 : "";
-                    sb.Append($"<svg style=\"position:absolute;inset:0;width:100%;height:100%;overflow:visible\" viewBox=\"0 0 100 100\" preserveAspectRatio=\"none\">");
-                    sb.Append($"<polygon points=\"{svgPoints}\" fill=\"none\" stroke=\"{strokeColor}\" stroke-width=\"{strokeW}\" vector-effect=\"non-scaling-stroke\"{dashAttr}/>");
-                    sb.Append("</svg>");
-                }
-            }
-            else if (borderStyles.Count > 0)
-            {
-                // Fallback: apply border to clipped div
-                sb.Append($"<div style=\"position:absolute;inset:0;{clipPathCss};{string.Join(";", borderStyles)};box-sizing:border-box\"></div>");
+                var dashArr = DashTypeToSvgDasharray(dt, bw);
+                var dashAttr = !string.IsNullOrEmpty(dashArr) ? $" stroke-dasharray=\"{dashArr}\"" : "";
+                var safeColor = CssSanitizeColor(bc);
+                sb.Append($"<svg style=\"position:absolute;inset:0;width:100%;height:100%;overflow:visible\" viewBox=\"0 0 100 100\" preserveAspectRatio=\"none\">");
+                sb.Append($"<polygon points=\"{svgPoints}\" fill=\"none\" stroke=\"{safeColor}\" stroke-width=\"{bw:0.##}\" vector-effect=\"non-scaling-stroke\" stroke-linecap=\"round\"{dashAttr}/>");
+                sb.Append("</svg>");
             }
         }
         else
@@ -307,6 +294,48 @@ public partial class PowerPointHandler
 
             RenderTextBody(sb, shape.TextBody, themeColors, shape, part);
             sb.Append("</div>");
+        }
+
+        // SVG border overlay for non-solid outlines (dashed, dotted, dashDot etc.)
+        if (parsedOutline != null && parsedOutline.Value.dashType != "solid")
+        {
+            var (bw, dt, bc) = parsedOutline.Value;
+            var dashArr = DashTypeToSvgDasharray(dt, bw);
+            var dashAttr = !string.IsNullOrEmpty(dashArr) ? $" stroke-dasharray=\"{dashArr}\"" : "";
+            var safeColor = CssSanitizeColor(bc);
+
+            if (!string.IsNullOrEmpty(clipPathCss) && clipPathCss.StartsWith("clip-path:polygon("))
+            {
+                // Polygon shapes — reuse existing polygon SVG approach
+                var polyStr = clipPathCss["clip-path:polygon(".Length..^1];
+                var svgPoints = polyStr.Replace("%", "");
+                sb.Append($"<svg style=\"position:absolute;inset:0;width:100%;height:100%;overflow:visible\" viewBox=\"0 0 100 100\" preserveAspectRatio=\"none\">");
+                sb.Append($"<polygon points=\"{svgPoints}\" fill=\"none\" stroke=\"{safeColor}\" stroke-width=\"{bw:0.##}\" vector-effect=\"non-scaling-stroke\" stroke-linecap=\"round\"{dashAttr}/>");
+                sb.Append("</svg>");
+            }
+            else if (!string.IsNullOrEmpty(borderRadiusCss))
+            {
+                // Rounded rect — use SVG rect with rx/ry
+                var rxMatch = System.Text.RegularExpressions.Regex.Match(borderRadiusCss, @"border-radius:([\d.]+)");
+                var rx = rxMatch.Success ? rxMatch.Groups[1].Value : "0";
+                sb.Append($"<svg style=\"position:absolute;inset:0;width:100%;height:100%;overflow:visible\">");
+                sb.Append($"<rect x=\"{bw / 2:0.##}\" y=\"{bw / 2:0.##}\" width=\"calc(100% - {bw:0.##}pt)\" height=\"calc(100% - {bw:0.##}pt)\" rx=\"{rx}\" ry=\"{rx}\" fill=\"none\" stroke=\"{safeColor}\" stroke-width=\"{bw:0.##}pt\" stroke-linecap=\"round\"{dashAttr}/>");
+                sb.Append("</svg>");
+            }
+            else if (presetGeom?.Preset?.InnerText == "ellipse")
+            {
+                // Ellipse — use SVG ellipse
+                sb.Append($"<svg style=\"position:absolute;inset:0;width:100%;height:100%;overflow:visible\">");
+                sb.Append($"<ellipse cx=\"50%\" cy=\"50%\" rx=\"calc(50% - {bw / 2:0.##}pt)\" ry=\"calc(50% - {bw / 2:0.##}pt)\" fill=\"none\" stroke=\"{safeColor}\" stroke-width=\"{bw:0.##}pt\" stroke-linecap=\"round\"{dashAttr}/>");
+                sb.Append("</svg>");
+            }
+            else
+            {
+                // Plain rect — use SVG rect
+                sb.Append($"<svg style=\"position:absolute;inset:0;width:100%;height:100%;overflow:visible\">");
+                sb.Append($"<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"none\" stroke=\"{safeColor}\" stroke-width=\"{bw:0.##}pt\" stroke-linecap=\"round\"{dashAttr}/>");
+                sb.Append("</svg>");
+            }
         }
 
         sb.AppendLine("</div>");
