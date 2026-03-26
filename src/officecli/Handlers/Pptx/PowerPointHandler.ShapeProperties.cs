@@ -567,9 +567,13 @@ public partial class PowerPointHandler
                     if (!string.IsNullOrWhiteSpace(value) && !value.Equals("none", StringComparison.OrdinalIgnoreCase))
                     {
                         var warpName = value.StartsWith("text") ? value : $"text{char.ToUpper(value[0])}{value[1..]}";
-                        bodyPr.AppendChild(new Drawing.PresetTextWarp(
-                            new Drawing.AdjustValueList()
-                        ) { Preset = new Drawing.TextShapeValues(warpName) });
+                        var warpEnum = new Drawing.TextShapeValues(warpName);
+                        var validator = new DocumentFormat.OpenXml.Validation.OpenXmlValidator();
+                        var testWarp = new Drawing.PresetTextWarp(new Drawing.AdjustValueList()) { Preset = warpEnum };
+                        var errors = validator.Validate(testWarp);
+                        if (errors.Any())
+                            throw new ArgumentException($"Invalid textwarp preset: '{value}'. Use full preset names like 'textArchUp', 'textWave1', 'textInflate', etc.");
+                        bodyPr.AppendChild(testWarp);
                     }
                     break;
                 }
@@ -586,6 +590,7 @@ public partial class PowerPointHandler
                         case "true" or "normal" or "normautofit" or "auto" or "shrink": bodyPr.AppendChild(new Drawing.NormalAutoFit()); break;
                         case "shape" or "spautofit" or "resize": bodyPr.AppendChild(new Drawing.ShapeAutoFit()); break;
                         case "false" or "none": bodyPr.AppendChild(new Drawing.NoAutoFit()); break;
+                        default: throw new ArgumentException($"Invalid autofit value: '{value}'. Valid values: true/normal/shrink, shape/resize, false/none.");
                     }
                     break;
                 }
