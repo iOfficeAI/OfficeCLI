@@ -182,6 +182,11 @@ body.fullscreen .slide {
 }
 body.sidebar-hidden .sidebar { display: none; }
 body.sidebar-hidden .sidebar-toggle { left: 8px; }
+/* Headless / automated browser — hide sidebar, toggle, and page counter */
+html.headless .sidebar,
+html.headless .sidebar-toggle,
+html.headless .toggle-zone,
+html.headless .page-counter { display: none !important; }
 
 /* ===== Narrow viewport: auto-hide sidebar ===== */
 @media (max-width: 900px) {

@@ -43,6 +43,8 @@ public partial class PowerPointHandler
         sb.AppendLine("<style>");
         sb.AppendLine(GenerateCss(slideWidthCm, slideHeightCm));
         sb.AppendLine("</style>");
+        // Auto-hide sidebar in headless/automated browsers (screenshot, Playwright, etc.)
+        sb.AppendLine("<script>if(navigator.webdriver||/HeadlessChrome/.test(navigator.userAgent))document.documentElement.classList.add('headless')</script>");
         sb.AppendLine("</head>");
         sb.AppendLine("<body>");
         sb.AppendLine("<div class=\"toggle-zone\"></div><button class=\"sidebar-toggle\" onclick=\"toggleSidebar()\">\u2630</button>");
