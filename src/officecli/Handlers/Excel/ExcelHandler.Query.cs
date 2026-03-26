@@ -378,10 +378,18 @@ public partial class ExcelHandler
                     var colors = colorScale.Elements<DocumentFormat.OpenXml.Spreadsheet.Color>().ToList();
                     if (colors.Count >= 2)
                     {
-                        cfNode.Format["mincolor"] = ParseHelpers.FormatHexColor(colors[0].Rgb?.Value ?? "");
-                        cfNode.Format["maxcolor"] = ParseHelpers.FormatHexColor(colors[^1].Rgb?.Value ?? "");
+                        var minRgb = colors[0].Rgb?.Value;
+                        var maxRgb = colors[^1].Rgb?.Value;
+                        if (!string.IsNullOrEmpty(minRgb))
+                            cfNode.Format["mincolor"] = ParseHelpers.FormatHexColor(minRgb);
+                        if (!string.IsNullOrEmpty(maxRgb))
+                            cfNode.Format["maxcolor"] = ParseHelpers.FormatHexColor(maxRgb);
                         if (colors.Count >= 3)
-                            cfNode.Format["midcolor"] = ParseHelpers.FormatHexColor(colors[1].Rgb?.Value ?? "");
+                        {
+                            var midRgb = colors[1].Rgb?.Value;
+                            if (!string.IsNullOrEmpty(midRgb))
+                                cfNode.Format["midcolor"] = ParseHelpers.FormatHexColor(midRgb);
+                        }
                     }
                 }
 
