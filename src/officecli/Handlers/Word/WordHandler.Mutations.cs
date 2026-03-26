@@ -77,7 +77,13 @@ public partial class WordHandler
                 var embedId = blip.Embed?.Value;
                 if (!string.IsNullOrEmpty(embedId))
                 {
-                    try { mainPart2.DeletePart(embedId); } catch { }
+                    // Count how many times this embedId is referenced in the entire document
+                    var refCount = mainPart2.Document.Descendants<A.Blip>()
+                        .Count(b => b.Embed?.Value == embedId);
+                    if (refCount <= 1)
+                    {
+                        try { mainPart2.DeletePart(embedId); } catch { }
+                    }
                 }
             }
         }
