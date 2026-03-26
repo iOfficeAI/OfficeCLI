@@ -111,11 +111,17 @@ public partial class PowerPointHandler
                 case ConnectionShape cxn:
                     RenderConnectorSvg(sb, defs, ref defId, cxn, themeColors);
                     break;
+                case Picture pic:
+                    RenderPictureSvg(sb, defs, ref defId, pic, slidePart, themeColors);
+                    break;
                 case GraphicFrame gf:
                     if (gf.Descendants<Drawing.Table>().Any())
                         RenderTableSvg(sb, defs, ref defId, gf, themeColors);
                     break;
-                // TODO: Picture, GroupShape, Chart
+                case GroupShape grp:
+                    RenderGroupSvg(sb, defs, ref defId, grp, slidePart, themeColors);
+                    break;
+                // TODO: Chart
             }
         }
     }
@@ -552,6 +558,120 @@ public partial class PowerPointHandler
         }
     }
 
+    // ==================== Picture Rendering (SVG) ====================
+
+    private static void RenderPictureSvg(StringBuilder sb, StringBuilder defs, ref int defId,
+        Picture pic, SlidePart slidePart, Dictionary<string, string> themeColors,
+        (long x, long y, long cx, long cy)? overridePos = null)
+    {
+        var xfrm = pic.ShapeProperties?.Transform2D;
+        if (xfrm?.Offset == null || xfrm?.Extents == null) return;
+
+        double px = EmuToPx(overridePos?.x ?? xfrm.Offset.X?.Value ?? 0);
+        double py = EmuToPx(overridePos?.y ?? xfrm.Offset.Y?.Value ?? 0);
+        double pw = EmuToPx(overridePos?.cx ?? xfrm.Extents.Cx?.Value ?? 0);
+        double ph = EmuToPx(overridePos?.cy ?? xfrm.Extents.Cy?.Value ?? 0);
+        if (pw <= 0 || ph <= 0) return;
+
+        // Extract image
+        var blipFill = pic.BlipFill;
+        var blip = blipFill?.GetFirstChild<Drawing.Blip>();
+        if (blip?.Embed?.HasValue != true) return;
+
+        string? dataUri = null;
+        try
+        {
+            var imgPart = slidePart.GetPartById(blip.Embed.Value!);
+            using var stream = imgPart.GetStream();
+            using var ms = new MemoryStream();
+            stream.CopyTo(ms);
+            var base64 = Convert.ToBase64String(ms.ToArray());
+            var contentType = SanitizeContentType(imgPart.ContentType ?? "image/png");
+            dataUri = $"data:{contentType};base64,{base64}";
+        }
+        catch { return; }
+
+        if (dataUri == null) return;
+
+        // Transform
+        var transforms = new List<string> { $"translate({px:0.##},{py:0.##})" };
+        if (xfrm.Rotation != null && xfrm.Rotation.Value != 0)
+            transforms.Add($"rotate({xfrm.Rotation.Value / 60000.0:0.##},{pw / 2:0.##},{ph / 2:0.##})");
+
+        // Clip for crop
+        string? clipId = null;
+        var srcRect = blipFill?.GetFirstChild<Drawing.SourceRectangle>();
+        if (srcRect != null)
+        {
+            var cl = (srcRect.Left?.Value ?? 0) / 100000.0;
+            var ct = (srcRect.Top?.Value ?? 0) / 100000.0;
+            var cr = (srcRect.Right?.Value ?? 0) / 100000.0;
+            var cb = (srcRect.Bottom?.Value ?? 0) / 100000.0;
+            if (cl != 0 || ct != 0 || cr != 0 || cb != 0)
+            {
+                clipId = $"clip{defId++}";
+                defs.AppendLine($"<clipPath id=\"{clipId}\">");
+                defs.AppendLine($"  <rect x=\"{pw * cl:0.##}\" y=\"{ph * ct:0.##}\" width=\"{pw * (1 - cl - cr):0.##}\" height=\"{ph * (1 - ct - cb):0.##}\"/>");
+                defs.AppendLine("</clipPath>");
+            }
+        }
+
+        sb.Append($"<g transform=\"{string.Join(" ", transforms)}\"");
+        if (clipId != null) sb.Append($" clip-path=\"url(#{clipId})\"");
+        sb.Append(">");
+        sb.Append($"<image href=\"{dataUri}\" width=\"{pw:0.##}\" height=\"{ph:0.##}\" preserveAspectRatio=\"none\"/>");
+        sb.AppendLine("</g>");
+    }
+
+    // ==================== Group Rendering (SVG) ====================
+
+    private void RenderGroupSvg(StringBuilder sb, StringBuilder defs, ref int defId,
+        GroupShape grp, SlidePart slidePart, Dictionary<string, string> themeColors)
+    {
+        var grpXfrm = grp.GroupShapeProperties?.TransformGroup;
+        if (grpXfrm?.Offset == null || grpXfrm?.Extents == null) return;
+
+        double gx = EmuToPx(grpXfrm.Offset.X?.Value ?? 0);
+        double gy = EmuToPx(grpXfrm.Offset.Y?.Value ?? 0);
+        long cx = grpXfrm.Extents.Cx?.Value ?? 0;
+        long cy = grpXfrm.Extents.Cy?.Value ?? 0;
+
+        var childOff = grpXfrm.ChildOffset;
+        var childExt = grpXfrm.ChildExtents;
+        var scaleX = (childExt?.Cx?.Value ?? cx) != 0 ? (double)cx / (childExt?.Cx?.Value ?? cx) : 1.0;
+        var scaleY = (childExt?.Cy?.Value ?? cy) != 0 ? (double)cy / (childExt?.Cy?.Value ?? cy) : 1.0;
+        var offX = childOff?.X?.Value ?? 0;
+        var offY = childOff?.Y?.Value ?? 0;
+
+        sb.Append($"<g transform=\"translate({gx:0.##},{gy:0.##})\">");
+
+        foreach (var child in grp.ChildElements)
+        {
+            switch (child)
+            {
+                case Shape shape:
+                {
+                    var pos = CalcGroupChildPos(shape.ShapeProperties?.Transform2D, offX, offY, scaleX, scaleY);
+                    if (pos.HasValue)
+                        RenderShapeSvg(sb, defs, ref defId, shape, slidePart, themeColors, pos);
+                    break;
+                }
+                case Picture pic:
+                {
+                    var pos = CalcGroupChildPos(pic.ShapeProperties?.Transform2D, offX, offY, scaleX, scaleY);
+                    if (pos.HasValue)
+                        RenderPictureSvg(sb, defs, ref defId, pic, slidePart, themeColors, pos);
+                    break;
+                }
+                case ConnectionShape cxn:
+                    RenderConnectorSvg(sb, defs, ref defId, cxn, themeColors);
+                    break;
+            }
+        }
+
+        sb.AppendLine("</g>");
+    }
+
     // ==================== Connector Rendering (SVG) ====================
 
     private static void RenderConnectorSvg(StringBuilder sb, StringBuilder defs, ref int defId,
@@ -784,6 +904,9 @@ public partial class PowerPointHandler
             "snip1Rect" => $"0,0 {w * 0.92:0.##},0 {w:0.##},{h * 0.08:0.##} {w:0.##},{h:0.##} 0,{h:0.##}",
             "snip2SameRect" => $"{w * 0.08:0.##},0 {w * 0.92:0.##},0 {w:0.##},{h * 0.08:0.##} {w:0.##},{h:0.##} 0,{h:0.##} 0,{h * 0.08:0.##}",
 
+            // Cloud / callout - approximate with polygon
+            "cloud" or "cloudCallout" => BuildCloudPath(w, h),
+
             _ => null
         };
     }
@@ -832,6 +955,37 @@ public partial class PowerPointHandler
             points.Add($"{px:0.##},{py:0.##}");
         }
         return string.Join(" ", points);
+    }
+
+    private static string BuildCloudPath(double w, double h)
+    {
+        // Cloud shape approximated with overlapping circles as polygon
+        var points = new List<string>();
+        // Bottom arc
+        AddArcPoints(points, w * 0.5, h * 0.85, w * 0.45, h * 0.2, Math.PI * 0.0, Math.PI * 1.0, 16);
+        // Left arc
+        AddArcPoints(points, w * 0.15, h * 0.55, w * 0.18, h * 0.35, Math.PI * 0.7, Math.PI * 1.5, 10);
+        // Top-left arc
+        AddArcPoints(points, w * 0.3, h * 0.25, w * 0.2, h * 0.22, Math.PI * 1.0, Math.PI * 1.8, 10);
+        // Top arc
+        AddArcPoints(points, w * 0.55, h * 0.18, w * 0.22, h * 0.2, Math.PI * 1.2, Math.PI * 2.0, 10);
+        // Top-right arc
+        AddArcPoints(points, w * 0.75, h * 0.28, w * 0.2, h * 0.25, Math.PI * 1.5, Math.PI * 2.2, 10);
+        // Right arc
+        AddArcPoints(points, w * 0.85, h * 0.55, w * 0.18, h * 0.35, Math.PI * 1.5, Math.PI * 2.3, 10);
+        return string.Join(" ", points);
+    }
+
+    private static void AddArcPoints(List<string> points, double cx, double cy,
+        double rx, double ry, double startAngle, double endAngle, int segments)
+    {
+        for (int i = 0; i <= segments; i++)
+        {
+            var angle = startAngle + (endAngle - startAngle) * i / segments;
+            var px = cx + rx * Math.Cos(angle);
+            var py = cy + ry * Math.Sin(angle);
+            points.Add($"{px:0.##},{py:0.##}");
+        }
     }
 
     // ==================== SVG Gradient ====================
