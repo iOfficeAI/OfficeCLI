@@ -145,7 +145,10 @@ public partial class PowerPointHandler
                     var gradStr = string.Join("-", stops);
                     var linear = gradFill.GetFirstChild<Drawing.LinearGradientFill>();
                     if (linear?.Angle?.HasValue == true)
-                        gradStr += $"-{linear.Angle.Value / 60000}";
+                    {
+                        var bgDeg = linear.Angle.Value / 60000.0;
+                        gradStr += bgDeg % 1 == 0 ? $"-{(int)bgDeg}" : $"-{bgDeg:0.##}";
+                    }
                     node.Format["background"] = gradStr;
                 }
             }

@@ -591,8 +591,8 @@ public partial class ExcelHandler
                     ?? throw new ArgumentException($"Sheet not found: {cfSheetName}");
 
                 var sqref = properties.GetValueOrDefault("sqref") ?? properties.GetValueOrDefault("ref", "A1:A10");
-                var minVal = properties.GetValueOrDefault("min", "0");
-                var maxVal = properties.GetValueOrDefault("max", "1");
+                var minVal = properties.ContainsKey("min") ? properties["min"] : (string?)null;
+                var maxVal = properties.ContainsKey("max") ? properties["max"] : (string?)null;
                 var cfColor = properties.GetValueOrDefault("color", "638EC6");
                 var normalizedColor = ParseHelpers.NormalizeArgbColor(cfColor);
 
@@ -604,12 +604,12 @@ public partial class ExcelHandler
                 var dataBar = new DataBar();
                 dataBar.Append(new ConditionalFormatValueObject
                 {
-                    Type = ConditionalFormatValueObjectValues.Number,
+                    Type = minVal != null ? ConditionalFormatValueObjectValues.Number : ConditionalFormatValueObjectValues.Min,
                     Val = minVal
                 });
                 dataBar.Append(new ConditionalFormatValueObject
                 {
-                    Type = ConditionalFormatValueObjectValues.Number,
+                    Type = maxVal != null ? ConditionalFormatValueObjectValues.Number : ConditionalFormatValueObjectValues.Max,
                     Val = maxVal
                 });
                 dataBar.Append(new DocumentFormat.OpenXml.Spreadsheet.Color { Rgb = normalizedColor });

@@ -306,6 +306,8 @@ public partial class PowerPointHandler
                 {
                     if (!double.TryParse(volStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var volDbl))
                         throw new ArgumentException($"Invalid 'volume' value: '{volStr}'. Expected a number 0-100 (e.g. 80 = 80%).");
+                    // Detect 0-1 range input (e.g. 0.8 meaning 80%) and normalize to 0-100
+                    if (volDbl > 0 && volDbl <= 1.0) volDbl *= 100;
                     vol = (int)(volDbl * 1000); // 0-100 → 0-100000
                 }
                 var autoPlay = properties.GetValueOrDefault("autoplay", "false")

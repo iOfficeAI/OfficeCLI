@@ -361,8 +361,8 @@ public partial class PowerPointHandler
             "bentuparrow" => Drawing.ShapeTypeValues.BentUpArrow,
             "curvedrightarrow" => Drawing.ShapeTypeValues.CurvedRightArrow,
             "stripedrightarrow" => Drawing.ShapeTypeValues.StripedRightArrow,
-            "uturnArrow" => Drawing.ShapeTypeValues.UTurnArrow,
-            "circularArrow" => Drawing.ShapeTypeValues.CircularArrow,
+            "uturnarrow" => Drawing.ShapeTypeValues.UTurnArrow,
+            "circulararrow" => Drawing.ShapeTypeValues.CircularArrow,
             _ => throw new ArgumentException(
                 $"Unknown preset shape: '{name}'. Common presets: rect, roundRect, ellipse, triangle, diamond, " +
                 "pentagon, hexagon, star5, rightArrow, leftArrow, chevron, plus, heart, cloud, cube, can, line, " +

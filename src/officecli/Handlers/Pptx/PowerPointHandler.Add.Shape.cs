@@ -239,7 +239,7 @@ public partial class PowerPointHandler
                 {
                     long xEmu = 0, yEmu = 0;
                     var (titleSlideW, _) = GetSlideSize();
-                    long cxEmu = titleSlideW, cyEmu = 742950; // default: slide width x ~2.06cm
+                    long cxEmu = titleSlideW, cyEmu = 1800000; // default: slide width x 5cm
                     if (properties.TryGetValue("x", out var xStr) || properties.TryGetValue("left", out xStr)) xEmu = ParseEmu(xStr);
                     if (properties.TryGetValue("y", out var yStr) || properties.TryGetValue("top", out yStr)) yEmu = ParseEmu(yStr);
                     if (properties.TryGetValue("width", out var wStr) || properties.TryGetValue("w", out wStr))

@@ -413,7 +413,7 @@ public partial class ExcelHandler
                         foreach (var run in shape.Descendants<Drawing.Run>())
                         {
                             var rPr = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
-                            rPr.FontSize = (int)Math.Round(ParseHelpers.SafeParseDouble(value, "size") * 100);
+                            rPr.FontSize = (int)Math.Round(ParseHelpers.ParseFontSize(value) * 100);
                         }
                         break;
                     case "bold":
@@ -465,6 +465,7 @@ public partial class ExcelHandler
                             {
                                 "center" or "c" or "ctr" => Drawing.TextAlignmentTypeValues.Center,
                                 "right" or "r" => Drawing.TextAlignmentTypeValues.Right,
+                                "justify" or "justified" or "j" => Drawing.TextAlignmentTypeValues.Justified,
                                 _ => Drawing.TextAlignmentTypeValues.Left
                             };
                         }

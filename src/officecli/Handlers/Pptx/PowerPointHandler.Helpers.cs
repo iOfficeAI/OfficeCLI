@@ -608,8 +608,9 @@ public partial class PowerPointHandler
         }
 
         var linear = gradFill.GetFirstChild<Drawing.LinearGradientFill>();
-        int deg = linear?.Angle?.HasValue == true ? linear.Angle.Value / 60000 : 0;
-        return $"linear;{string.Join(";", stopStrs)};{deg}";
+        var deg = linear?.Angle?.HasValue == true ? linear.Angle.Value / 60000.0 : 0.0;
+        var degStr = deg % 1 == 0 ? $"{(int)deg}" : $"{deg:0.##}";
+        return $"linear;{string.Join(";", stopStrs)};{degStr}";
     }
 
     /// <summary>

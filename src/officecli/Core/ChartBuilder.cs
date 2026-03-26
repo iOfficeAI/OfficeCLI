@@ -44,6 +44,29 @@ internal static partial class ChartHelper
 
         switch (kind)
         {
+            case "bar" when is3D:
+            case "column" when is3D:
+            {
+                var dir3dAuto = kind == "bar" ? C.BarDirectionValues.Bar : C.BarDirectionValues.Column;
+                var bar3dAuto = new C.Bar3DChart(
+                    new C.BarDirection { Val = dir3dAuto },
+                    new C.BarGrouping { Val = stacked ? C.BarGroupingValues.Stacked
+                        : percentStacked ? C.BarGroupingValues.PercentStacked
+                        : C.BarGroupingValues.Clustered },
+                    new C.VaryColors { Val = false }
+                );
+                for (int si = 0; si < seriesData.Count; si++)
+                {
+                    var s = BuildBarSeries((uint)si, seriesData[si].name, categories, seriesData[si].values,
+                        colors != null && si < colors.Length ? colors[si] : null);
+                    bar3dAuto.AppendChild(s);
+                }
+                bar3dAuto.AppendChild(new C.GapWidth { Val = 150 });
+                bar3dAuto.AppendChild(new C.AxisId { Val = catAxisId });
+                bar3dAuto.AppendChild(new C.AxisId { Val = valAxisId });
+                chartElement = bar3dAuto;
+                break;
+            }
             case "bar":
                 chartElement = BuildBarChart(C.BarDirectionValues.Bar, stacked, percentStacked,
                     categories, seriesData, catAxisId, valAxisId, colors);
@@ -80,29 +103,7 @@ internal static partial class ChartHelper
                 chartElement = BuildRadarChart(radarStyle, categories, seriesData, catAxisId, valAxisId, colors);
                 break;
             }
-            case "column3d" or "bar3d":
-            {
-                var dir3d = kind == "bar3d" ? C.BarDirectionValues.Bar : C.BarDirectionValues.Column;
-                var bar3d = new C.Bar3DChart(
-                    new C.BarDirection { Val = dir3d },
-                    new C.BarGrouping { Val = stacked ? C.BarGroupingValues.Stacked
-                        : percentStacked ? C.BarGroupingValues.PercentStacked
-                        : C.BarGroupingValues.Clustered },
-                    new C.VaryColors { Val = false }
-                );
-                for (int si = 0; si < seriesData.Count; si++)
-                {
-                    var s = BuildBarSeries((uint)si, seriesData[si].name, categories, seriesData[si].values,
-                        colors != null && si < colors.Length ? colors[si] : null);
-                    bar3d.AppendChild(s);
-                }
-                bar3d.AppendChild(new C.GapWidth { Val = 150 });
-                bar3d.AppendChild(new C.AxisId { Val = catAxisId });
-                bar3d.AppendChild(new C.AxisId { Val = valAxisId });
-                bar3d.AppendChild(new C.AxisId { Val = 0 });
-                chartElement = bar3d;
-                break;
-            }
+            // Note: column3d/bar3d are handled by "column when is3D" / "bar when is3D" above
             case "stock":
                 chartElement = BuildStockChart(categories, seriesData, catAxisId, valAxisId);
                 needsAxes = true;

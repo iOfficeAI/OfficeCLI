@@ -202,10 +202,11 @@ public partial class PowerPointHandler
                                 var gc1 = ParseHelpers.FormatHexColor(stops[0].GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "");
                                 var gc2 = ParseHelpers.FormatHexColor(stops[^1].GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "");
                                 var lin = gradFill.GetFirstChild<Drawing.LinearGradientFill>();
-                                int deg = lin?.Angle?.Value != null ? lin.Angle.Value / 60000 : 0;
-                                var gradient = $"linear;{gc1};{gc2};{deg}";
+                                var deg = lin?.Angle?.Value != null ? lin.Angle.Value / 60000.0 : 0.0;
+                                var degStr = deg % 1 == 0 ? $"{(int)deg}" : $"{deg:0.##}";
+                                var gradient = $"linear;{gc1};{gc2};{degStr}";
                                 cellNode.Format["gradient"] = gradient;
-                                cellNode.Format["fill"] = deg != 0 ? $"{gc1}-{gc2}-{deg}" : $"{gc1}-{gc2}";
+                                cellNode.Format["fill"] = deg != 0 ? $"{gc1}-{gc2}-{degStr}" : $"{gc1}-{gc2}";
                             }
                         }
                         else
@@ -264,7 +265,7 @@ public partial class PowerPointHandler
                             if (cellRunColor != null) cellNode.Format["color"] = cellRunColor;
 
                             if (rp.Spacing?.HasValue == true)
-                                cellNode.Format["charspacing"] = $"{rp.Spacing.Value / 100.0:0.##}";
+                                cellNode.Format["spacing"] = $"{rp.Spacing.Value / 100.0:0.##}";
                             if (rp.Baseline?.HasValue == true && rp.Baseline.Value != 0)
                                 cellNode.Format["baseline"] = $"{rp.Baseline.Value / 1000.0:0.##}";
                         }
@@ -281,7 +282,6 @@ public partial class PowerPointHandler
                             else if (alv == Drawing.TextAlignmentTypeValues.Justified) align = "justify";
                             else if (align == "ctr") align = "center";
                             cellNode.Format["align"] = align;
-                            cellNode.Format["alignment"] = align;
                         }
 
                         rowNode.Children.Add(cellNode);
@@ -341,7 +341,7 @@ public partial class PowerPointHandler
                 var gc1 = ParseHelpers.FormatHexColor(stops[0].GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "");
                 var gc2 = ParseHelpers.FormatHexColor(stops[^1].GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "");
                 var lin = shapeGradFill.GetFirstChild<Drawing.LinearGradientFill>();
-                int deg = lin?.Angle?.Value != null ? lin.Angle.Value / 60000 : 0;
+                var deg = lin?.Angle?.Value != null ? lin.Angle.Value / 60000.0 : 0.0;
 
                 // Gradient opacity (from first stop's alpha)
                 var gradAlpha = stops[0].GetFirstChild<Drawing.RgbColorModelHex>()?.GetFirstChild<Drawing.Alpha>()?.Val?.Value
@@ -576,7 +576,7 @@ public partial class PowerPointHandler
 
         // Rotation (plain number in degrees, no suffix, so Set can consume the value directly)
         if (xfrm?.Rotation != null && xfrm.Rotation.Value != 0)
-            node.Format["rotation"] = $"{xfrm.Rotation.Value / 60000.0}";
+            node.Format["rotation"] = $"{xfrm.Rotation.Value / 60000.0:0.##}";
 
         // Text margin
         var bodyPr = shape.TextBody?.Elements<Drawing.BodyProperties>().FirstOrDefault();
@@ -681,7 +681,14 @@ public partial class PowerPointHandler
 
                     // Add paragraph formatting info
                     var paraPProps = para.ParagraphProperties;
-                    if (paraPProps?.Alignment?.HasValue == true) paraNode.Format["align"] = paraPProps.Alignment.InnerText;
+                    if (paraPProps?.Alignment?.HasValue == true)
+                    {
+                        var paraAlignVal = paraPProps.Alignment.Value;
+                        paraNode.Format["align"] = paraAlignVal == Drawing.TextAlignmentTypeValues.Center ? "center"
+                            : paraAlignVal == Drawing.TextAlignmentTypeValues.Right ? "right"
+                            : paraAlignVal == Drawing.TextAlignmentTypeValues.Justified ? "justify"
+                            : "left";
+                    }
                     if (paraPProps?.Indent?.HasValue == true) paraNode.Format["indent"] = FormatEmu(paraPProps.Indent.Value);
                     if (paraPProps?.LeftMargin?.HasValue == true) paraNode.Format["marginLeft"] = FormatEmu(paraPProps.LeftMargin.Value);
                     if (paraPProps?.RightMargin?.HasValue == true) paraNode.Format["marginRight"] = FormatEmu(paraPProps.RightMargin.Value);

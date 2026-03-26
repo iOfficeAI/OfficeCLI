@@ -360,9 +360,10 @@ public partial class PowerPointHandler
                     var gc1 = ParseHelpers.FormatHexColor(stops[0].GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "");
                     var gc2 = ParseHelpers.FormatHexColor(stops[^1].GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value ?? "");
                     var lin = gradFill.GetFirstChild<Drawing.LinearGradientFill>();
-                    int deg = lin?.Angle?.Value != null ? lin.Angle.Value / 60000 : 0;
-                    var gradient = $"linear;{gc1};{gc2};{deg}";
-                    cellNode.Format["fill"] = deg != 0 ? $"{gc1}-{gc2}-{deg}" : $"{gc1}-{gc2}";
+                    var deg = lin?.Angle?.Value != null ? lin.Angle.Value / 60000.0 : 0.0;
+                    var degStr = deg % 1 == 0 ? $"{(int)deg}" : $"{deg:0.##}";
+                    var gradient = $"linear;{gc1};{gc2};{degStr}";
+                    cellNode.Format["fill"] = deg != 0 ? $"{gc1}-{gc2}-{degStr}" : $"{gc1}-{gc2}";
                     cellNode.Format["gradient"] = gradient;
                 }
             }

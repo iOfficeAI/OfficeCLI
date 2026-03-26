@@ -32,7 +32,10 @@ public partial class PowerPointHandler
                 var eqShapeTree = GetSlide(eqSlidePart).CommonSlideData?.ShapeTree
                     ?? throw new InvalidOperationException("Slide has no shape tree");
 
-                var eqShapeId = (uint)(eqShapeTree.Elements<Shape>().Count() + eqShapeTree.Elements<Picture>().Count() + 2);
+                var eqShapeId = eqShapeTree.ChildElements
+                    .Select(e => e.Descendants<NonVisualDrawingProperties>().FirstOrDefault()?.Id?.Value ?? 0)
+                    .DefaultIfEmpty(1U)
+                    .Max() + 1;
                 var eqShapeName = properties.GetValueOrDefault("name", $"Equation {eqShapeId}");
 
                 // Parse formula to OMML

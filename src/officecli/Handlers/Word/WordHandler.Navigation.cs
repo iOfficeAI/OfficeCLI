@@ -809,10 +809,11 @@ public partial class WordHandler
                 }
                 var angleMatch = System.Text.RegularExpressions.Regex.Match(
                     gradAc.InnerXml, @"ang=""(\d+)""");
-                var angle = angleMatch.Success ? int.Parse(angleMatch.Groups[1].Value) / 60000 : 0;
+                var angle = angleMatch.Success ? int.Parse(angleMatch.Groups[1].Value) / 60000.0 : 0.0;
+                var angleStr = angle % 1 == 0 ? $"{(int)angle}" : $"{angle:0.##}";
                 if (colors.Count >= 2)
                 {
-                    node.Format["fill"] = $"gradient;{ParseHelpers.FormatHexColor(colors[0])};{ParseHelpers.FormatHexColor(colors[1])};{angle}";
+                    node.Format["fill"] = $"gradient;{ParseHelpers.FormatHexColor(colors[0])};{ParseHelpers.FormatHexColor(colors[1])};{angleStr}";
                 }
                 else if (colors.Count == 1)
                 {
