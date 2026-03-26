@@ -423,10 +423,9 @@ public partial class ExcelHandler
                         if (fonts != null && fontId < (uint)fonts.Elements<Font>().Count())
                         {
                             var font = fonts.Elements<Font>().ElementAt((int)fontId);
-                            if (font.Bold != null) { node.Format["font.bold"] = true; node.Format["bold"] = true; }
+                            if (font.Bold != null) { node.Format["bold"] = true; }
                             if (font.Italic != null)
                             {
-                                node.Format["font.italic"] = true;
                                 node.Format["italic"] = true;
                             }
                             if (font.Strike != null) node.Format["font.strike"] = true;
@@ -443,12 +442,10 @@ public partial class ExcelHandler
                             var vertAlign = font.GetFirstChild<VerticalTextAlignment>();
                             if (vertAlign?.Val?.Value == VerticalAlignmentRunValues.Superscript)
                             {
-                                node.Format["font.superscript"] = true;
                                 node.Format["superscript"] = true;
                             }
                             else if (vertAlign?.Val?.Value == VerticalAlignmentRunValues.Subscript)
                             {
-                                node.Format["font.subscript"] = true;
                                 node.Format["subscript"] = true;
                             }
                             if (font.FontSize?.Val?.Value != null)
