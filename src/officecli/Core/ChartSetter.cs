@@ -627,10 +627,11 @@ internal static partial class ChartHelper
 
                 case "series.outline" or "seriesoutline":
                 {
-                    // Apply outline to all series bars. Format: "COLOR" or "COLOR-WIDTH" e.g. "FFFFFF-1"
+                    // Apply outline to all series bars. Format: "COLOR" or "COLOR:WIDTH" or "COLOR:WIDTH:DASH"
+                    // Also accepts "-" separator for backward compat: "COLOR-WIDTH"
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
-                    var outParts = value.Split('-');
+                    var outParts = value.Contains(':') ? value.Split(':') : value.Split('-');
                     foreach (var ser in plotArea2.Descendants<OpenXmlCompositeElement>().Where(e => e.LocalName == "ser"))
                     {
                         var spPr = ser.GetFirstChild<C.ChartShapeProperties>();
@@ -643,6 +644,8 @@ internal static partial class ChartHelper
                             var sf = new Drawing.SolidFill();
                             sf.AppendChild(BuildChartColorElement(outParts[0]));
                             outline.AppendChild(sf);
+                            if (outParts.Length > 2 && !string.IsNullOrEmpty(outParts[2]))
+                                outline.AppendChild(new Drawing.PresetDash { Val = ParseDashStyle(outParts[2]) });
                             // Insert ln before effectLst per DrawingML schema order
                             var effLst = spPr.GetFirstChild<Drawing.EffectList>();
                             if (effLst != null) spPr.InsertBefore(outline, effLst);
