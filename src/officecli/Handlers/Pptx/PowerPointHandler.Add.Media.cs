@@ -125,6 +125,34 @@ public partial class PowerPointHandler
                     throw new ArgumentException("Chart requires data. Use: data=\"Series1:1,2,3;Series2:4,5,6\" " +
                         "or series1=\"Revenue:100,200,300\"");
 
+                // Position
+                long chartX = properties.TryGetValue("x", out var xv) ? ParseEmu(xv) : 838200;     // ~2.3cm
+                long chartY = properties.TryGetValue("y", out var yv) ? ParseEmu(yv) : 1825625;     // ~5cm
+                long chartCx = properties.TryGetValue("width", out var wv) ? ParseEmu(wv) : 8229600; // ~22.9cm
+                long chartCy = properties.TryGetValue("height", out var hv) ? ParseEmu(hv) : 4572000; // ~12.7cm
+                var chartId = (uint)(chartShapeTree.ChildElements.Count + 2);
+                var chartName = properties.GetValueOrDefault("name", chartTitle ?? $"Chart {chartId}");
+
+                // Extended chart types (cx:chart) — funnel, treemap, sunburst, boxWhisker, histogram
+                if (ChartExBuilder.IsExtendedChartType(chartType))
+                {
+                    var cxChartSpace = ChartExBuilder.BuildExtendedChartSpace(
+                        chartType, chartTitle, categories, seriesData, properties);
+                    var extChartPart = chartSlidePart.AddNewPart<ExtendedChartPart>();
+                    extChartPart.ChartSpace = cxChartSpace;
+                    extChartPart.ChartSpace.Save();
+
+                    var chartGfEx = BuildExtendedChartGraphicFrame(chartSlidePart, extChartPart,
+                        chartId, chartName, chartX, chartY, chartCx, chartCy);
+                    chartShapeTree.AppendChild(chartGfEx);
+                    GetSlide(chartSlidePart).Save();
+
+                    // Count all charts (both regular and extended)
+                    var totalCharts = chartShapeTree.Elements<GraphicFrame>()
+                        .Count(gf => gf.Descendants<C.ChartReference>().Any() || IsExtendedChartFrame(gf));
+                    return $"/slide[{chartSlideIdx}]/chart[{totalCharts}]";
+                }
+
                 // Build chart content BEFORE adding part (invalid type throws, must not leave empty part)
                 var chartSpace = ChartHelper.BuildChartSpace(chartType, chartTitle, categories, seriesData, properties);
                 var chartPart = chartSlidePart.AddNewPart<ChartPart>();
@@ -137,15 +165,6 @@ public partial class PowerPointHandler
                     .ToDictionary(kv => kv.Key, kv => kv.Value);
                 if (deferredProps.Count > 0)
                     ChartHelper.SetChartProperties(chartPart, deferredProps);
-
-                // Position
-                long chartX = properties.TryGetValue("x", out var xv) ? ParseEmu(xv) : 838200;     // ~2.3cm
-                long chartY = properties.TryGetValue("y", out var yv) ? ParseEmu(yv) : 1825625;     // ~5cm
-                long chartCx = properties.TryGetValue("width", out var wv) ? ParseEmu(wv) : 8229600; // ~22.9cm
-                long chartCy = properties.TryGetValue("height", out var hv) ? ParseEmu(hv) : 4572000; // ~12.7cm
-
-                var chartId = (uint)(chartShapeTree.ChildElements.Count + 2);
-                var chartName = properties.GetValueOrDefault("name", chartTitle ?? $"Chart {chartId}");
 
                 var chartGf = BuildChartGraphicFrame(chartSlidePart, chartPart, chartId, chartName,
                     chartX, chartY, chartCx, chartCy);

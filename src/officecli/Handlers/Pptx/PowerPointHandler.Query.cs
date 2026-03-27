@@ -599,7 +599,8 @@ public partial class PowerPointHandler
         else if (elementType == "chart")
         {
             var charts = shapeTreeEl.Elements<GraphicFrame>()
-                .Where(gf => gf.Descendants<C.ChartReference>().Any()).ToList();
+                .Where(gf => gf.Descendants<C.ChartReference>().Any()
+                    || IsExtendedChartFrame(gf)).ToList();
             if (elementIdx < 1 || elementIdx > charts.Count)
                 throw new ArgumentException($"Chart {elementIdx} not found (total: {charts.Count})");
             return ChartToNode(charts[elementIdx - 1], targetSlidePart, slideIdx, elementIdx, depth);
@@ -824,7 +825,8 @@ public partial class PowerPointHandler
                 int chartIdx = 0;
                 foreach (var gf in shapeTree.Elements<GraphicFrame>())
                 {
-                    if (!gf.Descendants<C.ChartReference>().Any()) continue;
+                    if (!gf.Descendants<C.ChartReference>().Any()
+                        && !IsExtendedChartFrame(gf)) continue;
                     chartIdx++;
                     var chartNode = ChartToNode(gf, slidePart, slideNum, chartIdx, 0);
                     if (parsed.TextContains != null)

@@ -21,6 +21,18 @@ internal static partial class ChartHelper
         {
             switch (key.ToLowerInvariant())
             {
+                case "preset" or "style.preset" or "theme":
+                {
+                    var presetProps = ChartPresets.GetPreset(value);
+                    if (presetProps == null)
+                        throw new ArgumentException(
+                            $"Unknown chart preset '{value}'. Available: {string.Join(", ", ChartPresets.PresetNames)}.");
+                    // Recursively apply preset properties
+                    var presetUnsupported = SetChartProperties(chartPart, presetProps);
+                    unsupported.AddRange(presetUnsupported);
+                    break;
+                }
+
                 case "title":
                     chart.RemoveAllChildren<C.Title>();
                     if (!string.IsNullOrEmpty(value) && !value.Equals("none", StringComparison.OrdinalIgnoreCase))
