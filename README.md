@@ -26,12 +26,13 @@ Open-source. Single binary. No Office installation. No dependencies. Works every
 <td width="33%"><img src="assets/efforless.gif" alt="OfficeCLI tech presentation (PowerPoint)"></td>
 </tr>
 <tr>
-<td width="33%"><img src="assets/mars.gif" alt="OfficeCLI space presentation (PowerPoint)"></td>
+<td width="33%"><img src="assets/blackhole.gif" alt="OfficeCLI space presentation (PowerPoint)"></td>
 <td width="33%"><img src="assets/first-ppt-aionui.gif" alt="OfficeCLI gaming presentation (PowerPoint)"></td>
-<td width="33%"><img src="assets/cat.gif" alt="OfficeCLI creative presentation (PowerPoint)"></td>
+<td width="33%"><img src="assets/shiba.gif" alt="OfficeCLI creative presentation (PowerPoint)"></td>
 </tr>
 </table>
 
+<p align="center">—</p>
 <p align="center"><strong>Word Documents</strong></p>
 
 <table>
@@ -42,6 +43,7 @@ Open-source. Single binary. No Office installation. No dependencies. Works every
 </tr>
 </table>
 
+<p align="center">—</p>
 <p align="center"><strong>Excel Spreadsheets</strong></p>
 
 <table>

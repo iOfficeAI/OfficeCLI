@@ -26,12 +26,13 @@
 <td width="33%"><img src="assets/efforless.gif" alt="OfficeCLI 科技演示 (PowerPoint)"></td>
 </tr>
 <tr>
-<td width="33%"><img src="assets/mars.gif" alt="OfficeCLI 太空演示 (PowerPoint)"></td>
+<td width="33%"><img src="assets/blackhole.gif" alt="OfficeCLI 太空演示 (PowerPoint)"></td>
 <td width="33%"><img src="assets/first-ppt-aionui.gif" alt="OfficeCLI 游戏演示 (PowerPoint)"></td>
-<td width="33%"><img src="assets/cat.gif" alt="OfficeCLI 创意演示 (PowerPoint)"></td>
+<td width="33%"><img src="assets/shiba.gif" alt="OfficeCLI 创意演示 (PowerPoint)"></td>
 </tr>
 </table>
 
+<p align="center">—</p>
 <p align="center"><strong>Word 文档</strong></p>
 
 <table>
@@ -42,6 +43,7 @@
 </tr>
 </table>
 
+<p align="center">—</p>
 <p align="center"><strong>Excel 电子表格</strong></p>
 
 <table>
