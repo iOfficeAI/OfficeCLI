@@ -152,7 +152,31 @@ public partial class PowerPointHandler
         var svgH = (int)(heightEmu / 10000.0);
         var titleH = string.IsNullOrEmpty(titleText) ? 0 : 20;
         var chartSvgH = svgH - titleH;
-        var margin = new { top = 10, right = 15, bottom = 25, left = 40 };
+        // Try to read manual layout from OOXML plotArea
+        var plotAreaLayout = plotArea?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Layout>();
+        var manualLayout = plotAreaLayout?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.ManualLayout>();
+        int marginTop, marginRight, marginBottom, marginLeft;
+        if (manualLayout != null)
+        {
+            // ManualLayout x/y/w/h are fractions of the chart area (0.0 - 1.0)
+            var mlX = manualLayout.Left?.Val?.Value ?? manualLayout.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Left>()?.Val?.Value ?? 0.0;
+            var mlY = manualLayout.Top?.Val?.Value ?? manualLayout.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Top>()?.Val?.Value ?? 0.0;
+            var mlW = manualLayout.Width?.Val?.Value ?? manualLayout.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Width>()?.Val?.Value ?? 1.0;
+            var mlH = manualLayout.Height?.Val?.Value ?? manualLayout.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Height>()?.Val?.Value ?? 1.0;
+            marginLeft = (int)(mlX * svgW);
+            marginTop = (int)(mlY * chartSvgH);
+            marginRight = (int)((1.0 - mlX - mlW) * svgW);
+            marginBottom = (int)((1.0 - mlY - mlH) * chartSvgH);
+            if (marginLeft < 5) marginLeft = 5;
+            if (marginRight < 5) marginRight = 5;
+            if (marginTop < 5) marginTop = 5;
+            if (marginBottom < 5) marginBottom = 5;
+        }
+        else
+        {
+            marginTop = 10; marginRight = 15; marginBottom = 25; marginLeft = 40;
+        }
+        var margin = new { top = marginTop, right = marginRight, bottom = marginBottom, left = marginLeft };
         var plotW = svgW - margin.left - margin.right;
         var plotH = chartSvgH - margin.top - margin.bottom;
 
