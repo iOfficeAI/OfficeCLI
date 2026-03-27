@@ -88,6 +88,20 @@ internal static partial class ChartHelper
         var dispUnitsLbl = chart.Descendants<C.DisplayUnitsLabel>().FirstOrDefault();
         if (dispUnitsLbl != null) ReadManualLayout(dispUnitsLbl, node, "displayUnitsLabel");
 
+        // Individual data label (dLbl) layout readback — first series
+        var firstSer = plotArea.Descendants<OpenXmlCompositeElement>()
+            .FirstOrDefault(e => e.LocalName == "ser");
+        var dLbls = firstSer?.GetFirstChild<C.DataLabels>();
+        if (dLbls != null)
+        {
+            foreach (var dLbl in dLbls.Elements<C.DataLabel>())
+            {
+                var idx = dLbl.Index?.Val?.Value;
+                if (idx == null) continue;
+                ReadManualLayout(dLbl, node, $"dataLabel{idx.Value + 1}");
+            }
+        }
+
         // Plot area fill (plotArea uses C.ShapeProperties, not C.ChartShapeProperties)
         var plotSpPr = plotArea.GetFirstChild<C.ShapeProperties>();
         var plotFill = plotSpPr?.GetFirstChild<Drawing.SolidFill>();

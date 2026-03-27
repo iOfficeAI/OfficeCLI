@@ -637,4 +637,74 @@ public class PptxChartReadbackTests : IDisposable
         var node = _pptx.Get("/slide[1]/chart[1]");
         node.Format.Should().NotContainKey("legend.x");
     }
+
+    // ==================== DataLabel Layout ====================
+
+    [Fact]
+    public void Chart_DataLabelLayout_IsReadBack()
+    {
+        AddBarChart();
+        _pptx.Set("/slide[1]/chart[1]", new() { ["dataLabels"] = "value" });
+        _pptx.Set("/slide[1]/chart[1]", new()
+        {
+            ["dataLabel1.x"] = "0.05",
+            ["dataLabel1.y"] = "0.02",
+            ["dataLabel1.w"] = "0.1",
+            ["dataLabel1.h"] = "0.06"
+        });
+
+        var node = _pptx.Get("/slide[1]/chart[1]");
+        ((string)node.Format["dataLabel1.x"]).Should().Be("0.05");
+        ((string)node.Format["dataLabel1.y"]).Should().Be("0.02");
+        ((string)node.Format["dataLabel1.w"]).Should().Be("0.1");
+        ((string)node.Format["dataLabel1.h"]).Should().Be("0.06");
+    }
+
+    [Fact]
+    public void Chart_DataLabelLayout_MultiplePoints()
+    {
+        AddBarChart();
+        _pptx.Set("/slide[1]/chart[1]", new()
+        {
+            ["dataLabel1.x"] = "0.1",
+            ["dataLabel1.y"] = "0.2",
+            ["dataLabel2.x"] = "0.3",
+            ["dataLabel2.y"] = "0.4",
+            ["dataLabel3.x"] = "0.5",
+            ["dataLabel3.y"] = "0.6"
+        });
+
+        var node = _pptx.Get("/slide[1]/chart[1]");
+        ((string)node.Format["dataLabel1.x"]).Should().Be("0.1");
+        ((string)node.Format["dataLabel2.x"]).Should().Be("0.3");
+        ((string)node.Format["dataLabel3.x"]).Should().Be("0.5");
+    }
+
+    [Fact]
+    public void Chart_DataLabelLayout_PersistsAcrossReopen()
+    {
+        AddBarChart();
+        _pptx.Set("/slide[1]/chart[1]", new()
+        {
+            ["dataLabel1.x"] = "0.12",
+            ["dataLabel1.y"] = "0.08"
+        });
+
+        Reopen();
+
+        var node = _pptx.Get("/slide[1]/chart[1]");
+        ((string)node.Format["dataLabel1.x"]).Should().Be("0.12");
+        ((string)node.Format["dataLabel1.y"]).Should().Be("0.08");
+    }
+
+    [Fact]
+    public void Chart_DataLabelLayout_AutoCreatesDLbls()
+    {
+        // Chart without explicit dataLabels — Set should auto-create dLbls container
+        AddBarChart();
+        _pptx.Set("/slide[1]/chart[1]", new() { ["dataLabel1.x"] = "0.15" });
+
+        var node = _pptx.Get("/slide[1]/chart[1]");
+        ((string)node.Format["dataLabel1.x"]).Should().Be("0.15");
+    }
 }
