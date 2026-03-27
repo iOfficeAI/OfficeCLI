@@ -81,13 +81,7 @@ if curl -fsSL "$DOWNLOAD_URL" -o "/tmp/$BINARY_NAME" 2>/dev/null; then
         echo "Checksum file not available, skipping verification."
     fi
     chmod +x "/tmp/$BINARY_NAME"
-    if "/tmp/$BINARY_NAME" --version >/dev/null 2>&1; then
-        SOURCE="/tmp/$BINARY_NAME"
-        echo "Download verified."
-    else
-        echo "Downloaded file is not a valid OfficeCli binary."
-        rm -f "/tmp/$BINARY_NAME"
-    fi
+    SOURCE="/tmp/$BINARY_NAME"
 else
     echo "Download failed."
 fi
