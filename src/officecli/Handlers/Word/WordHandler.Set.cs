@@ -1358,10 +1358,35 @@ public partial class WordHandler
                             }
                         }
                         break;
+                    case "fittext":
+                    {
+                        // FitText goes on w:rPr (RunProperties), not tcPr
+                        var cellWidth = tcPr.TableCellWidth?.Width?.Value;
+                        var fitVal = cellWidth != null && uint.TryParse(cellWidth, out var fw) ? fw : 0u;
+                        foreach (var cellPara in cell.Elements<Paragraph>())
+                        {
+                            foreach (var cellRun in cellPara.Elements<Run>())
+                            {
+                                var rPr = EnsureRunProperties(cellRun);
+                                rPr.RemoveAllChildren<FitText>();
+                                if (IsTruthy(value))
+                                    rPr.AppendChild(new FitText { Val = fitVal });
+                            }
+                            // Also apply to ParagraphMarkRunProperties
+                            var pPr = cellPara.ParagraphProperties;
+                            if (pPr?.ParagraphMarkRunProperties != null)
+                            {
+                                pPr.ParagraphMarkRunProperties.RemoveAllChildren<FitText>();
+                                if (IsTruthy(value))
+                                    pPr.ParagraphMarkRunProperties.AppendChild(new FitText { Val = fitVal });
+                            }
+                        }
+                        break;
+                    }
                     default:
                         if (!GenericXmlQuery.TryCreateTypedChild(tcPr, key, value))
                             unsupported.Add(unsupported.Count == 0
-                                ? $"{key} (valid cell props: text, font, size, bold, italic, color, alignment, valign, width, shd, border, colspan)"
+                                ? $"{key} (valid cell props: text, font, size, bold, italic, color, alignment, valign, width, shd, border, colspan, fitText, textDirection, nowrap, padding)"
                                 : key);
                         break;
                 }
@@ -1492,13 +1517,44 @@ public partial class WordHandler
                         cm.TableCellRightMargin = new TableCellRightMargin { Width = (short)Math.Min(paddingVal, short.MaxValue), Type = TableWidthValues.Dxa };
                         break;
                     }
+                    case "firstrow":
+                    case "lastrow":
+                    case "firstcol" or "firstcolumn":
+                    case "lastcol" or "lastcolumn":
+                    case "bandrow" or "bandedrows" or "bandrows":
+                    case "bandcol" or "bandedcols" or "bandcols":
+                    {
+                        var tblLook = tblPr.GetFirstChild<TableLook>();
+                        if (tblLook == null) { tblLook = new TableLook { Val = "04A0" }; tblPr.AppendChild(tblLook); }
+                        var bv = IsTruthy(value);
+                        switch (key.ToLowerInvariant())
+                        {
+                            case "firstrow": tblLook.FirstRow = bv; break;
+                            case "lastrow": tblLook.LastRow = bv; break;
+                            case "firstcol" or "firstcolumn": tblLook.FirstColumn = bv; break;
+                            case "lastcol" or "lastcolumn": tblLook.LastColumn = bv; break;
+                            case "bandrow" or "bandedrows" or "bandrows": tblLook.NoHorizontalBand = !bv; break;
+                            case "bandcol" or "bandedcols" or "bandcols": tblLook.NoVerticalBand = !bv; break;
+                        }
+                        break;
+                    }
+                    case "caption":
+                        tblPr.RemoveAllChildren<TableCaption>();
+                        if (!string.IsNullOrEmpty(value))
+                            tblPr.AppendChild(new TableCaption { Val = value });
+                        break;
+                    case "description":
+                        tblPr.RemoveAllChildren<TableDescription>();
+                        if (!string.IsNullOrEmpty(value))
+                            tblPr.AppendChild(new TableDescription { Val = value });
+                        break;
                     case var k when k.StartsWith("border"):
                         ApplyTableBorders(tblPr, key, value);
                         break;
                     default:
                         if (!GenericXmlQuery.TryCreateTypedChild(tblPr, key, value))
                             unsupported.Add(unsupported.Count == 0
-                                ? $"{key} (valid table props: width, alignment, style, indent, cellspacing, layout, padding, border*)"
+                                ? $"{key} (valid table props: width, alignment, style, indent, cellspacing, layout, padding, border*, firstRow, lastRow, firstCol, lastCol, bandedRows, bandedCols, caption, description)"
                                 : key);
                         break;
                 }

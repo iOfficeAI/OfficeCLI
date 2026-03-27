@@ -516,6 +516,70 @@ public partial class ExcelHandler
                         var af = table.GetFirstChild<AutoFilter>();
                         if (af != null) af.Reference = value.ToUpperInvariant();
                         break;
+                    case "showrowstripes" or "bandedrows" or "bandrows":
+                    {
+                        var si = table.GetFirstChild<TableStyleInfo>();
+                        if (si != null) si.ShowRowStripes = IsTruthy(value);
+                        break;
+                    }
+                    case "showcolstripes" or "showcolumnstripes" or "bandedcols" or "bandcols":
+                    {
+                        var si = table.GetFirstChild<TableStyleInfo>();
+                        if (si != null) si.ShowColumnStripes = IsTruthy(value);
+                        break;
+                    }
+                    case "showfirstcolumn" or "firstcol" or "firstcolumn":
+                    {
+                        var si = table.GetFirstChild<TableStyleInfo>();
+                        if (si != null) si.ShowFirstColumn = IsTruthy(value);
+                        break;
+                    }
+                    case "showlastcolumn" or "lastcol" or "lastcolumn":
+                    {
+                        var si = table.GetFirstChild<TableStyleInfo>();
+                        if (si != null) si.ShowLastColumn = IsTruthy(value);
+                        break;
+                    }
+                    case var k when k.StartsWith("col[") || k.StartsWith("column["):
+                    {
+                        // column-level set: col[N].totalFunction, col[N].formula, col[N].name
+                        var tblColMatch = Regex.Match(k, @"^col(?:umn)?\[(\d+)\]\.(.+)$", RegexOptions.IgnoreCase);
+                        if (!tblColMatch.Success) { tblUnsupported.Add(key); break; }
+                        var colIdx = int.Parse(tblColMatch.Groups[1].Value);
+                        var colProp = tblColMatch.Groups[2].Value.ToLowerInvariant();
+                        var tableCols = table.GetFirstChild<TableColumns>()?.Elements<TableColumn>().ToList();
+                        if (tableCols == null || colIdx < 1 || colIdx > tableCols.Count)
+                            throw new ArgumentException($"Column index {colIdx} out of range (1..{tableCols?.Count ?? 0})");
+                        var col = tableCols[colIdx - 1];
+                        switch (colProp)
+                        {
+                            case "name": col.Name = value; break;
+                            case "totalfunction" or "total":
+                                col.TotalsRowFunction = value.ToLowerInvariant() switch
+                                {
+                                    "sum" => TotalsRowFunctionValues.Sum,
+                                    "count" => TotalsRowFunctionValues.Count,
+                                    "average" or "avg" => TotalsRowFunctionValues.Average,
+                                    "max" => TotalsRowFunctionValues.Maximum,
+                                    "min" => TotalsRowFunctionValues.Minimum,
+                                    "stddev" => TotalsRowFunctionValues.StandardDeviation,
+                                    "var" => TotalsRowFunctionValues.Variance,
+                                    "countnums" => TotalsRowFunctionValues.CountNumbers,
+                                    "none" => TotalsRowFunctionValues.None,
+                                    "custom" => TotalsRowFunctionValues.Custom,
+                                    _ => throw new ArgumentException($"Invalid totalFunction: '{value}'. Valid: sum, count, average, max, min, stddev, var, countNums, none, custom.")
+                                };
+                                break;
+                            case "totallabel" or "label":
+                                col.TotalsRowLabel = value;
+                                break;
+                            case "formula":
+                                col.CalculatedColumnFormula = new CalculatedColumnFormula(value);
+                                break;
+                            default: tblUnsupported.Add(key); break;
+                        }
+                        break;
+                    }
                     default: tblUnsupported.Add(key); break;
                 }
             }

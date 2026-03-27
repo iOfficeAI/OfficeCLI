@@ -891,6 +891,13 @@ public partial class ExcelHandler
         var styleInfo = tbl.GetFirstChild<TableStyleInfo>();
         if (styleInfo?.Name?.Value != null)
             node.Format["style"] = styleInfo.Name.Value;
+        if (styleInfo != null)
+        {
+            if (styleInfo.ShowRowStripes is not null) node.Format["showRowStripes"] = styleInfo.ShowRowStripes.Value;
+            if (styleInfo.ShowColumnStripes is not null) node.Format["showColumnStripes"] = styleInfo.ShowColumnStripes.Value;
+            if (styleInfo.ShowFirstColumn is not null) node.Format["showFirstColumn"] = styleInfo.ShowFirstColumn.Value;
+            if (styleInfo.ShowLastColumn is not null) node.Format["showLastColumn"] = styleInfo.ShowLastColumn.Value;
+        }
 
         node.Format["headerRow"] = (tbl.HeaderRowCount?.Value ?? 1) != 0;
         node.Format["totalRow"] = (tbl.TotalsRowCount?.Value ?? 0) > 0 || (tbl.TotalsRowShown?.Value ?? false);

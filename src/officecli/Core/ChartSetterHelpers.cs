@@ -276,8 +276,12 @@ internal static partial class ChartHelper
         switch (prop)
         {
             case "smooth":
-                ser.RemoveAllChildren<C.Smooth>();
-                InsertSeriesChildInOrder(ser, new C.Smooth { Val = ParseHelpers.IsTruthy(value) });
+                // smooth only valid on line/scatter series (CT_LineSer, CT_ScatterSer)
+                if (ser.Parent is C.LineChart or C.ScatterChart)
+                {
+                    ser.RemoveAllChildren<C.Smooth>();
+                    InsertSeriesChildInOrder(ser, new C.Smooth { Val = ParseHelpers.IsTruthy(value) });
+                }
                 break;
 
             case "trendline":
