@@ -54,12 +54,13 @@ internal static class ChartExBuilder
         if (!string.IsNullOrEmpty(title))
         {
             var chartTitle = new CX.ChartTitle();
-            chartTitle.AppendChild(new CX.RichTextBody(
-                new Drawing.BodyProperties(),
-                new Drawing.Paragraph(
-                    new Drawing.Run(
-                        new Drawing.RunProperties { Language = "en-US" },
-                        new Drawing.Text(title)))));
+            chartTitle.AppendChild(new CX.Text(
+                new CX.RichTextBody(
+                    new Drawing.BodyProperties(),
+                    new Drawing.Paragraph(
+                        new Drawing.Run(
+                            new Drawing.RunProperties { Language = "en-US" },
+                            new Drawing.Text(title))))));
             chart.AppendChild(chartTitle);
         }
 
