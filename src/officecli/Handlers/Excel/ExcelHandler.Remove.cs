@@ -274,6 +274,31 @@ public partial class ExcelHandler
             return null;
         }
 
+        // table[N] — remove table (ListObject) from worksheet
+        var tableRemoveMatch = Regex.Match(cellRef, @"^table\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (tableRemoveMatch.Success)
+        {
+            var tblIdx = int.Parse(tableRemoveMatch.Groups[1].Value);
+            var tableParts = worksheet.TableDefinitionParts.ToList();
+            if (tblIdx < 1 || tblIdx > tableParts.Count)
+                throw new ArgumentException($"Table index {tblIdx} out of range (1..{tableParts.Count})");
+            var tablePart = tableParts[tblIdx - 1];
+            worksheet.DeletePart(tablePart);
+            // Also remove the tablePart reference from the TableParts element
+            var tblParts = worksheet.Worksheet.GetFirstChild<TableParts>();
+            if (tblParts != null)
+            {
+                var tblPartEntries = tblParts.Elements<TablePart>().ToList();
+                if (tblIdx <= tblPartEntries.Count)
+                    tblPartEntries[tblIdx - 1].Remove();
+                tblParts.Count = (uint)tblParts.Elements<TablePart>().Count();
+                if (tblParts.Count == 0)
+                    tblParts.Remove();
+            }
+            SaveWorksheet(worksheet);
+            return null;
+        }
+
         // comment[N] — remove comment from WorksheetCommentsPart
         var commentRemoveMatch = Regex.Match(cellRef, @"^comment\[(\d+)\]$", RegexOptions.IgnoreCase);
         if (commentRemoveMatch.Success)

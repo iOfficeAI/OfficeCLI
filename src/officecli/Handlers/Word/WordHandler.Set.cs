@@ -1664,7 +1664,7 @@ public partial class WordHandler
                         tblPr.RemoveAllChildren<TableOverlap>();
                         if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
                         {
-                            tblPr.AppendChild(new TableOverlap
+                            var overlapEl = new TableOverlap
                             {
                                 Val = value.ToLowerInvariant() switch
                                 {
@@ -1672,7 +1672,16 @@ public partial class WordHandler
                                     "never" or "false" => TableOverlapValues.Never,
                                     _ => throw new ArgumentException($"Invalid overlap: '{value}'. Valid: overlap, never, none.")
                                 }
-                            });
+                            };
+                            // CT_TblPr schema: tblStyle → tblpPr → tblOverlap → ...
+                            var tppRef = tblPr.GetFirstChild<TablePositionProperties>();
+                            if (tppRef != null) tppRef.InsertAfterSelf(overlapEl);
+                            else
+                            {
+                                var styleRef = tblPr.GetFirstChild<TableStyle>();
+                                if (styleRef != null) styleRef.InsertAfterSelf(overlapEl);
+                                else tblPr.PrependChild(overlapEl);
+                            }
                         }
                         break;
                     }
@@ -2115,7 +2124,12 @@ public partial class WordHandler
                 VerticalAnchor = VerticalAnchorValues.Page,
                 HorizontalAnchor = HorizontalAnchorValues.Page
             };
-            tblPr.AppendChild(tpp);
+            // CT_TblPr schema order: tblStyle → tblpPr → tblOverlap → ...
+            var tblStyle = tblPr.GetFirstChild<TableStyle>();
+            if (tblStyle != null)
+                tblStyle.InsertAfterSelf(tpp);
+            else
+                tblPr.PrependChild(tpp);
         }
         return tpp;
     }

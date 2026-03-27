@@ -1373,8 +1373,20 @@ public partial class PowerPointHandler
                     }
                     else
                     {
-                        var cell3d = tcPrB.GetFirstChild<Drawing.Cell3DProperties>()
-                            ?? tcPrB.AppendChild(new Drawing.Cell3DProperties());
+                        var cell3d = tcPrB.GetFirstChild<Drawing.Cell3DProperties>();
+                        if (cell3d == null)
+                        {
+                            cell3d = new Drawing.Cell3DProperties();
+                            // CT_TableCellProperties schema: borders → cell3D → fill → extLst
+                            var insertBefore = (OpenXmlElement?)tcPrB.GetFirstChild<Drawing.SolidFill>()
+                                ?? (OpenXmlElement?)tcPrB.GetFirstChild<Drawing.NoFill>()
+                                ?? (OpenXmlElement?)tcPrB.GetFirstChild<Drawing.GradientFill>()
+                                ?? (OpenXmlElement?)tcPrB.GetFirstChild<Drawing.BlipFill>()
+                                ?? (OpenXmlElement?)tcPrB.GetFirstChild<Drawing.PatternFill>()
+                                ?? tcPrB.GetFirstChild<Drawing.ExtensionList>();
+                            if (insertBefore != null) tcPrB.InsertBefore(cell3d, insertBefore);
+                            else tcPrB.AppendChild(cell3d);
+                        }
                         cell3d.RemoveAllChildren<Drawing.Bevel>();
 
                         // Parse: "circle" or "circle-6-6" (preset-width-height in pt)
