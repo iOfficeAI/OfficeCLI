@@ -701,6 +701,48 @@ internal static partial class ChartHelper
                 }
 
                 default:
+                    // dataLabel{N}.{x|y|w|h} — individual data label layout (1-based point index, first series)
+                    if (TryParseDataLabelLayoutKey(key, out var dlPointIdx, out var dlProp))
+                    {
+                        if (!double.TryParse(value, System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out var dlLayoutVal))
+                        { unsupported.Add(key); break; }
+                        var plotArea5 = chart.GetFirstChild<C.PlotArea>();
+                        var firstSer = plotArea5?.Descendants<OpenXmlCompositeElement>()
+                            .FirstOrDefault(e => e.LocalName == "ser");
+                        if (firstSer == null) { unsupported.Add(key); break; }
+                        var dLbls = firstSer.GetFirstChild<C.DataLabels>();
+                        if (dLbls == null)
+                        {
+                            // Create minimal DataLabels container with ShowValue=true
+                            dLbls = new C.DataLabels();
+                            dLbls.AppendChild(new C.ShowLegendKey { Val = false });
+                            dLbls.AppendChild(new C.ShowValue { Val = true });
+                            dLbls.AppendChild(new C.ShowCategoryName { Val = false });
+                            dLbls.AppendChild(new C.ShowSeriesName { Val = false });
+                            dLbls.AppendChild(new C.ShowPercent { Val = false });
+                            firstSer.AppendChild(dLbls);
+                        }
+                        // Find or create individual dLbl for the point index (0-based in OOXML)
+                        var ooxmlIdx = (uint)(dlPointIdx - 1);
+                        var dLbl = dLbls.Elements<C.DataLabel>()
+                            .FirstOrDefault(dl => dl.Index?.Val?.Value == ooxmlIdx);
+                        if (dLbl == null)
+                        {
+                            dLbl = new C.DataLabel();
+                            dLbl.Index = new C.Index { Val = ooxmlIdx };
+                            // Insert dLbl before the show* elements (dLbl comes before showLegendKey per schema)
+                            var insertBefore = dLbls.GetFirstChild<C.ShowLegendKey>() as OpenXmlElement
+                                ?? dLbls.GetFirstChild<C.ShowValue>()
+                                ?? dLbls.FirstChild;
+                            if (insertBefore != null)
+                                dLbls.InsertBefore(dLbl, insertBefore);
+                            else
+                                dLbls.AppendChild(dLbl);
+                        }
+                        SetManualLayoutProperty(dLbl, dlProp, dlLayoutVal);
+                        break;
+                    }
                     if (key.StartsWith("series", StringComparison.OrdinalIgnoreCase) &&
                         int.TryParse(key[6..], out var seriesIdx))
                     {
@@ -963,6 +1005,24 @@ internal static partial class ChartHelper
     }
 
     // ==================== #7 Secondary Axis Helper ====================
+
+    /// <summary>
+    /// Try to parse a key like "datalabel1.x", "dataLabel2.h" into point index and property.
+    /// Returns true if the key matches the pattern.
+    /// </summary>
+    private static bool TryParseDataLabelLayoutKey(string key, out int pointIndex, out string prop)
+    {
+        pointIndex = 0;
+        prop = "";
+        var lower = key.ToLowerInvariant();
+        if (!lower.StartsWith("datalabel")) return false;
+        var rest = lower["datalabel".Length..]; // e.g. "1.x"
+        var dotIdx = rest.IndexOf('.');
+        if (dotIdx <= 0) return false;
+        if (!int.TryParse(rest[..dotIdx], out pointIndex) || pointIndex < 1) return false;
+        prop = rest[(dotIdx + 1)..];
+        return prop is "x" or "y" or "w" or "h";
+    }
 
     internal static void ApplySecondaryAxis(C.PlotArea plotArea, HashSet<int> secondarySeriesIndices)
     {
