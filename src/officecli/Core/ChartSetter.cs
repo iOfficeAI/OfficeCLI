@@ -644,6 +644,38 @@ internal static partial class ChartHelper
                     break;
                 }
 
+                case "plotarea.x" or "plotarea.y" or "plotarea.w" or "plotarea.h":
+                {
+                    if (!double.TryParse(value, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var layoutVal))
+                    { unsupported.Add(key); break; }
+
+                    var plotArea3 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea3 == null) { unsupported.Add(key); break; }
+
+                    var layout = plotArea3.GetFirstChild<C.Layout>();
+                    if (layout == null)
+                    {
+                        layout = new C.Layout();
+                        plotArea3.InsertAt(layout, 0);
+                    }
+                    var ml = layout.GetFirstChild<C.ManualLayout>();
+                    if (ml == null)
+                    {
+                        ml = new C.ManualLayout();
+                        ml.AppendChild(new C.LayoutTarget { Val = C.LayoutTargetValues.Inner });
+                        ml.AppendChild(new C.LeftMode { Val = C.LayoutModeValues.Edge });
+                        ml.AppendChild(new C.TopMode { Val = C.LayoutModeValues.Edge });
+                        layout.AppendChild(ml);
+                    }
+                    var prop = key.Split('.')[1].ToLowerInvariant();
+                    if (prop == "x") { ml.RemoveAllChildren<C.Left>(); ml.AppendChild(new C.Left { Val = layoutVal }); }
+                    else if (prop == "y") { ml.RemoveAllChildren<C.Top>(); ml.AppendChild(new C.Top { Val = layoutVal }); }
+                    else if (prop == "w") { ml.RemoveAllChildren<C.Width>(); ml.AppendChild(new C.Width { Val = layoutVal }); }
+                    else if (prop == "h") { ml.RemoveAllChildren<C.Height>(); ml.AppendChild(new C.Height { Val = layoutVal }); }
+                    break;
+                }
+
                 default:
                     if (key.StartsWith("series", StringComparison.OrdinalIgnoreCase) &&
                         int.TryParse(key[6..], out var seriesIdx))
