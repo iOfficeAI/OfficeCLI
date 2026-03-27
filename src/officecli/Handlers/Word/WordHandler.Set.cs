@@ -119,8 +119,8 @@ public partial class WordHandler
             }
         }
 
-        // Chart paths: /chart[N]
-        var chartMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/chart\[(\d+)\]$");
+        // Chart paths: /chart[N] or /chart[N]/series[K]
+        var chartMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/chart\[(\d+)\](?:/series\[(\d+)\])?$");
         if (chartMatch.Success)
         {
             var chartIdx = int.Parse(chartMatch.Groups[1].Value);
@@ -128,7 +128,18 @@ public partial class WordHandler
                 ?? throw new ArgumentException("No charts in this document");
             if (chartIdx < 1 || chartIdx > chartParts.Count)
                 throw new ArgumentException($"Chart {chartIdx} not found (total: {chartParts.Count})");
-            unsupported = Core.ChartHelper.SetChartProperties(chartParts[chartIdx - 1], properties);
+
+            // If series sub-path, prefix all properties with series{N}. for ChartSetter
+            var chartProps = properties;
+            if (chartMatch.Groups[2].Success)
+            {
+                var seriesIdx = int.Parse(chartMatch.Groups[2].Value);
+                chartProps = new Dictionary<string, string>();
+                foreach (var (key, value) in properties)
+                    chartProps[$"series{seriesIdx}.{key}"] = value;
+            }
+
+            unsupported = Core.ChartHelper.SetChartProperties(chartParts[chartIdx - 1], chartProps);
             _doc.MainDocumentPart?.Document?.Save();
             return unsupported;
         }

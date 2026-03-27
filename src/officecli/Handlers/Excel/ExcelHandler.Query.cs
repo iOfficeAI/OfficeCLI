@@ -476,8 +476,8 @@ public partial class ExcelHandler
             return afNode;
         }
 
-        // Chart path: /Sheet1/chart[N]
-        var chartMatch = Regex.Match(cellRef, @"^chart\[(\d+)\]$");
+        // Chart path: /Sheet1/chart[N] or /Sheet1/chart[N]/series[K]
+        var chartMatch = Regex.Match(cellRef, @"^chart\[(\d+)\](?:/series\[(\d+)\])?$");
         if (chartMatch.Success)
         {
             var chartIdx = int.Parse(chartMatch.Groups[1].Value);
@@ -491,9 +491,21 @@ public partial class ExcelHandler
 
             var chartPart = chartParts[chartIdx - 1];
             var chart = chartPart.ChartSpace?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Chart>();
-            var chartNode = new DocumentNode { Path = path, Type = "chart" };
+            var chartNode = new DocumentNode { Path = $"/{sheetNameFromPath}/chart[{chartIdx}]", Type = "chart" };
             if (chart != null)
-                ChartHelper.ReadChartProperties(chart, chartNode, depth);
+                ChartHelper.ReadChartProperties(chart, chartNode, chartMatch.Groups[2].Success ? 1 : depth);
+
+            // If series sub-path requested, extract the specific series child
+            if (chartMatch.Groups[2].Success)
+            {
+                var seriesIdx = int.Parse(chartMatch.Groups[2].Value);
+                var seriesChildren = chartNode.Children.Where(c => c.Type == "series").ToList();
+                if (seriesIdx < 1 || seriesIdx > seriesChildren.Count)
+                    throw new ArgumentException($"Series {seriesIdx} not found (total: {seriesChildren.Count})");
+                var seriesNode = seriesChildren[seriesIdx - 1];
+                seriesNode.Path = path;
+                return seriesNode;
+            }
             return chartNode;
         }
 

@@ -141,8 +141,8 @@ public partial class WordHandler
             return FieldToNode(allFields[fieldIdx - 1], path);
         }
 
-        // Chart paths: /chart[N]
-        var chartGetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/chart\[(\d+)\]$");
+        // Chart paths: /chart[N] or /chart[N]/series[K]
+        var chartGetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/chart\[(\d+)\](?:/series\[(\d+)\])?$");
         if (chartGetMatch.Success)
         {
             var chartIdx = int.Parse(chartGetMatch.Groups[1].Value);
@@ -152,9 +152,21 @@ public partial class WordHandler
 
             var chartPart = chartParts[chartIdx - 1];
             var chart = chartPart.ChartSpace?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Chart>();
-            var chartNode = new DocumentNode { Path = path, Type = "chart" };
+            var chartNode = new DocumentNode { Path = $"/chart[{chartIdx}]", Type = "chart" };
             if (chart != null)
-                Core.ChartHelper.ReadChartProperties(chart, chartNode, depth);
+                Core.ChartHelper.ReadChartProperties(chart, chartNode, chartGetMatch.Groups[2].Success ? 1 : depth);
+
+            // If series sub-path requested, extract the specific series child
+            if (chartGetMatch.Groups[2].Success)
+            {
+                var seriesIdx = int.Parse(chartGetMatch.Groups[2].Value);
+                var seriesChildren = chartNode.Children.Where(c => c.Type == "series").ToList();
+                if (seriesIdx < 1 || seriesIdx > seriesChildren.Count)
+                    throw new ArgumentException($"Series {seriesIdx} not found (total: {seriesChildren.Count})");
+                var seriesNode = seriesChildren[seriesIdx - 1];
+                seriesNode.Path = path;
+                return seriesNode;
+            }
             return chartNode;
         }
 

@@ -334,8 +334,8 @@ public class ChartAdvancedTests : IDisposable
 
         var node = _excel.Get(chartPath, depth: 0);
         node.Should().NotBeNull();
-        // Waterfall is simulated as stacked column
-        ((string)node.Format["chartType"]).Should().Be("column_stacked");
+        // Waterfall is simulated as stacked column but detected back as waterfall
+        ((string)node.Format["chartType"]).Should().Be("waterfall");
     }
 
     [Fact]
@@ -370,7 +370,7 @@ public class ChartAdvancedTests : IDisposable
 
         ReopenExcel();
         var node = _excel.Get(chartPath, depth: 0);
-        ((string)node.Format["chartType"]).Should().Be("column_stacked");
+        ((string)node.Format["chartType"]).Should().Be("waterfall");
         ((int)node.Format["seriesCount"]).Should().Be(3);
     }
 
@@ -388,7 +388,7 @@ public class ChartAdvancedTests : IDisposable
 
         var node = _pptx.Get(chartPath, depth: 0);
         node.Should().NotBeNull();
-        ((string)node.Format["chartType"]).Should().Be("column_stacked");
+        ((string)node.Format["chartType"]).Should().Be("waterfall");
     }
 
     [Fact]
@@ -424,7 +424,7 @@ public class ChartAdvancedTests : IDisposable
 
         ReopenPptx();
         var node = _pptx.Get(chartPath, depth: 0);
-        ((string)node.Format["chartType"]).Should().Be("column_stacked");
+        ((string)node.Format["chartType"]).Should().Be("waterfall");
         ((int)node.Format["seriesCount"]).Should().Be(3);
     }
 

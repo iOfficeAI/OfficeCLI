@@ -500,6 +500,25 @@ public partial class PowerPointHandler
             throw new ArgumentException($"Unknown table sub-element: {tSubType}");
         }
 
+        // Try chart series sub-path: /slide[N]/chart[M]/series[K]
+        var chartSeriesGetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/chart\[(\d+)\]/series\[(\d+)\]$");
+        if (chartSeriesGetMatch.Success)
+        {
+            var csSlideIdx = int.Parse(chartSeriesGetMatch.Groups[1].Value);
+            var csChartIdx = int.Parse(chartSeriesGetMatch.Groups[2].Value);
+            var csSeriesIdx = int.Parse(chartSeriesGetMatch.Groups[3].Value);
+
+            var (csSlidePart, csChartGf, csChartPart) = ResolveChart(csSlideIdx, csChartIdx);
+            // Get the chart node with depth=1 to populate series children
+            var chartNode = ChartToNode(csChartGf, csSlidePart, csSlideIdx, csChartIdx, 1);
+            var seriesChildren = chartNode.Children.Where(c => c.Type == "series").ToList();
+            if (csSeriesIdx < 1 || csSeriesIdx > seriesChildren.Count)
+                throw new ArgumentException($"Series {csSeriesIdx} not found (total: {seriesChildren.Count})");
+            var seriesNode = seriesChildren[csSeriesIdx - 1];
+            seriesNode.Path = path;
+            return seriesNode;
+        }
+
         // Try resolving logical paths with deeper segments (e.g. /slide[1]/placeholder[1]/...)
         // Only for paths not handled by dedicated handlers above
         if (Regex.IsMatch(path, @"^/slide\[\d+\]/placeholder\[\w+\]/"))

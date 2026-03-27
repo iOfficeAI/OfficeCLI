@@ -29,6 +29,12 @@ internal static partial class ChartHelper
                             $"Unknown chart preset '{value}'. Available: {string.Join(", ", ChartPresets.PresetNames)}.");
                     // Recursively apply preset properties
                     var presetUnsupported = SetChartProperties(chartPart, presetProps);
+                    // Silently skip title.* properties when chart has no title —
+                    // presets include title styling but charts may legitimately have no title
+                    var hasTitle = chart.GetFirstChild<C.Title>() != null;
+                    if (!hasTitle)
+                        presetUnsupported.RemoveAll(k => k.StartsWith("title.", StringComparison.OrdinalIgnoreCase)
+                            || (k.StartsWith("title", StringComparison.OrdinalIgnoreCase) && k.Length > 5));
                     unsupported.AddRange(presetUnsupported);
                     break;
                 }

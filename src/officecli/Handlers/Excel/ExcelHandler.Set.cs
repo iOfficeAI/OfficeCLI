@@ -665,8 +665,8 @@ public partial class ExcelHandler
             return SetRow(worksheet, rowIdx, properties);
         }
 
-        // Handle /SheetName/chart[N]
-        var chartMatch = Regex.Match(cellRef, @"^chart\[(\d+)\]$");
+        // Handle /SheetName/chart[N] or /SheetName/chart[N]/series[K]
+        var chartMatch = Regex.Match(cellRef, @"^chart\[(\d+)\](?:/series\[(\d+)\])?$");
         if (chartMatch.Success)
         {
             var chartIdx = int.Parse(chartMatch.Groups[1].Value);
@@ -678,7 +678,17 @@ public partial class ExcelHandler
                 throw new ArgumentException($"Chart {chartIdx} not found");
             var chartPart = chartParts[chartIdx - 1];
 
-            var unsup = ChartHelper.SetChartProperties(chartPart, properties);
+            // If series sub-path, prefix all properties with series{N}. for ChartSetter
+            var chartProps = properties;
+            if (chartMatch.Groups[2].Success)
+            {
+                var seriesIdx = int.Parse(chartMatch.Groups[2].Value);
+                chartProps = new Dictionary<string, string>();
+                foreach (var (key, value) in properties)
+                    chartProps[$"series{seriesIdx}.{key}"] = value;
+            }
+
+            var unsup = ChartHelper.SetChartProperties(chartPart, chartProps);
             chartPart.ChartSpace?.Save();
             return unsup;
         }

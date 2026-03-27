@@ -476,7 +476,13 @@ internal static partial class ChartHelper
             var dir = bar.GetFirstChild<C.BarDirection>()?.Val?.Value;
             var grp = bar.GetFirstChild<C.BarGrouping>()?.Val?.InnerText;
             var prefix = dir == C.BarDirectionValues.Bar ? "bar" : "column";
-            if (grp == "stacked") return $"{prefix}_stacked";
+            if (grp == "stacked")
+            {
+                // Detect waterfall chart: stacked bar with 3 series where first is "Base" with NoFill
+                if (IsWaterfallPattern(bar))
+                    return "waterfall";
+                return $"{prefix}_stacked";
+            }
             if (grp == "percentStacked") return $"{prefix}_percentStacked";
             return prefix;
         }
@@ -507,6 +513,33 @@ internal static partial class ChartHelper
         if (plotArea.GetFirstChild<C.Line3DChart>() != null) return "line3d";
         if (plotArea.GetFirstChild<C.Pie3DChart>() != null) return "pie3d";
         return null;
+    }
+
+    /// <summary>
+    /// Detect waterfall chart pattern: a stacked bar chart with exactly 3 series
+    /// where the first series is named "Base" and has NoFill (invisible base).
+    /// </summary>
+    private static bool IsWaterfallPattern(C.BarChart bar)
+    {
+        var series = bar.Elements<C.BarChartSeries>().ToList();
+        if (series.Count != 3) return false;
+
+        // First series should be "Base" with NoFill
+        var firstSerName = series[0].GetFirstChild<C.SeriesText>()
+            ?.GetFirstChild<C.StringReference>()?.GetFirstChild<C.StringCache>()
+            ?.GetFirstChild<C.StringPoint>()?.GetFirstChild<C.NumericValue>()?.Text
+            ?? series[0].GetFirstChild<C.SeriesText>()
+            ?.GetFirstChild<C.NumericValue>()?.Text;
+
+        if (!string.Equals(firstSerName, "Base", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // First series should have NoFill in its shape properties
+        var baseSpPr = series[0].GetFirstChild<C.ChartShapeProperties>();
+        if (baseSpPr?.GetFirstChild<Drawing.NoFill>() == null)
+            return false;
+
+        return true;
     }
 
     internal static int CountSeries(C.PlotArea plotArea)
