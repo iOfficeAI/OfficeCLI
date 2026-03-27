@@ -35,7 +35,7 @@ public partial class PowerPointHandler
                 tblIdx++;
                 children.Add(TableToNode(gf, slideNum, tblIdx, depth));
             }
-            else if (gf.Descendants<C.ChartReference>().Any())
+            else if (gf.Descendants<C.ChartReference>().Any() || IsExtendedChartFrame(gf))
             {
                 chartIdx++;
                 children.Add(ChartToNode(gf, slidePart, slideNum, chartIdx, depth));

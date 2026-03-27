@@ -49,7 +49,7 @@ public partial class PowerPointHandler : IDocumentHandler
         return (slidePart, shapes[shapeIdx - 1]);
     }
 
-    private (SlidePart slidePart, GraphicFrame gf, ChartPart chartPart) ResolveChart(int slideIdx, int chartIdx)
+    private (SlidePart slidePart, GraphicFrame gf, ChartPart? chartPart) ResolveChart(int slideIdx, int chartIdx)
     {
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
@@ -60,14 +60,17 @@ public partial class PowerPointHandler : IDocumentHandler
             ?? throw new ArgumentException($"Slide {slideIdx} has no shapes");
 
         var chartFrames = shapeTree.Elements<GraphicFrame>()
-            .Where(gf => gf.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().Any())
+            .Where(gf => gf.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().Any()
+                || IsExtendedChartFrame(gf))
             .ToList();
         if (chartIdx < 1 || chartIdx > chartFrames.Count)
             throw new ArgumentException($"Chart {chartIdx} not found (total: {chartFrames.Count})");
 
         var gf = chartFrames[chartIdx - 1];
-        var chartRef = gf.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().First();
-        var chartPart = (ChartPart)slidePart.GetPartById(chartRef.Id!.Value!);
+        var chartRef = gf.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().FirstOrDefault();
+        ChartPart? chartPart = null;
+        if (chartRef?.Id?.Value != null)
+            chartPart = (ChartPart)slidePart.GetPartById(chartRef.Id.Value);
         return (slidePart, gf, chartPart);
     }
 

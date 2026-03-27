@@ -419,7 +419,16 @@ public partial class PowerPointHandler
                 }
             }
 
-            var unsupported = ChartHelper.SetChartProperties(chartPart, chartProps);
+            List<string> unsupported;
+            if (chartPart != null)
+            {
+                unsupported = ChartHelper.SetChartProperties(chartPart, chartProps);
+            }
+            else
+            {
+                // cx:chart (extended chart) — chart-internal properties are not supported
+                unsupported = chartProps.Keys.ToList();
+            }
             GetSlide(slidePart).Save();
             return unsupported;
         }
