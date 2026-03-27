@@ -700,6 +700,680 @@ internal static partial class ChartHelper
                     break;
                 }
 
+                // ==================== Axis Properties ====================
+
+                case "axisvisible" or "axis.visible" or "axis.delete":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    var hide = key.Contains("delete") ? ParseHelpers.IsTruthy(value) : !ParseHelpers.IsTruthy(value);
+                    foreach (var ax in plotArea2.Elements<C.ValueAxis>())
+                    { ax.RemoveAllChildren<C.Delete>(); ax.InsertAfter(new C.Delete { Val = hide }, ax.GetFirstChild<C.Scaling>()); }
+                    foreach (var ax in plotArea2.Elements<C.CategoryAxis>())
+                    { ax.RemoveAllChildren<C.Delete>(); ax.InsertAfter(new C.Delete { Val = hide }, ax.GetFirstChild<C.Scaling>()); }
+                    break;
+                }
+
+                case "cataxisvisible" or "cataxis.visible":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var catAx = plotArea2?.GetFirstChild<C.CategoryAxis>();
+                    if (catAx == null) { unsupported.Add(key); break; }
+                    catAx.RemoveAllChildren<C.Delete>();
+                    catAx.InsertAfter(new C.Delete { Val = !ParseHelpers.IsTruthy(value) }, catAx.GetFirstChild<C.Scaling>());
+                    break;
+                }
+
+                case "valaxisvisible" or "valaxis.visible":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var valAx = plotArea2?.GetFirstChild<C.ValueAxis>();
+                    if (valAx == null) { unsupported.Add(key); break; }
+                    valAx.RemoveAllChildren<C.Delete>();
+                    valAx.InsertAfter(new C.Delete { Val = !ParseHelpers.IsTruthy(value) }, valAx.GetFirstChild<C.Scaling>());
+                    break;
+                }
+
+                case "majortickmark" or "majortick":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    var tickVal = ParseTickMark(value);
+                    foreach (var ax in plotArea2.Elements<C.ValueAxis>())
+                    { ax.RemoveAllChildren<C.MajorTickMark>(); ax.AppendChild(new C.MajorTickMark { Val = tickVal }); }
+                    foreach (var ax in plotArea2.Elements<C.CategoryAxis>())
+                    { ax.RemoveAllChildren<C.MajorTickMark>(); ax.AppendChild(new C.MajorTickMark { Val = tickVal }); }
+                    break;
+                }
+
+                case "minortickmark" or "minortick":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    var tickVal = ParseTickMark(value);
+                    foreach (var ax in plotArea2.Elements<C.ValueAxis>())
+                    { ax.RemoveAllChildren<C.MinorTickMark>(); ax.AppendChild(new C.MinorTickMark { Val = tickVal }); }
+                    foreach (var ax in plotArea2.Elements<C.CategoryAxis>())
+                    { ax.RemoveAllChildren<C.MinorTickMark>(); ax.AppendChild(new C.MinorTickMark { Val = tickVal }); }
+                    break;
+                }
+
+                case "ticklabelpos" or "ticklabelposition":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    var tlPos = value.ToLowerInvariant() switch
+                    {
+                        "none" => C.TickLabelPositionValues.None,
+                        "high" or "top" => C.TickLabelPositionValues.High,
+                        "low" or "bottom" => C.TickLabelPositionValues.Low,
+                        _ => C.TickLabelPositionValues.NextTo
+                    };
+                    foreach (var ax in plotArea2.Elements<C.ValueAxis>())
+                    { ax.RemoveAllChildren<C.TickLabelPosition>(); ax.AppendChild(new C.TickLabelPosition { Val = tlPos }); }
+                    foreach (var ax in plotArea2.Elements<C.CategoryAxis>())
+                    { ax.RemoveAllChildren<C.TickLabelPosition>(); ax.AppendChild(new C.TickLabelPosition { Val = tlPos }); }
+                    break;
+                }
+
+                case "axisposition" or "axispos":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    var axPos = value.ToLowerInvariant() switch
+                    {
+                        "top" or "t" => C.AxisPositionValues.Top,
+                        "bottom" or "b" => C.AxisPositionValues.Bottom,
+                        "left" or "l" => C.AxisPositionValues.Left,
+                        "right" or "r" => C.AxisPositionValues.Right,
+                        _ => C.AxisPositionValues.Bottom
+                    };
+                    foreach (var ax in plotArea2.Elements<C.CategoryAxis>())
+                    { ax.RemoveAllChildren<C.AxisPosition>(); ax.AppendChild(new C.AxisPosition { Val = axPos }); }
+                    break;
+                }
+
+                case "crosses":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var valAx = plotArea2?.GetFirstChild<C.ValueAxis>();
+                    if (valAx == null) { unsupported.Add(key); break; }
+                    valAx.RemoveAllChildren<C.Crosses>();
+                    valAx.RemoveAllChildren<C.CrossesAt>();
+                    var crossVal = value.ToLowerInvariant() switch
+                    {
+                        "max" => C.CrossesValues.Maximum,
+                        "min" => C.CrossesValues.Minimum,
+                        _ => C.CrossesValues.AutoZero
+                    };
+                    valAx.AppendChild(new C.Crosses { Val = crossVal });
+                    break;
+                }
+
+                case "crossesat":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var valAx = plotArea2?.GetFirstChild<C.ValueAxis>();
+                    if (valAx == null) { unsupported.Add(key); break; }
+                    valAx.RemoveAllChildren<C.Crosses>();
+                    valAx.RemoveAllChildren<C.CrossesAt>();
+                    valAx.AppendChild(new C.CrossesAt { Val = ParseHelpers.SafeParseDouble(value, "crossesAt") });
+                    break;
+                }
+
+                case "crossbetween":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var valAx = plotArea2?.GetFirstChild<C.ValueAxis>();
+                    if (valAx == null) { unsupported.Add(key); break; }
+                    valAx.RemoveAllChildren<C.CrossBetween>();
+                    var cbVal = value.ToLowerInvariant() switch
+                    {
+                        "midcat" or "midpoint" => C.CrossBetweenValues.MidpointCategory,
+                        _ => C.CrossBetweenValues.Between
+                    };
+                    valAx.AppendChild(new C.CrossBetween { Val = cbVal });
+                    break;
+                }
+
+                case "axisorientation" or "axisreverse":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var valAx = plotArea2?.GetFirstChild<C.ValueAxis>();
+                    var scaling = valAx?.GetFirstChild<C.Scaling>();
+                    if (scaling == null) { unsupported.Add(key); break; }
+                    scaling.RemoveAllChildren<C.Orientation>();
+                    var orient = ParseHelpers.IsTruthy(value) || value.Equals("maxmin", StringComparison.OrdinalIgnoreCase)
+                        ? C.OrientationValues.MaxMin : C.OrientationValues.MinMax;
+                    scaling.PrependChild(new C.Orientation { Val = orient });
+                    break;
+                }
+
+                case "logbase" or "logscale":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var valAx = plotArea2?.GetFirstChild<C.ValueAxis>();
+                    var scaling = valAx?.GetFirstChild<C.Scaling>();
+                    if (scaling == null) { unsupported.Add(key); break; }
+                    scaling.RemoveAllChildren<C.LogBase>();
+                    if (!value.Equals("none", StringComparison.OrdinalIgnoreCase) &&
+                        !value.Equals("false", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var logVal = ParseHelpers.SafeParseDouble(value, "logBase");
+                        scaling.PrependChild(new C.LogBase { Val = logVal });
+                    }
+                    break;
+                }
+
+                case "dispunits" or "displayunits":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var valAx = plotArea2?.GetFirstChild<C.ValueAxis>();
+                    if (valAx == null) { unsupported.Add(key); break; }
+                    valAx.RemoveAllChildren<C.DisplayUnits>();
+                    if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var builtInVal = value.ToLowerInvariant() switch
+                        {
+                            "hundreds" => C.BuiltInUnitValues.Hundreds,
+                            "thousands" => C.BuiltInUnitValues.Thousands,
+                            "tenthousands" or "10000" => C.BuiltInUnitValues.TenThousands,
+                            "hundredthousands" or "100000" => C.BuiltInUnitValues.HundredThousands,
+                            "millions" => C.BuiltInUnitValues.Millions,
+                            "tenmillions" or "10000000" => C.BuiltInUnitValues.TenMillions,
+                            "hundredmillions" or "100000000" => C.BuiltInUnitValues.HundredMillions,
+                            "billions" => C.BuiltInUnitValues.Billions,
+                            "trillions" => C.BuiltInUnitValues.Trillions,
+                            _ => C.BuiltInUnitValues.Thousands
+                        };
+                        var du = new C.DisplayUnits();
+                        du.AppendChild(new C.BuiltInUnit { Val = builtInVal });
+                        du.AppendChild(new C.DisplayUnitsLabel());
+                        valAx.AppendChild(du);
+                    }
+                    break;
+                }
+
+                case "labeloffset":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var catAx = plotArea2?.GetFirstChild<C.CategoryAxis>();
+                    if (catAx == null) { unsupported.Add(key); break; }
+                    catAx.RemoveAllChildren<C.LabelOffset>();
+                    catAx.AppendChild(new C.LabelOffset { Val = (ushort)ParseHelpers.SafeParseInt(value, "labelOffset") });
+                    break;
+                }
+
+                case "ticklabelskip" or "tickskip":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var catAx = plotArea2?.GetFirstChild<C.CategoryAxis>();
+                    if (catAx == null) { unsupported.Add(key); break; }
+                    catAx.RemoveAllChildren<C.TickLabelSkip>();
+                    catAx.AppendChild(new C.TickLabelSkip { Val = ParseHelpers.SafeParseInt(value, "tickLabelSkip") });
+                    break;
+                }
+
+                // ==================== Chart-Level Properties ====================
+
+                case "smooth":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    var smoothVal = ParseHelpers.IsTruthy(value);
+                    // Chart-level smooth on LineChart
+                    foreach (var lc in plotArea2.Elements<C.LineChart>())
+                    { lc.RemoveAllChildren<C.Smooth>(); lc.AppendChild(new C.Smooth { Val = smoothVal }); }
+                    // Also set per-series smooth for line and scatter series
+                    foreach (var ser in plotArea2.Descendants<OpenXmlCompositeElement>().Where(e => e.LocalName == "ser"))
+                    {
+                        if (ser.Parent is C.LineChart or C.ScatterChart)
+                        {
+                            ser.RemoveAllChildren<C.Smooth>();
+                            ser.AppendChild(new C.Smooth { Val = smoothVal });
+                        }
+                    }
+                    break;
+                }
+
+                case "showmarker" or "showmarkers":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    var showVal = ParseHelpers.IsTruthy(value);
+                    foreach (var lc in plotArea2.Elements<C.LineChart>())
+                    { lc.RemoveAllChildren<C.ShowMarker>(); lc.AppendChild(new C.ShowMarker { Val = showVal }); }
+                    break;
+                }
+
+                case "scatterstyle":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var sc = plotArea2?.GetFirstChild<C.ScatterChart>();
+                    if (sc == null) { unsupported.Add(key); break; }
+                    sc.RemoveAllChildren<C.ScatterStyle>();
+                    var ssVal = value.ToLowerInvariant() switch
+                    {
+                        "line" or "lineonly" => C.ScatterStyleValues.Line,
+                        "linemarker" => C.ScatterStyleValues.LineMarker,
+                        "marker" or "markeronly" => C.ScatterStyleValues.Marker,
+                        "smooth" or "smoothline" => C.ScatterStyleValues.Smooth,
+                        "smoothmarker" => C.ScatterStyleValues.SmoothMarker,
+                        _ => C.ScatterStyleValues.LineMarker
+                    };
+                    sc.PrependChild(new C.ScatterStyle { Val = ssVal });
+                    break;
+                }
+
+                case "varycolors":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    var varyVal = ParseHelpers.IsTruthy(value);
+                    foreach (var ct in plotArea2.ChildElements
+                        .Where(e => e.LocalName.Contains("Chart") || e.LocalName.Contains("chart"))
+                        .OfType<OpenXmlCompositeElement>())
+                    {
+                        ct.RemoveAllChildren<C.VaryColors>();
+                        ct.PrependChild(new C.VaryColors { Val = varyVal });
+                    }
+                    break;
+                }
+
+                case "dispblanksas" or "blanksas":
+                {
+                    chart.RemoveAllChildren<C.DisplayBlanksAs>();
+                    var dbVal = value.ToLowerInvariant() switch
+                    {
+                        "zero" => C.DisplayBlanksAsValues.Zero,
+                        "span" or "connect" => C.DisplayBlanksAsValues.Span,
+                        _ => C.DisplayBlanksAsValues.Gap
+                    };
+                    chart.AppendChild(new C.DisplayBlanksAs { Val = dbVal });
+                    break;
+                }
+
+                case "roundedcorners":
+                {
+                    chartSpace!.RemoveAllChildren<C.RoundedCorners>();
+                    chartSpace.PrependChild(new C.RoundedCorners { Val = ParseHelpers.IsTruthy(value) });
+                    break;
+                }
+
+                case "autotitledeleted":
+                {
+                    chart.RemoveAllChildren<C.AutoTitleDeleted>();
+                    chart.AppendChild(new C.AutoTitleDeleted { Val = ParseHelpers.IsTruthy(value) });
+                    break;
+                }
+
+                case "plotvisonly" or "plotvisibleonly":
+                {
+                    chart.RemoveAllChildren<C.PlotVisibleOnly>();
+                    chart.AppendChild(new C.PlotVisibleOnly { Val = ParseHelpers.IsTruthy(value) });
+                    break;
+                }
+
+                // ==================== Series-Level Properties ====================
+
+                case "trendline":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    foreach (var ser in plotArea2.Descendants<OpenXmlCompositeElement>().Where(e => e.LocalName == "ser"))
+                    {
+                        ser.RemoveAllChildren<C.Trendline>();
+                        if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                            ser.AppendChild(BuildTrendline(value));
+                    }
+                    break;
+                }
+
+                case "invertifneg" or "invertifnegative":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    var inv = ParseHelpers.IsTruthy(value);
+                    foreach (var ser in plotArea2.Descendants<OpenXmlCompositeElement>().Where(e => e.LocalName == "ser"))
+                    {
+                        ser.RemoveAllChildren<C.InvertIfNegative>();
+                        ser.AppendChild(new C.InvertIfNegative { Val = inv });
+                    }
+                    break;
+                }
+
+                case "explosion" or "explode":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    var expVal = (uint)ParseHelpers.SafeParseInt(value, "explosion");
+                    foreach (var ser in plotArea2.Descendants<OpenXmlCompositeElement>().Where(e => e.LocalName == "ser"))
+                    {
+                        ser.RemoveAllChildren<C.Explosion>();
+                        if (expVal > 0) ser.AppendChild(new C.Explosion { Val = expVal });
+                    }
+                    break;
+                }
+
+                case "errbars" or "errorbars":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    foreach (var ser in plotArea2.Descendants<OpenXmlCompositeElement>().Where(e => e.LocalName == "ser"))
+                    {
+                        ser.RemoveAllChildren<C.ErrorBars>();
+                        if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                            ser.AppendChild(BuildErrorBars(value));
+                    }
+                    break;
+                }
+
+                // ==================== DataLabel Enhancements ====================
+
+                case "datalabels.separator" or "labelseparator":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    foreach (var dl in plotArea2.Descendants<C.DataLabels>())
+                    {
+                        dl.RemoveAllChildren<C.Separator>();
+                        var sep = value.Replace("\\n", "\n");
+                        dl.AppendChild(new C.Separator { Text = sep });
+                    }
+                    break;
+                }
+
+                case "datalabels.numfmt" or "labelnumfmt":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    foreach (var dl in plotArea2.Descendants<C.DataLabels>())
+                    {
+                        dl.RemoveAllChildren<C.NumberingFormat>();
+                        dl.PrependChild(new C.NumberingFormat { FormatCode = value, SourceLinked = false });
+                    }
+                    break;
+                }
+
+                case "datalabels.showleaderlines" or "leaderlines":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    var show = ParseHelpers.IsTruthy(value);
+                    foreach (var dl in plotArea2.Descendants<C.DataLabels>())
+                    {
+                        dl.RemoveAllChildren<C.ShowLeaderLines>();
+                        dl.AppendChild(new C.ShowLeaderLines { Val = show });
+                    }
+                    break;
+                }
+
+                case "datalabels.showbubblesize":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    foreach (var dl in plotArea2.Descendants<C.DataLabels>())
+                    {
+                        dl.RemoveAllChildren<C.ShowBubbleSize>();
+                        dl.AppendChild(new C.ShowBubbleSize { Val = ParseHelpers.IsTruthy(value) });
+                    }
+                    break;
+                }
+
+                // ==================== Border / Outline ====================
+
+                case "plotarea.border" or "plotborder":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    var spPr = plotArea2.GetFirstChild<C.ShapeProperties>();
+                    if (spPr == null) { spPr = new C.ShapeProperties(); plotArea2.AppendChild(spPr); }
+                    spPr.RemoveAllChildren<Drawing.Outline>();
+                    if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                        spPr.AppendChild(BuildOutlineElement(value));
+                    break;
+                }
+
+                case "chartarea.border" or "chartborder":
+                {
+                    var cSpPr = chartSpace!.GetFirstChild<C.ChartShapeProperties>();
+                    if (cSpPr == null) { cSpPr = new C.ChartShapeProperties(); chartSpace.InsertAfter(cSpPr, chart); }
+                    cSpPr.RemoveAllChildren<Drawing.Outline>();
+                    if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                        cSpPr.AppendChild(BuildOutlineElement(value));
+                    break;
+                }
+
+                // ==================== Data Table ====================
+
+                case "datatable":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    plotArea2.RemoveAllChildren<C.DataTable>();
+                    if (ParseHelpers.IsTruthy(value))
+                    {
+                        var dt = new C.DataTable();
+                        dt.AppendChild(new C.ShowHorizontalBorder { Val = true });
+                        dt.AppendChild(new C.ShowVerticalBorder { Val = true });
+                        dt.AppendChild(new C.ShowOutlineBorder { Val = true });
+                        dt.AppendChild(new C.ShowKeys { Val = true });
+                        plotArea2.AppendChild(dt);
+                    }
+                    break;
+                }
+
+                case "datatable.showhorzborder":
+                {
+                    var dt = chart.GetFirstChild<C.PlotArea>()?.GetFirstChild<C.DataTable>();
+                    if (dt == null) { unsupported.Add(key); break; }
+                    dt.RemoveAllChildren<C.ShowHorizontalBorder>();
+                    dt.AppendChild(new C.ShowHorizontalBorder { Val = ParseHelpers.IsTruthy(value) });
+                    break;
+                }
+
+                case "datatable.showvertborder":
+                {
+                    var dt = chart.GetFirstChild<C.PlotArea>()?.GetFirstChild<C.DataTable>();
+                    if (dt == null) { unsupported.Add(key); break; }
+                    dt.RemoveAllChildren<C.ShowVerticalBorder>();
+                    dt.AppendChild(new C.ShowVerticalBorder { Val = ParseHelpers.IsTruthy(value) });
+                    break;
+                }
+
+                case "datatable.showoutline":
+                {
+                    var dt = chart.GetFirstChild<C.PlotArea>()?.GetFirstChild<C.DataTable>();
+                    if (dt == null) { unsupported.Add(key); break; }
+                    dt.RemoveAllChildren<C.ShowOutlineBorder>();
+                    dt.AppendChild(new C.ShowOutlineBorder { Val = ParseHelpers.IsTruthy(value) });
+                    break;
+                }
+
+                case "datatable.showkeys":
+                {
+                    var dt = chart.GetFirstChild<C.PlotArea>()?.GetFirstChild<C.DataTable>();
+                    if (dt == null) { unsupported.Add(key); break; }
+                    dt.RemoveAllChildren<C.ShowKeys>();
+                    dt.AppendChild(new C.ShowKeys { Val = ParseHelpers.IsTruthy(value) });
+                    break;
+                }
+
+                // ==================== Chart-Type-Specific ====================
+
+                case "firstsliceangle" or "sliceangle":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var pie = plotArea2?.GetFirstChild<C.PieChart>();
+                    if (pie == null) { unsupported.Add(key); break; }
+                    pie.RemoveAllChildren<C.FirstSliceAngle>();
+                    pie.AppendChild(new C.FirstSliceAngle { Val = (ushort)ParseHelpers.SafeParseInt(value, "firstSliceAngle") });
+                    break;
+                }
+
+                case "holesize":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var doughnut = plotArea2?.GetFirstChild<C.DoughnutChart>();
+                    if (doughnut == null) { unsupported.Add(key); break; }
+                    doughnut.RemoveAllChildren<C.HoleSize>();
+                    doughnut.AppendChild(new C.HoleSize { Val = (byte)ParseHelpers.SafeParseInt(value, "holeSize") });
+                    break;
+                }
+
+                case "radarstyle":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var radar = plotArea2?.GetFirstChild<C.RadarChart>();
+                    if (radar == null) { unsupported.Add(key); break; }
+                    radar.RemoveAllChildren<C.RadarStyle>();
+                    var rsVal = value.ToLowerInvariant() switch
+                    {
+                        "filled" or "fill" => C.RadarStyleValues.Filled,
+                        "marker" => C.RadarStyleValues.Marker,
+                        _ => C.RadarStyleValues.Standard
+                    };
+                    radar.PrependChild(new C.RadarStyle { Val = rsVal });
+                    break;
+                }
+
+                case "bubblescale":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var bubble = plotArea2?.GetFirstChild<C.BubbleChart>();
+                    if (bubble == null) { unsupported.Add(key); break; }
+                    bubble.RemoveAllChildren<C.BubbleScale>();
+                    bubble.AppendChild(new C.BubbleScale { Val = (uint)ParseHelpers.SafeParseInt(value, "bubbleScale") });
+                    break;
+                }
+
+                case "shownegbubbles":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var bubble = plotArea2?.GetFirstChild<C.BubbleChart>();
+                    if (bubble == null) { unsupported.Add(key); break; }
+                    bubble.RemoveAllChildren<C.ShowNegativeBubbles>();
+                    bubble.AppendChild(new C.ShowNegativeBubbles { Val = ParseHelpers.IsTruthy(value) });
+                    break;
+                }
+
+                case "sizerepresents":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var bubble = plotArea2?.GetFirstChild<C.BubbleChart>();
+                    if (bubble == null) { unsupported.Add(key); break; }
+                    bubble.RemoveAllChildren<C.SizeRepresents>();
+                    var srVal = value.ToLowerInvariant() switch
+                    {
+                        "width" or "w" => C.SizeRepresentsValues.Width,
+                        _ => C.SizeRepresentsValues.Area
+                    };
+                    bubble.AppendChild(new C.SizeRepresents { Val = srVal });
+                    break;
+                }
+
+                case "gapdepth":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var bar3d = plotArea2?.GetFirstChild<C.Bar3DChart>();
+                    if (bar3d == null) { unsupported.Add(key); break; }
+                    bar3d.RemoveAllChildren<C.GapDepth>();
+                    bar3d.AppendChild(new C.GapDepth { Val = (ushort)ParseHelpers.SafeParseInt(value, "gapDepth") });
+                    break;
+                }
+
+                case "shape" or "barshape":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var bar3d = plotArea2?.GetFirstChild<C.Bar3DChart>();
+                    if (bar3d == null) { unsupported.Add(key); break; }
+                    bar3d.RemoveAllChildren<C.Shape>();
+                    var shapeVal = value.ToLowerInvariant() switch
+                    {
+                        "cone" => C.ShapeValues.Cone,
+                        "conetomax" => C.ShapeValues.ConeToMax,
+                        "cylinder" => C.ShapeValues.Cylinder,
+                        "pyramid" => C.ShapeValues.Pyramid,
+                        "pyramidtomax" => C.ShapeValues.PyramidToMaximum,
+                        _ => C.ShapeValues.Box
+                    };
+                    bar3d.AppendChild(new C.Shape { Val = shapeVal });
+                    break;
+                }
+
+                case "droplines":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var lc = plotArea2?.GetFirstChild<C.LineChart>();
+                    if (lc == null) { unsupported.Add(key); break; }
+                    lc.RemoveAllChildren<C.DropLines>();
+                    if (ParseHelpers.IsTruthy(value) || !value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var dl = new C.DropLines();
+                        if (!value.Equals("true", StringComparison.OrdinalIgnoreCase))
+                            dl.AppendChild(BuildLineShapeProperties(value));
+                        lc.AppendChild(dl);
+                    }
+                    break;
+                }
+
+                case "hilowlines":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var lc = plotArea2?.GetFirstChild<C.LineChart>();
+                    if (lc == null) { unsupported.Add(key); break; }
+                    lc.RemoveAllChildren<C.HighLowLines>();
+                    if (ParseHelpers.IsTruthy(value) || !value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var hl = new C.HighLowLines();
+                        if (!value.Equals("true", StringComparison.OrdinalIgnoreCase))
+                            hl.AppendChild(BuildLineShapeProperties(value));
+                        lc.AppendChild(hl);
+                    }
+                    break;
+                }
+
+                case "updownbars":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var lc = plotArea2?.GetFirstChild<C.LineChart>();
+                    if (lc == null) { unsupported.Add(key); break; }
+                    lc.RemoveAllChildren<C.UpDownBars>();
+                    if (ParseHelpers.IsTruthy(value))
+                    {
+                        var udb = new C.UpDownBars();
+                        udb.AppendChild(new C.GapWidth { Val = 150 });
+                        udb.AppendChild(new C.UpBars());
+                        udb.AppendChild(new C.DownBars());
+                        lc.AppendChild(udb);
+                    }
+                    break;
+                }
+
+                case "serlines" or "serieslines":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    var show = ParseHelpers.IsTruthy(value);
+                    foreach (var barChart in plotArea2.Elements<C.BarChart>())
+                    {
+                        barChart.RemoveAllChildren<C.SeriesLines>();
+                        if (show) barChart.AppendChild(new C.SeriesLines());
+                    }
+                    break;
+                }
+
+                // ==================== Legend Enhancements ====================
+
+                case "legend.overlay" or "legendoverlay":
+                {
+                    var legendEl = chart.GetFirstChild<C.Legend>();
+                    if (legendEl == null) { unsupported.Add(key); break; }
+                    legendEl.RemoveAllChildren<C.Overlay>();
+                    legendEl.AppendChild(new C.Overlay { Val = ParseHelpers.IsTruthy(value) });
+                    break;
+                }
+
                 default:
                     // dataLabel{N}.{x|y|w|h} — individual data label layout (1-based point index, first series)
                     if (TryParseDataLabelLayoutKey(key, out var dlPointIdx, out var dlProp))
@@ -743,6 +1417,46 @@ internal static partial class ChartHelper
                         SetManualLayoutProperty(dLbl, dlProp, dlLayoutVal);
                         break;
                     }
+                    // Per-series dotted keys: series{N}.smooth, series{N}.trendline, series{N}.point{M}.color, etc.
+                    if (TryParseSeriesDottedKey(key, out var sIdx, out var sProp))
+                    {
+                        var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                        if (plotArea2 == null) { unsupported.Add(key); break; }
+                        var allSer = plotArea2.Descendants<OpenXmlCompositeElement>()
+                            .Where(e => e.LocalName == "ser").ToList();
+                        if (sIdx < 1 || sIdx > allSer.Count) { unsupported.Add(key); break; }
+                        var ser = allSer[sIdx - 1];
+                        HandleSeriesDottedProperty(ser, sProp, value);
+                        break;
+                    }
+                    // dataLabel{N}.delete / dataLabel{N}.pos
+                    if (TryParseDataLabelDottedKey(key, out var dlIdx2, out var dlProp2))
+                    {
+                        var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                        var firstSer2 = plotArea2?.Descendants<OpenXmlCompositeElement>()
+                            .FirstOrDefault(e => e.LocalName == "ser");
+                        if (firstSer2 == null) { unsupported.Add(key); break; }
+                        HandleDataLabelDottedProperty(firstSer2, dlIdx2, dlProp2, value);
+                        break;
+                    }
+                    // legendEntry{N}.delete
+                    if (TryParseLegendEntryKey(key, out var leIdx))
+                    {
+                        var legendEl = chart.GetFirstChild<C.Legend>();
+                        if (legendEl == null) { unsupported.Add(key); break; }
+                        var existingEntry = legendEl.Elements<C.LegendEntry>()
+                            .FirstOrDefault(le => le.Index?.Val?.Value == (uint)(leIdx - 1));
+                        if (existingEntry != null) existingEntry.Remove();
+                        if (ParseHelpers.IsTruthy(value))
+                        {
+                            var le = new C.LegendEntry();
+                            le.AppendChild(new C.Index { Val = (uint)(leIdx - 1) });
+                            le.AppendChild(new C.Delete { Val = true });
+                            legendEl.PrependChild(le);
+                        }
+                        break;
+                    }
+                    // Legacy: series{N} = "Name:1,2,3" (numeric data update)
                     if (key.StartsWith("series", StringComparison.OrdinalIgnoreCase) &&
                         int.TryParse(key[6..], out var seriesIdx))
                     {

@@ -201,6 +201,120 @@ internal static partial class ChartHelper
         var axisNumFmt = valAxis?.GetFirstChild<C.NumberingFormat>()?.FormatCode?.Value;
         if (axisNumFmt != null && axisNumFmt != "General") node.Format["axisNumFmt"] = axisNumFmt;
 
+        // Axis visibility (c:delete)
+        var valAxisDelete = valAxis?.GetFirstChild<C.Delete>();
+        if (valAxisDelete?.Val?.HasValue == true && valAxisDelete.Val.Value)
+            node.Format["valAxisVisible"] = "false";
+        var catAxisDelete = catAxis?.GetFirstChild<C.Delete>();
+        if (catAxisDelete?.Val?.HasValue == true && catAxisDelete.Val.Value)
+            node.Format["catAxisVisible"] = "false";
+
+        // Tick marks
+        var valMajorTick = valAxis?.GetFirstChild<C.MajorTickMark>()?.Val;
+        if (valMajorTick?.HasValue == true) node.Format["majorTickMark"] = valMajorTick.InnerText;
+        var valMinorTick = valAxis?.GetFirstChild<C.MinorTickMark>()?.Val;
+        if (valMinorTick?.HasValue == true) node.Format["minorTickMark"] = valMinorTick.InnerText;
+
+        // Tick label position
+        var valTickLblPos = valAxis?.GetFirstChild<C.TickLabelPosition>()?.Val;
+        if (valTickLblPos?.HasValue == true) node.Format["tickLabelPos"] = valTickLblPos.InnerText;
+
+        // Axis orientation
+        var axisOrient = scaling?.GetFirstChild<C.Orientation>()?.Val;
+        if (axisOrient?.HasValue == true && axisOrient.InnerText == "maxMin")
+            node.Format["axisOrientation"] = "maxMin";
+
+        // Log base
+        var logBase = scaling?.GetFirstChild<C.LogBase>()?.Val?.Value;
+        if (logBase != null) node.Format["logBase"] = logBase;
+
+        // Display units
+        var dispUnits = valAxis?.GetFirstChild<C.DisplayUnits>();
+        var builtInUnit = dispUnits?.GetFirstChild<C.BuiltInUnit>()?.Val;
+        if (builtInUnit?.HasValue == true) node.Format["dispUnits"] = builtInUnit.InnerText;
+
+        // Crosses
+        var crosses = valAxis?.GetFirstChild<C.Crosses>()?.Val;
+        if (crosses?.HasValue == true) node.Format["crosses"] = crosses.InnerText;
+        var crossesAt = valAxis?.GetFirstChild<C.CrossesAt>()?.Val?.Value;
+        if (crossesAt != null) node.Format["crossesAt"] = crossesAt;
+        var crossBetween = valAxis?.GetFirstChild<C.CrossBetween>()?.Val;
+        if (crossBetween?.HasValue == true) node.Format["crossBetween"] = crossBetween.InnerText;
+
+        // Category axis specifics
+        var labelOffset = catAxis?.GetFirstChild<C.LabelOffset>()?.Val?.Value;
+        if (labelOffset != null && labelOffset != 100) node.Format["labelOffset"] = labelOffset;
+        var tickLblSkip = catAxis?.GetFirstChild<C.TickLabelSkip>()?.Val?.Value;
+        if (tickLblSkip != null && tickLblSkip > 1) node.Format["tickLabelSkip"] = tickLblSkip;
+
+        // Chart-level: smooth, showMarker, scatterStyle, varyColors, dispBlanksAs
+        var lineChart = plotArea.GetFirstChild<C.LineChart>();
+        var lineSmooth = lineChart?.GetFirstChild<C.Smooth>()?.Val;
+        if (lineSmooth?.HasValue == true) node.Format["smooth"] = lineSmooth.Value ? "true" : "false";
+        var showMarker = lineChart?.GetFirstChild<C.ShowMarker>()?.Val;
+        if (showMarker?.HasValue == true) node.Format["showMarker"] = showMarker.Value ? "true" : "false";
+
+        var scatterChart = plotArea.GetFirstChild<C.ScatterChart>();
+        var scatterStyle = scatterChart?.GetFirstChild<C.ScatterStyle>()?.Val;
+        if (scatterStyle?.HasValue == true) node.Format["scatterStyle"] = scatterStyle.InnerText;
+
+        var radarChart = plotArea.GetFirstChild<C.RadarChart>();
+        var radarStyle = radarChart?.GetFirstChild<C.RadarStyle>()?.Val;
+        if (radarStyle?.HasValue == true) node.Format["radarStyle"] = radarStyle.InnerText;
+
+        var dispBlanksAs = chart.GetFirstChild<C.DisplayBlanksAs>()?.Val;
+        if (dispBlanksAs?.HasValue == true) node.Format["dispBlanksAs"] = dispBlanksAs.InnerText;
+
+        // roundedCorners
+        var roundedCorners = chart.Parent?.GetFirstChild<C.RoundedCorners>()?.Val;
+        if (roundedCorners?.HasValue == true) node.Format["roundedCorners"] = roundedCorners.Value ? "true" : "false";
+
+        // Data table
+        var dataTable = plotArea.GetFirstChild<C.DataTable>();
+        if (dataTable != null) node.Format["dataTable"] = "true";
+
+        // Legend overlay
+        var legendOverlay = legend?.GetFirstChild<C.Overlay>()?.Val;
+        if (legendOverlay?.HasValue == true && legendOverlay.Value) node.Format["legend.overlay"] = "true";
+
+        // Plot area border
+        var plotOutline = plotSpPr?.GetFirstChild<Drawing.Outline>();
+        if (plotOutline != null) ReadOutlineDetail(plotOutline, node, "plotArea.border");
+
+        // Chart area border
+        {
+            var csSpPr = chart.Parent?.GetFirstChild<C.ShapeProperties>();
+            var csOutline = csSpPr?.GetFirstChild<Drawing.Outline>();
+            if (csOutline == null)
+            {
+                var csCSpPr = chart.Parent?.GetFirstChild<C.ChartShapeProperties>();
+                csOutline = csCSpPr?.GetFirstChild<Drawing.Outline>();
+            }
+            if (csOutline != null) ReadOutlineDetail(csOutline, node, "chartArea.border");
+        }
+
+        // Chart-type-specific
+        var pieChart = plotArea.GetFirstChild<C.PieChart>();
+        var firstSliceAngle = pieChart?.GetFirstChild<C.FirstSliceAngle>()?.Val?.Value;
+        if (firstSliceAngle != null && firstSliceAngle != 0) node.Format["firstSliceAngle"] = firstSliceAngle;
+
+        var doughnutChart = plotArea.GetFirstChild<C.DoughnutChart>();
+        var holeSize = doughnutChart?.GetFirstChild<C.HoleSize>()?.Val?.Value;
+        if (holeSize != null) node.Format["holeSize"] = holeSize;
+
+        var bubbleChart = plotArea.GetFirstChild<C.BubbleChart>();
+        var bubbleScale = bubbleChart?.GetFirstChild<C.BubbleScale>()?.Val?.Value;
+        if (bubbleScale != null && bubbleScale != 100) node.Format["bubbleScale"] = bubbleScale;
+
+        // DataLabels additional detail
+        if (dataLabels != null)
+        {
+            var separator = dataLabels.GetFirstChild<C.Separator>()?.Text;
+            if (separator != null) node.Format["dataLabels.separator"] = separator;
+            var dlNumFmt = dataLabels.GetFirstChild<C.NumberingFormat>()?.FormatCode?.Value;
+            if (dlNumFmt != null) node.Format["dataLabels.numFmt"] = dlNumFmt;
+        }
+
         var seriesCount = CountSeries(plotArea);
         node.Format["seriesCount"] = seriesCount;
 
@@ -278,6 +392,48 @@ internal static partial class ChartHelper
                 var markerSize = marker?.GetFirstChild<C.Size>()?.Val;
                 if (markerSize?.HasValue == true)
                     seriesNode.Format["markerSize"] = (int)markerSize.Value;
+                // Smooth
+                var serSmooth = serEl?.GetFirstChild<C.Smooth>()?.Val;
+                if (serSmooth?.HasValue == true) seriesNode.Format["smooth"] = serSmooth.Value ? "true" : "false";
+                // Trendline
+                var trendline = serEl?.GetFirstChild<C.Trendline>();
+                if (trendline != null)
+                {
+                    var tlType = trendline.GetFirstChild<C.TrendlineType>()?.Val;
+                    if (tlType?.HasValue == true) seriesNode.Format["trendline"] = tlType.InnerText;
+                    var dispRSqr = trendline.GetFirstChild<C.DisplayRSquaredValue>()?.Val;
+                    if (dispRSqr?.HasValue == true && dispRSqr.Value) seriesNode.Format["trendline.dispRSqr"] = "true";
+                    var dispEq = trendline.GetFirstChild<C.DisplayEquation>()?.Val;
+                    if (dispEq?.HasValue == true && dispEq.Value) seriesNode.Format["trendline.dispEq"] = "true";
+                }
+                // Error bars
+                var errBars = serEl?.GetFirstChild<C.ErrorBars>();
+                if (errBars != null)
+                {
+                    var errValType = errBars.GetFirstChild<C.ErrorBarValueType>()?.Val;
+                    if (errValType?.HasValue == true) seriesNode.Format["errBars"] = errValType.InnerText;
+                }
+                // InvertIfNegative
+                var inv = serEl?.GetFirstChild<C.InvertIfNegative>()?.Val;
+                if (inv?.HasValue == true && inv.Value) seriesNode.Format["invertIfNeg"] = "true";
+                // Explosion (pie)
+                var explosion = serEl?.GetFirstChild<C.Explosion>()?.Val?.Value;
+                if (explosion != null && explosion > 0) seriesNode.Format["explosion"] = explosion;
+                // Data point colors
+                if (serEl != null)
+                {
+                    foreach (var dPt in serEl.Elements<C.DataPoint>())
+                    {
+                        var ptIdx = dPt.Index?.Val?.Value;
+                        if (ptIdx == null) continue;
+                        var ptFill = dPt.GetFirstChild<C.ChartShapeProperties>()?.GetFirstChild<Drawing.SolidFill>();
+                        if (ptFill != null)
+                        {
+                            var ptColor = ReadColorFromFill(ptFill);
+                            if (ptColor != null) seriesNode.Format[$"point{ptIdx.Value + 1}.color"] = ptColor;
+                        }
+                    }
+                }
                 node.Children.Add(seriesNode);
             }
             node.ChildCount = seriesList.Count;
@@ -473,6 +629,21 @@ internal static partial class ChartHelper
         var dash = outline.GetFirstChild<Drawing.PresetDash>()?.Val;
         if (dash?.HasValue == true)
             node.Format[$"{prefix}Dash"] = dash.InnerText!;
+    }
+
+    /// <summary>
+    /// Read outline (border) detail into format keys: {prefix}.color, {prefix}.width, {prefix}.dash.
+    /// </summary>
+    private static void ReadOutlineDetail(Drawing.Outline outline, DocumentNode node, string prefix)
+    {
+        var fill = outline.GetFirstChild<Drawing.SolidFill>();
+        var color = ReadColorFromFill(fill);
+        if (color != null) node.Format[$"{prefix}.color"] = color;
+        if (outline.Width?.HasValue == true)
+            node.Format[$"{prefix}.width"] = Math.Round(outline.Width.Value / 12700.0, 2);
+        var dash = outline.GetFirstChild<Drawing.PresetDash>()?.Val;
+        if (dash?.HasValue == true)
+            node.Format[$"{prefix}.dash"] = dash.InnerText!;
     }
 
     /// <summary>
