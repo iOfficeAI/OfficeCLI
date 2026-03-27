@@ -19,7 +19,14 @@ internal static partial class ChartHelper
 
         // Process structural properties (legend, title) before styling properties (legendFont, titleFont)
         // to ensure the parent element exists before styling is applied.
-        var ordered = properties.OrderBy(kv => GetPropertyOrder(kv.Key));
+        static int PropOrder(string k)
+        {
+            var lower = k.ToLowerInvariant();
+            if (lower is "preset" or "style.preset" or "theme") return 0;
+            if (lower is "title" or "legend" or "datalabels" or "labels") return 1;
+            return 2;
+        }
+        var ordered = properties.OrderBy(kv => PropOrder(kv.Key));
         foreach (var (key, value) in ordered)
         {
             switch (key.ToLowerInvariant())
