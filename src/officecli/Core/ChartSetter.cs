@@ -572,7 +572,10 @@ internal static partial class ChartHelper
                         view3d.AppendChild(new C.Perspective { Val = (byte)persp });
                     else if (v3dParts.Length == 1 && int.TryParse(v3dParts[0], out var p))
                         view3d.AppendChild(new C.Perspective { Val = (byte)p });
-                    chart.PrependChild(view3d);
+                    // Schema order: title, autoTitleDeleted, pivotFmts, view3D, ..., plotArea
+                    var v3dPlotArea = chart.GetFirstChild<C.PlotArea>();
+                    if (v3dPlotArea != null) chart.InsertBefore(view3d, v3dPlotArea);
+                    else chart.AppendChild(view3d);
                     break;
                 }
 
@@ -1292,7 +1295,10 @@ internal static partial class ChartHelper
                     var bubble = plotArea2?.GetFirstChild<C.BubbleChart>();
                     if (bubble == null) { unsupported.Add(key); break; }
                     bubble.RemoveAllChildren<C.BubbleScale>();
-                    bubble.AppendChild(new C.BubbleScale { Val = (uint)ParseHelpers.SafeParseInt(value, "bubbleScale") });
+                    var bsNode = new C.BubbleScale { Val = (uint)ParseHelpers.SafeParseInt(value, "bubbleScale") };
+                    var bsAxId = bubble.GetFirstChild<C.AxisId>();
+                    if (bsAxId != null) bubble.InsertBefore(bsNode, bsAxId);
+                    else bubble.AppendChild(bsNode);
                     break;
                 }
 
@@ -1785,11 +1791,14 @@ internal static partial class ChartHelper
             marker.AppendChild(mSpPr);
         }
 
-        // Insert marker after spPr or seriesText
-        var afterEl = (OpenXmlElement?)series.GetFirstChild<C.ChartShapeProperties>()
-            ?? series.GetFirstChild<C.SeriesText>();
-        if (afterEl != null) afterEl.InsertAfterSelf(marker);
-        else series.PrependChild(marker);
+        // Insert marker before data references (xVal, yVal, cat, val, bubbleSize)
+        // to satisfy schema order for all chart types including scatter/bubble.
+        var markerInsertBefore = (OpenXmlElement?)series.Elements().FirstOrDefault(e =>
+            e.LocalName is "xVal" or "yVal" or "cat" or "val" or "bubbleSize"
+                or "smooth" or "extLst")
+            ?? series.Elements().FirstOrDefault(e => e.LocalName == "trendline");
+        if (markerInsertBefore != null) series.InsertBefore(marker, markerInsertBefore);
+        else series.AppendChild(marker);
     }
 
     // ==================== #5 Transparency Helper ====================

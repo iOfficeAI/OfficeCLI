@@ -288,6 +288,26 @@ internal static partial class ChartHelper
         var roundedCorners = chart.Parent?.GetFirstChild<C.RoundedCorners>()?.Val;
         if (roundedCorners?.HasValue == true) node.Format["roundedCorners"] = roundedCorners.Value ? "true" : "false";
 
+        // View3D
+        var view3d = chart.GetFirstChild<C.View3D>();
+        if (view3d != null)
+        {
+            var rotX = view3d.GetFirstChild<C.RotateX>()?.Val?.Value;
+            var rotY = view3d.GetFirstChild<C.RotateY>()?.Val?.Value;
+            var persp = view3d.GetFirstChild<C.Perspective>()?.Val?.Value;
+            var v3dParts = new List<string>();
+            if (rotX != null) v3dParts.Add(rotX.Value.ToString());
+            else v3dParts.Add("0");
+            if (rotY != null) v3dParts.Add(rotY.Value.ToString());
+            else v3dParts.Add("0");
+            if (persp != null) v3dParts.Add(persp.Value.ToString());
+            else v3dParts.Add("0");
+            node.Format["view3d"] = string.Join(",", v3dParts);
+            if (rotX != null) node.Format["view3d.rotateX"] = (int)rotX.Value;
+            if (rotY != null) node.Format["view3d.rotateY"] = (int)rotY.Value;
+            if (persp != null) node.Format["view3d.perspective"] = (int)persp.Value;
+        }
+
         // Data table
         var dataTable = plotArea.GetFirstChild<C.DataTable>();
         if (dataTable != null) node.Format["dataTable"] = "true";
