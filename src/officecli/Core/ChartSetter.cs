@@ -451,7 +451,9 @@ internal static partial class ChartHelper
 
                 case "chartareafill" or "chartfill":
                 {
-                    var cSpPr = chartSpace!.GetFirstChild<C.ChartShapeProperties>();
+                    // After round-trip, SDK may deserialize ChartShapeProperties as ShapeProperties
+                    var cSpPr = chartSpace!.GetFirstChild<C.ChartShapeProperties>()
+                        ?? (OpenXmlCompositeElement?)chartSpace.GetFirstChild<C.ShapeProperties>();
                     if (cSpPr == null) { cSpPr = new C.ChartShapeProperties(); chartSpace.InsertAfter(cSpPr, chart); }
                     // Replace fill but keep outline
                     cSpPr.RemoveAllChildren<Drawing.SolidFill>();
@@ -1190,7 +1192,8 @@ internal static partial class ChartHelper
 
                 case "chartarea.border" or "chartborder":
                 {
-                    var cSpPr = chartSpace!.GetFirstChild<C.ChartShapeProperties>();
+                    var cSpPr = chartSpace!.GetFirstChild<C.ChartShapeProperties>()
+                        ?? (OpenXmlCompositeElement?)chartSpace.GetFirstChild<C.ShapeProperties>();
                     if (cSpPr == null) { cSpPr = new C.ChartShapeProperties(); chartSpace.InsertAfter(cSpPr, chart); }
                     cSpPr.RemoveAllChildren<Drawing.Outline>();
                     if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
