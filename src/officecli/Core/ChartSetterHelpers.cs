@@ -214,6 +214,39 @@ internal static partial class ChartHelper
             dPt.AppendChild(new C.Explosion { Val = explosion });
     }
 
+    // ==================== Axis Line Styling ====================
+
+    /// <summary>
+    /// Apply outline (line style) to an axis element's own ShapeProperties.
+    /// Format: "color" or "color:width" or "color:width:dash" or "none"
+    /// </summary>
+    internal static void ApplyAxisLine(OpenXmlCompositeElement axis, string value)
+    {
+        var spPr = axis.GetFirstChild<C.ChartShapeProperties>();
+        if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            if (spPr != null)
+            {
+                spPr.RemoveAllChildren<Drawing.Outline>();
+                var outline = new Drawing.Outline();
+                outline.AppendChild(new Drawing.NoFill());
+                spPr.AppendChild(outline);
+            }
+            return;
+        }
+
+        if (spPr == null)
+        {
+            spPr = new C.ChartShapeProperties();
+            // Insert after TickLabelPosition or at end
+            var tlPos = axis.GetFirstChild<C.TickLabelPosition>();
+            if (tlPos != null) tlPos.InsertAfterSelf(spPr);
+            else axis.AppendChild(spPr);
+        }
+        spPr.RemoveAllChildren<Drawing.Outline>();
+        spPr.AppendChild(BuildOutlineElement(value));
+    }
+
     // ==================== Dotted Key Parsers ====================
 
     /// <summary>
@@ -386,12 +419,26 @@ internal static partial class ChartHelper
         if (!int.TryParse(rest[..dotIdx], out pointIndex) || pointIndex < 1) return false;
         property = rest[(dotIdx + 1)..];
         // Only handle non-layout properties (layout handled by TryParseDataLabelLayoutKey)
-        return property is "delete" or "pos" or "position" or "numfmt";
+        return property is "delete" or "pos" or "position" or "numfmt" or "text";
     }
 
     internal static void HandleDataLabelDottedProperty(OpenXmlCompositeElement firstSer, int pointIndex, string prop, string value)
     {
         var dLbls = firstSer.GetFirstChild<C.DataLabels>();
+        // For "text", auto-create a minimal DataLabels container on the series if not present
+        if (dLbls == null && prop == "text")
+        {
+            dLbls = new C.DataLabels();
+            dLbls.AppendChild(new C.ShowLegendKey { Val = false });
+            dLbls.AppendChild(new C.ShowValue { Val = true });
+            dLbls.AppendChild(new C.ShowCategoryName { Val = false });
+            dLbls.AppendChild(new C.ShowSeriesName { Val = false });
+            dLbls.AppendChild(new C.ShowPercent { Val = false });
+            // Insert before AxId or at end of series, per schema order
+            var insertBefore = firstSer.GetFirstChild<C.AxisId>() as OpenXmlElement;
+            if (insertBefore != null) firstSer.InsertBefore(dLbls, insertBefore);
+            else firstSer.AppendChild(dLbls);
+        }
         if (dLbls == null) return;
 
         var ooxmlIdx = (uint)(pointIndex - 1);
@@ -440,6 +487,46 @@ internal static partial class ChartHelper
                 if (dLbl == null) return;
                 dLbl.RemoveAllChildren<C.NumberingFormat>();
                 dLbl.AppendChild(new C.NumberingFormat { FormatCode = value, SourceLinked = false });
+                break;
+            }
+            case "text":
+            {
+                // Create or find dLbl, then set custom text via c:tx > c:rich
+                if (dLbl == null)
+                {
+                    dLbl = new C.DataLabel();
+                    dLbl.Index = new C.Index { Val = ooxmlIdx };
+                    var insertBefore = dLbls.GetFirstChild<C.ShowLegendKey>() as OpenXmlElement
+                        ?? dLbls.GetFirstChild<C.ShowValue>()
+                        ?? dLbls.FirstChild;
+                    if (insertBefore != null) dLbls.InsertBefore(dLbl, insertBefore);
+                    else dLbls.AppendChild(dLbl);
+                }
+                dLbl.RemoveAllChildren<C.ChartText>();
+                var richText = new C.ChartText();
+                var rich = new C.RichText(
+                    new Drawing.BodyProperties(),
+                    new Drawing.ListStyle(),
+                    new Drawing.Paragraph(
+                        new Drawing.Run(
+                            new Drawing.RunProperties { Language = "en-US" },
+                            new Drawing.Text(value))));
+                richText.AppendChild(rich);
+                // Insert tx after idx (schema order: idx, delete, layout, tx, ...)
+                var afterIdx = dLbl.GetFirstChild<C.Index>() as OpenXmlElement;
+                var afterLayout = dLbl.GetFirstChild<C.Layout>() as OpenXmlElement;
+                var insertAfter = afterLayout ?? afterIdx;
+                if (insertAfter != null)
+                    insertAfter.InsertAfterSelf(richText);
+                else
+                    dLbl.PrependChild(richText);
+                // Ensure show flags are present so the custom text renders
+                if (dLbl.GetFirstChild<C.ShowValue>() == null)
+                    dLbl.AppendChild(new C.ShowValue { Val = true });
+                if (dLbl.GetFirstChild<C.ShowCategoryName>() == null)
+                    dLbl.AppendChild(new C.ShowCategoryName { Val = false });
+                if (dLbl.GetFirstChild<C.ShowSeriesName>() == null)
+                    dLbl.AppendChild(new C.ShowSeriesName { Val = false });
                 break;
             }
         }

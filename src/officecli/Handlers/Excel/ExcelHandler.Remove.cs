@@ -5,7 +5,9 @@ using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
+using C = DocumentFormat.OpenXml.Drawing.Charts;
 using X14 = DocumentFormat.OpenXml.Office2010.Excel;
+using XDR = DocumentFormat.OpenXml.Drawing.Spreadsheet;
 
 namespace OfficeCli.Handlers;
 
@@ -239,6 +241,33 @@ public partial class ExcelHandler
             if (blipFill != null)
             {
                 try { drawingsPart.DeletePart(drawingsPart.GetPartById(blipFill)); } catch { }
+            }
+            wsDrawing.Save();
+            SaveWorksheet(worksheet);
+            return null;
+        }
+
+        // chart[N] — remove chart anchor from DrawingsPart
+        var chartRemoveMatch = Regex.Match(cellRef, @"^chart\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (chartRemoveMatch.Success)
+        {
+            var chartIdx = int.Parse(chartRemoveMatch.Groups[1].Value);
+            var drawingsPart = worksheet.DrawingsPart
+                ?? throw new ArgumentException("Sheet has no drawings/charts");
+            var wsDrawing = drawingsPart.WorksheetDrawing
+                ?? throw new ArgumentException("Sheet has no drawings/charts");
+            var chartAnchors = wsDrawing.Elements<XDR.TwoCellAnchor>()
+                .Where(a => a.Descendants<C.ChartReference>().Any())
+                .ToList();
+            if (chartIdx < 1 || chartIdx > chartAnchors.Count)
+                throw new ArgumentException($"Chart index {chartIdx} out of range (1..{chartAnchors.Count})");
+            var anchor = chartAnchors[chartIdx - 1];
+            var chartRef = anchor.Descendants<C.ChartReference>().First();
+            var relId = chartRef.Id?.Value;
+            anchor.Remove();
+            if (relId != null)
+            {
+                try { drawingsPart.DeletePart(drawingsPart.GetPartById(relId)); } catch { }
             }
             wsDrawing.Save();
             SaveWorksheet(worksheet);

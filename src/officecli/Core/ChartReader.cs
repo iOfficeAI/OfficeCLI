@@ -98,7 +98,16 @@ internal static partial class ChartHelper
             {
                 var idx = dLbl.Index?.Val?.Value;
                 if (idx == null) continue;
-                ReadManualLayout(dLbl, node, $"dataLabel{idx.Value + 1}");
+                var prefix = $"dataLabel{idx.Value + 1}";
+                ReadManualLayout(dLbl, node, prefix);
+                // Custom text
+                var chartText = dLbl.GetFirstChild<C.ChartText>();
+                var richText = chartText?.GetFirstChild<C.RichText>();
+                var customText = richText?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
+                if (customText != null) node.Format[$"{prefix}.text"] = customText;
+                // Delete flag
+                var delFlag = dLbl.GetFirstChild<C.Delete>()?.Val;
+                if (delFlag?.HasValue == true && delFlag.Value) node.Format[$"{prefix}.delete"] = "true";
             }
         }
 
@@ -200,6 +209,16 @@ internal static partial class ChartHelper
 
         var axisNumFmt = valAxis?.GetFirstChild<C.NumberingFormat>()?.FormatCode?.Value;
         if (axisNumFmt != null && axisNumFmt != "General") node.Format["axisNumFmt"] = axisNumFmt;
+
+        // Axis line styling
+        var valAxisSpPr = valAxis?.GetFirstChild<C.ChartShapeProperties>();
+        var valAxisOutline = valAxisSpPr?.GetFirstChild<Drawing.Outline>();
+        if (valAxisOutline != null && valAxisOutline.GetFirstChild<Drawing.NoFill>() == null)
+            ReadOutlineDetail(valAxisOutline, node, "valAxisLine");
+        var catAxisSpPr = catAxis?.GetFirstChild<C.ChartShapeProperties>();
+        var catAxisOutline = catAxisSpPr?.GetFirstChild<Drawing.Outline>();
+        if (catAxisOutline != null && catAxisOutline.GetFirstChild<Drawing.NoFill>() == null)
+            ReadOutlineDetail(catAxisOutline, node, "catAxisLine");
 
         // Axis visibility (c:delete)
         var valAxisDelete = valAxis?.GetFirstChild<C.Delete>();

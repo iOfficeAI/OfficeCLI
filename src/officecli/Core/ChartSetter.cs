@@ -1369,6 +1369,38 @@ internal static partial class ChartHelper
                     break;
                 }
 
+                // ==================== Axis Line Styling ====================
+
+                case "axisline" or "axis.line":
+                {
+                    // Style the axis spine line. Format: "color" or "color:width" or "color:width:dash" or "none"
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    if (plotArea2 == null) { unsupported.Add(key); break; }
+                    foreach (var ax in plotArea2.Elements<C.ValueAxis>())
+                        ApplyAxisLine(ax, value);
+                    foreach (var ax in plotArea2.Elements<C.CategoryAxis>())
+                        ApplyAxisLine(ax, value);
+                    break;
+                }
+
+                case "cataxisline" or "cataxis.line":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var catAx = plotArea2?.GetFirstChild<C.CategoryAxis>();
+                    if (catAx == null) { unsupported.Add(key); break; }
+                    ApplyAxisLine(catAx, value);
+                    break;
+                }
+
+                case "valaxisline" or "valaxis.line":
+                {
+                    var plotArea2 = chart.GetFirstChild<C.PlotArea>();
+                    var valAx = plotArea2?.GetFirstChild<C.ValueAxis>();
+                    if (valAx == null) { unsupported.Add(key); break; }
+                    ApplyAxisLine(valAx, value);
+                    break;
+                }
+
                 // ==================== Advanced Features ====================
 
                 case "referenceline" or "refline" or "targetline":

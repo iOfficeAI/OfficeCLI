@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
+using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
@@ -127,6 +128,32 @@ public partial class WordHandler
                 enRef.Parent?.Remove();
             en.Remove();
             mainPart.EndnotesPart?.Endnotes?.Save();
+            mainPart.Document?.Save();
+            return null;
+        }
+
+        // Handle /chart[N] removal
+        var chartRemoveMatch = Regex.Match(path, @"^/chart\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (chartRemoveMatch.Success)
+        {
+            var chartIdx = int.Parse(chartRemoveMatch.Groups[1].Value);
+            var mainPart = _doc.MainDocumentPart
+                ?? throw new InvalidOperationException("MainDocumentPart not found");
+            var chartParts = mainPart.ChartParts.ToList();
+            if (chartIdx < 1 || chartIdx > chartParts.Count)
+                throw new ArgumentException($"Chart index {chartIdx} out of range (1..{chartParts.Count})");
+            var chartPart = chartParts[chartIdx - 1];
+            var relId = mainPart.GetIdOfPart(chartPart);
+            // Find and remove the Run containing the ChartReference in the body
+            var chartRef = mainPart.Document?.Body?
+                .Descendants<C.ChartReference>()
+                .FirstOrDefault(cr => cr.Id?.Value == relId);
+            if (chartRef != null)
+            {
+                var run = chartRef.Ancestors<Run>().FirstOrDefault();
+                run?.Remove();
+            }
+            mainPart.DeletePart(chartPart);
             mainPart.Document?.Save();
             return null;
         }
