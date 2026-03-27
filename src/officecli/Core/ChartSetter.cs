@@ -632,7 +632,10 @@ internal static partial class ChartHelper
                             var sf = new Drawing.SolidFill();
                             sf.AppendChild(BuildChartColorElement(outParts[0]));
                             outline.AppendChild(sf);
-                            spPr.AppendChild(outline);
+                            // Insert ln before effectLst per DrawingML schema order
+                            var effLst = spPr.GetFirstChild<Drawing.EffectList>();
+                            if (effLst != null) spPr.InsertBefore(outline, effLst);
+                            else spPr.AppendChild(outline);
                         }
                     }
                     break;

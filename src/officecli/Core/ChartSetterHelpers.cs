@@ -346,7 +346,12 @@ internal static partial class ChartHelper
                 if (spPr == null) { spPr = new C.ChartShapeProperties(); ser.AppendChild(spPr); }
                 spPr.RemoveAllChildren<Drawing.Outline>();
                 if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
-                    spPr.AppendChild(BuildOutlineElement(value));
+                {
+                    var outlineEl = BuildOutlineElement(value);
+                    var effLst = spPr.GetFirstChild<Drawing.EffectList>();
+                    if (effLst != null) spPr.InsertBefore(outlineEl, effLst);
+                    else spPr.AppendChild(outlineEl);
+                }
                 break;
             }
 
