@@ -226,7 +226,7 @@ public static class GenericXmlQuery
             var bracketIdx = part.IndexOf('[');
             if (bracketIdx >= 0)
             {
-                var name = part[..bracketIdx];
+                var name = PathAliases.Resolve(part[..bracketIdx]);
                 var indexStr = part[(bracketIdx + 1)..^1];
                 if (!int.TryParse(indexStr, out var idx))
                     throw new ArgumentException($"Invalid path index '{indexStr}' in segment '{part}'. Expected a numeric index.");
@@ -236,7 +236,7 @@ public static class GenericXmlQuery
             }
             else
             {
-                segments.Add((part, null));
+                segments.Add((PathAliases.Resolve(part), null));
             }
         }
         return segments;

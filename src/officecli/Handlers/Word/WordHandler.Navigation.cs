@@ -121,7 +121,7 @@ public partial class WordHandler
             var bracketIdx = part.IndexOf('[');
             if (bracketIdx >= 0)
             {
-                var name = part[..bracketIdx];
+                var name = Core.PathAliases.Resolve(part[..bracketIdx]);
                 var indexStr = part[(bracketIdx + 1)..^1];
                 if (int.TryParse(indexStr, out var idx))
                     segments.Add(new PathSegment(name, idx));
@@ -130,7 +130,7 @@ public partial class WordHandler
             }
             else
             {
-                segments.Add(new PathSegment(part, null));
+                segments.Add(new PathSegment(Core.PathAliases.Resolve(part), null));
             }
         }
 
