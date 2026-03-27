@@ -451,10 +451,13 @@ internal static partial class ChartHelper
 
                 case "chartareafill" or "chartfill":
                 {
-                    chartSpace!.RemoveAllChildren<C.ChartShapeProperties>();
-                    var spPr = new C.ChartShapeProperties();
-                    spPr.AppendChild(BuildFillElement(value));
-                    chartSpace.InsertAfter(spPr, chart);
+                    var cSpPr = chartSpace!.GetFirstChild<C.ChartShapeProperties>();
+                    if (cSpPr == null) { cSpPr = new C.ChartShapeProperties(); chartSpace.InsertAfter(cSpPr, chart); }
+                    // Replace fill but keep outline
+                    cSpPr.RemoveAllChildren<Drawing.SolidFill>();
+                    cSpPr.RemoveAllChildren<Drawing.GradientFill>();
+                    cSpPr.RemoveAllChildren<Drawing.NoFill>();
+                    cSpPr.PrependChild(BuildFillElement(value));
                     break;
                 }
 
