@@ -53,7 +53,7 @@ public partial class ExcelHandler
         }
 
         // Sheet tabs at bottom (like real Excel)
-        sb.AppendLine("<div class=\"sheet-tabs\">");
+        sb.AppendLine("<div class=\"sheet-tabs\" role=\"tablist\">");
         for (int i = 0; i < sheets.Count; i++)
         {
             var activeClass = i == 0 ? " active" : "";
@@ -66,7 +66,7 @@ public partial class ExcelHandler
                 if (rgb.Length > 6) rgb = rgb[^6..];
                 tabColorStyle = $" style=\"border-bottom:3px solid #{rgb}\"";
             }
-            sb.AppendLine($"  <div class=\"sheet-tab{activeClass}\"{tabColorStyle} data-sheet=\"{i}\" onclick=\"switchSheet({i})\">{HtmlEncode(sheets[i].Name)}</div>");
+            sb.AppendLine($"  <div class=\"sheet-tab{activeClass}\"{tabColorStyle} data-sheet=\"{i}\" role=\"tab\" tabindex=\"0\" onclick=\"switchSheet({i})\" onkeydown=\"if(event.key==='Enter'||event.key===' ')switchSheet({i})\">{HtmlEncode(sheets[i].Name)}</div>");
         }
         sb.AppendLine("</div>");
 
@@ -138,8 +138,11 @@ public partial class ExcelHandler
         }
 
         // Limit rendering to reasonable size
+        var actualRow = maxRow;
+        var actualCol = maxCol;
         maxRow = Math.Min(maxRow, 5000);
         maxCol = Math.Min(maxCol, 200);
+        var truncated = actualRow > maxRow || actualCol > maxCol;
 
         // Build cell lookup: (row, col) → Cell
         var cellMap = new Dictionary<(int row, int col), Cell>();
@@ -247,7 +250,12 @@ public partial class ExcelHandler
             sb.AppendLine("</tr>");
         }
         sb.AppendLine("</tbody>");
+        // Add table caption for accessibility
+        sb.AppendLine($"<caption class=\"sr-only\">{HtmlEncode(sheetName)}</caption>");
         sb.AppendLine("</table>");
+        // Truncation warning
+        if (truncated)
+            sb.AppendLine($"<div class=\"truncation-warning\">Showing {maxRow} of {actualRow} rows, {maxCol} of {actualCol} columns</div>");
         sb.AppendLine("</div>");
     }
 
@@ -991,6 +999,26 @@ public partial class ExcelHandler
             box-shadow: 0 1px 3px rgba(0,0,0,0.08);
         }
         .chart-container svg { display: block; }
+        /* Truncation warning */
+        .truncation-warning {
+            padding: 8px 16px;
+            background: #FFF3CD;
+            color: #856404;
+            border: 1px solid #FFEEBA;
+            font-size: 12px;
+            text-align: center;
+            margin: 4px 0;
+        }
+        /* Screen reader only */
+        .sr-only { position:absolute; clip:rect(0 0 0 0); width:1px; height:1px; overflow:hidden; }
+        /* Print styles */
+        @media print {
+            .file-title, .sheet-tabs { display: none !important; }
+            .table-wrapper { max-height: none !important; overflow: visible !important; }
+            body { background: #fff !important; min-height: auto !important; }
+            .sheet-content { display: block !important; }
+            td { max-width: none !important; white-space: normal !important; overflow: visible !important; }
+        }
         """;
 
     // ==================== JavaScript ====================
