@@ -395,9 +395,7 @@ public partial class ExcelHandler
             return styles.Count > 0 ? $" style=\"{string.Join(";", styles)}\"" : "";
 
         var styleIndex = cell.StyleIndex?.Value ?? 0;
-        if (styleIndex == 0 && styles.Count == 0) return "";
 
-        if (styleIndex > 0)
         {
             var cellFormats = stylesheet.CellFormats;
             if (cellFormats != null && styleIndex < (uint)cellFormats.Elements<CellFormat>().Count())
@@ -573,7 +571,8 @@ public partial class ExcelHandler
             else
             {
                 // Excel: 0-90 = counter-clockwise, 91-180 = clockwise (91=1°CW, 180=90°CW)
-                int cssDeg = rot <= 90 ? -(int)rot : 90 - (int)rot;
+                // Excel: 1-90 = CCW (CSS negative), 91-180 = CW (CSS positive, 91=1°, 180=90°)
+                int cssDeg = rot <= 90 ? -(int)rot : (int)rot - 90;
                 styles.Add($"transform:rotate({cssDeg}deg);white-space:nowrap");
             }
         }
