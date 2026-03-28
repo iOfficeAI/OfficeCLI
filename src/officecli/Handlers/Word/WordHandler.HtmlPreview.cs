@@ -262,10 +262,13 @@ public partial class WordHandler
                     // Adjust nesting
                     while (listStack.Count > ilvl + 1)
                     {
+                        sb.AppendLine("</li>");
                         sb.AppendLine($"</{listStack.Pop()}>");
                     }
                     while (listStack.Count < ilvl + 1)
                     {
+                        if (listStack.Count > 0)
+                            sb.Append("<li>"); // wrap nested list inside <li>
                         sb.AppendLine($"<{tag}>");
                         listStack.Push(tag);
                     }
@@ -379,13 +382,15 @@ public partial class WordHandler
 
     private void RenderParagraphHtml(StringBuilder sb, Paragraph para)
     {
-        sb.Append("<p");
+        // Use <div> instead of <p> when paragraph contains block-level elements (text boxes)
+        var tag = HasTextBoxContent(para) ? "div" : "p";
+        sb.Append($"<{tag}");
         var pStyle = GetParagraphInlineCss(para);
         if (!string.IsNullOrEmpty(pStyle))
             sb.Append($" style=\"{pStyle}\"");
         sb.Append(">");
         RenderParagraphContentHtml(sb, para);
-        sb.AppendLine("</p>");
+        sb.AppendLine($"</{tag}>");
     }
 
     private void RenderParagraphContentHtml(StringBuilder sb, Paragraph para)
@@ -521,9 +526,8 @@ public partial class WordHandler
             var enNum = _endnoteRefs?.Count ?? enId;
             sb.Append($"<sup class=\"en-ref\"><a href=\"#en{enId}\" id=\"enref{enId}\">{enNum}</a></sup>");
         }
-        // Skip FootnoteReferenceMark / EndnoteReferenceMark (auto-number inside footnote body)
-        if (run.GetFirstChild<FootnoteReferenceMark>() != null || run.GetFirstChild<EndnoteReferenceMark>() != null)
-            return;
+        // FootnoteReferenceMark / EndnoteReferenceMark: don't skip the run, just ignore the mark element
+        // (the run may also contain text that should be rendered)
 
         var hasContent = false;
         foreach (var child in run.ChildElements)
@@ -1183,8 +1187,6 @@ public partial class WordHandler
             {
                 foreach (var run in para.Descendants<Run>())
                 {
-                    // Skip footnoteRef mark (the auto-number inside footnote)
-                    if (run.GetFirstChild<FootnoteReferenceMark>() != null) continue;
                     var text = GetRunText(run);
                     sb.Append(HtmlEncode(text));
                 }
@@ -1691,6 +1693,10 @@ public partial class WordHandler
             RenderBorderCss(parts, pBdr.LeftBorder, "border-left");
             RenderBorderCss(parts, pBdr.RightBorder, "border-right");
         }
+
+        // Page break before
+        if (pProps.PageBreakBefore?.Val?.Value != false && pProps.PageBreakBefore != null)
+            parts.Add("page-break-before:always");
 
         return string.Join(";", parts);
     }
