@@ -786,8 +786,10 @@ public partial class ExcelHandler
                 // Step 3: Restore minute placeholders
                 dotnetFmt = dotnetFmt.Replace("\x01\x01", "mm").Replace("\x01", "m");
                 // Step 4: Other conversions
-                dotnetFmt = dotnetFmt.Replace("hh", "HH").Replace("h", "H")
-                    .Replace("dddd", "dddd").Replace("ddd", "ddd").Replace("dd", "dd");
+                // If AM/PM format (has 'tt'), use h (12h); otherwise use H (24h)
+                if (!dotnetFmt.Contains("tt"))
+                    dotnetFmt = dotnetFmt.Replace("hh", "HH").Replace("h", "H");
+                dotnetFmt = dotnetFmt.Replace("dddd", "dddd").Replace("ddd", "ddd").Replace("dd", "dd");
                 return dt.ToString(dotnetFmt, System.Globalization.CultureInfo.InvariantCulture);
             }
             catch { return value.ToString(); }
@@ -808,7 +810,7 @@ public partial class ExcelHandler
         }
 
         // Numeric with thousands separator and/or decimals
-        bool hasThousands = fmtCode.Contains(',') && fmtCode.Contains('#');
+        bool hasThousands = fmtCode.Contains(',') && (fmtCode.Contains('#') || fmtCode.Contains('0'));
         var numDecimals = CountDecimalPlaces(fmtCode);
 
         if (hasThousands)
