@@ -183,7 +183,7 @@ public partial class ExcelHandler
         sb.AppendLine("<tbody>");
         for (int r = 1; r <= maxRow; r++)
         {
-            var rowH = rowHeights.TryGetValue(r, out var rh) ? $" style=\"height:{rh:0.#}px\"" : "";
+            var rowH = rowHeights.TryGetValue(r, out var rh) ? $" style=\"height:{rh * 1.33:0.#}px\"" : "";
             sb.Append($"<tr{rowH}>");
 
             // Row header
@@ -205,14 +205,14 @@ public partial class ExcelHandler
                     if (mergeInfo.ColSpan > 1) spanAttrs += $" colspan=\"{mergeInfo.ColSpan}\"";
                     if (mergeInfo.RowSpan > 1) spanAttrs += $" rowspan=\"{mergeInfo.RowSpan}\"";
 
-                    sb.Append($"<td{spanAttrs}{style}>{HtmlEncode(value)}</td>");
+                    sb.Append($"<td{spanAttrs}{style}>{CellHtml(value)}</td>");
                 }
                 else
                 {
                     var cell = cellMap.TryGetValue((r, c), out var nc) ? nc : null;
                     var style = GetCellStyleCss(cell, stylesheet, frozenRows, frozenCols, r, c);
                     var value = cell != null ? GetFormattedCellValue(cell, stylesheet) : "";
-                    sb.Append($"<td{style}>{HtmlEncode(value)}</td>");
+                    sb.Append($"<td{style}>{CellHtml(value)}</td>");
                 }
             }
             sb.AppendLine("</tr>");
@@ -825,6 +825,13 @@ public partial class ExcelHandler
             .Replace(">", "&gt;")
             .Replace("\"", "&quot;")
             .Replace("'", "&#39;");
+    }
+
+    /// <summary>HtmlEncode + convert newlines to br for cell display</summary>
+    private static string CellHtml(string text)
+    {
+        var encoded = HtmlEncode(text);
+        return encoded.Contains('\n') ? encoded.Replace("\n", "<br>") : encoded;
     }
 
     private static string CssSanitize(string value)
