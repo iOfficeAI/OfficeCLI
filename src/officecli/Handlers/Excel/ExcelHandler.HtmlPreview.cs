@@ -109,6 +109,19 @@ public partial class ExcelHandler
         // Detect frozen panes
         var (frozenRows, frozenCols) = GetFrozenPanes(ws);
 
+        // Compute cumulative left offsets for frozen columns (for sticky positioning)
+        // Index 0 = row header width (40px), index 1 = col 1 left offset, etc.
+        var frozenLeftOffsets = new Dictionary<int, double>();
+        if (frozenCols > 0)
+        {
+            double cumLeft = 40; // row header width
+            for (int fc = 1; fc <= frozenCols; fc++)
+            {
+                frozenLeftOffsets[fc] = cumLeft;
+                cumLeft += colWidths.TryGetValue(fc, out var w) ? w : 64.0;
+            }
+        }
+
         // Determine grid dimensions
         var rows = sheetData.Elements<Row>().ToList();
         int maxCol = 0;
@@ -205,7 +218,22 @@ public partial class ExcelHandler
         {
             if (hiddenCols.Contains(c)) continue;
             var colName = IndexToColumnName(c);
-            var stickyStyle = frozenRows > 0 ? " style=\"position:sticky;top:0;z-index:3\"" : "";
+            var isFrozenColHeader = frozenCols > 0 && c <= frozenCols;
+            string stickyStyle;
+            if (frozenRows > 0 && isFrozenColHeader)
+            {
+                var leftPx = frozenLeftOffsets.TryGetValue(c, out var lf) ? lf : 0;
+                stickyStyle = $" style=\"position:sticky;top:0;left:{leftPx:0.#}px;z-index:4\"";
+            }
+            else if (frozenRows > 0)
+                stickyStyle = " style=\"position:sticky;top:0;z-index:3\"";
+            else if (isFrozenColHeader)
+            {
+                var leftPx = frozenLeftOffsets.TryGetValue(c, out var lf2) ? lf2 : 0;
+                stickyStyle = $" style=\"position:sticky;left:{leftPx:0.#}px;z-index:3\"";
+            }
+            else
+                stickyStyle = "";
             sb.Append($"<th class=\"col-header\"{stickyStyle}>{colName}</th>");
         }
         sb.AppendLine("</tr></thead>");
@@ -232,7 +260,7 @@ public partial class ExcelHandler
                     if (!mergeInfo.IsAnchor) continue; // skip non-anchor cells
 
                     var cell = cellMap.TryGetValue((r, c), out var mc) ? mc : null;
-                    var style = GetCellStyleCss(cell, stylesheet, frozenRows, frozenCols, r, c);
+                    var style = GetCellStyleCss(cell, stylesheet, frozenRows, frozenCols, r, c, frozenLeftOffsets);
                     var value = cell != null ? GetFormattedCellValue(cell, stylesheet) : "";
                     // Adjust colspan to exclude hidden columns within the merge range
                     var adjColSpan = mergeInfo.ColSpan;
@@ -250,7 +278,7 @@ public partial class ExcelHandler
                 else
                 {
                     var cell = cellMap.TryGetValue((r, c), out var nc) ? nc : null;
-                    var style = GetCellStyleCss(cell, stylesheet, frozenRows, frozenCols, r, c);
+                    var style = GetCellStyleCss(cell, stylesheet, frozenRows, frozenCols, r, c, frozenLeftOffsets);
                     var value = cell != null ? GetFormattedCellValue(cell, stylesheet) : "";
                     sb.Append($"<td{style}>{CellHtml(value)}</td>");
                 }
@@ -344,7 +372,7 @@ public partial class ExcelHandler
 
     // ==================== Cell Style to CSS ====================
 
-    private string GetCellStyleCss(Cell? cell, Stylesheet? stylesheet, int frozenRows, int frozenCols, int row, int col)
+    private string GetCellStyleCss(Cell? cell, Stylesheet? stylesheet, int frozenRows, int frozenCols, int row, int col, Dictionary<int, double>? frozenLeftOffsets = null)
     {
         var styles = new List<string>();
 
@@ -352,12 +380,13 @@ public partial class ExcelHandler
         bool isFrozenRow = frozenRows > 0 && row <= frozenRows;
         bool isFrozenCol = frozenCols > 0 && col <= frozenCols;
         // z-index layering: corner-cell=4, col-header=3, frozen-row+col=2, frozen-col=1
+        var frozenLeft = frozenLeftOffsets?.TryGetValue(col, out var fl) == true ? fl : 0;
         if (isFrozenRow && isFrozenCol)
-            styles.Add("position:sticky;top:0;left:0;z-index:2");
+            styles.Add($"position:sticky;top:0;left:{frozenLeft:0.#}px;z-index:2");
         else if (isFrozenRow)
             styles.Add("position:sticky;top:0;z-index:1");
         else if (isFrozenCol)
-            styles.Add("position:sticky;left:0;z-index:1");
+            styles.Add($"position:sticky;left:{frozenLeft:0.#}px;z-index:1");
 
         if (cell == null || stylesheet == null)
             return styles.Count > 0 ? $" style=\"{string.Join(";", styles)}\"" : "";
