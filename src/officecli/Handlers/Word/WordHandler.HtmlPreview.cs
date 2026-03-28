@@ -82,8 +82,7 @@ public partial class WordHandler
         sb.AppendLine("document.addEventListener('DOMContentLoaded',function(){");
         sb.AppendLine("  if(typeof renderMathInElement!=='undefined'){");
         sb.AppendLine("    renderMathInElement(document.body,{delimiters:[");
-        sb.AppendLine("      {left:'$$',right:'$$',display:true},");
-        sb.AppendLine("      {left:'$',right:'$',display:false}");
+        sb.AppendLine("      {left:'$$',right:'$$',display:true}");
         sb.AppendLine("    ],throwOnError:false});");
         sb.AppendLine("  }");
         sb.AppendLine("});");
