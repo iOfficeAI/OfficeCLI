@@ -686,7 +686,14 @@ public partial class ExcelHandler
         if (fmt.Contains("e+") || fmt.Contains("e-"))
         {
             var decimals = CountDecimalPlaces(fmtCode);
-            return value.ToString($"E{decimals}");
+            // Count exponent digits (number of 0s after E+)
+            var eIdx = fmt.IndexOf("e+", StringComparison.Ordinal);
+            if (eIdx < 0) eIdx = fmt.IndexOf("e-", StringComparison.Ordinal);
+            var expDigits = eIdx >= 0 ? fmtCode[(eIdx + 2)..].Count(c => c == '0') : 2;
+            var exp = (int)Math.Floor(Math.Log10(Math.Abs(value)));
+            var mantissa = value / Math.Pow(10, exp);
+            var expStr = exp >= 0 ? $"+{exp.ToString().PadLeft(expDigits, '0')}" : $"-{Math.Abs(exp).ToString().PadLeft(expDigits, '0')}";
+            return $"{mantissa.ToString($"F{decimals}")}E{expStr}";
         }
 
         // Numeric with thousands separator and/or decimals
