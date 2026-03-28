@@ -1020,7 +1020,7 @@ static class CommandBuilder
                         if (stopOnError) break;
                         continue;
                     }
-                    var success = string.IsNullOrEmpty(response.Stderr);
+                    var success = response.ExitCode == 0;
                     results.Add(new BatchResult { Success = success, Output = response.Stdout, Error = response.Stderr });
                     if (!success && stopOnError) break;
                 }
