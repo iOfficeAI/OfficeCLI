@@ -61,7 +61,7 @@ officecli --version
 | Animation | Standard transitions (fade, push) | Morph (shape-matching across slides) |
 | Naming convention | No special naming | `!!actor` + `#sN-content` |
 | Data visualization | Charts, tables, stat callouts | None (text + shapes only) |
-| Helper scripts | None needed | morph-helpers.sh required |
+| Helper scripts | None needed | morph-helpers.py required |
 
 ---
 
