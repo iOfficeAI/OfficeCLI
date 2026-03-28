@@ -31,8 +31,10 @@ public partial class WordHandler
         sb.AppendLine("<meta charset=\"UTF-8\">");
         sb.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
         sb.AppendLine($"<title>{HtmlEncode(Path.GetFileName(_filePath))}</title>");
+        var pgLayout = GetPageLayout();
+        var docDef = ReadDocDefaults();
         sb.AppendLine("<style>");
-        sb.AppendLine(GenerateWordCss());
+        sb.AppendLine(GenerateWordCss(pgLayout, docDef));
         sb.AppendLine("</style>");
         // KaTeX for math rendering
         sb.AppendLine("<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css\">");
@@ -42,8 +44,7 @@ public partial class WordHandler
         sb.AppendLine("<body>");
 
         // Page container
-        var (pageWidthCm, _, _) = GetPageDimensions();
-        var maxW = $"max-width:{pageWidthCm:0.##}cm";
+        var maxW = $"max-width:{pgLayout.WidthCm:0.##}cm";
 
         sb.AppendLine($"<div class=\"page\" style=\"{maxW}\">");
 
@@ -75,25 +76,63 @@ public partial class WordHandler
         return sb.ToString();
     }
 
-    // ==================== Page Dimensions ====================
+    // ==================== Page Layout + Doc Defaults from OOXML ====================
 
-    private (double widthCm, double marginLeftCm, double marginRightCm) GetPageDimensions()
+    private record PageLayout(double WidthCm, double HeightCm,
+        double MarginTopCm, double MarginBottomCm, double MarginLeftCm, double MarginRightCm);
+
+    private PageLayout GetPageLayout()
     {
         var sectPr = _doc.MainDocumentPart?.Document?.Body?.GetFirstChild<SectionProperties>();
-        var pageSize = sectPr?.GetFirstChild<PageSize>();
-        var pageMargin = sectPr?.GetFirstChild<PageMargin>();
-
-        // Default A4: 21cm width
-        double widthTwips = pageSize?.Width?.Value != null ? (double)pageSize.Width.Value : 11906;
-        double marginLeftTwips = pageMargin?.Left?.Value != null ? (double)pageMargin.Left.Value : 1440;
-        double marginRightTwips = pageMargin?.Right?.Value != null ? (double)pageMargin.Right.Value : 1440;
-
-        return (
-            widthTwips * 2.54 / 1440.0,
-            marginLeftTwips * 2.54 / 1440.0,
-            marginRightTwips * 2.54 / 1440.0
-        );
+        var pgSz = sectPr?.GetFirstChild<PageSize>();
+        var pgMar = sectPr?.GetFirstChild<PageMargin>();
+        const double c = 2.54 / 1440.0; // twips → cm
+        return new PageLayout(
+            (pgSz?.Width?.Value ?? 11906) * c,
+            (pgSz?.Height?.Value ?? 16838) * c,
+            (double)(pgMar?.Top?.Value ?? 1440) * c,
+            (double)(pgMar?.Bottom?.Value ?? 1440) * c,
+            (pgMar?.Left?.Value ?? 1440u) * c,
+            (pgMar?.Right?.Value ?? 1440u) * c);
     }
+
+    private record DocDef(string Font, double SizePt, double LineHeight, string Color);
+
+    private DocDef ReadDocDefaults()
+    {
+        var defs = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles?.DocDefaults;
+        var rPr = defs?.RunPropertiesDefault?.RunPropertiesBaseStyle;
+
+        // Font: docDefaults rFonts → theme minor font → fallback
+        var fonts = rPr?.RunFonts;
+        var font = NonEmpty(fonts?.EastAsia?.Value) ?? NonEmpty(fonts?.Ascii?.Value) ?? NonEmpty(fonts?.HighAnsi?.Value);
+        if (font == null)
+        {
+            var minor = _doc.MainDocumentPart?.ThemePart?.Theme?.ThemeElements?.FontScheme?.MinorFont;
+            font = NonEmpty(minor?.EastAsianFont?.Typeface) ?? NonEmpty(minor?.LatinFont?.Typeface);
+        }
+
+        // Size: half-points → pt
+        double sizePt = 10.5;
+        if (rPr?.FontSize?.Val?.Value is string sz && int.TryParse(sz, out var hp))
+            sizePt = hp / 2.0;
+
+        // Line spacing from pPrDefault
+        double lineH = 1.15;
+        var sp = defs?.ParagraphPropertiesDefault?.ParagraphPropertiesBaseStyle?.SpacingBetweenLines;
+        if (sp?.Line?.Value is string lv && int.TryParse(lv, out var lvi) && sp.LineRule?.InnerText is "auto" or null)
+            lineH = lvi / 240.0;
+
+        // Default text color: docDefaults → theme dk1
+        var color = "#000000";
+        var cv = rPr?.Color?.Val?.Value;
+        if (cv != null && cv != "auto") color = $"#{cv}";
+        else if (GetThemeColors().TryGetValue("dk1", out var dk1)) color = $"#{dk1}";
+
+        return new DocDef(font ?? "Calibri", sizePt, lineH, color);
+    }
+
+    private static string? NonEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
 
     // ==================== Header / Footer ====================
 
