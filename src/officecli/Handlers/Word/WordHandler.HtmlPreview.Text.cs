@@ -196,7 +196,7 @@ public partial class WordHandler
             if (child is Break brk)
             {
                 if (brk.Type?.Value == BreakValues.Page)
-                    sb.Append("<hr class=\"page-break\">");
+                    sb.Append("<!--PAGE_BREAK-->");
                 else
                     sb.Append("<br>");
             }

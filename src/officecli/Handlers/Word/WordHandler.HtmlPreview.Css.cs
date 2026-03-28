@@ -789,7 +789,6 @@ public partial class WordHandler
         th, td {{ border: none; padding: 4px 8px; text-align: left; vertical-align: top; }}
         th {{ background: #f0f0f0; font-weight: 600; }}
         .header-row td, .header-row th {{ background: #f0f0f0; font-weight: 600; }}
-        hr.page-break {{ border: none; border-top: 2px dashed #ccc; margin: 2em 0; }}
         @media print {{ body {{ background: white; padding: 0; }}
             .page {{ box-shadow: none; margin: 0; max-width: none; }}
             hr.page-break {{ page-break-after: always; border: none; margin: 0; }} }}";

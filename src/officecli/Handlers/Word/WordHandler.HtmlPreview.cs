@@ -55,27 +55,51 @@ public partial class WordHandler
         sb.AppendLine("</head>");
         sb.AppendLine("<body>");
 
-        // Page container
+        // Render body into temporary buffer, then split on page breaks
         var maxW = $"max-width:{pgLayout.WidthCm:0.##}cm";
+        var bodySb = new StringBuilder();
+        RenderBodyHtml(bodySb, body);
 
-        sb.AppendLine($"<div class=\"page\" style=\"{maxW}\">");
+        // Render header/footer into reusable strings
+        var headerSb = new StringBuilder();
+        RenderHeaderFooterHtml(headerSb, isHeader: true);
+        var headerHtml = headerSb.ToString();
 
-        // Render header
-        RenderHeaderFooterHtml(sb, isHeader: true);
+        var footerSb = new StringBuilder();
+        RenderHeaderFooterHtml(footerSb, isHeader: false);
+        var footerHtml = footerSb.ToString();
 
-        // Render body elements (footnote/endnote refs tracked in _ctx)
-        RenderBodyHtml(sb, body);
+        // Render footnotes/endnotes
+        var footnotesSb = new StringBuilder();
+        RenderFootnotesHtml(footnotesSb);
+        var footnotesHtml = footnotesSb.ToString();
 
-        // Render footnotes section
-        RenderFootnotesHtml(sb);
+        var endnotesSb = new StringBuilder();
+        RenderEndnotesHtml(endnotesSb);
+        var endnotesHtml = endnotesSb.ToString();
 
-        // Render footer
-        RenderHeaderFooterHtml(sb, isHeader: false);
+        // Split body content on page breaks into pages
+        var bodyContent = bodySb.ToString();
+        var pages = bodyContent.Split("<!--PAGE_BREAK-->");
 
-        // Render endnotes section (at document end)
-        RenderEndnotesHtml(sb);
+        for (int i = 0; i < pages.Length; i++)
+        {
+            var pageContent = pages[i].Trim();
+            // Skip empty pages: truly empty or only empty paragraphs/whitespace
+            var textOnly = Regex.Replace(pageContent, @"<[^>]*>", "").Replace("&nbsp;", "").Trim();
+            if (string.IsNullOrEmpty(textOnly))
+                continue;
 
-        sb.AppendLine("</div>"); // page
+            sb.AppendLine($"<div class=\"page\" style=\"{maxW}\">");
+            if (i == 0) sb.Append(headerHtml);
+            sb.Append(pageContent);
+            if (i == 0) sb.Append(footnotesHtml);
+            sb.Append(footerHtml);
+            sb.AppendLine("</div>");
+        }
+
+        // Endnotes at document end (outside page divs)
+        sb.Append(endnotesHtml);
 
         // KaTeX auto-render script
         sb.AppendLine("<script>");
