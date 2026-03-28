@@ -1310,7 +1310,7 @@ public partial class WordHandler
             }
         }
 
-        // Color
+        // Color (direct or theme)
         var color = rProps.Color?.Val?.Value;
         if (color != null && color != "auto")
             parts.Add($"color:#{color}");

@@ -46,7 +46,12 @@ public partial class WordHandler
             }
         }
 
-        // 3. Apply run's own rPr (highest priority)
+        // 3. Apply paragraph-level rPr (pPr > rPr — "paragraph mark" formatting)
+        var paraMarkRPr = para.ParagraphProperties?.ParagraphMarkRunProperties;
+        if (paraMarkRPr != null)
+            MergeRunProperties(effective, paraMarkRPr);
+
+        // 4. Apply run's own rPr (highest priority)
         if (run.RunProperties != null)
             MergeRunProperties(effective, run.RunProperties);
 
