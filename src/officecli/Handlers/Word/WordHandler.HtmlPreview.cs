@@ -134,6 +134,24 @@ public partial class WordHandler
 
     private static string? NonEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
 
+    /// <summary>Find embed attribute from a blip element anywhere in the element tree.</summary>
+    private static string? FindEmbedInDescendants(OpenXmlElement el)
+    {
+        // Try SDK Descendants first
+        foreach (var child in el.Descendants())
+        {
+            if (child.LocalName == "blip")
+            {
+                var embed = child.GetAttributes().FirstOrDefault(a => a.LocalName == "embed").Value;
+                if (embed != null) return embed;
+            }
+        }
+        // Fallback: parse outer XML for embed attribute (handles unknown elements)
+        var xml = el.OuterXml;
+        var match = Regex.Match(xml, @"r:embed=""(rId\d+)""");
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
     // ==================== Header / Footer ====================
 
     private void RenderHeaderFooterHtml(StringBuilder sb, bool isHeader)
@@ -661,14 +679,13 @@ public partial class WordHandler
 
         sb.Append($"<div class=\"wg\" style=\"position:relative;width:{widthPx}px;height:{heightPx}px;display:inline-block;overflow:hidden\">");
 
-        // Render each child shape
+        // Render each child element (shapes, pictures, nested groups)
         foreach (var child in group.Elements())
         {
-            if (child.LocalName == "wsp")
+            if (child.LocalName is "wsp" or "pic" or "grpSp")
             {
-                // Get shape transform
-                var spPr = child.Elements().FirstOrDefault(e => e.LocalName == "spPr");
-                var xfrm = spPr?.Elements().FirstOrDefault(e => e.LocalName == "xfrm");
+                // Get transform from xfrm (may be in spPr or grpSpPr)
+                var xfrm = child.Descendants().FirstOrDefault(e => e.LocalName == "xfrm");
                 long offX = 0, offY = 0, extCx = 0, extCy = 0;
                 if (xfrm != null)
                 {
@@ -765,14 +782,14 @@ public partial class WordHandler
         }
         else
         {
-            // Check for image inside shape
-            var blipFill = spPr?.Descendants<A.Blip>().FirstOrDefault();
-            if (blipFill?.Embed?.Value != null)
+            // Check for image inside shape (spPr blip or pic:blipFill blip)
+            var embedAttr = FindEmbedInDescendants(shape);
+            if (embedAttr != null)
             {
                 try
                 {
                     var mainPart = _doc.MainDocumentPart;
-                    var imagePart = mainPart?.GetPartById(blipFill.Embed.Value) as ImagePart;
+                    var imagePart = mainPart?.GetPartById(embedAttr) as ImagePart;
                     if (imagePart != null)
                     {
                         using var stream = imagePart.GetStream();
