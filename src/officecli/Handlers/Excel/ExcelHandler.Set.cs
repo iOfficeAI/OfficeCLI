@@ -964,13 +964,49 @@ public partial class ExcelHandler
                     }
                     else
                     {
-                        cell.CellValue = new CellValue(value);
-                        // Auto-detect type: number or string (boolean only via explicit type=boolean)
-                        if (double.TryParse(value, out _))
-                            cell.DataType = null; // Number is default
+                        // Check if user explicitly set type
+                        var hasExplicitType = properties.Any(p => p.Key.Equals("type", StringComparison.OrdinalIgnoreCase));
+                        var explicitTypeIsString = hasExplicitType && properties
+                            .Where(p => p.Key.Equals("type", StringComparison.OrdinalIgnoreCase))
+                            .Select(p => p.Value?.ToLowerInvariant())
+                            .Any(v => v is "string" or "str");
+                        var explicitTypeIsNumber = hasExplicitType && properties
+                            .Where(p => p.Key.Equals("type", StringComparison.OrdinalIgnoreCase))
+                            .Select(p => p.Value?.ToLowerInvariant())
+                            .Any(v => v is "number" or "num");
+
+                        // Auto-detect ISO date (only if user did NOT explicitly set type=string)
+                        if (!explicitTypeIsString && DateTime.TryParseExact(value,
+                            new[] { "yyyy-MM-dd", "yyyy/MM/dd", "yyyy-MM-dd HH:mm:ss" },
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            System.Globalization.DateTimeStyles.None, out var dt))
+                        {
+                            cell.CellValue = new CellValue(dt.ToOADate().ToString(System.Globalization.CultureInfo.InvariantCulture));
+                            cell.DataType = null; // Date stored as number
+                            // Apply default date format unless user already specified one
+                            if (!properties.ContainsKey("numberformat") && !properties.ContainsKey("numfmt") && !properties.ContainsKey("format"))
+                                styleProps["numberformat"] = "yyyy-mm-dd";
+                        }
+                        // Auto-detect strings that look like numbers but should be text:
+                        // - Leading zeros with length > 1 (e.g. "007", "0912345678"), except decimals like "0.5"
+                        // - Values longer than 15 digits (Excel number precision limit)
+                        else if (!explicitTypeIsNumber
+                            && ((value.Length > 1 && value.StartsWith('0') && !value.StartsWith("0.") && !value.StartsWith("0,") && value.All(c => char.IsDigit(c)))
+                                || (value.All(char.IsDigit) && value.Length > 15)))
+                        {
+                            cell.CellValue = new CellValue(value);
+                            cell.DataType = new EnumValue<CellValues>(CellValues.String);
+                        }
                         else
                         {
-                            cell.DataType = new EnumValue<CellValues>(CellValues.String);
+                            cell.CellValue = new CellValue(value);
+                            // Auto-detect type: number or string (boolean only via explicit type=boolean)
+                            if (double.TryParse(value, out _))
+                                cell.DataType = null; // Number is default
+                            else
+                            {
+                                cell.DataType = new EnumValue<CellValues>(CellValues.String);
+                            }
                         }
                     }
                     break;

@@ -739,6 +739,9 @@ public partial class PowerPointHandler
         if (part is SlidePart animSlidePart)
             ReadShapeAnimation(animSlidePart, shape, node);
 
+        // Populate effective.* properties from slide layout/master inheritance
+        PopulateEffectiveShapeProperties(node, shape, part);
+
         return node;
     }
 
@@ -789,6 +792,9 @@ public partial class PowerPointHandler
                 if (linkUrl != null) node.Format["link"] = linkUrl;
             }
         }
+
+        // Populate effective.* properties from slide layout/master inheritance
+        PopulateEffectiveRunProperties(node, run, part);
 
         return node;
     }
@@ -1098,5 +1104,297 @@ public partial class PowerPointHandler
     private static string? TableStyleGuidToName(string guid)
     {
         return _tableStyleGuidToName.TryGetValue(guid, out var name) ? name : null;
+    }
+
+    // ==================== Effective Properties Resolution (PPT) ====================
+
+    /// <summary>
+    /// Populates effective.* format keys on a shape node for font properties not explicitly set.
+    /// Resolves from: shape placeholder → layout → master text styles → presentation defaults → theme.
+    /// </summary>
+    private static void PopulateEffectiveShapeProperties(DocumentNode node, Shape shape, OpenXmlPart? part)
+    {
+        if (part is not SlidePart slidePart) return;
+
+        // Determine placeholder info for style resolution
+        var ph = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
+            ?.GetFirstChild<PlaceholderShape>();
+        var phType = ph?.Type?.HasValue == true ? ph.Type.Value : PlaceholderValues.Body;
+        bool isTitle = phType == PlaceholderValues.Title || phType == PlaceholderValues.CenteredTitle;
+        bool isSubTitle = phType == PlaceholderValues.SubTitle;
+
+        // Resolve effective font size
+        if (!node.Format.ContainsKey("size"))
+        {
+            var effSize = ResolveEffectiveFontSize(shape, slidePart, ph, isTitle, isSubTitle, phType);
+            if (effSize.HasValue)
+                node.Format["effective.size"] = $"{effSize.Value / 100.0:0.##}pt";
+        }
+
+        // Resolve effective font name from theme
+        if (!node.Format.ContainsKey("font"))
+        {
+            var effFont = ResolveEffectiveFont(shape, slidePart, ph, isTitle);
+            if (effFont != null)
+                node.Format["effective.font"] = effFont;
+        }
+
+        // Resolve effective color
+        if (!node.Format.ContainsKey("color"))
+        {
+            var effColor = ResolveEffectiveColor(shape, slidePart, ph, isTitle, isSubTitle, phType);
+            if (effColor != null)
+                node.Format["effective.color"] = effColor;
+        }
+
+        // Resolve effective bold
+        if (!node.Format.ContainsKey("bold"))
+        {
+            var effBold = ResolveEffectiveBold(shape, slidePart, ph, isTitle, isSubTitle, phType);
+            if (effBold == true)
+                node.Format["effective.bold"] = true;
+        }
+    }
+
+    /// <summary>
+    /// Populates effective.* format keys on a run node for properties not explicitly set.
+    /// </summary>
+    private static void PopulateEffectiveRunProperties(DocumentNode node, Drawing.Run run, OpenXmlPart? part)
+    {
+        if (part is not SlidePart slidePart) return;
+
+        // Walk up to find the containing shape
+        var shape = run.Ancestors<Shape>().FirstOrDefault();
+        if (shape == null) return;
+
+        var ph = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
+            ?.GetFirstChild<PlaceholderShape>();
+        var phType = ph?.Type?.HasValue == true ? ph.Type.Value : PlaceholderValues.Body;
+        bool isTitle = phType == PlaceholderValues.Title || phType == PlaceholderValues.CenteredTitle;
+        bool isSubTitle = phType == PlaceholderValues.SubTitle;
+
+        // Determine the paragraph level for this run
+        var para = run.Ancestors<Drawing.Paragraph>().FirstOrDefault();
+        int level = para?.ParagraphProperties?.Level?.Value ?? 0;
+
+        if (!node.Format.ContainsKey("size"))
+        {
+            var effSize = ResolveEffectiveFontSize(shape, slidePart, ph, isTitle, isSubTitle, phType, level);
+            if (effSize.HasValue)
+                node.Format["effective.size"] = $"{effSize.Value / 100.0:0.##}pt";
+        }
+
+        if (!node.Format.ContainsKey("font"))
+        {
+            var effFont = ResolveEffectiveFont(shape, slidePart, ph, isTitle);
+            if (effFont != null)
+                node.Format["effective.font"] = effFont;
+        }
+
+        if (!node.Format.ContainsKey("color"))
+        {
+            var effColor = ResolveEffectiveColor(shape, slidePart, ph, isTitle, isSubTitle, phType, level);
+            if (effColor != null)
+                node.Format["effective.color"] = effColor;
+        }
+
+        if (!node.Format.ContainsKey("bold"))
+        {
+            var effBold = ResolveEffectiveBold(shape, slidePart, ph, isTitle, isSubTitle, phType, level);
+            if (effBold == true)
+                node.Format["effective.bold"] = true;
+        }
+    }
+
+    /// <summary>
+    /// Resolves font size from: shape lstStyle → layout/master placeholder → master text styles → presentation defaults.
+    /// </summary>
+    private static int? ResolveEffectiveFontSize(Shape shape, SlidePart slidePart,
+        PlaceholderShape? ph, bool isTitle, bool isSubTitle, PlaceholderValues phType, int level = 0)
+    {
+        // 1. Shape's own list style
+        var lstStyle = shape.TextBody?.GetFirstChild<Drawing.ListStyle>();
+        var defRp = GetLevelDefRp(lstStyle, level);
+        if (defRp?.FontSize?.HasValue == true)
+            return defRp.FontSize.Value;
+
+        // 2. Layout/master placeholder matching
+        if (ph != null)
+        {
+            var layoutTree = slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.ShapeTree;
+            var masterTree = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.ShapeTree;
+            foreach (var tree in new[] { layoutTree, masterTree })
+            {
+                if (tree == null) continue;
+                foreach (var candidate in tree.Elements<Shape>())
+                {
+                    var cPh = candidate.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
+                        ?.GetFirstChild<PlaceholderShape>();
+                    if (cPh == null) continue;
+                    if (!PlaceholderMatches(ph, cPh)) continue;
+                    var cLstStyle = candidate.TextBody?.GetFirstChild<Drawing.ListStyle>();
+                    var cDefRp = GetLevelDefRp(cLstStyle, level);
+                    if (cDefRp?.FontSize?.HasValue == true)
+                        return cDefRp.FontSize.Value;
+                }
+            }
+        }
+
+        // 3. Master text styles
+        var masterTxStyles = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.TextStyles;
+        if (masterTxStyles != null)
+        {
+            OpenXmlCompositeElement? styleList = isTitle ? masterTxStyles.TitleStyle
+                : (isSubTitle || phType == PlaceholderValues.Body || phType == PlaceholderValues.Object)
+                    ? masterTxStyles.BodyStyle : masterTxStyles.OtherStyle;
+            if (styleList != null)
+            {
+                var sDefRp = GetLevelDefRp(styleList, level);
+                if (sDefRp?.FontSize?.HasValue == true) return sDefRp.FontSize.Value;
+            }
+        }
+
+        // 4. Presentation-level defaultTextStyle
+        var presStyle = GetPresentationDefaultTextStyle(slidePart);
+        if (presStyle != null)
+        {
+            var pDefRp = GetLevelDefRp(presStyle, level);
+            if (pDefRp?.FontSize?.HasValue == true) return pDefRp.FontSize.Value;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Resolves font name from: theme fonts (major for titles, minor for body).
+    /// </summary>
+    private static string? ResolveEffectiveFont(Shape shape, SlidePart slidePart,
+        PlaceholderShape? ph, bool isTitle)
+    {
+        // Check layout/master placeholder for explicit font
+        if (ph != null)
+        {
+            var layoutTree = slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.ShapeTree;
+            var masterTree = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.ShapeTree;
+            foreach (var tree in new[] { layoutTree, masterTree })
+            {
+                if (tree == null) continue;
+                foreach (var candidate in tree.Elements<Shape>())
+                {
+                    var cPh = candidate.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
+                        ?.GetFirstChild<PlaceholderShape>();
+                    if (cPh == null || !PlaceholderMatches(ph, cPh)) continue;
+                    var cRun = candidate.TextBody?.Descendants<Drawing.Run>().FirstOrDefault();
+                    var cFont = cRun?.RunProperties?.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value
+                        ?? cRun?.RunProperties?.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
+                    if (cFont != null && !cFont.StartsWith("+", StringComparison.Ordinal))
+                        return cFont;
+                }
+            }
+        }
+
+        // Theme fonts
+        var theme = slidePart.SlideLayoutPart?.SlideMasterPart?.ThemePart?.Theme;
+        var fontScheme = theme?.ThemeElements?.FontScheme;
+        if (fontScheme == null) return null;
+
+        if (isTitle)
+        {
+            return fontScheme.MajorFont?.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value
+                ?? fontScheme.MajorFont?.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
+        }
+        else
+        {
+            return fontScheme.MinorFont?.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value
+                ?? fontScheme.MinorFont?.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
+        }
+    }
+
+    /// <summary>
+    /// Resolves text color from master text styles and presentation defaults.
+    /// </summary>
+    private static string? ResolveEffectiveColor(Shape shape, SlidePart slidePart,
+        PlaceholderShape? ph, bool isTitle, bool isSubTitle, PlaceholderValues phType, int level = 0)
+    {
+        // 1. Layout/master placeholder
+        if (ph != null)
+        {
+            var layoutTree = slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.ShapeTree;
+            var masterTree = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.ShapeTree;
+            foreach (var tree in new[] { layoutTree, masterTree })
+            {
+                if (tree == null) continue;
+                foreach (var candidate in tree.Elements<Shape>())
+                {
+                    var cPh = candidate.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
+                        ?.GetFirstChild<PlaceholderShape>();
+                    if (cPh == null || !PlaceholderMatches(ph, cPh)) continue;
+                    var cLstStyle = candidate.TextBody?.GetFirstChild<Drawing.ListStyle>();
+                    var cDefRp = GetLevelDefRp(cLstStyle, level);
+                    var cColor = ReadColorFromFill(cDefRp?.GetFirstChild<Drawing.SolidFill>());
+                    if (cColor != null) return cColor;
+                }
+            }
+        }
+
+        // 2. Master text styles
+        var masterTxStyles = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.TextStyles;
+        if (masterTxStyles != null)
+        {
+            OpenXmlCompositeElement? styleList = isTitle ? masterTxStyles.TitleStyle
+                : (isSubTitle || phType == PlaceholderValues.Body || phType == PlaceholderValues.Object)
+                    ? masterTxStyles.BodyStyle : masterTxStyles.OtherStyle;
+            if (styleList != null)
+            {
+                var sDefRp = GetLevelDefRp(styleList, level);
+                var sColor = ReadColorFromFill(sDefRp?.GetFirstChild<Drawing.SolidFill>());
+                if (sColor != null) return sColor;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Resolves bold from master text styles.
+    /// </summary>
+    private static bool? ResolveEffectiveBold(Shape shape, SlidePart slidePart,
+        PlaceholderShape? ph, bool isTitle, bool isSubTitle, PlaceholderValues phType, int level = 0)
+    {
+        // Master text styles
+        var masterTxStyles = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.TextStyles;
+        if (masterTxStyles != null)
+        {
+            OpenXmlCompositeElement? styleList = isTitle ? masterTxStyles.TitleStyle
+                : (isSubTitle || phType == PlaceholderValues.Body || phType == PlaceholderValues.Object)
+                    ? masterTxStyles.BodyStyle : masterTxStyles.OtherStyle;
+            if (styleList != null)
+            {
+                var sDefRp = GetLevelDefRp(styleList, level);
+                if (sDefRp?.Bold?.HasValue == true) return sDefRp.Bold.Value;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets the presentation-level DefaultTextStyle by navigating from a SlidePart.
+    /// </summary>
+    private static OpenXmlCompositeElement? GetPresentationDefaultTextStyle(SlidePart slidePart)
+    {
+        // Navigate: SlidePart → SlideLayoutPart → SlideMasterPart → PresentationPart → Presentation
+        var masterPart = slidePart.SlideLayoutPart?.SlideMasterPart;
+        if (masterPart == null) return null;
+
+        // The SlideMasterPart's parent relationships include the PresentationPart
+        // We can access the Presentation through the package
+        foreach (var rel in masterPart.Parts)
+        {
+            if (rel.OpenXmlPart is PresentationPart presPart)
+                return presPart.Presentation?.DefaultTextStyle;
+        }
+
+        return null;
     }
 }

@@ -66,6 +66,9 @@ public partial class PowerPointHandler
                     // Refresh runs list so subsequent properties target the new runs
                     runs.Clear();
                     runs.AddRange(GetAllRuns(shape));
+
+                    // Check for text overflow and warn if text may exceed shape bounds
+                    CheckTextOverflow(shape, value, unsupported);
                     break;
                 }
 
@@ -1456,5 +1459,84 @@ public partial class PowerPointHandler
             }
         }
         return unsupported;
+    }
+
+    /// <summary>
+    /// Estimates whether the given text will overflow the shape bounds and adds a warning if so.
+    /// This is a rough heuristic — actual rendering depends on font metrics, kerning, etc.
+    /// </summary>
+    private static void CheckTextOverflow(Shape shape, string text, List<string> unsupported)
+    {
+        var spPr = shape.ShapeProperties;
+        var xfrm = spPr?.Transform2D;
+        var extents = xfrm?.Extents;
+        if (extents?.Cx == null || extents?.Cy == null) return;
+
+        long cx = extents.Cx!.Value;  // width in EMU
+        long cy = extents.Cy!.Value;  // height in EMU
+
+        // Convert EMU to points (1pt = 12700 EMU)
+        const double emuPerPt = 12700.0;
+        double shapeWidthPt = cx / emuPerPt;
+        double shapeHeightPt = cy / emuPerPt;
+
+        // Account for internal margins (default PPT margins: 0.1in left/right, 0.05in top/bottom)
+        // 1in = 72pt
+        double marginLeftRight = 0.1 * 72 * 2; // ~14.4pt total
+        double marginTopBottom = 0.05 * 72 * 2; // ~7.2pt total
+
+        // Check for custom margins on the text body
+        var textBody = shape.TextBody;
+        if (textBody?.BodyProperties != null)
+        {
+            var bp = textBody.BodyProperties;
+            if (bp.LeftInset != null || bp.RightInset != null)
+            {
+                long leftEmu = bp.LeftInset?.Value ?? 91440;  // default 0.1in
+                long rightEmu = bp.RightInset?.Value ?? 91440;
+                marginLeftRight = (leftEmu + rightEmu) / emuPerPt;
+            }
+            if (bp.TopInset != null || bp.BottomInset != null)
+            {
+                long topEmu = bp.TopInset?.Value ?? 45720;  // default 0.05in
+                long bottomEmu = bp.BottomInset?.Value ?? 45720;
+                marginTopBottom = (topEmu + bottomEmu) / emuPerPt;
+            }
+        }
+
+        double usableWidth = shapeWidthPt - marginLeftRight;
+        double usableHeight = shapeHeightPt - marginTopBottom;
+        if (usableWidth <= 0 || usableHeight <= 0) return;
+
+        // Get font size from first run (hundredths of a point), default 18pt
+        double fontSizePt = 18.0;
+        var firstRun = shape.TextBody?.Descendants<Drawing.Run>().FirstOrDefault();
+        if (firstRun?.RunProperties?.FontSize != null)
+            fontSizePt = firstRun.RunProperties.FontSize.Value / 100.0;
+
+        // Estimate character width and line height
+        double charWidth = fontSizePt * 0.6;
+        double lineHeight = fontSizePt * 1.4;
+
+        if (charWidth <= 0) return;
+        int charsPerLine = (int)(usableWidth / charWidth);
+        if (charsPerLine <= 0) charsPerLine = 1;
+
+        // Calculate total lines needed
+        var textLines = text.Replace("\\n", "\n").Split('\n');
+        int totalLines = 0;
+        foreach (var line in textLines)
+        {
+            if (line.Length == 0)
+                totalLines += 1;
+            else
+                totalLines += (int)Math.Ceiling((double)line.Length / charsPerLine);
+        }
+
+        double estimatedHeight = totalLines * lineHeight;
+        if (estimatedHeight > usableHeight)
+        {
+            unsupported.Add($"text may overflow shape bounds (est. {estimatedHeight:F0}pt text in {usableHeight:F0}pt shape)");
+        }
     }
 }

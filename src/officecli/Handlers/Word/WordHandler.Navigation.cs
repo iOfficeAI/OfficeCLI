@@ -400,6 +400,9 @@ public partial class WordHandler
                     node.Format["highlight"] = rp.Highlight.Val.InnerText;
             }
 
+            // Populate effective.* properties from style inheritance
+            PopulateEffectiveParagraphProperties(node, para);
+
             if (depth > 0)
             {
                 int runIdx = 0;
@@ -465,6 +468,11 @@ public partial class WordHandler
                 }
                 catch { }
             }
+
+            // Populate effective.* properties from style inheritance
+            var parentPara = run.Ancestors<Paragraph>().FirstOrDefault();
+            if (parentPara != null)
+                PopulateEffectiveRunProperties(node, run, parentPara);
         }
         else if (element is Hyperlink hyperlink)
         {
