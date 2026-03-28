@@ -103,6 +103,10 @@ public partial class WordHandler
         if (srcStrike != null)
             target.Strike = srcStrike.CloneNode(true) as Strike;
 
+        var srcDStrike = source.GetFirstChild<DoubleStrike>();
+        if (srcDStrike != null)
+            target.DoubleStrike = srcDStrike.CloneNode(true) as DoubleStrike;
+
         var srcColor = source.GetFirstChild<Color>();
         if (srcColor != null)
             target.Color = srcColor.CloneNode(true) as Color;
@@ -114,6 +118,18 @@ public partial class WordHandler
         var srcVertAlign = source.GetFirstChild<VerticalTextAlignment>();
         if (srcVertAlign != null)
             target.VerticalTextAlignment = srcVertAlign.CloneNode(true) as VerticalTextAlignment;
+
+        var srcSmallCaps = source.GetFirstChild<SmallCaps>();
+        if (srcSmallCaps != null)
+            target.SmallCaps = srcSmallCaps.CloneNode(true) as SmallCaps;
+
+        var srcCaps = source.GetFirstChild<Caps>();
+        if (srcCaps != null)
+            target.Caps = srcCaps.CloneNode(true) as Caps;
+
+        var srcRtl = source.GetFirstChild<RightToLeftText>();
+        if (srcRtl != null)
+            target.RightToLeftText = srcRtl.CloneNode(true) as RightToLeftText;
     }
 
     private static string? GetFontFromProperties(RunProperties? rProps)

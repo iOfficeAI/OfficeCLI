@@ -484,6 +484,16 @@ public partial class WordHandler
                 parts.Add("vertical-align:sub;font-size:smaller");
         }
 
+        // SmallCaps / AllCaps
+        if (rProps.SmallCaps != null && (rProps.SmallCaps.Val == null || rProps.SmallCaps.Val.Value))
+            parts.Add("font-variant:small-caps");
+        if (rProps.Caps != null && (rProps.Caps.Val == null || rProps.Caps.Val.Value))
+            parts.Add("text-transform:uppercase");
+
+        // RTL text direction
+        if (rProps.RightToLeftText != null && (rProps.RightToLeftText.Val == null || rProps.RightToLeftText.Val.Value))
+            parts.Add("direction:rtl;unicode-bidi:bidi-override");
+
         return string.Join(";", parts);
     }
 
@@ -495,12 +505,22 @@ public partial class WordHandler
         // Apply table-level borders to cells (since CSS default is now border:none)
         if (!tableBordersNone && tblBorders != null)
         {
+            // Outer borders
             RenderBorderCss(parts, tblBorders.TopBorder, "border-top");
             RenderBorderCss(parts, tblBorders.BottomBorder, "border-bottom");
             RenderBorderCss(parts, tblBorders.LeftBorder, "border-left");
             RenderBorderCss(parts, tblBorders.RightBorder, "border-right");
-            RenderBorderCss(parts, tblBorders.InsideHorizontalBorder, "border-bottom");
-            RenderBorderCss(parts, tblBorders.InsideVerticalBorder, "border-right");
+            // Inner borders (only if outer counterpart not already set)
+            if (!IsBorderNone(tblBorders.InsideHorizontalBorder))
+            {
+                if (IsBorderNone(tblBorders.TopBorder)) RenderBorderCss(parts, tblBorders.InsideHorizontalBorder, "border-top");
+                if (IsBorderNone(tblBorders.BottomBorder)) RenderBorderCss(parts, tblBorders.InsideHorizontalBorder, "border-bottom");
+            }
+            if (!IsBorderNone(tblBorders.InsideVerticalBorder))
+            {
+                if (IsBorderNone(tblBorders.LeftBorder)) RenderBorderCss(parts, tblBorders.InsideVerticalBorder, "border-left");
+                if (IsBorderNone(tblBorders.RightBorder)) RenderBorderCss(parts, tblBorders.InsideVerticalBorder, "border-right");
+            }
         }
 
         if (tcPr == null) return string.Join(";", parts);
@@ -651,7 +671,7 @@ public partial class WordHandler
         body {{ background: #f0f0f0; font-family: {font}; color: {dd.Color}; padding: 20px; }}
         .page {{ background: white; margin: 0 auto 40px; padding: {mT} {mR} {mB} {mL};
             box-shadow: 0 2px 8px rgba(0,0,0,0.15); border-radius: 4px;
-            min-height: {pageH}; line-height: {lh}; font-size: {sz}; position: relative; overflow: hidden; }}
+            min-height: {pageH}; line-height: {lh}; font-size: {sz}; position: relative; overflow-x: auto; }}
         .doc-header, .doc-footer {{ color: #888; font-size: 9pt;
             border-bottom: 1px solid #e0e0e0; margin-bottom: 1em; padding-bottom: 0.5em; }}
         .doc-footer {{ border-bottom: none; border-top: 1px solid #e0e0e0;
