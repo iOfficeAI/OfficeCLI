@@ -400,6 +400,16 @@ public partial class WordHandler
 
                 RenderRunHtml(sb, run, para);
             }
+            else if (child.LocalName is "ins" or "moveTo")
+            {
+                // Tracked insertions — render their child runs
+                foreach (var insRun in child.Elements<Run>())
+                    RenderRunHtml(sb, insRun, para);
+            }
+            else if (child.LocalName is "del" or "moveFrom")
+            {
+                // Tracked deletions — skip (deleted content should not be displayed)
+            }
             else if (child is Hyperlink hyperlink)
             {
                 var relId = hyperlink.Id?.Value;
