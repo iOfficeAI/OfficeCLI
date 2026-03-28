@@ -143,11 +143,6 @@ public partial class WordHandler
         int currentListLevel = 0;
         var listStack = new Stack<string>(); // track nested list tags
 
-        // Detect duplicate content from text boxes (MC AlternateContent)
-        // Word stores text box content in both mc:AlternateContent and as flattened runs.
-        // We track rendered text to skip duplicates.
-        var renderedTextHashes = new HashSet<string>();
-
         foreach (var element in elements)
         {
             if (element is Paragraph para)
@@ -160,16 +155,6 @@ public partial class WordHandler
                     var latex = FormulaParser.ToLatex(oMathPara);
                     sb.AppendLine($"<div class=\"equation\">$${HtmlEncode(latex)}$$</div>");
                     continue;
-                }
-
-                // De-duplicate: if this paragraph's text was already rendered (text box duplicate), skip
-                var paraText = GetParagraphText(para).Trim();
-                if (!string.IsNullOrEmpty(paraText) && paraText.Length > 10)
-                {
-                    var hash = paraText;
-                    if (renderedTextHashes.Contains(hash))
-                        continue; // skip duplicate
-                    renderedTextHashes.Add(hash);
                 }
 
                 // Check if this is a list item
@@ -310,10 +295,39 @@ public partial class WordHandler
 
     private void RenderParagraphContentHtml(StringBuilder sb, Paragraph para)
     {
+        // Check if paragraph has text box drawings — if so, skip fallback text runs
+        bool hasTextBoxDrawing = HasTextBoxContent(para);
+        bool textBoxRendered = false;
+
+        // Collect standalone images that precede text box groups (they overlay the group in Word)
+        var preGroupImages = new List<Drawing>();
+
         foreach (var child in para.ChildElements)
         {
             if (child is Run run)
             {
+                // If this run contains a text box drawing, render it
+                var drawing = run.GetFirstChild<Drawing>() ?? run.Descendants<Drawing>().FirstOrDefault();
+                if (drawing != null && HasGroupOrShape(drawing))
+                {
+                    // Render group with any preceding images overlaid
+                    RenderDrawingWithOverlaidImages(sb, drawing, preGroupImages);
+                    preGroupImages.Clear();
+                    textBoxRendered = true;
+                    continue;
+                }
+
+                // Collect standalone images before text box group
+                if (hasTextBoxDrawing && !textBoxRendered && drawing != null)
+                {
+                    preGroupImages.Add(drawing);
+                    continue;
+                }
+
+                // Skip fallback text runs after text box has been rendered
+                if (hasTextBoxDrawing && textBoxRendered)
+                    continue;
+
                 RenderRunHtml(sb, run, para);
             }
             else if (child is Hyperlink hyperlink)
@@ -360,8 +374,9 @@ public partial class WordHandler
 
     private void RenderRunHtml(StringBuilder sb, Run run, Paragraph para)
     {
-        // Check for image
-        var drawing = run.GetFirstChild<Drawing>();
+        // Check for drawing (direct or inside mc:AlternateContent)
+        var drawing = run.GetFirstChild<Drawing>()
+            ?? run.Descendants<Drawing>().FirstOrDefault();
         if (drawing != null)
         {
             RenderDrawingHtml(sb, drawing);
@@ -400,21 +415,92 @@ public partial class WordHandler
             sb.Append("</span>");
     }
 
-    // ==================== Image Rendering ====================
+    // ==================== Drawing with Overlaid Images ====================
+
+    private void RenderDrawingWithOverlaidImages(StringBuilder sb, Drawing groupDrawing, List<Drawing> overlaidImages)
+    {
+        if (overlaidImages.Count == 0)
+        {
+            RenderDrawingHtml(sb, groupDrawing);
+            return;
+        }
+
+        // Inject floating images into the group's first text box
+        _pendingFloatImages = overlaidImages;
+        RenderDrawingHtml(sb, groupDrawing);
+        _pendingFloatImages = null;
+    }
+
+    /// <summary>Images to float-inject into the next text box rendered.</summary>
+    private List<Drawing>? _pendingFloatImages;
+
+    // ==================== Drawing Rendering (images, groups, shapes) ====================
+
+    /// <summary>Check if a paragraph contains text box drawings.</summary>
+    private static bool HasTextBoxContent(Paragraph para)
+    {
+        foreach (var run in para.Elements<Run>())
+        {
+            var drawing = run.GetFirstChild<Drawing>() ?? run.Descendants<Drawing>().FirstOrDefault();
+            if (drawing != null && HasGroupOrShape(drawing))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>Check if a drawing contains groups or shapes with text boxes.</summary>
+    private static bool HasGroupOrShape(Drawing drawing)
+    {
+        return drawing.Descendants().Any(e => e.LocalName == "wgp" || e.LocalName == "wsp");
+    }
 
     private void RenderDrawingHtml(StringBuilder sb, Drawing drawing)
     {
-        // Try to find the blip (embedded image reference)
+        // Check for groups/shapes first (text boxes, decorated shapes)
+        var group = drawing.Descendants().FirstOrDefault(e => e.LocalName == "wgp");
+        if (group != null)
+        {
+            // Get overall extent from wp:inline or wp:anchor
+            var extent = drawing.Descendants<DW.Extent>().FirstOrDefault();
+            long groupWidthEmu = extent?.Cx?.Value ?? 0;
+            long groupHeightEmu = extent?.Cy?.Value ?? 0;
+
+            if (groupWidthEmu > 0 && groupHeightEmu > 0)
+            {
+                RenderGroupHtml(sb, group, groupWidthEmu, groupHeightEmu);
+                return;
+            }
+        }
+
+        // Check for standalone shape (wsp without group)
+        var shape = drawing.Descendants().FirstOrDefault(e => e.LocalName == "wsp");
+        if (shape != null)
+        {
+            var extent = drawing.Descendants<DW.Extent>().FirstOrDefault();
+            long shapeWidth = extent?.Cx?.Value ?? 0;
+            long shapeHeight = extent?.Cy?.Value ?? 0;
+            if (shapeWidth > 0 && shapeHeight > 0)
+            {
+                RenderShapeHtml(sb, shape, 0, 0, shapeWidth, shapeHeight, shapeWidth, shapeHeight);
+                return;
+            }
+        }
+
+        // Fall back to image rendering
+        RenderImageHtml(sb, drawing);
+    }
+
+    private void RenderImageHtml(StringBuilder sb, Drawing drawing)
+    {
         var blip = drawing.Descendants<A.Blip>().FirstOrDefault();
         if (blip?.Embed?.Value == null) return;
 
-        var relId = blip.Embed.Value;
         var mainPart = _doc.MainDocumentPart;
         if (mainPart == null) return;
 
         try
         {
-            var imagePart = mainPart.GetPartById(relId) as ImagePart;
+            var imagePart = mainPart.GetPartById(blip.Embed.Value) as ImagePart;
             if (imagePart == null) return;
 
             var contentType = imagePart.ContentType;
@@ -423,7 +509,6 @@ public partial class WordHandler
             stream.CopyTo(ms);
             var base64 = Convert.ToBase64String(ms.ToArray());
 
-            // Get dimensions
             var extent = drawing.Descendants<DW.Extent>().FirstOrDefault()
                 ?? drawing.Descendants<A.Extents>().FirstOrDefault() as OpenXmlElement;
             string widthAttr = "", heightAttr = "";
@@ -438,16 +523,396 @@ public partial class WordHandler
                 if (aExt.Cy?.Value > 0) heightAttr = $" height=\"{aExt.Cy.Value / 9525}\"";
             }
 
-            // Get alt text
             var docProps = drawing.Descendants<DW.DocProperties>().FirstOrDefault();
             var alt = docProps?.Description?.Value ?? docProps?.Name?.Value ?? "image";
 
-            sb.Append($"<img src=\"data:{contentType};base64,{base64}\" alt=\"{HtmlEncode(alt)}\"{widthAttr}{heightAttr} style=\"max-width:100%;height:auto\">");
+            // Crop support: a:srcRect on blipFill
+            var cropCss = GetCropCss(drawing);
+            var styleParts = new List<string> { "max-width:100%", "height:auto" };
+            if (!string.IsNullOrEmpty(cropCss)) styleParts.Add(cropCss);
+
+            sb.Append($"<img src=\"data:{contentType};base64,{base64}\" alt=\"{HtmlEncode(alt)}\"{widthAttr}{heightAttr} style=\"{string.Join(";", styleParts)}\">");
         }
         catch
         {
             sb.Append("<span class=\"img-error\">[Image]</span>");
         }
+    }
+
+    /// <summary>
+    /// Extract CSS clip-path from a:srcRect crop data.
+    /// srcRect l/t/r/b are in 1/1000 of a percent (e.g., 25000 = 25%).
+    /// Negative values mean extend (no crop on that side).
+    /// </summary>
+    private static string GetCropCss(OpenXmlElement container)
+    {
+        // Look for srcRect in blipFill
+        var srcRect = container.Descendants().FirstOrDefault(e => e.LocalName == "srcRect");
+        if (srcRect == null) return "";
+
+        var l = GetIntAttr(srcRect, "l");
+        var t = GetIntAttr(srcRect, "t");
+        var r = GetIntAttr(srcRect, "r");
+        var b = GetIntAttr(srcRect, "b");
+
+        // Skip if no positive crop values
+        if (l <= 0 && t <= 0 && r <= 0 && b <= 0) return "";
+
+        // Convert from 1/1000 percent to CSS percent
+        var top = Math.Max(0, t / 1000.0);
+        var right = Math.Max(0, r / 1000.0);
+        var bottom = Math.Max(0, b / 1000.0);
+        var left = Math.Max(0, l / 1000.0);
+
+        return $"clip-path:inset({top:0.##}% {right:0.##}% {bottom:0.##}% {left:0.##}%)";
+    }
+
+    private static int GetIntAttr(OpenXmlElement el, string attrName)
+    {
+        var val = el.GetAttributes().FirstOrDefault(a => a.LocalName == attrName).Value;
+        return val != null && int.TryParse(val, out var v) ? v : 0;
+    }
+
+    // ==================== Group / Shape Rendering ====================
+
+    private void RenderGroupHtml(StringBuilder sb, OpenXmlElement group, long groupWidthEmu, long groupHeightEmu)
+    {
+        var widthPx = groupWidthEmu / 9525;
+        var heightPx = groupHeightEmu / 9525;
+
+        // Get the group's child coordinate space from grpSpPr > xfrm
+        long chOffX = 0, chOffY = 0, chExtCx = groupWidthEmu, chExtCy = groupHeightEmu;
+        var grpSpPr = group.Elements().FirstOrDefault(e => e.LocalName == "grpSpPr");
+        var grpXfrm = grpSpPr?.Elements().FirstOrDefault(e => e.LocalName == "xfrm");
+        if (grpXfrm != null)
+        {
+            var chOff = grpXfrm.Elements().FirstOrDefault(e => e.LocalName == "chOff");
+            var chExt = grpXfrm.Elements().FirstOrDefault(e => e.LocalName == "chExt");
+            if (chOff != null)
+            {
+                chOffX = GetLongAttr(chOff, "x");
+                chOffY = GetLongAttr(chOff, "y");
+            }
+            if (chExt != null)
+            {
+                chExtCx = GetLongAttr(chExt, "cx");
+                chExtCy = GetLongAttr(chExt, "cy");
+            }
+        }
+
+        sb.Append($"<div class=\"wg\" style=\"position:relative;width:{widthPx}px;height:{heightPx}px;display:inline-block;overflow:hidden\">");
+
+        // Render each child shape
+        foreach (var child in group.Elements())
+        {
+            if (child.LocalName == "wsp")
+            {
+                // Get shape transform
+                var spPr = child.Elements().FirstOrDefault(e => e.LocalName == "spPr");
+                var xfrm = spPr?.Elements().FirstOrDefault(e => e.LocalName == "xfrm");
+                long offX = 0, offY = 0, extCx = 0, extCy = 0;
+                if (xfrm != null)
+                {
+                    var off = xfrm.Elements().FirstOrDefault(e => e.LocalName == "off");
+                    var ext = xfrm.Elements().FirstOrDefault(e => e.LocalName == "ext");
+                    if (off != null) { offX = GetLongAttr(off, "x"); offY = GetLongAttr(off, "y"); }
+                    if (ext != null) { extCx = GetLongAttr(ext, "cx"); extCy = GetLongAttr(ext, "cy"); }
+                }
+
+                RenderShapeHtml(sb, child, offX - chOffX, offY - chOffY, extCx, extCy, chExtCx, chExtCy);
+            }
+        }
+
+        sb.Append("</div>");
+    }
+
+    private void RenderShapeHtml(StringBuilder sb, OpenXmlElement shape, long offX, long offY,
+        long extCx, long extCy, long coordSpaceCx, long coordSpaceCy)
+    {
+        // Convert child coordinates to percentage of group
+        double leftPct = coordSpaceCx > 0 ? (double)offX / coordSpaceCx * 100 : 0;
+        double topPct = coordSpaceCy > 0 ? (double)offY / coordSpaceCy * 100 : 0;
+        double widthPct = coordSpaceCx > 0 ? (double)extCx / coordSpaceCx * 100 : 100;
+        double heightPct = coordSpaceCy > 0 ? (double)extCy / coordSpaceCy * 100 : 100;
+
+        // Get fill color
+        var spPr = shape.Elements().FirstOrDefault(e => e.LocalName == "spPr");
+        var fillCss = ResolveShapeFillCss(spPr);
+
+        // Get border
+        var borderCss = ResolveShapeBorderCss(spPr);
+
+        // Check for text box content
+        var txbx = shape.Descendants().FirstOrDefault(e => e.LocalName == "txbxContent");
+
+        // Build style
+        var style = $"position:absolute;left:{leftPct:0.##}%;top:{topPct:0.##}%;width:{widthPct:0.##}%;height:{heightPct:0.##}%";
+        if (!string.IsNullOrEmpty(fillCss)) style += $";{fillCss}";
+        if (!string.IsNullOrEmpty(borderCss)) style += $";{borderCss}";
+
+        // Get body properties for text layout
+        var bodyPr = shape.Elements().FirstOrDefault(e => e.LocalName == "bodyPr");
+        var vAnchor = bodyPr?.GetAttributes().FirstOrDefault(a => a.LocalName == "anchor").Value;
+        if (vAnchor == "ctr") style += ";display:flex;align-items:center";
+        else if (vAnchor == "b") style += ";display:flex;align-items:flex-end";
+
+        // Padding from bodyPr insets (EMU → px)
+        var lIns = GetLongAttr(bodyPr, "lIns", 91440);
+        var tIns = GetLongAttr(bodyPr, "tIns", 45720);
+        var rIns = GetLongAttr(bodyPr, "rIns", 91440);
+        var bIns = GetLongAttr(bodyPr, "bIns", 45720);
+        style += $";padding:{tIns / 9525}px {rIns / 9525}px {bIns / 9525}px {lIns / 9525}px";
+
+        sb.Append($"<div style=\"{style}\">");
+
+        if (txbx != null)
+        {
+            // Render text box content (standard Word paragraphs)
+            sb.Append("<div style=\"width:100%\">");
+
+            // Inject pending float images into this text box
+            if (_pendingFloatImages != null && _pendingFloatImages.Count > 0)
+            {
+                foreach (var imgDrawing in _pendingFloatImages)
+                {
+                    var imgBlip = imgDrawing.Descendants<A.Blip>().FirstOrDefault();
+                    if (imgBlip?.Embed?.Value == null) continue;
+                    try
+                    {
+                        var imgPart = _doc.MainDocumentPart?.GetPartById(imgBlip.Embed.Value) as ImagePart;
+                        if (imgPart == null) continue;
+                        using var imgStream = imgPart.GetStream();
+                        using var imgMs = new MemoryStream();
+                        imgStream.CopyTo(imgMs);
+                        var imgBase64 = Convert.ToBase64String(imgMs.ToArray());
+                        var imgExtent = imgDrawing.Descendants<DW.Extent>().FirstOrDefault();
+                        var imgW = imgExtent?.Cx?.Value > 0 ? imgExtent.Cx.Value / 9525 : 100;
+                        var imgH = imgExtent?.Cy?.Value > 0 ? imgExtent.Cy.Value / 9525 : 100;
+                        var cropCss = GetCropCss(imgDrawing);
+                        var imgStyle = $"float:left;width:{imgW}px;height:{imgH}px;object-fit:cover;margin:5px 10px 5px 0";
+                        if (!string.IsNullOrEmpty(cropCss)) imgStyle += $";{cropCss}";
+                        sb.Append($"<img src=\"data:{imgPart.ContentType};base64,{imgBase64}\" style=\"{imgStyle}\">");
+                    }
+                    catch { }
+                }
+                _pendingFloatImages = null;
+            }
+
+            foreach (var para in txbx.Descendants<Paragraph>())
+            {
+                RenderParagraphHtml(sb, para);
+            }
+            sb.Append("</div>");
+        }
+        else
+        {
+            // Check for image inside shape
+            var blipFill = spPr?.Descendants<A.Blip>().FirstOrDefault();
+            if (blipFill?.Embed?.Value != null)
+            {
+                try
+                {
+                    var mainPart = _doc.MainDocumentPart;
+                    var imagePart = mainPart?.GetPartById(blipFill.Embed.Value) as ImagePart;
+                    if (imagePart != null)
+                    {
+                        using var stream = imagePart.GetStream();
+                        using var ms = new MemoryStream();
+                        stream.CopyTo(ms);
+                        var base64 = Convert.ToBase64String(ms.ToArray());
+                        sb.Append($"<img src=\"data:{imagePart.ContentType};base64,{base64}\" style=\"width:100%;height:100%;object-fit:cover\">");
+                    }
+                }
+                catch { }
+            }
+        }
+
+        sb.Append("</div>");
+    }
+
+    // ==================== Theme Color Resolution ====================
+
+    private Dictionary<string, string>? _themeColors;
+
+    private Dictionary<string, string> GetThemeColors()
+    {
+        if (_themeColors != null) return _themeColors;
+
+        _themeColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var theme = _doc.MainDocumentPart?.ThemePart?.Theme;
+        var colorScheme = theme?.ThemeElements?.ColorScheme;
+        if (colorScheme == null) return _themeColors;
+
+        void Add(string name, OpenXmlCompositeElement? color)
+        {
+            if (color == null) return;
+            var rgb = color.GetFirstChild<A.RgbColorModelHex>()?.Val?.Value;
+            var sys = color.GetFirstChild<A.SystemColor>();
+            var srgb = sys?.LastColor?.Value;
+            var hex = rgb ?? srgb;
+            if (hex != null) _themeColors[name] = hex;
+        }
+
+        Add("dk1", colorScheme.Dark1Color);
+        Add("dk2", colorScheme.Dark2Color);
+        Add("lt1", colorScheme.Light1Color);
+        Add("lt2", colorScheme.Light2Color);
+        Add("accent1", colorScheme.Accent1Color);
+        Add("accent2", colorScheme.Accent2Color);
+        Add("accent3", colorScheme.Accent3Color);
+        Add("accent4", colorScheme.Accent4Color);
+        Add("accent5", colorScheme.Accent5Color);
+        Add("accent6", colorScheme.Accent6Color);
+        Add("hlink", colorScheme.Hyperlink);
+        Add("folHlink", colorScheme.FollowedHyperlinkColor);
+
+        // Aliases
+        if (_themeColors.TryGetValue("dk1", out var dk1)) { _themeColors["tx1"] = dk1; _themeColors["dark1"] = dk1; }
+        if (_themeColors.TryGetValue("lt1", out var lt1)) { _themeColors["bg1"] = lt1; _themeColors["light1"] = lt1; }
+        if (_themeColors.TryGetValue("lt2", out var lt2)) { _themeColors["bg2"] = lt2; _themeColors["light2"] = lt2; }
+
+        return _themeColors;
+    }
+
+    private string? ResolveSchemeColor(OpenXmlElement schemeColor)
+    {
+        var schemeName = schemeColor.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+        if (schemeName == null) return null;
+
+        var themeColors = GetThemeColors();
+        if (!themeColors.TryGetValue(schemeName, out var hex)) return null;
+
+        // Apply color transforms (lumMod, lumOff, tint, shade)
+        var r = Convert.ToInt32(hex[..2], 16);
+        var g = Convert.ToInt32(hex[2..4], 16);
+        var b = Convert.ToInt32(hex[4..6], 16);
+
+        var lumMod = schemeColor.Elements().FirstOrDefault(e => e.LocalName == "lumMod");
+        var lumOff = schemeColor.Elements().FirstOrDefault(e => e.LocalName == "lumOff");
+        var tint = schemeColor.Elements().FirstOrDefault(e => e.LocalName == "tint");
+        var shade = schemeColor.Elements().FirstOrDefault(e => e.LocalName == "shade");
+
+        if (tint != null)
+        {
+            var t = GetLongAttr(tint, "val") / 100000.0;
+            r = (int)(r + (255 - r) * (1 - t));
+            g = (int)(g + (255 - g) * (1 - t));
+            b = (int)(b + (255 - b) * (1 - t));
+        }
+
+        if (shade != null)
+        {
+            var s = GetLongAttr(shade, "val") / 100000.0;
+            r = (int)(r * s);
+            g = (int)(g * s);
+            b = (int)(b * s);
+        }
+
+        if (lumMod != null || lumOff != null)
+        {
+            var mod = (lumMod != null ? GetLongAttr(lumMod, "val") : 100000) / 100000.0;
+            var off = (lumOff != null ? GetLongAttr(lumOff, "val") : 0) / 100000.0;
+            RgbToHsl(r, g, b, out var h, out var s, out var l);
+            l = Math.Clamp(l * mod + off, 0, 1);
+            HslToRgb(h, s, l, out r, out g, out b);
+        }
+
+        r = Math.Clamp(r, 0, 255);
+        g = Math.Clamp(g, 0, 255);
+        b = Math.Clamp(b, 0, 255);
+        return $"#{r:X2}{g:X2}{b:X2}";
+    }
+
+    private string ResolveShapeFillCss(OpenXmlElement? spPr)
+    {
+        if (spPr == null) return "";
+
+        // No fill
+        if (spPr.Elements().Any(e => e.LocalName == "noFill")) return "";
+
+        // Solid fill
+        var solidFill = spPr.Elements().FirstOrDefault(e => e.LocalName == "solidFill");
+        if (solidFill != null)
+        {
+            var rgb = solidFill.Elements().FirstOrDefault(e => e.LocalName == "srgbClr");
+            if (rgb != null)
+            {
+                var val = rgb.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+                if (val != null) return $"background-color:#{val}";
+            }
+            var scheme = solidFill.Elements().FirstOrDefault(e => e.LocalName == "schemeClr");
+            if (scheme != null)
+            {
+                var color = ResolveSchemeColor(scheme);
+                if (color != null) return $"background-color:{color}";
+            }
+        }
+
+        return "";
+    }
+
+    private string ResolveShapeBorderCss(OpenXmlElement? spPr)
+    {
+        if (spPr == null) return "";
+        var ln = spPr.Elements().FirstOrDefault(e => e.LocalName == "ln");
+        if (ln == null) return "";
+        if (ln.Elements().Any(e => e.LocalName == "noFill")) return "border:none";
+
+        var solidFill = ln.Elements().FirstOrDefault(e => e.LocalName == "solidFill");
+        if (solidFill == null) return "";
+
+        string? color = null;
+        var rgb = solidFill.Elements().FirstOrDefault(e => e.LocalName == "srgbClr");
+        if (rgb != null) color = $"#{rgb.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value}";
+        var scheme = solidFill.Elements().FirstOrDefault(e => e.LocalName == "schemeClr");
+        if (scheme != null) color = ResolveSchemeColor(scheme);
+
+        var w = ln.GetAttributes().FirstOrDefault(a => a.LocalName == "w").Value;
+        var widthPx = w != null && long.TryParse(w, out var emu) ? Math.Max(1, emu / 12700.0) : 1;
+
+        return $"border:{widthPx:0.#}px solid {color ?? "#000"}";
+    }
+
+    // ==================== Color Math Helpers ====================
+
+    private static long GetLongAttr(OpenXmlElement? el, string attrName, long defaultVal = 0)
+    {
+        if (el == null) return defaultVal;
+        var val = el.GetAttributes().FirstOrDefault(a => a.LocalName == attrName).Value;
+        return val != null && long.TryParse(val, out var v) ? v : defaultVal;
+    }
+
+    private static void RgbToHsl(int r, int g, int b, out double h, out double s, out double l)
+    {
+        var rf = r / 255.0; var gf = g / 255.0; var bf = b / 255.0;
+        var max = Math.Max(rf, Math.Max(gf, bf));
+        var min = Math.Min(rf, Math.Min(gf, bf));
+        var delta = max - min;
+        l = (max + min) / 2.0;
+        if (delta < 1e-10) { h = 0; s = 0; return; }
+        s = l < 0.5 ? delta / (max + min) : delta / (2.0 - max - min);
+        if (Math.Abs(max - rf) < 1e-10) h = ((gf - bf) / delta + (gf < bf ? 6 : 0)) / 6.0;
+        else if (Math.Abs(max - gf) < 1e-10) h = ((bf - rf) / delta + 2) / 6.0;
+        else h = ((rf - gf) / delta + 4) / 6.0;
+    }
+
+    private static void HslToRgb(double h, double s, double l, out int r, out int g, out int b)
+    {
+        if (s < 1e-10) { r = g = b = (int)Math.Round(l * 255); return; }
+        var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        var p = 2 * l - q;
+        r = (int)Math.Round(HueToRgb(p, q, h + 1.0 / 3) * 255);
+        g = (int)Math.Round(HueToRgb(p, q, h) * 255);
+        b = (int)Math.Round(HueToRgb(p, q, h - 1.0 / 3) * 255);
+    }
+
+    private static double HueToRgb(double p, double q, double t)
+    {
+        if (t < 0) t += 1; if (t > 1) t -= 1;
+        if (t < 1.0 / 6) return p + (q - p) * 6 * t;
+        if (t < 1.0 / 2) return q;
+        if (t < 2.0 / 3) return p + (q - p) * (2.0 / 3 - t) * 6;
+        return p;
     }
 
     // ==================== Table Rendering ====================
@@ -1054,6 +1519,13 @@ public partial class WordHandler
             margin: 0.3em 2.54cm;
             font-size: 10.5pt;
             width: calc(100% - 5.08cm);
+        }
+        .wg {
+            margin: 0.3em auto;
+        }
+        .wg p {
+            padding: 0;
+            margin: 0.05em 0;
         }
         table.borderless {
             border: none;
