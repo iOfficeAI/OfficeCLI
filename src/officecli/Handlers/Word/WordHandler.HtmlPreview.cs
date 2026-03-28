@@ -134,6 +134,27 @@ public partial class WordHandler
 
     private static string? NonEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
 
+    /// <summary>Resolve shading fill color: direct hex or themeFill + themeFillTint/Shade.</summary>
+    private string? ResolveShadingFill(Shading? shading)
+    {
+        if (shading == null) return null;
+        var fill = shading.Fill?.Value;
+        if (fill != null && fill != "auto") return $"#{fill}";
+        // Check themeFill
+        var themeFill = shading.GetAttributes().FirstOrDefault(a => a.LocalName == "themeFill").Value;
+        if (themeFill != null)
+        {
+            var tc = GetThemeColors();
+            if (tc.TryGetValue(themeFill, out var hex))
+            {
+                var tint = shading.GetAttributes().FirstOrDefault(a => a.LocalName == "themeFillTint").Value;
+                var shade = shading.GetAttributes().FirstOrDefault(a => a.LocalName == "themeFillShade").Value;
+                return ApplyTintShade(hex, tint, shade);
+            }
+        }
+        return null;
+    }
+
     /// <summary>Check if dimensions are ≥90% of the page size (full-page background element).</summary>
     private bool IsFullPageSize(long widthEmu, long heightEmu)
     {
@@ -447,6 +468,18 @@ public partial class WordHandler
                 var latex = FormulaParser.ToLatex(child);
                 sb.Append($"${HtmlEncode(latex)}$");
             }
+            else if (child.LocalName is "sdt" or "smartTag" or "customXml")
+            {
+                // Content controls, smart tags, custom XML — render their child runs
+                foreach (var innerRun in child.Descendants<Run>())
+                    RenderRunHtml(sb, innerRun, para);
+            }
+            else if (child.LocalName == "fldSimple")
+            {
+                // Simple field codes (page numbers, cross-refs) — render cached display text
+                foreach (var fldRun in child.Elements<Run>())
+                    RenderRunHtml(sb, fldRun, para);
+            }
         }
     }
 
@@ -463,33 +496,56 @@ public partial class WordHandler
             return;
         }
 
-        // Check for break
-        var br = run.GetFirstChild<Break>();
-        if (br != null)
+        // Collect content: iterate all child elements to handle multiple breaks, tabs, text, symbols
+        var hasContent = false;
+        foreach (var child in run.ChildElements)
         {
-            if (br.Type?.Value == BreakValues.Page)
-                sb.Append("<hr class=\"page-break\">");
-            else
-                sb.Append("<br>");
+            if (child is Break brk)
+            {
+                if (brk.Type?.Value == BreakValues.Page)
+                    sb.Append("<hr class=\"page-break\">");
+                else
+                    sb.Append("<br>");
+                hasContent = true;
+            }
+            else if (child is TabChar)
+            {
+                hasContent = true; // will render below in span
+            }
+            else if (child is Text t && !string.IsNullOrEmpty(t.Text))
+            {
+                hasContent = true;
+            }
+            else if (child is SymbolChar sym)
+            {
+                hasContent = true; // symbol character
+            }
         }
 
-        // Check for tab
-        var tab = run.GetFirstChild<TabChar>();
-
-        var text = GetRunText(run);
-        if (string.IsNullOrEmpty(text) && tab == null) return;
+        if (!hasContent) return;
 
         var rProps = ResolveEffectiveRunProperties(run, para);
         var style = GetRunInlineCss(rProps);
-
         var needsSpan = !string.IsNullOrEmpty(style);
         if (needsSpan)
             sb.Append($"<span style=\"{style}\">");
 
-        if (tab != null)
-            sb.Append("&emsp;");
-
-        sb.Append(HtmlEncode(text));
+        foreach (var child in run.ChildElements)
+        {
+            if (child is TabChar)
+                sb.Append("&emsp;");
+            else if (child is Text t && !string.IsNullOrEmpty(t.Text))
+                sb.Append(HtmlEncode(t.Text));
+            else if (child is SymbolChar sym)
+            {
+                // w:sym — try to render as Unicode character
+                var charCode = sym.Char?.Value;
+                if (charCode != null && int.TryParse(charCode, System.Globalization.NumberStyles.HexNumber, null, out var code))
+                    sb.Append($"&#x{code:X};");
+                else
+                    sb.Append("\u25A1"); // fallback: □
+            }
+        }
 
         if (needsSpan)
             sb.Append("</span>");
@@ -1279,20 +1335,47 @@ public partial class WordHandler
         return val is null or "nil" or "none";
     }
 
+    /// <summary>Calculate the grid column index for a cell, accounting for gridSpan in preceding cells.</summary>
+    private static int GetGridColumn(TableRow row, TableCell cell)
+    {
+        int gridCol = 0;
+        foreach (var c in row.Elements<TableCell>())
+        {
+            if (c == cell) return gridCol;
+            gridCol += c.TableCellProperties?.GridSpan?.Val?.Value ?? 1;
+        }
+        return gridCol;
+    }
+
+    /// <summary>Find the cell at a given grid column in a row, accounting for gridSpan.</summary>
+    private static TableCell? GetCellAtGridColumn(TableRow row, int targetGridCol)
+    {
+        int gridCol = 0;
+        foreach (var cell in row.Elements<TableCell>())
+        {
+            if (gridCol == targetGridCol) return cell;
+            gridCol += cell.TableCellProperties?.GridSpan?.Val?.Value ?? 1;
+            if (gridCol > targetGridCol) return null; // target is inside a spanned cell
+        }
+        return null;
+    }
+
     private static int CountRowSpan(Table table, TableRow startRow, TableCell startCell)
     {
         var rows = table.Elements<TableRow>().ToList();
         var startRowIdx = rows.IndexOf(startRow);
-        var cellIdx = startRow.Elements<TableCell>().ToList().IndexOf(startCell);
-        if (startRowIdx < 0 || cellIdx < 0) return 1;
+        if (startRowIdx < 0) return 1;
+
+        // Use grid column position instead of cell index
+        var gridCol = GetGridColumn(startRow, startCell);
 
         int span = 1;
         for (int i = startRowIdx + 1; i < rows.Count; i++)
         {
-            var cells = rows[i].Elements<TableCell>().ToList();
-            if (cellIdx >= cells.Count) break;
+            var cell = GetCellAtGridColumn(rows[i], gridCol);
+            if (cell == null) break;
 
-            var vm = cells[cellIdx].TableCellProperties?.VerticalMerge;
+            var vm = cell.TableCellProperties?.VerticalMerge;
             if (vm != null && (vm.Val == null || vm.Val.Value == MergedCellValues.Continue))
                 span++;
             else
@@ -1367,13 +1450,14 @@ public partial class WordHandler
 
         // Shading / background (direct or from style)
         var shading = pProps.Shading;
-        if (shading?.Fill?.Value is string fill && fill != "auto")
-            parts.Add($"background-color:#{fill}");
+        var fillColor = ResolveShadingFill(shading);
+        if (fillColor != null)
+            parts.Add($"background-color:{fillColor}");
         else
         {
             // Try to resolve from paragraph style
             var bgFromStyle = ResolveParagraphShadingFromStyle(para);
-            if (bgFromStyle != null) parts.Add($"background-color:#{bgFromStyle}");
+            if (bgFromStyle != null) parts.Add($"background-color:{bgFromStyle}");
         }
 
         // Borders
@@ -1406,8 +1490,8 @@ public partial class WordHandler
             if (style == null) break;
 
             var shading = style.StyleParagraphProperties?.Shading;
-            if (shading?.Fill?.Value is string fill && fill != "auto")
-                return fill;
+            var sFill = ResolveShadingFill(shading);
+            if (sFill != null) return sFill;
 
             currentStyleId = style.BasedOn?.Val?.Value;
         }
@@ -1456,9 +1540,9 @@ public partial class WordHandler
                     }
                 }
 
-                var shading = pPr.Shading;
-                if (shading?.Fill?.Value is string fill && fill != "auto" && !parts.Any(p => p.StartsWith("background")))
-                    parts.Add($"background-color:#{fill}");
+                var shadingFill = ResolveShadingFill(pPr.Shading);
+                if (shadingFill != null && !parts.Any(p => p.StartsWith("background")))
+                    parts.Add($"background-color:{shadingFill}");
             }
 
             currentStyleId = style.BasedOn?.Val?.Value;
@@ -1481,12 +1565,12 @@ public partial class WordHandler
         if (size != null && int.TryParse(size, out var halfPts))
             parts.Add($"font-size:{halfPts / 2.0:0.##}pt");
 
-        // Bold
-        if (rProps.Bold != null)
+        // Bold (w:b with no val or val="true"/"1" means bold; val="false"/"0" means not bold)
+        if (rProps.Bold != null && (rProps.Bold.Val == null || rProps.Bold.Val.Value))
             parts.Add("font-weight:bold");
 
-        // Italic
-        if (rProps.Italic != null)
+        // Italic (same logic as bold)
+        if (rProps.Italic != null && (rProps.Italic.Val == null || rProps.Italic.Val.Value))
             parts.Add("font-style:italic");
 
         // Underline
@@ -1498,7 +1582,7 @@ public partial class WordHandler
         }
 
         // Strikethrough
-        if (rProps.Strike != null)
+        if (rProps.Strike != null && (rProps.Strike.Val == null || rProps.Strike.Val.Value))
         {
             var existing = parts.FirstOrDefault(p => p.StartsWith("text-decoration:"));
             if (existing != null)
@@ -1562,10 +1646,10 @@ public partial class WordHandler
 
         if (tcPr == null) return string.Join(";", parts);
 
-        // Shading / fill
-        var shading = tcPr.Shading;
-        if (shading?.Fill?.Value is string fill && fill != "auto")
-            parts.Add($"background-color:#{fill}");
+        // Shading / fill (supports theme colors)
+        var cellFill = ResolveShadingFill(tcPr.Shading);
+        if (cellFill != null)
+            parts.Add($"background-color:{cellFill}");
 
         // Vertical alignment
         var vAlign = tcPr.TableCellVerticalAlignment?.Val;

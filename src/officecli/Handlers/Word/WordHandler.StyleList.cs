@@ -110,6 +110,10 @@ public partial class WordHandler
         var srcHighlight = source.GetFirstChild<Highlight>();
         if (srcHighlight != null)
             target.Highlight = srcHighlight.CloneNode(true) as Highlight;
+
+        var srcVertAlign = source.GetFirstChild<VerticalTextAlignment>();
+        if (srcVertAlign != null)
+            target.VerticalTextAlignment = srcVertAlign.CloneNode(true) as VerticalTextAlignment;
     }
 
     private static string? GetFontFromProperties(RunProperties? rProps)
