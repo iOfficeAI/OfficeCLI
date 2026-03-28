@@ -976,8 +976,15 @@ public partial class ExcelHandler
                     break;
                 case "formula":
                     cell.CellFormula = new CellFormula(value.TrimStart('='));
-                    cell.CellValue = null;
                     cell.DataType = null; // Formula cells should not retain DataType
+                    // Try to evaluate and cache the result immediately
+                    var evalSheetData = GetSheet(worksheet).GetFirstChild<SheetData>();
+                    var evaluator = new Core.FormulaEvaluator(evalSheetData!, _doc.WorkbookPart);
+                    var evalResult = evaluator.TryEvaluate(value.TrimStart('='));
+                    if (evalResult.HasValue)
+                        cell.CellValue = new CellValue(evalResult.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    else
+                        cell.CellValue = null; // unsupported formula — leave uncalculated
                     break;
                 case "type":
                     cell.DataType = value.ToLowerInvariant() switch

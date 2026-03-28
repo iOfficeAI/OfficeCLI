@@ -37,16 +37,7 @@ public partial class ExcelHandler
         // File title
         sb.AppendLine($"<div class=\"file-title\">{HtmlEncode(Path.GetFileName(_filePath))}</div>");
 
-        // Sheet tabs
-        sb.AppendLine("<div class=\"sheet-tabs\">");
-        for (int i = 0; i < sheets.Count; i++)
-        {
-            var activeClass = i == 0 ? " active" : "";
-            sb.AppendLine($"  <div class=\"sheet-tab{activeClass}\" data-sheet=\"{i}\" onclick=\"switchSheet({i})\">{HtmlEncode(sheets[i].Name)}</div>");
-        }
-        sb.AppendLine("</div>");
-
-        // Sheet content areas
+        // Sheet content areas (tabs moved to bottom)
         for (int sheetIdx = 0; sheetIdx < sheets.Count; sheetIdx++)
         {
             var (sheetName, worksheetPart) = sheets[sheetIdx];
@@ -56,6 +47,15 @@ public partial class ExcelHandler
             RenderSheetCharts(sb, worksheetPart);
             sb.AppendLine("</div>");
         }
+
+        // Sheet tabs at bottom (like real Excel)
+        sb.AppendLine("<div class=\"sheet-tabs\">");
+        for (int i = 0; i < sheets.Count; i++)
+        {
+            var activeClass = i == 0 ? " active" : "";
+            sb.AppendLine($"  <div class=\"sheet-tab{activeClass}\" data-sheet=\"{i}\" onclick=\"switchSheet({i})\">{HtmlEncode(sheets[i].Name)}</div>");
+        }
+        sb.AppendLine("</div>");
 
         // Sheet switching JavaScript
         sb.AppendLine("<script>");
@@ -708,16 +708,19 @@ public partial class ExcelHandler
             border-top: 1px solid #ccc;
             overflow-x: auto;
             padding: 0 8px;
+            position: sticky;
+            bottom: 0;
+            z-index: 10;
         }
         .sheet-tab {
             padding: 8px 16px;
             font-size: 12px;
             cursor: pointer;
             border: 1px solid transparent;
-            border-bottom: none;
+            border-top: none;
             background: #e8e8e8;
-            margin-top: 4px;
-            border-radius: 4px 4px 0 0;
+            margin-bottom: 4px;
+            border-radius: 0 0 4px 4px;
             white-space: nowrap;
             user-select: none;
         }
@@ -824,4 +827,5 @@ public partial class ExcelHandler
         // Strip characters that could break CSS context
         return Regex.Replace(value, @"[;:{}()\\""']", "");
     }
+
 }
