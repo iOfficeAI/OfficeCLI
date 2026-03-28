@@ -698,6 +698,9 @@ public partial class ExcelHandler
         // Strip [Color] markers: [Red], [Blue], [Green], [Color N], etc.
         fmtCode = System.Text.RegularExpressions.Regex.Replace(fmtCode, @"\[(Red|Blue|Green|Yellow|White|Black|Cyan|Magenta|Color\s*\d+)\]", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
 
+        // Strip [$...] locale/currency specifiers (e.g. [$-409], [$€-407], [$¥-411])
+        fmtCode = System.Text.RegularExpressions.Regex.Replace(fmtCode, @"\[\$[^\]]*\]", "").Trim();
+
         // Strip accounting format characters: _X (space placeholder) and *X (fill character)
         fmtCode = System.Text.RegularExpressions.Regex.Replace(fmtCode, @"_.", "").Trim();
         fmtCode = System.Text.RegularExpressions.Regex.Replace(fmtCode, @"\*.", "").Trim();
@@ -762,6 +765,19 @@ public partial class ExcelHandler
             var pctVal = value * 100;
             var decimals = CountDecimalPlaces(fmtCode);
             return pctVal.ToString($"F{decimals}") + "%";
+        }
+
+        // Elapsed time format: [h]:mm:ss or [mm]:ss (total hours/minutes, can exceed 24/60)
+        var elapsedMatch = System.Text.RegularExpressions.Regex.Match(fmtCode, @"\[(h+)\]:?(mm)?:?(ss)?");
+        if (elapsedMatch.Success)
+        {
+            var totalHours = (int)(value * 24);
+            var totalMinutes = (int)(value * 24 * 60) % 60;
+            var totalSeconds = (int)(value * 24 * 3600) % 60;
+            var parts = new List<string> { totalHours.ToString() };
+            if (elapsedMatch.Groups[2].Success) parts.Add(totalMinutes.ToString("D2"));
+            if (elapsedMatch.Groups[3].Success) parts.Add(totalSeconds.ToString("D2"));
+            return string.Join(":", parts);
         }
 
         // Date formats (serial number → DateTime)
