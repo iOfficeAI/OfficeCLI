@@ -179,7 +179,8 @@ public partial class WordHandler
         // (the run may also contain text that should be rendered)
 
         var hasContent = run.ChildElements.Any(c =>
-            c is Break || c is TabChar || c is SymbolChar
+            c is Break || c is TabChar || c is SymbolChar || c is CarriageReturn
+            || c.LocalName is "noBreakHyphen" or "softHyphen"
             || (c is Text t && !string.IsNullOrEmpty(t.Text)));
 
         if (!hasContent) return;
@@ -201,6 +202,12 @@ public partial class WordHandler
             }
             else if (child is TabChar)
                 sb.Append("&emsp;");
+            else if (child is CarriageReturn)
+                sb.Append("<br>");
+            else if (child.LocalName == "noBreakHyphen")
+                sb.Append("\u2011"); // non-breaking hyphen
+            else if (child.LocalName == "softHyphen")
+                sb.Append("&shy;");
             else if (child is Text t && !string.IsNullOrEmpty(t.Text))
                 sb.Append(HtmlEncode(t.Text));
             else if (child is SymbolChar sym)
