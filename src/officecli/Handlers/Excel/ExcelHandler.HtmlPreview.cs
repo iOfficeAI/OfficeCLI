@@ -313,12 +313,15 @@ public partial class ExcelHandler
             var (endCol, endRow) = ParseCellReference(parts[1]);
             var startColIdx = ColumnNameToIndex(startCol);
             var endColIdx = ColumnNameToIndex(endCol);
-            var rowSpan = endRow - startRow + 1;
-            var colSpan = endColIdx - startColIdx + 1;
+            // Clamp merge range to rendering limits to prevent memory explosion
+            var clampedEndRow = Math.Min(endRow, 5000);
+            var clampedEndCol = Math.Min(endColIdx, 200);
+            var rowSpan = clampedEndRow - startRow + 1;
+            var colSpan = clampedEndCol - startColIdx + 1;
 
-            for (int r = startRow; r <= endRow; r++)
+            for (int r = startRow; r <= clampedEndRow; r++)
             {
-                for (int ci = startColIdx; ci <= endColIdx; ci++)
+                for (int ci = startColIdx; ci <= clampedEndCol; ci++)
                 {
                     var cellRef = $"{IndexToColumnName(ci)}{r}";
                     bool isAnchor = (r == startRow && ci == startColIdx);
@@ -779,9 +782,11 @@ public partial class ExcelHandler
         // Strip [$...] locale/currency specifiers (e.g. [$-409], [$€-407], [$¥-411])
         fmtCode = System.Text.RegularExpressions.Regex.Replace(fmtCode, @"\[\$[^\]]*\]", "").Trim();
 
-        // Strip accounting format characters: _X (space placeholder) and *X (fill character)
+        // Strip Excel numfmt special characters:
+        // _X = space placeholder, *X = fill character, \X = literal character escape
         fmtCode = System.Text.RegularExpressions.Regex.Replace(fmtCode, @"_.", "").Trim();
         fmtCode = System.Text.RegularExpressions.Regex.Replace(fmtCode, @"\*.", "").Trim();
+        fmtCode = System.Text.RegularExpressions.Regex.Replace(fmtCode, @"\\(.)", "$1").Trim();
 
         // Strip condition markers: [>100], [<=0], etc.
         fmtCode = System.Text.RegularExpressions.Regex.Replace(fmtCode, @"\[[<>=!]+\d+\.?\d*\]", "").Trim();
@@ -972,6 +977,9 @@ public partial class ExcelHandler
             overflow-x: auto;
             padding: 0 8px;
             flex-shrink: 0;
+            position: sticky;
+            bottom: 0;
+            z-index: 10;
         }
         .sheet-tab {
             padding: 8px 16px;
@@ -1088,6 +1096,7 @@ public partial class ExcelHandler
             document.querySelectorAll('.sheet-content').forEach(function(c) {
                 c.style.display = parseInt(c.getAttribute('data-sheet')) === idx ? '' : 'none';
             });
+            window.scrollTo(0, 0);
         }
         """;
 
