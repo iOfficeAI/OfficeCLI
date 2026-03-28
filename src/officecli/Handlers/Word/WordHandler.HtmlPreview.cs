@@ -80,17 +80,16 @@ public partial class WordHandler
 
         // Split body content on page breaks into pages
         var bodyContent = bodySb.ToString();
-        // Remove footer content that leaked into body rendering (from floating text boxes in last body paragraph)
-        // Pattern: starts with incomplete tag, contains doc-footer div, ends before next page or end
-        var footerLeakIdx = bodyContent.IndexOf("<div class=\"doc-footer\">");
-        if (footerLeakIdx >= 0)
+        // Remove footer content that leaked into body (from floating text boxes rendered as body paragraphs)
+        bodyContent = Regex.Replace(bodyContent,
+            @"<p[^>]*>[^<]*<span[^>]*>[^<]*</div><div class=""doc-footer"">[\s\S]*?</div>\s*</div>\s*</div>",
+            "", RegexOptions.Singleline);
+        // Fallback: if doc-footer still in body, strip from that point to end of its block
+        var leakIdx = bodyContent.IndexOf("doc-footer");
+        if (leakIdx >= 0)
         {
-            // Find the start of the enclosing paragraph (look back for <p )
-            var pStart = bodyContent.LastIndexOf("<p ", footerLeakIdx);
-            if (pStart >= 0)
-                bodyContent = bodyContent[..pStart];
-            else
-                bodyContent = bodyContent[..footerLeakIdx];
+            var cutFrom = bodyContent.LastIndexOf("<p", leakIdx);
+            if (cutFrom >= 0) bodyContent = bodyContent[..cutFrom];
         }
         var pages = bodyContent.Split("<!--PAGE_BREAK-->");
 
@@ -146,7 +145,7 @@ public partial class WordHandler
 
     private record PageLayout(double WidthCm, double HeightCm,
         double MarginTopCm, double MarginBottomCm, double MarginLeftCm, double MarginRightCm,
-        double FooterDistanceCm);
+        double HeaderDistanceCm, double FooterDistanceCm);
 
     private PageLayout GetPageLayout()
     {
@@ -162,6 +161,7 @@ public partial class WordHandler
             (double)(pgMar?.Bottom?.Value ?? 1440) * c,
             (pgMar?.Left?.Value ?? 1440u) * c,
             (pgMar?.Right?.Value ?? 1440u) * c,
+            (pgMar?.Header?.Value ?? 851u) * c,
             (pgMar?.Footer?.Value ?? 992u) * c);
         if (_ctx != null) _ctx.CachedPageLayout = result;
         return result;
