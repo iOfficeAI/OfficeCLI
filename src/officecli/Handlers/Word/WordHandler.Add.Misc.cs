@@ -38,7 +38,7 @@ public partial class WordHandler
             .DefaultIfEmpty(0).Max() + 1).ToString();
 
         commentsPart.Comments.AppendChild(new Comment(
-            new Paragraph(new Run(new Text(commentText) { Space = SpaceProcessingModeValues.Preserve })))
+            new Paragraph(new Run(new Text { Text = commentText, Space = SpaceProcessingModeValues.Preserve })))
         {
             Id = commentId, Author = author, Initials = initials,
             Date = properties.TryGetValue("date", out var ds) ? DateTime.Parse(ds) : DateTime.UtcNow
@@ -90,7 +90,7 @@ public partial class WordHandler
         if (properties.TryGetValue("text", out var bkText))
         {
             parent.AppendChild(bookmarkStart);
-            parent.AppendChild(new Run(new Text(bkText) { Space = SpaceProcessingModeValues.Preserve }));
+            parent.AppendChild(new Run(new Text { Text = bkText, Space = SpaceProcessingModeValues.Preserve }));
             parent.AppendChild(bookmarkEnd);
         }
         else
@@ -138,7 +138,7 @@ public partial class WordHandler
 
         var hlRun = new Run(hlRProps);
         var hlText = properties.GetValueOrDefault("text", hlUrl);
-        hlRun.AppendChild(new Text(hlText) { Space = SpaceProcessingModeValues.Preserve });
+        hlRun.AppendChild(new Text { Text = hlText, Space = SpaceProcessingModeValues.Preserve });
 
         var hyperlink = new Hyperlink(hlRun) { Id = hlRelId };
         if (index.HasValue)
@@ -191,7 +191,7 @@ public partial class WordHandler
         var fieldRunBegin = new Run(new FieldChar { FieldCharType = FieldCharValues.Begin });
         var fieldRunInstr = new Run(new FieldCode(fieldInstr) { Space = SpaceProcessingModeValues.Preserve });
         var fieldRunSep = new Run(new FieldChar { FieldCharType = FieldCharValues.Separate });
-        var fieldRunResult = new Run(new Text(fieldPlaceholder) { Space = SpaceProcessingModeValues.Preserve });
+        var fieldRunResult = new Run(new Text { Text = fieldPlaceholder, Space = SpaceProcessingModeValues.Preserve });
         var fieldRunEnd = new Run(new FieldChar { FieldCharType = FieldCharValues.End });
 
         // Apply optional run formatting to all runs
@@ -388,7 +388,7 @@ public partial class WordHandler
 
             sdtRun.AppendChild(sdtProps);
             var sdtContent = new SdtContentRun();
-            var contentRun = new Run(new Text(sdtText) { Space = SpaceProcessingModeValues.Preserve });
+            var contentRun = new Run(new Text { Text = sdtText, Space = SpaceProcessingModeValues.Preserve });
             sdtContent.AppendChild(contentRun);
             sdtRun.AppendChild(sdtContent);
 
@@ -470,7 +470,7 @@ public partial class WordHandler
 
             sdtBlock.AppendChild(sdtProps);
             var sdtContent = new SdtContentBlock();
-            var contentPara = new Paragraph(new Run(new Text(sdtText) { Space = SpaceProcessingModeValues.Preserve }));
+            var contentPara = new Paragraph(new Run(new Text { Text = sdtText, Space = SpaceProcessingModeValues.Preserve }));
             sdtContent.AppendChild(contentPara);
             sdtBlock.AppendChild(sdtContent);
 

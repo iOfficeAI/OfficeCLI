@@ -97,8 +97,8 @@ public partial class WordHandler
         var mainPart2 = _doc.MainDocumentPart!;
         var fnPart = mainPart2.FootnotesPart ?? mainPart2.AddNewPart<FootnotesPart>();
         fnPart.Footnotes ??= new Footnotes(
-            new Footnote(new Paragraph(new Run(new Text("")))) { Type = FootnoteEndnoteValues.Separator, Id = -1 },
-            new Footnote(new Paragraph(new Run(new Text("")))) { Type = FootnoteEndnoteValues.ContinuationSeparator, Id = 0 }
+            new Footnote(new Paragraph(new Run(new Text { Text = "" }))) { Type = FootnoteEndnoteValues.Separator, Id = -1 },
+            new Footnote(new Paragraph(new Run(new Text { Text = "" }))) { Type = FootnoteEndnoteValues.ContinuationSeparator, Id = 0 }
         );
 
         var fnId = (fnPart.Footnotes.Elements<Footnote>()
@@ -112,7 +112,7 @@ public partial class WordHandler
             new Run(
                 new RunProperties(new VerticalTextAlignment { Val = VerticalPositionValues.Superscript }),
                 new FootnoteReferenceMark()),
-            new Run(new Text(" " + fnText) { Space = SpaceProcessingModeValues.Preserve })
+            new Run(new Text { Text = " " + fnText, Space = SpaceProcessingModeValues.Preserve })
         );
         footnote.AppendChild(fnContentPara);
         fnPart.Footnotes.AppendChild(footnote);
@@ -140,8 +140,8 @@ public partial class WordHandler
         var mainPart3 = _doc.MainDocumentPart!;
         var enPart = mainPart3.EndnotesPart ?? mainPart3.AddNewPart<EndnotesPart>();
         enPart.Endnotes ??= new Endnotes(
-            new Endnote(new Paragraph(new Run(new Text("")))) { Type = FootnoteEndnoteValues.Separator, Id = -1 },
-            new Endnote(new Paragraph(new Run(new Text("")))) { Type = FootnoteEndnoteValues.ContinuationSeparator, Id = 0 }
+            new Endnote(new Paragraph(new Run(new Text { Text = "" }))) { Type = FootnoteEndnoteValues.Separator, Id = -1 },
+            new Endnote(new Paragraph(new Run(new Text { Text = "" }))) { Type = FootnoteEndnoteValues.ContinuationSeparator, Id = 0 }
         );
 
         var enId = (enPart.Endnotes.Elements<Endnote>()
@@ -155,7 +155,7 @@ public partial class WordHandler
             new Run(
                 new RunProperties(new VerticalTextAlignment { Val = VerticalPositionValues.Superscript }),
                 new EndnoteReferenceMark()),
-            new Run(new Text(" " + enText) { Space = SpaceProcessingModeValues.Preserve })
+            new Run(new Text { Text = " " + enText, Space = SpaceProcessingModeValues.Preserve })
         );
         endnote.AppendChild(enContentPara);
         enPart.Endnotes.AppendChild(endnote);
@@ -196,7 +196,7 @@ public partial class WordHandler
         {
             var titlePara = new Paragraph(
                 new ParagraphProperties(new ParagraphStyleId { Val = "TOCHeading" }),
-                new Run(new Text(tocTitle))
+                new Run(new Text { Text = tocTitle })
             );
             AppendToParent(parent, titlePara);
         }
@@ -208,7 +208,7 @@ public partial class WordHandler
         // Field separate
         tocPara.AppendChild(new Run(new FieldChar { FieldCharType = FieldCharValues.Separate }));
         // Placeholder text
-        tocPara.AppendChild(new Run(new Text("Update field to see table of contents") { Space = SpaceProcessingModeValues.Preserve }));
+        tocPara.AppendChild(new Run(new Text { Text = "Update field to see table of contents", Space = SpaceProcessingModeValues.Preserve }));
         // Field end
         tocPara.AppendChild(new Run(new FieldChar { FieldCharType = FieldCharValues.End }));
 
@@ -347,7 +347,7 @@ public partial class WordHandler
             if (properties.TryGetValue("color", out var hColor))
                 hRProps.Color = new Color { Val = SanitizeHex(hColor) };
             hRun.AppendChild(hRProps);
-            hRun.AppendChild(new Text(hText) { Space = SpaceProcessingModeValues.Preserve });
+            hRun.AppendChild(new Text { Text = hText, Space = SpaceProcessingModeValues.Preserve });
             hPara.AppendChild(hRun);
         }
 
@@ -414,7 +414,7 @@ public partial class WordHandler
             if (properties.TryGetValue("color", out var fColor))
                 fRProps.Color = new Color { Val = SanitizeHex(fColor) };
             fRun.AppendChild(fRProps);
-            fRun.AppendChild(new Text(fText) { Space = SpaceProcessingModeValues.Preserve });
+            fRun.AppendChild(new Text { Text = fText, Space = SpaceProcessingModeValues.Preserve });
             fPara.AppendChild(fRun);
         }
 

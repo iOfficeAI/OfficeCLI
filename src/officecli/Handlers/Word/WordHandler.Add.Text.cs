@@ -200,7 +200,7 @@ public partial class WordHandler
             }
 
             run.AppendChild(rProps);
-            run.AppendChild(new Text(text) { Space = SpaceProcessingModeValues.Preserve });
+            run.AppendChild(new Text { Text = text, Space = SpaceProcessingModeValues.Preserve });
             para.AppendChild(run);
         }
 
@@ -395,7 +395,7 @@ public partial class WordHandler
 
         newRun.AppendChild(newRProps);
         var runText = properties.GetValueOrDefault("text", "");
-        newRun.AppendChild(new Text(runText) { Space = SpaceProcessingModeValues.Preserve });
+        newRun.AppendChild(new Text { Text = runText, Space = SpaceProcessingModeValues.Preserve });
 
         var runCount = targetPara.Elements<Run>().Count();
         if (index.HasValue && index.Value < runCount)

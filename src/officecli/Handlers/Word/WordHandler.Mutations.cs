@@ -490,7 +490,7 @@ public partial class WordHandler
                 // Convert DeletedText elements to Text elements
                 foreach (var delText in clone.Descendants<DeletedText>().ToList())
                 {
-                    var text = new Text(delText.Text);
+                    var text = new Text { Text = delText.Text };
                     if (delText.Space != null)
                         text.Space = delText.Space;
                     delText.Parent?.ReplaceChild(text, delText);

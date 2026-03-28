@@ -168,7 +168,7 @@ public partial class WordHandler
                 var cellPara = new Paragraph(new ParagraphProperties(
                     new SpacingBetweenLines { After = "0", Line = "240", LineRule = LineSpacingRuleValues.Auto }));
                 if (!string.IsNullOrEmpty(cellText))
-                    cellPara.AppendChild(new Run(new Text(cellText) { Space = SpaceProcessingModeValues.Preserve }));
+                    cellPara.AppendChild(new Run(new Text { Text = cellText, Space = SpaceProcessingModeValues.Preserve }));
                 var cell = new TableCell(cellPara);
                 if (colWidthArr != null && c < colWidthArr.Length)
                     cell.PrependChild(new TableCellProperties(new TableCellWidth { Width = colWidthArr[c].ToString(), Type = TableWidthUnitValues.Dxa }));
@@ -217,7 +217,7 @@ public partial class WordHandler
             var cellText = properties.TryGetValue($"c{c + 1}", out var ct) ? ct : "";
             var cellPara = new Paragraph();
             if (!string.IsNullOrEmpty(cellText))
-                cellPara.AppendChild(new Run(new Text(cellText) { Space = SpaceProcessingModeValues.Preserve }));
+                cellPara.AppendChild(new Run(new Text { Text = cellText, Space = SpaceProcessingModeValues.Preserve }));
             newRow.AppendChild(new TableCell(cellPara));
         }
 
@@ -245,7 +245,7 @@ public partial class WordHandler
 
         var cellParagraph = new Paragraph();
         if (properties.TryGetValue("text", out var cellTxt))
-            cellParagraph.AppendChild(new Run(new Text(cellTxt) { Space = SpaceProcessingModeValues.Preserve }));
+            cellParagraph.AppendChild(new Run(new Text { Text = cellTxt, Space = SpaceProcessingModeValues.Preserve }));
 
         var newCell = new TableCell(cellParagraph);
 

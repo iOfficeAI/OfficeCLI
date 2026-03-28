@@ -185,7 +185,7 @@ public partial class WordHandler
                             if (firstResultText != null)
                                 firstResultText.Text = value;
                             else
-                                field.ResultRuns[0].AppendChild(new Text(value) { Space = SpaceProcessingModeValues.Preserve });
+                                field.ResultRuns[0].AppendChild(new Text { Text = value, Space = SpaceProcessingModeValues.Preserve });
                             for (int ri = 1; ri < field.ResultRuns.Count; ri++)
                             {
                                 var t = field.ResultRuns[ri].GetFirstChild<Text>();
@@ -301,7 +301,7 @@ public partial class WordHandler
                         textEl.Space = SpaceProcessingModeValues.Preserve;
                     }
                     else
-                        contentRuns[0].AppendChild(new Text(fnText) { Space = SpaceProcessingModeValues.Preserve });
+                        contentRuns[0].AppendChild(new Text { Text = fnText, Space = SpaceProcessingModeValues.Preserve });
                     // Remove extra runs so text is not duplicated
                     for (int i = 1; i < contentRuns.Count; i++)
                         contentRuns[i].Remove();
@@ -348,7 +348,7 @@ public partial class WordHandler
                         textEl.Space = SpaceProcessingModeValues.Preserve;
                     }
                     else
-                        contentRuns[0].AppendChild(new Text(enText) { Space = SpaceProcessingModeValues.Preserve });
+                        contentRuns[0].AppendChild(new Text { Text = enText, Space = SpaceProcessingModeValues.Preserve });
                     // Remove extra runs so text is not duplicated
                     for (int i = 1; i < contentRuns.Count; i++)
                         contentRuns[i].Remove();
@@ -628,7 +628,7 @@ public partial class WordHandler
                                 sib = sib.NextSibling();
                             }
                             foreach (var el in toRemove) el.Remove();
-                            bkStart.InsertAfterSelf(new Run(new Text(value) { Space = SpaceProcessingModeValues.Preserve }));
+                            bkStart.InsertAfterSelf(new Run(new Text { Text = value, Space = SpaceProcessingModeValues.Preserve }));
                         }
                         break;
                     default:
@@ -685,7 +685,7 @@ public partial class WordHandler
                             {
                                 content.RemoveAllChildren();
                                 content.AppendChild(new Paragraph(
-                                    new Run(new Text(value) { Space = SpaceProcessingModeValues.Preserve })));
+                                    new Run(new Text { Text = value, Space = SpaceProcessingModeValues.Preserve })));
                             }
                         }
                         else if (element is SdtRun sdtR)
@@ -695,7 +695,7 @@ public partial class WordHandler
                             {
                                 content.RemoveAllChildren();
                                 content.AppendChild(
-                                    new Run(new Text(value) { Space = SpaceProcessingModeValues.Preserve }));
+                                    new Run(new Text { Text = value, Space = SpaceProcessingModeValues.Preserve }));
                             }
                         }
                         break;
@@ -987,7 +987,7 @@ public partial class WordHandler
                         else
                         {
                             // No runs yet, create one
-                            var newRun = new Run(new Text(value) { Space = SpaceProcessingModeValues.Preserve });
+                            var newRun = new Run(new Text { Text = value, Space = SpaceProcessingModeValues.Preserve });
                             hl.AppendChild(newRun);
                         }
                         break;
@@ -1048,7 +1048,7 @@ public partial class WordHandler
                         {
                             var firstText = existingRuns[0].GetFirstChild<Text>();
                             if (firstText != null) firstText.Text = value;
-                            else existingRuns[0].AppendChild(new Text(value) { Space = SpaceProcessingModeValues.Preserve });
+                            else existingRuns[0].AppendChild(new Text { Text = value, Space = SpaceProcessingModeValues.Preserve });
                             // Remove extra runs
                             for (int i = 1; i < existingRuns.Count; i++) existingRuns[i].Remove();
                         }
@@ -1064,7 +1064,7 @@ public partial class WordHandler
                                     cloned.AppendChild(child.CloneNode(true));
                                 newRun.PrependChild(cloned);
                             }
-                            newRun.AppendChild(new Text(value) { Space = SpaceProcessingModeValues.Preserve });
+                            newRun.AppendChild(new Text { Text = value, Space = SpaceProcessingModeValues.Preserve });
                             para.AppendChild(newRun);
                         }
                         break;
@@ -1410,7 +1410,7 @@ public partial class WordHandler
                     if (pmrp != null) cellRunProps = new RunProperties(pmrp.CloneNode(true).ChildElements.Select(c => c.CloneNode(true)));
                 }
                 foreach (var r in cellExistingRuns) r.Remove();
-                var cellNewRun = new Run(new Text(deferredText) { Space = SpaceProcessingModeValues.Preserve });
+                var cellNewRun = new Run(new Text { Text = deferredText, Space = SpaceProcessingModeValues.Preserve });
                 if (cellRunProps != null) cellNewRun.PrependChild(cellRunProps);
                 firstPara.AppendChild(cellNewRun);
             }
@@ -1450,7 +1450,7 @@ public partial class WordHandler
                                 ?? rowCells[cIdx - 1].AppendChild(new Paragraph());
                             targetPara.RemoveAllChildren<Run>();
                             if (!string.IsNullOrEmpty(value))
-                                targetPara.AppendChild(new Run(new Text(value) { Space = SpaceProcessingModeValues.Preserve }));
+                                targetPara.AppendChild(new Run(new Text { Text = value, Space = SpaceProcessingModeValues.Preserve }));
                         }
                         else if (!GenericXmlQuery.TryCreateTypedChild(trPr, key, value))
                             unsupported.Add(unsupported.Count == 0
@@ -1760,7 +1760,7 @@ public partial class WordHandler
                     var newRun = new Run();
                     if (existingRProps != null)
                         newRun.AppendChild(existingRProps);
-                    newRun.AppendChild(new Text(value) { Space = SpaceProcessingModeValues.Preserve });
+                    newRun.AppendChild(new Text { Text = value, Space = SpaceProcessingModeValues.Preserve });
                     firstPara.AppendChild(newRun);
                     break;
                 }
