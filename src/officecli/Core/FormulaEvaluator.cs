@@ -102,12 +102,17 @@ internal partial class FormulaEvaluator
         try
         {
             _visiting.Clear();
-            var tokens = Tokenize(formula);
-            var pos = 0;
-            var result = ParseExpression(tokens, ref pos);
-            return pos == tokens.Count ? result : null;
+            return EvaluateFormula(formula);
         }
         catch { return null; }
+    }
+
+    private FormulaResult? EvaluateFormula(string formula)
+    {
+        var tokens = Tokenize(formula);
+        var pos = 0;
+        var result = ParseExpression(tokens, ref pos);
+        return pos == tokens.Count ? result : null;
     }
 
     // ==================== Tokenizer ====================
@@ -336,7 +341,7 @@ internal partial class FormulaEvaluator
                 return double.TryParse(cached, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? FormulaResult.Number(v) : FormulaResult.Str(cached);
             }
 
-            if (cell.CellFormula?.Text != null) return TryEvaluateFull(cell.CellFormula.Text);
+            if (cell.CellFormula?.Text != null) return EvaluateFormula(cell.CellFormula.Text);
             return FormulaResult.Number(0);
         }
         finally { _visiting.Remove(cellRef); }
