@@ -96,7 +96,8 @@ public partial class WordHandler
             {
                 var tag = isHeader ? "th" : "td";
                 var condTypes = GetConditionalTypes(tblLook, rowIdx, colIdx, totalRows, totalCols);
-                var cellStyle = GetTableCellInlineCss(cell, tableBordersNone, tblBorders, condFormats, condTypes);
+                var cellStyle = GetTableCellInlineCss(cell, tableBordersNone, tblBorders, condFormats, condTypes,
+                    rowIdx, colIdx, totalRows, totalCols);
 
                 // Merge attributes
                 var attrs = new StringBuilder();

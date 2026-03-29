@@ -701,22 +701,26 @@ public partial class WordHandler
     }
 
     private string GetTableCellInlineCss(TableCell cell, bool tableBordersNone, TableBorders? tblBorders = null,
-        Dictionary<string, TableConditionalFormat>? condFormats = null, List<string>? condTypes = null)
+        Dictionary<string, TableConditionalFormat>? condFormats = null, List<string>? condTypes = null,
+        int rowIdx = 0, int colIdx = 0, int totalRows = 1, int totalCols = 1)
     {
         var parts = new List<string>();
         var tcPr = cell.TableCellProperties;
 
-        // Apply table-level borders to each cell (with border-collapse, adjacent cells merge)
+        // Apply table-level borders: outer borders only on table edges, insideH/V on inner edges
         if (!tableBordersNone && tblBorders != null)
         {
-            // Use insideH/insideV for inner edges, fall back to outer borders for all edges
-            var hBorder = !IsBorderNone(tblBorders.InsideHorizontalBorder) ? tblBorders.InsideHorizontalBorder : null;
-            var vBorder = !IsBorderNone(tblBorders.InsideVerticalBorder) ? tblBorders.InsideVerticalBorder : null;
+            var hInner = !IsBorderNone(tblBorders.InsideHorizontalBorder) ? (OpenXmlElement)tblBorders.InsideHorizontalBorder! : null;
+            var vInner = !IsBorderNone(tblBorders.InsideVerticalBorder) ? (OpenXmlElement)tblBorders.InsideVerticalBorder! : null;
 
-            RenderBorderCss(parts, (OpenXmlElement?)tblBorders.TopBorder ?? hBorder, "border-top");
-            RenderBorderCss(parts, (OpenXmlElement?)tblBorders.BottomBorder ?? hBorder, "border-bottom");
-            RenderBorderCss(parts, (OpenXmlElement?)tblBorders.LeftBorder ?? vBorder, "border-left");
-            RenderBorderCss(parts, (OpenXmlElement?)tblBorders.RightBorder ?? vBorder, "border-right");
+            // Top edge: outer border if first row, insideH if inner row
+            RenderBorderCss(parts, rowIdx == 0 ? tblBorders.TopBorder : hInner, "border-top");
+            // Bottom edge: outer border if last row, insideH if inner row
+            RenderBorderCss(parts, rowIdx == totalRows - 1 ? tblBorders.BottomBorder : hInner, "border-bottom");
+            // Left edge: outer border if first col, insideV if inner col
+            RenderBorderCss(parts, colIdx == 0 ? tblBorders.LeftBorder : vInner, "border-left");
+            // Right edge: outer border if last col, insideV if inner col
+            RenderBorderCss(parts, colIdx == totalCols - 1 ? tblBorders.RightBorder : vInner, "border-right");
         }
 
         // Apply conditional formatting from table style (priority order: banding < col < row)
