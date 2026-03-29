@@ -669,6 +669,30 @@ public partial class WordHandler
         if (rProps.Caps != null && (rProps.Caps.Val == null || rProps.Caps.Val.Value))
             parts.Add("text-transform:uppercase");
 
+        // Run shading (w:shd) — background color on text (e.g. inverse video)
+        var runShd = rProps.Shading;
+        if (runShd != null && highlight == null) // don't override highlight
+        {
+            var fill = runShd.Fill?.Value;
+            if (fill != null && fill != "auto")
+                parts.Add($"background-color:#{fill}");
+        }
+
+        // Run border (w:bdr) — border around text (e.g. "box" text)
+        var runBdr = rProps.GetFirstChild<Border>();
+        if (runBdr != null)
+        {
+            var bdrVal = runBdr.Val?.InnerText;
+            if (bdrVal != null && bdrVal != "none" && bdrVal != "nil")
+            {
+                var bdrSz = runBdr.Size?.Value ?? 4;
+                var bdrColor = runBdr.Color?.Value;
+                var px = Math.Max(1, bdrSz / 8.0);
+                var color = (bdrColor != null && bdrColor != "auto") ? $"#{bdrColor}" : "#000";
+                parts.Add($"border:{px:0.#}px solid {color};padding:0 2px");
+            }
+        }
+
         // RTL text direction
         if (rProps.RightToLeftText != null && (rProps.RightToLeftText.Val == null || rProps.RightToLeftText.Val.Value))
             parts.Add("direction:rtl;unicode-bidi:bidi-override");

@@ -130,6 +130,17 @@ public partial class WordHandler
         var srcRtl = source.GetFirstChild<RightToLeftText>();
         if (srcRtl != null)
             target.RightToLeftText = srcRtl.CloneNode(true) as RightToLeftText;
+
+        var srcShd = source.GetFirstChild<Shading>();
+        if (srcShd != null)
+            target.Shading = srcShd.CloneNode(true) as Shading;
+
+        var srcBdr = source.GetFirstChild<Border>();
+        if (srcBdr != null)
+        {
+            target.RemoveAllChildren<Border>();
+            target.AppendChild(srcBdr.CloneNode(true));
+        }
     }
 
     private static string? GetFontFromProperties(RunProperties? rProps)
