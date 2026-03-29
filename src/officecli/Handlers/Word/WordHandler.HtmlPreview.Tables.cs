@@ -243,9 +243,10 @@ public partial class WordHandler
         {
             foreach (var tsp in style.Elements<TableStyleProperties>())
             {
-                var type = tsp.Type?.Value;
+                var type = tsp.Type;
                 if (type == null) continue;
-                var typeName = type.Value.ToString();
+                // Use the XML serialized value (e.g. "firstRow", "band1Horz") for consistent lookup
+                var typeName = type.InnerText;
 
                 var fmt = new TableConditionalFormat();
                 var tcPr = tsp.GetFirstChild<TableStyleConditionalFormattingTableCellProperties>();
@@ -274,7 +275,7 @@ public partial class WordHandler
             else if ((look & TableLookFlags.FirstRow) != 0 && rowIdx == 0) bandRowIdx = -1; // first row, skip banding
 
             if (bandRowIdx >= 0)
-                types.Add(bandRowIdx % 2 == 0 ? "Band1Horz" : "Band2Horz");
+                types.Add(bandRowIdx % 2 == 0 ? "band1Horz" : "band2Horz");
         }
 
         // Banded columns
@@ -285,20 +286,20 @@ public partial class WordHandler
             else if ((look & TableLookFlags.FirstColumn) != 0 && colIdx == 0) bandColIdx = -1;
 
             if (bandColIdx >= 0)
-                types.Add(bandColIdx % 2 == 0 ? "Band1Vert" : "Band2Vert");
+                types.Add(bandColIdx % 2 == 0 ? "band1Vert" : "band2Vert");
         }
 
         // First/last column (higher priority than banding)
         if ((look & TableLookFlags.FirstColumn) != 0 && colIdx == 0)
-            types.Add("FirstCol");
+            types.Add("firstCol");
         if ((look & TableLookFlags.LastColumn) != 0 && colIdx == totalCols - 1)
-            types.Add("LastCol");
+            types.Add("lastCol");
 
         // First/last row (highest priority)
         if ((look & TableLookFlags.FirstRow) != 0 && rowIdx == 0)
-            types.Add("FirstRow");
+            types.Add("firstRow");
         if ((look & TableLookFlags.LastRow) != 0 && rowIdx == totalRows - 1)
-            types.Add("LastRow");
+            types.Add("lastRow");
 
         return types;
     }
