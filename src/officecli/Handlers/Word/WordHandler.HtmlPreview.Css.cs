@@ -368,6 +368,23 @@ public partial class WordHandler
         if (pProps.PageBreakBefore?.Val?.Value != false && pProps.PageBreakBefore != null)
             parts.Add("page-break-before:always");
 
+        // Drop cap (framePr with dropCap attribute)
+        var framePr = pProps.GetFirstChild<FrameProperties>();
+        if (framePr != null)
+        {
+            var dropCap = framePr.GetAttributes().FirstOrDefault(a => a.LocalName == "dropCap").Value;
+            if (dropCap == "drop" || dropCap == "margin")
+            {
+                var lines = framePr.GetAttributes().FirstOrDefault(a => a.LocalName == "lines").Value;
+                var lineCount = lines != null && int.TryParse(lines, out var lc) ? lc : 3;
+                parts.Add("float:left");
+                parts.Add($"font-size:{lineCount * 2.3:0.#}em");
+                parts.Add($"line-height:0.8");
+                parts.Add($"padding-right:6px");
+                parts.Add($"margin:0");
+            }
+        }
+
         return string.Join(";", parts);
     }
 
