@@ -17,6 +17,22 @@ public partial class ExcelHandler
 {
     public List<string> Set(string path, Dictionary<string, string> properties)
     {
+        // Batch Set: if path looks like a selector (not starting with /), Query → Set each
+        if (!string.IsNullOrEmpty(path) && !path.StartsWith("/"))
+        {
+            var unsupported = new List<string>();
+            var targets = Query(path);
+            if (targets.Count == 0)
+                throw new ArgumentException($"No elements matched selector: {path}");
+            foreach (var target in targets)
+            {
+                var targetUnsupported = Set(target.Path, properties);
+                foreach (var u in targetUnsupported)
+                    if (!unsupported.Contains(u)) unsupported.Add(u);
+            }
+            return unsupported;
+        }
+
         // Normalize to case-insensitive lookup so camelCase keys match lowercase lookups
         if (properties != null && properties.Comparer != StringComparer.OrdinalIgnoreCase)
             properties = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
@@ -1036,6 +1052,24 @@ public partial class ExcelHandler
                         // Formula written but not evaluated — will be calculated when opened in Excel
                         cell.CellValue = null;
                         cell.DataType = null;
+                    }
+                    // Ensure fullCalcOnLoad so Excel recalculates formulas on open
+                    {
+                        var workbook = _doc.WorkbookPart!.Workbook;
+                        var calcPr = workbook.GetFirstChild<CalculationProperties>();
+                        if (calcPr == null)
+                        {
+                            calcPr = new CalculationProperties();
+                            // OOXML schema order: ...definedNames, calcPr, oleSize, customWorkbookViews, pivotCaches...
+                            var insertBefore = (DocumentFormat.OpenXml.OpenXmlElement?)workbook.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.OleSize>()
+                                ?? (DocumentFormat.OpenXml.OpenXmlElement?)workbook.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.CustomWorkbookViews>()
+                                ?? (DocumentFormat.OpenXml.OpenXmlElement?)workbook.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.PivotCaches>();
+                            if (insertBefore != null)
+                                workbook.InsertBefore(calcPr, insertBefore);
+                            else
+                                workbook.AppendChild(calcPr);
+                        }
+                        calcPr.FullCalculationOnLoad = true;
                     }
                     break;
                 case "type":
