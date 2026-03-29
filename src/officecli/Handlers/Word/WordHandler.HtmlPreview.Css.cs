@@ -748,15 +748,16 @@ public partial class WordHandler
                     ApplyCondBorder(parts, cb.BottomBorder, "border-bottom");
                     ApplyCondBorder(parts, cb.LeftBorder, "border-left");
                     ApplyCondBorder(parts, cb.RightBorder, "border-right");
+                    // insideH/insideV only apply to edges NOT already set by explicit top/bottom/left/right
                     if (cb.InsideHorizontalBorder != null)
                     {
-                        ApplyCondBorder(parts, cb.InsideHorizontalBorder, "border-top");
-                        ApplyCondBorder(parts, cb.InsideHorizontalBorder, "border-bottom");
+                        if (cb.TopBorder == null) ApplyCondBorder(parts, cb.InsideHorizontalBorder, "border-top");
+                        if (cb.BottomBorder == null) ApplyCondBorder(parts, cb.InsideHorizontalBorder, "border-bottom");
                     }
                     if (cb.InsideVerticalBorder != null)
                     {
-                        ApplyCondBorder(parts, cb.InsideVerticalBorder, "border-left");
-                        ApplyCondBorder(parts, cb.InsideVerticalBorder, "border-right");
+                        if (cb.LeftBorder == null) ApplyCondBorder(parts, cb.InsideVerticalBorder, "border-left");
+                        if (cb.RightBorder == null) ApplyCondBorder(parts, cb.InsideVerticalBorder, "border-right");
                     }
                 }
 

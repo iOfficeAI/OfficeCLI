@@ -283,9 +283,13 @@ public partial class WordHandler
                 var typeName = type.InnerText;
 
                 var fmt = new TableConditionalFormat();
+                // Try SDK-typed property first, then fall back to generic child lookup
                 var tcPr = tsp.GetFirstChild<TableStyleConditionalFormattingTableCellProperties>();
-                fmt.Shading = tcPr?.Shading;
-                fmt.Borders = tcPr?.TableCellBorders;
+                if (tcPr != null)
+                {
+                    fmt.Shading = tcPr.GetFirstChild<Shading>();
+                    fmt.Borders = tcPr.GetFirstChild<TableCellBorders>();
+                }
                 fmt.RunProperties = tsp.GetFirstChild<RunPropertiesBaseStyle>();
 
                 result[typeName] = fmt;
