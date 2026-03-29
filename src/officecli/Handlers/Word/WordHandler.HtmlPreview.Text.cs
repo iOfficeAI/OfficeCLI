@@ -196,7 +196,14 @@ public partial class WordHandler
             if (child is Break brk)
             {
                 if (brk.Type?.Value == BreakValues.Page)
-                    sb.Append("<hr class=\"page-break\">");
+                    sb.Append("<!--PAGE_BREAK-->");
+                else if (brk.Type?.Value == BreakValues.Column)
+                {
+                    // Close current span/paragraph, insert block-level column break, reopen
+                    if (needsSpan) sb.Append("</span>");
+                    sb.Append("</p><p style=\"break-before:column\">");
+                    if (needsSpan) sb.Append($"<span style=\"{style}\">");
+                }
                 else
                     sb.Append("<br>");
             }

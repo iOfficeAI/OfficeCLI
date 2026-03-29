@@ -20,7 +20,14 @@ public partial class WordHandler
     private void RenderTableHtml(StringBuilder sb, Table table)
     {
         // Check table-level borders to determine if this is a borderless layout table
+        // First try direct table borders, then fall back to table style borders
         var tblBorders = table.GetFirstChild<TableProperties>()?.TableBorders;
+        if (tblBorders == null)
+        {
+            var styleId = table.GetFirstChild<TableProperties>()?.TableStyle?.Val?.Value;
+            if (styleId != null)
+                tblBorders = ResolveTableStyleBorders(styleId);
+        }
         bool tableBordersNone = IsTableBorderless(tblBorders);
 
         var tableClass = tableBordersNone ? "borderless" : "";
@@ -136,6 +143,23 @@ public partial class WordHandler
         if (border == null) return true;
         var val = border.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
         return val is null or "nil" or "none";
+    }
+
+    /// <summary>Resolve TableBorders from a table style (walking basedOn chain).</summary>
+    private TableBorders? ResolveTableStyleBorders(string styleId)
+    {
+        var visited = new HashSet<string>();
+        var currentId = styleId;
+        while (currentId != null && visited.Add(currentId))
+        {
+            var style = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
+                ?.Elements<Style>().FirstOrDefault(s => s.StyleId?.Value == currentId);
+            if (style == null) break;
+            var borders = style.StyleTableProperties?.TableBorders;
+            if (borders != null) return borders;
+            currentId = style.BasedOn?.Val?.Value;
+        }
+        return null;
     }
 
     /// <summary>Calculate the grid column index for a cell, accounting for gridSpan in preceding cells.</summary>

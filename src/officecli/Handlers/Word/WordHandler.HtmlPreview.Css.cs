@@ -236,8 +236,25 @@ public partial class WordHandler
     {
         var parts = new List<string>();
 
+        // Set paragraph font-size to match the first run's resolved font-size.
+        // This prevents the CSS "strut" (block container's anonymous inline box) from inflating
+        // the line box when .page font-size differs from the actual text span font-size.
+        var firstRun = para.Elements<Run>().FirstOrDefault(r =>
+            r.ChildElements.Any(c => c is Text t && !string.IsNullOrEmpty(t.Text)));
+        if (firstRun != null)
+        {
+            var rProps = ResolveEffectiveRunProperties(firstRun, para);
+            var sz = rProps.FontSize?.Val?.Value;
+            if (sz != null && int.TryParse(sz, out var hp))
+                parts.Add($"font-size:{hp / 2.0:0.##}pt");
+        }
+
         var pProps = para.ParagraphProperties;
-        if (pProps == null) return ResolveParagraphStyleCss(para);
+        if (pProps == null)
+        {
+            if (parts.Count > 0) return string.Join(";", parts);
+            return ResolveParagraphStyleCss(para);
+        }
 
         // Alignment
         var jc = pProps.Justification?.Val;
@@ -253,43 +270,70 @@ public partial class WordHandler
             if (align != null) parts.Add($"text-align:{align}");
         }
 
+        // Style ID for fallback lookups
+        var styleId = pProps.ParagraphStyleId?.Val?.Value;
+
         // Indentation (skip for list items — handled by list nesting)
         if (!isListItem)
         {
-            var indent = pProps.Indentation;
+            // Indentation — direct or style fallback
+            var indent = pProps.Indentation ?? ResolveIndentationFromStyle(styleId);
             if (indent != null)
             {
                 if (indent.Left?.Value is string leftTwips && leftTwips != "0")
-                    parts.Add($"margin-left:{TwipsToPx(leftTwips)}px");
+                    parts.Add($"margin-left:{TwipsToPx(leftTwips):0.#}px");
                 if (indent.Right?.Value is string rightTwips && rightTwips != "0")
-                    parts.Add($"margin-right:{TwipsToPx(rightTwips)}px");
+                    parts.Add($"margin-right:{TwipsToPx(rightTwips):0.#}px");
                 if (indent.FirstLine?.Value is string firstLineTwips && firstLineTwips != "0")
-                    parts.Add($"text-indent:{TwipsToPx(firstLineTwips)}px");
+                    parts.Add($"text-indent:{TwipsToPx(firstLineTwips):0.#}px");
                 if (indent.Hanging?.Value is string hangTwips && hangTwips != "0")
-                    parts.Add($"text-indent:-{TwipsToPx(hangTwips)}px");
+                    parts.Add($"text-indent:-{TwipsToPx(hangTwips):0.#}px");
             }
         }
 
-        // Spacing
+        // Spacing — direct properties first, fallback to style chain per-property
         var spacing = pProps.SpacingBetweenLines;
+        var styleSpacing = ResolveSpacingFromStyle(styleId);
+        if (spacing == null)
+            spacing = styleSpacing;
+
         if (spacing != null)
         {
-            if (spacing.Before?.Value is string beforeTwips && beforeTwips != "0")
-                parts.Add($"margin-top:{TwipsToPx(beforeTwips)}px");
-            if (spacing.After?.Value is string afterTwips && afterTwips != "0")
-                parts.Add($"margin-bottom:{TwipsToPx(afterTwips)}px");
-            if (spacing.Line?.Value is string lineVal)
+            // Before: try direct, then style fallback (before in twips, beforeLines in hundredths of a line)
+            var beforeVal = pProps.SpacingBetweenLines?.Before?.Value
+                            ?? styleSpacing?.Before?.Value;
+            var beforeLinesVal = pProps.SpacingBetweenLines?.BeforeLines?.Value
+                                 ?? styleSpacing?.BeforeLines?.Value;
+            if (beforeVal is string beforeTwips && beforeTwips != "0")
+                parts.Add($"margin-top:{TwipsToPx(beforeTwips):0.#}px");
+            else if (beforeLinesVal is int beforeLines && beforeLines != 0)
+                parts.Add($"margin-top:{beforeLines / 100.0:0.##}em");
+
+            // After: try direct, then style fallback (after in twips, afterLines in hundredths of a line)
+            var afterVal = pProps.SpacingBetweenLines?.After?.Value
+                           ?? styleSpacing?.After?.Value;
+            var afterLinesVal = pProps.SpacingBetweenLines?.AfterLines?.Value
+                                ?? styleSpacing?.AfterLines?.Value;
+            if (afterVal is string afterTwips && afterTwips != "0")
+                parts.Add($"margin-bottom:{TwipsToPx(afterTwips):0.#}px");
+            else if (afterLinesVal is int afterLines && afterLines != 0)
+                parts.Add($"margin-bottom:{afterLines / 100.0:0.##}em");
+
+            // Line: try direct, then style fallback
+            var lineVal = pProps.SpacingBetweenLines?.Line?.Value
+                          ?? styleSpacing?.Line?.Value;
+            if (lineVal is string lv)
             {
-                var rule = spacing.LineRule?.InnerText;
+                var rule = pProps.SpacingBetweenLines?.LineRule?.InnerText
+                           ?? styleSpacing?.LineRule?.InnerText;
                 if (rule == "auto" || rule == null)
                 {
-                    // Multiplier: value/240 = line spacing ratio
-                    if (int.TryParse(lineVal, out var lv))
-                        parts.Add($"line-height:{lv / 240.0:0.##}");
+                    if (int.TryParse(lv, out var lvNum))
+                        parts.Add($"line-height:{lvNum / 240.0:0.##}");
                 }
                 else if (rule == "exact" || rule == "atLeast")
                 {
-                    parts.Add($"line-height:{TwipsToPx(lineVal)}px");
+                    parts.Add($"line-height:{TwipsToPx(lv):0.#}px");
                 }
             }
         }
@@ -316,8 +360,9 @@ public partial class WordHandler
             RenderBorderCss(parts, pBdr.RightBorder, "border-right");
         }
 
-        // Page break before (direct or from style chain) — handled via <!--PAGE_BREAK--> marker
-        // CSS page-break-before only works for print; screen pagination uses the marker instead
+        // Page break before
+        if (pProps.PageBreakBefore?.Val?.Value != false && pProps.PageBreakBefore != null)
+            parts.Add("page-break-before:always");
 
         return string.Join(";", parts);
     }
@@ -347,7 +392,9 @@ public partial class WordHandler
         return null;
     }
 
-    /// <summary>Resolve PageBreakBefore from the style chain.</summary>
+    /// <summary>
+    /// Resolve PageBreakBefore from the style chain.
+    /// </summary>
     private PageBreakBefore? ResolvePageBreakBeforeFromStyle(string? styleId)
     {
         if (styleId == null) return null;
@@ -360,6 +407,59 @@ public partial class WordHandler
             if (style == null) break;
             var pgBB = style.StyleParagraphProperties?.PageBreakBefore;
             if (pgBB != null) return pgBB;
+            currentStyleId = style.BasedOn?.Val?.Value;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Resolve SpacingBetweenLines from the style chain (basedOn walk).
+    /// </summary>
+    private SpacingBetweenLines? ResolveSpacingFromStyle(string? styleId)
+    {
+        // If no explicit style, use the default paragraph style (Normal)
+        if (styleId == null)
+        {
+            var defaultStyle = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
+                ?.Elements<Style>().FirstOrDefault(s => s.Type?.Value == StyleValues.Paragraph && s.Default?.Value == true);
+            if (defaultStyle?.StyleParagraphProperties?.SpacingBetweenLines != null)
+                return defaultStyle.StyleParagraphProperties.SpacingBetweenLines;
+            return null;
+        }
+        var visited = new HashSet<string>();
+        var currentStyleId = styleId;
+        while (currentStyleId != null && visited.Add(currentStyleId))
+        {
+            var style = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
+                ?.Elements<Style>().FirstOrDefault(s => s.StyleId?.Value == currentStyleId);
+            if (style == null) break;
+            var sp = style.StyleParagraphProperties?.SpacingBetweenLines;
+            if (sp != null) return sp;
+            currentStyleId = style.BasedOn?.Val?.Value;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Resolve Indentation from the style chain (basedOn walk).
+    /// </summary>
+    private Indentation? ResolveIndentationFromStyle(string? styleId)
+    {
+        if (styleId == null)
+        {
+            var defaultStyle = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
+                ?.Elements<Style>().FirstOrDefault(s => s.Type?.Value == StyleValues.Paragraph && s.Default?.Value == true);
+            return defaultStyle?.StyleParagraphProperties?.Indentation;
+        }
+        var visited = new HashSet<string>();
+        var currentStyleId = styleId;
+        while (currentStyleId != null && visited.Add(currentStyleId))
+        {
+            var style = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
+                ?.Elements<Style>().FirstOrDefault(s => s.StyleId?.Value == currentStyleId);
+            if (style == null) break;
+            var ind = style.StyleParagraphProperties?.Indentation;
+            if (ind != null) return ind;
             currentStyleId = style.BasedOn?.Val?.Value;
         }
         return null;
@@ -395,10 +495,20 @@ public partial class WordHandler
                 var spacing = pPr.SpacingBetweenLines;
                 if (spacing != null)
                 {
-                    if (spacing.Before?.Value is string b && b != "0" && !parts.Any(p => p.StartsWith("margin-top")))
-                        parts.Add($"margin-top:{TwipsToPx(b)}px");
-                    if (spacing.After?.Value is string a && a != "0" && !parts.Any(p => p.StartsWith("margin-bottom")))
-                        parts.Add($"margin-bottom:{TwipsToPx(a)}px");
+                    if (!parts.Any(p => p.StartsWith("margin-top")))
+                    {
+                        if (spacing.Before?.Value is string b && b != "0")
+                            parts.Add($"margin-top:{TwipsToPx(b):0.#}px");
+                        else if (spacing.BeforeLines?.Value is int bl && bl != 0)
+                            parts.Add($"margin-top:{bl / 100.0:0.##}em");
+                    }
+                    if (!parts.Any(p => p.StartsWith("margin-bottom")))
+                    {
+                        if (spacing.After?.Value is string a && a != "0")
+                            parts.Add($"margin-bottom:{TwipsToPx(a):0.#}px");
+                        else if (spacing.AfterLines?.Value is int al && al != 0)
+                            parts.Add($"margin-bottom:{al / 100.0:0.##}em");
+                    }
                     if (spacing.Line?.Value is string lv && !parts.Any(p => p.StartsWith("line-height")))
                     {
                         var rule = spacing.LineRule?.InnerText;
@@ -425,7 +535,13 @@ public partial class WordHandler
         // Font
         var fonts = rProps.RunFonts;
         var font = fonts?.EastAsia?.Value ?? fonts?.Ascii?.Value ?? fonts?.HighAnsi?.Value;
-        if (font != null) parts.Add($"font-family:'{CssSanitize(font)}'");
+        if (font != null)
+        {
+            var fallback = GetChineseFontFallback(font);
+            parts.Add(fallback != null
+                ? $"font-family:'{CssSanitize(font)}',{fallback}"
+                : $"font-family:'{CssSanitize(font)}'");
+        }
 
         // Size (stored as half-points)
         var size = rProps.FontSize?.Val?.Value;
@@ -624,15 +740,15 @@ public partial class WordHandler
         parts.Add($"{cssProp}:{width} {style} {cssColor}");
     }
 
-    private static int TwipsToPx(string twipsStr)
+    private static double TwipsToPx(string twipsStr)
     {
         if (!int.TryParse(twipsStr, out var twips)) return 0;
-        return (int)(twips / 1440.0 * 96);
+        return Math.Round(twips / 1440.0 * 96, 1);
     }
 
     private static string TwipsToPxStr(string twipsStr)
     {
-        return $"{TwipsToPx(twipsStr)}px";
+        return $"{TwipsToPx(twipsStr):0.#}px";
     }
 
     private static string? HighlightToCssColor(string highlight) => highlight.ToLowerInvariant() switch
@@ -656,69 +772,129 @@ public partial class WordHandler
         _ => null
     };
 
+    /// <summary>
+    /// Returns CSS fallback fonts for common Windows Chinese fonts that are unavailable on Mac.
+    /// </summary>
+    private static string? GetChineseFontFallback(string font) => font switch
+    {
+        "仿宋_GB2312" => "'仿宋',FangSong,STFangsong",
+        "楷体_GB2312" => "'楷体',KaiTi,STKaiti",
+        "长城小标宋体" => "'华文中宋',STZhongsong,'宋体',SimSun",
+        "黑体" => "'Heiti SC',STHeiti",
+        _ => null
+    };
+
     private static string CssSanitize(string value) =>
         Regex.Replace(value, @"[""'\\<>&;{}]", "");
+
+    private static string JsStringLiteral(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return "\"\"";
+        var sb = new StringBuilder("\"");
+        foreach (var c in text)
+        {
+            switch (c)
+            {
+                case '\\': sb.Append("\\\\"); break;
+                case '"': sb.Append("\\\""); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\t': sb.Append("\\t"); break;
+                case '<': sb.Append("\\x3c"); break;
+                case '>': sb.Append("\\x3e"); break;
+                default: sb.Append(c); break;
+            }
+        }
+        sb.Append('"');
+        return sb.ToString();
+    }
 
     private static string HtmlEncode(string? text)
     {
         if (string.IsNullOrEmpty(text)) return "";
-        return text
+        var encoded = text
             .Replace("&", "&amp;")
             .Replace("<", "&lt;")
             .Replace(">", "&gt;")
             .Replace("\"", "&quot;");
+        // Preserve consecutive spaces (HTML collapses them by default)
+        // Replace runs of 2+ spaces: keep first as normal space, rest as &nbsp;
+        encoded = Regex.Replace(encoded, @"  +", m =>
+            " " + new string('\u00A0', m.Length - 1)); // space + (n-1) × &nbsp;
+        return encoded;
     }
 
     // ==================== CSS Stylesheet ====================
 
     private static string GenerateWordCss(PageLayout pg, DocDef dd)
     {
-        var mL = $"{pg.MarginLeftCm:0.##}cm";
-        var mR = $"{pg.MarginRightCm:0.##}cm";
-        var mT = $"{pg.MarginTopCm:0.##}cm";
-        var mB = $"{pg.MarginBottomCm:0.##}cm";
-        var lr = $"{pg.MarginLeftCm:0.##}cm {pg.MarginRightCm:0.##}cm";
-        var font = $"\'{CssSanitize(dd.Font)}\', \'Microsoft YaHei\', \'Segoe UI\', -apple-system, \'PingFang SC\', sans-serif";
-        var pageH = $"{pg.HeightCm:0.##}cm";
+        // Use pt units (twips/20) for pixel-perfect accuracy — no cm→px conversion loss
+        var mL = $"{pg.MarginLeftPt:0.#}pt";
+        var mR = $"{pg.MarginRightPt:0.#}pt";
+        var mT = $"{pg.MarginTopPt:0.#}pt";
+        var mB = $"{pg.MarginBottomPt:0.#}pt";
+        // Build font fallback chain: document font → platform-specific CJK equivalents → generic
+        var docFont = CssSanitize(dd.Font);
+        var cjkFallback = GetCjkFontFallback(docFont);
+        var font = $"\'{docFont}\'{cjkFallback}, \'Microsoft YaHei\', -apple-system, \'PingFang SC\', sans-serif";
+        var pageH = $"{pg.HeightPt:0.#}pt";
+        var pageW = $"{pg.WidthPt:0.#}pt";
         var sz = $"{dd.SizePt:0.##}pt";
-        var lh = $"{dd.LineHeight:0.##}";
-        var tblW = $"calc(100% - {pg.MarginLeftCm + pg.MarginRightCm:0.##}cm)";
+        // Use docGrid linePitch as line-height when available (CJK snap-to-grid)
+        var lh = dd.GridLinePitchPt > 0 ? $"{dd.GridLinePitchPt:0.##}pt" : $"{dd.LineHeight:0.##}";
 
         return $@"
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{ background: #f0f0f0; font-family: {font}; color: {dd.Color}; padding: 20px; }}
         .page {{ background: white; margin: 0 auto 40px; padding: {mT} {mR} {mB} {mL};
             box-shadow: 0 2px 8px rgba(0,0,0,0.15); border-radius: 4px;
-            min-height: {pageH}; line-height: {lh}; font-size: {sz}; position: relative; overflow-x: auto; }}
-        .doc-header, .doc-footer {{ color: #888; font-size: 9pt;
-            border-bottom: 1px solid #e0e0e0; margin-bottom: 1em; padding-bottom: 0.5em; }}
-        .doc-footer {{ border-bottom: none; border-top: 1px solid #e0e0e0;
-            margin-top: 1em; padding-top: 0.5em; margin-bottom: 0; }}
+            min-height: {pageH}; line-height: {lh}; font-size: {sz}; position: relative; overflow-x: auto;
+            display: flex; flex-direction: column; font-kerning: none; letter-spacing: 0;
+            }}
+        .page-body {{ flex: 1; }}
+        .doc-header, .doc-footer {{ color: #888; font-size: 9pt; }}
+        .doc-header {{ position: absolute; top: {pg.HeaderDistancePt:0.#}pt; left: {mL}; right: {mR};
+            padding-bottom: 0.3em; }}
+        .doc-footer {{ position: absolute; bottom: {pg.FooterDistancePt:0.#}pt; left: {mL}; right: {mR};
+            padding-top: 0.3em; }}
         h1, h2, h3, h4, h5, h6 {{ line-height: 1.4; }}
-        h1 {{ margin-top: 0.5em; margin-bottom: 0.3em; }}
-        h2 {{ margin-top: 0.4em; margin-bottom: 0.2em; }}
-        h3 {{ margin-top: 0.3em; margin-bottom: 0.2em; }}
-        h4 {{ margin-top: 0.2em; margin-bottom: 0.1em; }}
-        h5, h6 {{ margin-top: 0.1em; margin-bottom: 0.1em; }}
-        p {{ margin: 0.1em 0; }}
-        p.empty {{ margin: 0; line-height: 0.8; font-size: 6pt; }}
+        p {{ margin: 0; text-align: justify; text-justify: inter-character; }}
+        p.empty {{ margin: 0; min-height: 1em; }}
         a {{ color: #2B579A; }} a:hover {{ color: #1a3c6e; }}
         ul, ol {{ padding-left: 2em; margin: 0.2em 0; }}
+        ul {{ list-style-type: disc; }}
         li {{ margin: 0.1em 0; }}
         .equation {{ text-align: center; padding: 0.5em 0; overflow-x: auto; }}
         img {{ max-width: 100%; height: auto; }}
         .img-error {{ color: #999; font-style: italic; }}
-        table {{ border-collapse: collapse; font-size: {sz}; width: 100%; }}
+        table {{ border-collapse: collapse; font-size: {sz}; }}
         .wg {{ margin: 0.3em 0; }}
         .wg p {{ padding: 0; margin: 0.05em 0; }}
         table.borderless {{ border: none; }}
         table.borderless td, table.borderless th {{ border: none; padding: 2px 6px; }}
         th, td {{ border: none; padding: 4px 8px; text-align: left; vertical-align: top; }}
-        th {{ background: #f0f0f0; font-weight: 600; }}
-        .header-row td, .header-row th {{ background: #f0f0f0; font-weight: 600; }}
-        hr.page-break {{ border: none; border-top: 2px dashed #ccc; margin: 2em 0; }}
+        th {{ font-weight: 600; }}
         @media print {{ body {{ background: white; padding: 0; }}
             .page {{ box-shadow: none; margin: 0; max-width: none; }}
             hr.page-break {{ page-break-after: always; border: none; margin: 0; }} }}";
+    }
+
+    /// <summary>Get platform-specific CJK font fallback for the given document font.</summary>
+    private static string GetCjkFontFallback(string docFont)
+    {
+        var lower = docFont.ToLowerInvariant();
+        // Song/宋 → serif CJK fonts (macOS: Songti SC / STSong)
+        if (lower.Contains("宋") || lower.Contains("song") || lower == "simsun")
+            return ", 'Songti SC', 'STSong'";
+        // Hei/黑 → sans-serif CJK fonts (macOS: PingFang SC / STHeiti)
+        if (lower.Contains("黑") || lower.Contains("hei") || lower == "simhei")
+            return ", 'PingFang SC', 'STHeiti'";
+        // Kai/楷 → cursive CJK fonts (macOS: Kaiti SC / STKaiti)
+        if (lower.Contains("楷") || lower.Contains("kai"))
+            return ", 'Kaiti SC', 'STKaiti'";
+        // FangSong/仿宋 → (macOS: STFangsong)
+        if (lower.Contains("仿宋") || lower.Contains("fangsong"))
+            return ", 'STFangsong'";
+        return "";
     }
 }
