@@ -441,9 +441,33 @@ public partial class WordHandler
         var numIdLevelOffset = new Dictionary<int, int>(); // numId → effective ilvl offset for cross-numId nesting
         var olCountPerLevel = new Dictionary<int, int>(); // ilvl → running <ol> item count for `start` attribute
         bool pendingLiClose = false; // defer </li> to allow nested lists inside
+        bool inMultiColumn = false; // track whether we're inside a multi-column div
 
-        foreach (var element in elements)
+        // Pre-scan: build a map of section column counts from inline sectPr breaks
+        // The last section's cols come from the body sectPr
+        var bodySectPr = body.GetFirstChild<SectionProperties>();
+        var bodyColCount = GetSectionColumnCount(bodySectPr);
+
+        for (int ei = 0; ei < elements.Count; ei++)
         {
+            var element = elements[ei];
+
+            // Check for inline section break (sectPr inside paragraph pPr) — handle column changes
+            if (element is Paragraph sectPara && sectPara.ParagraphProperties?.GetFirstChild<SectionProperties>() != null)
+            {
+                var nextCols = GetNextSectionColumnCount(elements, ei, bodyColCount);
+                if (nextCols > 1 && !inMultiColumn)
+                {
+                    sb.AppendLine($"<div style=\"column-count:{nextCols};column-gap:36pt\">");
+                    inMultiColumn = true;
+                }
+                else if (nextCols <= 1 && inMultiColumn)
+                {
+                    sb.AppendLine("</div>");
+                    inMultiColumn = false;
+                }
+            }
+
             if (element is Paragraph para)
             {
                 // Check for display equation
@@ -608,8 +632,10 @@ public partial class WordHandler
             {
                 // Skip — section properties are not visual content
             }
+
         }
 
+        if (inMultiColumn) sb.AppendLine("</div>");
         CloseAllLists(sb, listStack, ref currentListType, ref pendingLiClose);
     }
 
@@ -623,6 +649,27 @@ public partial class WordHandler
                 sb.AppendLine("</li>");
         }
         currentListType = null;
+    }
+
+    /// <summary>Get the column count from a section properties element.</summary>
+    private static int GetSectionColumnCount(SectionProperties? sectPr)
+    {
+        var cols = sectPr?.GetFirstChild<Columns>();
+        var num = cols?.ColumnCount?.Value;
+        if (num != null && num > 1) return num.Value;
+        return 1;
+    }
+
+    /// <summary>Get the column count for the next section after a given element index.</summary>
+    private static int GetNextSectionColumnCount(List<OpenXmlElement> elements, int currentIdx, int bodyColCount)
+    {
+        // Look forward for the next inline sectPr; if none found, use body sectPr cols
+        for (int i = currentIdx + 1; i < elements.Count; i++)
+        {
+            if (elements[i] is Paragraph p && p.ParagraphProperties?.GetFirstChild<SectionProperties>() is SectionProperties sect)
+                return GetSectionColumnCount(sect);
+        }
+        return bodyColCount;
     }
 
     /// <summary>Get the left indent (in twips) for a numbering level definition.</summary>
