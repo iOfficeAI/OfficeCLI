@@ -1155,8 +1155,6 @@ public partial class PowerPointHandler
         double textH = shapeH - tIns - bIns;
         if (textW <= 0 || textH <= 0) return;
 
-        const double ptToPx = 96.0 / 72.0;
-
         // Vertical alignment via flexbox
         var justifyContent = valign switch
         {

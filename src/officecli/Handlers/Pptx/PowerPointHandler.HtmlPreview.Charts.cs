@@ -240,7 +240,7 @@ public partial class PowerPointHandler
             var holeSize = 0.0;
             if (isDoughnut)
             {
-                var holeSizeEl = plotArea.Descendants<DocumentFormat.OpenXml.Drawing.Charts.HoleSize>().FirstOrDefault();
+                var holeSizeEl = plotArea!.Descendants<DocumentFormat.OpenXml.Drawing.Charts.HoleSize>().FirstOrDefault();
                 holeSize = (holeSizeEl?.Val?.Value ?? 50) / 100.0;
             }
             svgRenderer.RenderPieChartSvg(sb, seriesList, categories, seriesColors, svgW, chartSvgH, holeSize, showValues);
@@ -253,7 +253,7 @@ public partial class PowerPointHandler
         }
         else if (chartType == "combo")
         {
-            svgRenderer.RenderComboChartSvg(sb, plotArea, seriesList, categories, seriesColors, margin.left, margin.top, plotW, plotH);
+            svgRenderer.RenderComboChartSvg(sb, plotArea!, seriesList, categories, seriesColors, margin.left, margin.top, plotW, plotH);
         }
         else if (chartType.Contains("radar"))
         {
@@ -261,11 +261,11 @@ public partial class PowerPointHandler
         }
         else if (chartType == "bubble")
         {
-            svgRenderer.RenderBubbleChartSvg(sb, plotArea, seriesList, categories, seriesColors, margin.left, margin.top, plotW, plotH);
+            svgRenderer.RenderBubbleChartSvg(sb, plotArea!, seriesList, categories, seriesColors, margin.left, margin.top, plotW, plotH);
         }
         else if (chartType == "stock")
         {
-            svgRenderer.RenderStockChartSvg(sb, plotArea, seriesList, categories, seriesColors, margin.left, margin.top, plotW, plotH);
+            svgRenderer.RenderStockChartSvg(sb, plotArea!, seriesList, categories, seriesColors, margin.left, margin.top, plotW, plotH);
         }
         else if (chartType.Contains("line") || chartType == "scatter")
         {

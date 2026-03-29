@@ -392,7 +392,7 @@ public partial class WordHandler
 
         // Check for lvlPicBulletId
         var picBulletIdAttr = level?.GetAttributes().FirstOrDefault(a => a.LocalName == "lvlPicBulletId");
-        if (picBulletIdAttr.Value == null) return null;
+        if (picBulletIdAttr is not { } attr || attr.Value == null) return null;
 
         // Find the matching numPicBullet element
         var picBulletEl = level?.Descendants().FirstOrDefault(e => e.LocalName == "lvlPicBulletId");

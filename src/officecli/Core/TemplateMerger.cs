@@ -137,7 +137,7 @@ public static class TemplateMerger
         {
             foreach (var headerPart in mainPart.HeaderParts)
             {
-                foreach (var para in headerPart.Header.Descendants<DocumentFormat.OpenXml.Wordprocessing.Paragraph>())
+                foreach (var para in headerPart.Header?.Descendants<DocumentFormat.OpenXml.Wordprocessing.Paragraph>() ?? Enumerable.Empty<DocumentFormat.OpenXml.Wordprocessing.Paragraph>())
                 {
                     var text = string.Concat(para.Descendants<DocumentFormat.OpenXml.Wordprocessing.Text>().Select(t => t.Text));
                     foreach (Match match in PlaceholderPattern.Matches(text))
@@ -146,7 +146,7 @@ public static class TemplateMerger
             }
             foreach (var footerPart in mainPart.FooterParts)
             {
-                foreach (var para in footerPart.Footer.Descendants<DocumentFormat.OpenXml.Wordprocessing.Paragraph>())
+                foreach (var para in footerPart.Footer?.Descendants<DocumentFormat.OpenXml.Wordprocessing.Paragraph>() ?? Enumerable.Empty<DocumentFormat.OpenXml.Wordprocessing.Paragraph>())
                 {
                     var text = string.Concat(para.Descendants<DocumentFormat.OpenXml.Wordprocessing.Text>().Select(t => t.Text));
                     foreach (Match match in PlaceholderPattern.Matches(text))

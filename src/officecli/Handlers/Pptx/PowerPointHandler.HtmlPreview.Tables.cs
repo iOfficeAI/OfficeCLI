@@ -246,7 +246,7 @@ public partial class PowerPointHandler
     /// Colors are derived from theme colors with lumMod/lumOff transforms matching PowerPoint's
     /// built-in table style definitions (OOXML spec).
     /// </summary>
-    private static (string? bg, string? fg) GetTableStyleColors(string styleName, bool isHeader, bool isBandedOdd,
+    private static (string?, string?) GetTableStyleColors(string styleName, bool isHeader, bool isBandedOdd,
         Dictionary<string, string> themeColors)
     {
         // Helper: resolve a theme color key to hex, defaulting if missing
@@ -264,7 +264,7 @@ public partial class PowerPointHandler
                        : (ApplyLumModOff(dk1, 10000, 90000), null),
 
             // Medium Style 1: header=dk1, band1=dk1 tint25%, band2=none (uses dk1 base, not accent)
-            "medium1" => isHeader ? ($"#{dk1}", "#FFFFFF")
+            "medium1" => isHeader ? ((string?)$"#{dk1}", (string?)"#FFFFFF")
                        : isBandedOdd ? (ApplyLumModOff(dk1, 25000, 75000), null)
                        : (null, null),
 

@@ -164,15 +164,15 @@ public partial class PowerPointHandler
             try
             {
                 var extPart = (ExtendedChartPart)slidePart.GetPartById(cxRelId);
-                var cxChartSpace = extPart.ChartSpace;
+                var cxChartSpace = extPart.ChartSpace!;
                 var cxType = ChartExBuilder.DetectExtendedChartType(cxChartSpace);
                 if (cxType != null) node.Format["chartType"] = cxType;
                 // Title
-                var cxTitle = cxChartSpace?.Descendants<DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing.ChartTitle>().FirstOrDefault();
+                var cxTitle = cxChartSpace.Descendants<DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing.ChartTitle>().FirstOrDefault();
                 var cxTitleText = cxTitle?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
                 if (cxTitleText != null) node.Format["title"] = cxTitleText;
                 // Count series
-                var cxSeries = cxChartSpace!.Descendants<DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing.Series>().ToList();
+                var cxSeries = cxChartSpace.Descendants<DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing.Series>().ToList();
                 node.Format["seriesCount"] = cxSeries.Count;
             }
             catch { }

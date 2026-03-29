@@ -327,7 +327,8 @@ public partial class WordHandler
                 }
                 fmt.RunProperties = tsp.GetFirstChild<RunPropertiesBaseStyle>();
 
-                result[typeName] = fmt;
+                if (typeName != null)
+                    result[typeName] = fmt;
             }
         }
 

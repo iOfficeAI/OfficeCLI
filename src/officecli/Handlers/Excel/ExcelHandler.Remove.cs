@@ -285,7 +285,7 @@ public partial class ExcelHandler
             var tablePart = tableParts[tblIdx - 1];
             worksheet.DeletePart(tablePart);
             // Also remove the tablePart reference from the TableParts element
-            var tblParts = worksheet.Worksheet.GetFirstChild<TableParts>();
+            var tblParts = worksheet.Worksheet?.GetFirstChild<TableParts>();
             if (tblParts != null)
             {
                 var tblPartEntries = tblParts.Elements<TablePart>().ToList();

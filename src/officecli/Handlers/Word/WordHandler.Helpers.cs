@@ -382,16 +382,16 @@ public partial class WordHandler
                     var fldChar = run.GetFirstChild<FieldChar>();
                     if (fldChar != null)
                     {
-                        if (fldChar.FieldCharType == FieldCharValues.Begin)
+                        if (fldChar.FieldCharType! == FieldCharValues.Begin)
                         {
                             inField = true;
                             pastSeparator = false;
                         }
-                        else if (fldChar.FieldCharType == FieldCharValues.Separate)
+                        else if (fldChar.FieldCharType! == FieldCharValues.Separate)
                         {
                             pastSeparator = true;
                         }
-                        else if (fldChar.FieldCharType == FieldCharValues.End)
+                        else if (fldChar.FieldCharType! == FieldCharValues.End)
                         {
                             inField = false;
                             pastSeparator = false;

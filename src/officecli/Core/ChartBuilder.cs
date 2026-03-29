@@ -128,9 +128,9 @@ internal static partial class ChartHelper
                     wfValues = seriesData.Count > 0 ? seriesData[0].values : Array.Empty<double>();
                 }
 
-                var incColor = properties.GetValueOrDefault("increaseColor", null);
-                var decColor = properties.GetValueOrDefault("decreaseColor", null);
-                var totColor = properties.GetValueOrDefault("totalColor", null);
+                var incColor = properties.GetValueOrDefault("increaseColor");
+                var decColor = properties.GetValueOrDefault("decreaseColor");
+                var totColor = properties.GetValueOrDefault("totalColor");
                 var wfChartSpace = BuildWaterfallChart(title, wfCategories, wfValues,
                     incColor, decColor, totColor, properties);
                 return wfChartSpace;

@@ -1055,7 +1055,7 @@ public partial class ExcelHandler
                     }
                     // Ensure fullCalcOnLoad so Excel recalculates formulas on open
                     {
-                        var workbook = _doc.WorkbookPart!.Workbook;
+                        var workbook = _doc.WorkbookPart!.Workbook!;
                         var calcPr = workbook.GetFirstChild<CalculationProperties>();
                         if (calcPr == null)
                         {

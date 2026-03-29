@@ -329,7 +329,7 @@ public partial class WordHandler
     private string GetFootnoteNumFmt()
     {
         // Priority: section properties > document settings > spec default
-        var sectProps = _doc.MainDocumentPart?.Document.Body
+        var sectProps = _doc.MainDocumentPart?.Document?.Body
             ?.Descendants<SectionProperties>().LastOrDefault();
         var sectFmt = sectProps?.GetFirstChild<FootnoteProperties>()?.NumberingFormat?.Val?.InnerText;
         if (sectFmt != null) return sectFmt;
@@ -345,7 +345,7 @@ public partial class WordHandler
     private string GetEndnoteNumFmt()
     {
         // Priority: section properties > document settings > spec default
-        var sectProps = _doc.MainDocumentPart?.Document.Body
+        var sectProps = _doc.MainDocumentPart?.Document?.Body
             ?.Descendants<SectionProperties>().LastOrDefault();
         var sectFmt = sectProps?.GetFirstChild<EndnoteProperties>()?.NumberingFormat?.Val?.InnerText;
         if (sectFmt != null) return sectFmt;

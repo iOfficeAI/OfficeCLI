@@ -106,7 +106,7 @@ public partial class WordHandler
                 .Elements<Footnote>().FirstOrDefault(f => f.Id?.Value == fnId)
                 ?? throw new ArgumentException($"Path not found: {path}");
             // Remove footnote reference from body
-            foreach (var fnRef in mainPart.Document.Descendants<FootnoteReference>()
+            foreach (var fnRef in mainPart.Document!.Descendants<FootnoteReference>()
                 .Where(r => r.Id?.Value == fnId).ToList())
                 fnRef.Parent?.Remove();
             fn.Remove();
@@ -123,7 +123,7 @@ public partial class WordHandler
                 .Elements<Endnote>().FirstOrDefault(e => e.Id?.Value == enId)
                 ?? throw new ArgumentException($"Path not found: {path}");
             // Remove endnote reference from body
-            foreach (var enRef in mainPart.Document.Descendants<EndnoteReference>()
+            foreach (var enRef in mainPart.Document!.Descendants<EndnoteReference>()
                 .Where(r => r.Id?.Value == enId).ToList())
                 enRef.Parent?.Remove();
             en.Remove();
@@ -171,7 +171,7 @@ public partial class WordHandler
                 if (!string.IsNullOrEmpty(embedId))
                 {
                     // Count how many times this embedId is referenced across body + headers + footers
-                    var refCount = mainPart2.Document.Descendants<A.Blip>()
+                    var refCount = mainPart2.Document!.Descendants<A.Blip>()
                         .Count(b => b.Embed?.Value == embedId);
                     foreach (var hp in mainPart2.HeaderParts)
                         refCount += hp.Header?.Descendants<A.Blip>().Count(b => b.Embed?.Value == embedId) ?? 0;
