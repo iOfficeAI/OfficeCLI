@@ -284,22 +284,14 @@ public partial class WordHandler
             var indent = pProps.Indentation ?? ResolveIndentationFromStyle(styleId);
             if (indent != null)
             {
-                // Determine effective alignment to decide if first-line indent applies
-                var effectiveAlign = jc?.InnerText;
-                var isNonLeftAlign = effectiveAlign is "center" or "right" or "end";
-
                 if (indent.Left?.Value is string leftTwips && leftTwips != "0")
                     parts.Add($"margin-left:{TwipsToPx(leftTwips):0.#}px");
                 if (indent.Right?.Value is string rightTwips && rightTwips != "0")
                     parts.Add($"margin-right:{TwipsToPx(rightTwips):0.#}px");
-                // Skip firstLine/hanging indent for right/center aligned text — Word ignores it
-                if (!isNonLeftAlign)
-                {
-                    if (indent.FirstLine?.Value is string firstLineTwips && firstLineTwips != "0")
-                        parts.Add($"text-indent:{TwipsToPx(firstLineTwips):0.#}px");
-                    if (indent.Hanging?.Value is string hangTwips && hangTwips != "0")
-                        parts.Add($"text-indent:-{TwipsToPx(hangTwips):0.#}px");
-                }
+                if (indent.FirstLine?.Value is string firstLineTwips && firstLineTwips != "0")
+                    parts.Add($"text-indent:{TwipsToPx(firstLineTwips):0.#}px");
+                if (indent.Hanging?.Value is string hangTwips && hangTwips != "0")
+                    parts.Add($"text-indent:-{TwipsToPx(hangTwips):0.#}px");
             }
         }
 
