@@ -14,6 +14,22 @@ public partial class PowerPointHandler
 {
     public List<string> Set(string path, Dictionary<string, string> properties)
     {
+        // Batch Set: if path looks like a selector (not starting with /), Query → Set each
+        if (!string.IsNullOrEmpty(path) && !path.StartsWith("/"))
+        {
+            var unsupported = new List<string>();
+            var targets = Query(path);
+            if (targets.Count == 0)
+                throw new ArgumentException($"No elements matched selector: {path}");
+            foreach (var target in targets)
+            {
+                var targetUnsupported = Set(target.Path, properties);
+                foreach (var u in targetUnsupported)
+                    if (!unsupported.Contains(u)) unsupported.Add(u);
+            }
+            return unsupported;
+        }
+
         if (path.Equals("/theme", StringComparison.OrdinalIgnoreCase))
             return SetThemeProperties(properties);
 
