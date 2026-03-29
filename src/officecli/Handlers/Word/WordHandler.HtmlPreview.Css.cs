@@ -285,21 +285,24 @@ public partial class WordHandler
         // Indentation (skip for list items — handled by list nesting)
         if (!isListItem)
         {
-            // Indentation — direct or style fallback
-            var indent = pProps.Indentation ?? ResolveIndentationFromStyle(styleId);
-            if (indent != null)
+            // Indentation — merge direct properties with style chain fallback
+            var directInd = pProps.Indentation;
+            var styleInd = ResolveIndentationFromStyle(styleId);
+            var indLeft = directInd?.Left?.Value ?? styleInd?.Left?.Value;
+            var indRight = directInd?.Right?.Value ?? styleInd?.Right?.Value;
+            var indFirstLine = directInd?.FirstLine?.Value ?? styleInd?.FirstLine?.Value;
+            var indHanging = directInd?.Hanging?.Value ?? styleInd?.Hanging?.Value;
+
+            if (indLeft is string leftTwips && leftTwips != "0")
+                parts.Add($"margin-left:{Units.TwipsToPt(leftTwips):0.##}pt");
+            if (indRight is string rightTwips && rightTwips != "0")
+                parts.Add($"margin-right:{Units.TwipsToPt(rightTwips):0.##}pt");
+            if (!hasDropCap)
             {
-                if (indent.Left?.Value is string leftTwips && leftTwips != "0")
-                    parts.Add($"margin-left:{Units.TwipsToPt(leftTwips):0.##}pt");
-                if (indent.Right?.Value is string rightTwips && rightTwips != "0")
-                    parts.Add($"margin-right:{Units.TwipsToPt(rightTwips):0.##}pt");
-                if (!hasDropCap)
-                {
-                    if (indent.FirstLine?.Value is string firstLineTwips && firstLineTwips != "0")
-                        parts.Add($"text-indent:{Units.TwipsToPt(firstLineTwips):0.##}pt");
-                    if (indent.Hanging?.Value is string hangTwips && hangTwips != "0")
-                        parts.Add($"text-indent:-{Units.TwipsToPt(hangTwips):0.##}pt");
-                }
+                if (indFirstLine is string firstLineTwips && firstLineTwips != "0")
+                    parts.Add($"text-indent:{Units.TwipsToPt(firstLineTwips):0.##}pt");
+                if (indHanging is string hangTwips && hangTwips != "0")
+                    parts.Add($"text-indent:-{Units.TwipsToPt(hangTwips):0.##}pt");
             }
         }
 
@@ -391,9 +394,25 @@ public partial class WordHandler
             {
                 var lines = framePr.GetAttributes().FirstOrDefault(a => a.LocalName == "lines").Value;
                 var lineCount = lines != null && int.TryParse(lines, out var lc) ? lc : 3;
+                // Don't override font-size — let the run's actual size (e.g. 58.5pt) apply
+                // Set line-height to match lineCount lines of body text
+                // Estimate body line height from document defaults
+                var defSz = para.Ancestors<Body>().FirstOrDefault()
+                    ?.GetFirstChild<SectionProperties>() != null ? 11.0 : 11.0; // fallback
+                var rPr = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles?.DocDefaults
+                    ?.RunPropertiesDefault?.RunPropertiesBaseStyle;
+                if (rPr?.FontSize?.Val?.Value is string dsz && double.TryParse(dsz, out var dhp))
+                    defSz = dhp / 2.0;
+                var defSpacing = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles?.DocDefaults
+                    ?.ParagraphPropertiesDefault?.ParagraphPropertiesBaseStyle?.SpacingBetweenLines;
+                var lineHMult = 1.15;
+                if (defSpacing?.Line?.Value is string dlv && double.TryParse(dlv, out var dlvi)
+                    && defSpacing.LineRule?.InnerText is "auto" or null)
+                    lineHMult = dlvi / 240.0;
+                var bodyLineH = defSz * lineHMult;
+                var dropCapHeight = lineCount * bodyLineH;
                 parts.Add("float:left");
-                parts.Add($"font-size:{lineCount * 2.3:0.#}em");
-                parts.Add($"line-height:0.8");
+                parts.Add($"line-height:{dropCapHeight:0.#}pt");
                 parts.Add($"padding-right:6px");
                 parts.Add($"margin:0");
             }
@@ -1066,6 +1085,7 @@ public partial class WordHandler
             display: flex; flex-direction: column; font-kerning: none; letter-spacing: 0;
             }}
         .page-body {{ flex: 1; }}
+        .page-body > :first-child {{ margin-top: 0 !important; }}
         .doc-header, .doc-footer {{ color: #888; font-size: 9pt; }}
         .doc-header {{ position: absolute; top: {pg.HeaderDistancePt:0.#}pt; left: {mL}; right: {mR};
             padding-bottom: 0.3em; }}

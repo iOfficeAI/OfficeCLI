@@ -712,7 +712,7 @@ public partial class WordHandler
                         for (int lk = 0; lk <= ilvl; lk++)
                             numStr = numStr.Replace($"%{lk + 1}", multiLevelCounters.GetValueOrDefault(lk, 0).ToString());
                         var numWidth = hangingPt > 0 ? $"{hangingPt:0.#}pt" : "3em";
-                        sb.Append($"<span style=\"display:inline-block;min-width:{numWidth}\">{numStr}</span>");
+                        sb.Append($"<span style=\"display:inline-block;min-width:{numWidth};padding-right:0.5em\">{numStr}</span>");
                     }
                     RenderParagraphContentHtml(sb, para);
                     pendingLiClose = true; // defer </li> in case next item nests
