@@ -73,7 +73,7 @@ public partial class PowerPointHandler
             textBody.AppendChild(new Drawing.Paragraph(
                 new Drawing.Run(
                     new Drawing.RunProperties { Language = "en-US" },
-                    new Drawing.Text(line)
+                    new Drawing.Text { Text = line }
                 )
             ));
         }

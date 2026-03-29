@@ -34,7 +34,7 @@ public partial class PowerPointHandler
                     if (runs.Count == 1 && textLines.Length == 1)
                     {
                         // Single run, single line: just replace its text
-                        runs[0].Text = new Drawing.Text(textLines[0]);
+                        runs[0].Text = new Drawing.Text { Text = textLines[0] };
                     }
                     else
                     {
@@ -57,7 +57,7 @@ public partial class PowerPointHandler
                                 var newRun = new Drawing.Run();
                                 if (runProps != null)
                                     newRun.RunProperties = runProps.CloneNode(true) as Drawing.RunProperties;
-                                newRun.Text = new Drawing.Text(textLine);
+                                newRun.Text = new Drawing.Text { Text = textLine };
                                 newPara.Append(newRun);
                                 textBody.Append(newPara);
                             }
@@ -789,7 +789,7 @@ public partial class PowerPointHandler
         }
         var run = new Drawing.Run(
             new Drawing.RunProperties { Language = "en-US" },
-            new Drawing.Text(""));
+            new Drawing.Text { Text = "" });
         para.Append(run);
     }
 
@@ -812,7 +812,7 @@ public partial class PowerPointHandler
                         {
                             textBody.AppendChild(new Drawing.Paragraph(new Drawing.Run(
                                 new Drawing.RunProperties { Language = "en-US" },
-                                new Drawing.Text(line))));
+                                new Drawing.Text { Text = line })));
                         }
                         cell.PrependChild(textBody);
                     }
@@ -826,7 +826,7 @@ public partial class PowerPointHandler
                             var newRun = new Drawing.Run();
                             if (runProps != null) newRun.RunProperties = runProps.CloneNode(true) as Drawing.RunProperties;
                             else newRun.RunProperties = new Drawing.RunProperties { Language = "en-US" };
-                            newRun.Text = new Drawing.Text(line);
+                            newRun.Text = new Drawing.Text { Text = line };
                             textBody.Append(new Drawing.Paragraph(newRun));
                         }
                     }

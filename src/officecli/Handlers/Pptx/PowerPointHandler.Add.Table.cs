@@ -130,7 +130,7 @@ public partial class PowerPointHandler
                         if (!string.IsNullOrEmpty(cellText))
                             cellPara.Append(new Drawing.Run(
                                 new Drawing.RunProperties { Language = "en-US" },
-                                new Drawing.Text(cellText)));
+                                new Drawing.Text { Text = cellText }));
                         else
                             cellPara.Append(new Drawing.EndParagraphRunProperties { Language = "en-US" });
                         cell.Append(new Drawing.TextBody(
@@ -192,7 +192,7 @@ public partial class PowerPointHandler
                     if (!string.IsNullOrEmpty(cellText))
                         cellPara.Append(new Drawing.Run(
                             new Drawing.RunProperties { Language = "en-US" },
-                            new Drawing.Text(cellText)));
+                            new Drawing.Text { Text = cellText }));
                     else
                         cellPara.Append(new Drawing.EndParagraphRunProperties { Language = "en-US" });
                     newTblCell.Append(new Drawing.TextBody(bodyProps, listStyle, cellPara));
@@ -244,7 +244,7 @@ public partial class PowerPointHandler
                 if (properties.TryGetValue("text", out var cText) && !string.IsNullOrEmpty(cText))
                     cPara.Append(new Drawing.Run(
                         new Drawing.RunProperties { Language = "en-US" },
-                        new Drawing.Text(cText)));
+                        new Drawing.Text { Text = cText }));
                 else
                     cPara.Append(new Drawing.EndParagraphRunProperties { Language = "en-US" });
                 newCell.Append(new Drawing.TextBody(cBodyProps, cListStyle, cPara));

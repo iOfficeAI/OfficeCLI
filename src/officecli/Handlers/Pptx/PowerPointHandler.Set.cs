@@ -736,7 +736,7 @@ public partial class PowerPointHandler
                             {
                                 var newRun = new Drawing.Run(
                                     new Drawing.RunProperties { Language = "en-US" },
-                                    new Drawing.Text(value));
+                                    new Drawing.Text { Text = value });
                                 para.AppendChild(newRun);
                             }
                             if (savedEndParaRPr != null)

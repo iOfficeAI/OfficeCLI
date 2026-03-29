@@ -91,7 +91,7 @@ public partial class PowerPointHandler
                 var fallback = new AlternateContentFallback();
                 var fallbackRun = new Drawing.Run(
                     new Drawing.RunProperties { Language = "en-US" },
-                    new Drawing.Text(FormulaParser.ToReadableText(mathPara))
+                    new Drawing.Text { Text = FormulaParser.ToReadableText(mathPara) }
                 );
                 fallback.AppendChild(fallbackRun);
 
@@ -207,7 +207,7 @@ public partial class PowerPointHandler
                 }
 
                 newRun.RunProperties = rProps;
-                newRun.Text = new Drawing.Text(paraText.Replace("\\n", "\n"));
+                newRun.Text = new Drawing.Text { Text = paraText.Replace("\\n", "\n") };
                 newPara.Append(newRun);
 
                 if (index.HasValue && index.Value >= 0)
@@ -318,7 +318,7 @@ public partial class PowerPointHandler
                     rProps.Baseline = IsTruthy(rSub) ? -25000 : 0;
 
                 newRun.RunProperties = rProps;
-                newRun.Text = new Drawing.Text(runText.Replace("\\n", "\n"));
+                newRun.Text = new Drawing.Text { Text = runText.Replace("\\n", "\n") };
 
                 // Append run to paragraph (before EndParagraphRunProperties if present)
                 var endParaRun = targetPara.GetFirstChild<Drawing.EndParagraphRunProperties>();

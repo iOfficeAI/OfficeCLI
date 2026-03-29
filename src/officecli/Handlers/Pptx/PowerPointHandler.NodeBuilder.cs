@@ -956,7 +956,7 @@ public partial class PowerPointHandler
             body.AppendChild(new Drawing.Paragraph(
                 new Drawing.Run(
                     new Drawing.RunProperties { Language = "en-US" },
-                    new Drawing.Text(line)
+                    new Drawing.Text { Text = line }
                 )
             ));
         }
