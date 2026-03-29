@@ -847,7 +847,7 @@ public partial class WordHandler
         .equation {{ text-align: center; padding: 0.5em 0; overflow-x: auto; }}
         img {{ max-width: 100%; height: auto; }}
         .img-error {{ color: #999; font-style: italic; }}
-        table {{ border-collapse: collapse; font-size: {sz}; width: 100%; }}
+        table {{ border-collapse: collapse; font-size: {sz}; }}
         .wg {{ margin: 0.3em 0; }}
         .wg p {{ padding: 0; margin: 0.05em 0; }}
         table.borderless {{ border: none; }}
