@@ -773,7 +773,10 @@ public partial class WordHandler
                     if (condColor != null)
                         parts.Add($"color:{condColor}");
                     if (rPr.FontSize?.Val?.Value is string fsz && int.TryParse(fsz, out var fhp))
+                    {
                         parts.Add($"font-size:{fhp / 2.0}pt");
+                        parts.Add("__TSF__"); // marker for table style font-size override
+                    }
                 }
             }
         }
@@ -1032,6 +1035,7 @@ public partial class WordHandler
         img {{ max-width: 100%; height: auto; }}
         .img-error {{ color: #999; font-style: italic; }}
         table {{ border-collapse: collapse; font-size: {sz}; }}
+        td.tsf span, td.tsf div {{ font-size: inherit !important; color: inherit !important; }}
         .wg {{ margin: 0.3em 0; }}
         .wg p {{ padding: 0; margin: 0.05em 0; }}
         table.borderless {{ border: none; }}

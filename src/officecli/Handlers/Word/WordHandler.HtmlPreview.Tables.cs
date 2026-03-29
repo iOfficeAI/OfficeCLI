@@ -53,6 +53,24 @@ public partial class WordHandler
             if (leftDist > 0) tableStyles.Add($"margin-left:{leftDist / 20.0:0.#}pt");
         }
 
+        // Apply base table style rPr (font-size, color, alignment) to the <table>
+        if (styleId != null)
+        {
+            var baseStyle = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
+                ?.Elements<Style>().FirstOrDefault(s => s.StyleId?.Value == styleId);
+            var baseRPr = baseStyle?.StyleRunProperties;
+            if (baseRPr?.FontSize?.Val?.Value is string bsz && int.TryParse(bsz, out var bhp))
+                tableStyles.Add($"font-size:{bhp / 2.0:0.##}pt");
+            var baseColor = ResolveRunColor(baseRPr?.Color);
+            if (baseColor != null) tableStyles.Add($"color:{baseColor}");
+            var basePPr = baseStyle?.StyleParagraphProperties;
+            if (basePPr?.Justification?.Val?.InnerText is string bjc)
+            {
+                var align = bjc switch { "center" => "center", "right" => "right", _ => (string?)null };
+                if (align != null) tableStyles.Add($"text-align:{align}");
+            }
+        }
+
         var tableClass = tableBordersNone ? "borderless" : "";
         var tableStyleAttr = tableStyles.Count > 0 ? $" style=\"{string.Join(";", tableStyles)}\"" : "";
         if (!string.IsNullOrEmpty(tableClass))
@@ -89,7 +107,12 @@ public partial class WordHandler
         {
             var row = rows[rowIdx];
             var isHeader = row.TableRowProperties?.GetFirstChild<TableHeader>() != null;
-            sb.AppendLine(isHeader ? "<tr class=\"header-row\">" : "<tr>");
+            // Row height
+            var trHeight = row.TableRowProperties?.GetFirstChild<TableRowHeight>();
+            var trStyle = "";
+            if (trHeight?.Val?.Value is uint hVal && hVal > 0)
+                trStyle = $" style=\"height:{hVal / 20.0:0.#}pt\"";
+            sb.AppendLine(isHeader ? $"<tr class=\"header-row\"{trStyle}>" : $"<tr{trStyle}>");
 
             int colIdx = 0;
             foreach (var cell in row.Elements<TableCell>())
@@ -99,8 +122,13 @@ public partial class WordHandler
                 var cellStyle = GetTableCellInlineCss(cell, tableBordersNone, tblBorders, condFormats, condTypes,
                     rowIdx, colIdx, totalRows, totalCols);
 
+                // Check if conditional format overrides font-size (needs class for CSS override)
+                bool hasTsf = cellStyle.Contains("__TSF__");
+                cellStyle = cellStyle.Replace(";__TSF__", "").Replace("__TSF__", "");
+
                 // Merge attributes
                 var attrs = new StringBuilder();
+                if (hasTsf) attrs.Append(" class=\"tsf\"");
                 var gridSpan = cell.TableCellProperties?.GridSpan?.Val?.Value;
                 if (gridSpan > 1) attrs.Append($" colspan=\"{gridSpan}\"");
 
