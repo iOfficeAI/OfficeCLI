@@ -368,16 +368,63 @@ public partial class WordHandler
         {
             var footer = footerPart.Footer;
             if (footer == null) continue;
-            var text = string.Concat(footer.Descendants<Text>().Select(t => t.Text)).Trim();
-            if (!string.IsNullOrEmpty(text))
-                results.Add(text);
-            else
+
+            // Build footer text by processing paragraphs, resolving field codes
+            var footerLines = new List<string>();
+            foreach (var para in footer.Descendants<Paragraph>())
             {
-                // Check for page numbers
-                var fldChars = footer.Descendants<FieldCode>().Any();
-                if (fldChars)
-                    results.Add("(page number)");
+                var sb = new System.Text.StringBuilder();
+                bool inField = false;
+                bool pastSeparator = false;
+
+                foreach (var run in para.Elements<Run>())
+                {
+                    var fldChar = run.GetFirstChild<FieldChar>();
+                    if (fldChar != null)
+                    {
+                        if (fldChar.FieldCharType == FieldCharValues.Begin)
+                        {
+                            inField = true;
+                            pastSeparator = false;
+                        }
+                        else if (fldChar.FieldCharType == FieldCharValues.Separate)
+                        {
+                            pastSeparator = true;
+                        }
+                        else if (fldChar.FieldCharType == FieldCharValues.End)
+                        {
+                            inField = false;
+                            pastSeparator = false;
+                        }
+                        continue;
+                    }
+
+                    var fieldCode = run.GetFirstChild<FieldCode>();
+                    if (fieldCode != null)
+                    {
+                        // Extract field type from instruction (e.g., " PAGE " -> "PAGE")
+                        var instr = fieldCode.Text?.Trim() ?? "";
+                        var fieldType = instr.Split(' ', System.StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? instr;
+                        sb.Append($"[{fieldType.ToUpperInvariant()}]");
+                        continue;
+                    }
+
+                    // Skip result runs inside a field (they contain stale/literal values)
+                    if (inField && pastSeparator)
+                        continue;
+
+                    var text = run.GetFirstChild<Text>();
+                    if (text != null)
+                        sb.Append(text.Text);
+                }
+
+                var line = sb.ToString().Trim();
+                if (!string.IsNullOrEmpty(line))
+                    footerLines.Add(line);
             }
+
+            if (footerLines.Count > 0)
+                results.Add(string.Join(" ", footerLines));
         }
 
         return results;
