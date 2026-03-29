@@ -643,6 +643,7 @@ public partial class WordHandler
                 or "sdt" or "contentcontrol"
                 or "chart"
                 or "comment"
+                or "footnote" or "endnote"
                 or "field"
                 or "table" or "tbl"
                 or "revision" or "change" or "trackchange";
@@ -720,6 +721,64 @@ public partial class WordHandler
                     if (comment.Id?.Value != null) cNode.Format["id"] = comment.Id.Value;
                     if (comment.Date?.Value != null) cNode.Format["date"] = comment.Date.Value.ToString("o");
                     results.Add(cNode);
+                }
+            }
+            return results;
+        }
+
+        // Handle footnote query
+        bool isFootnoteSelector = parsed.ChildSelector == null && parsed.Element == "footnote";
+        if (isFootnoteSelector)
+        {
+            var footnotesPart = _doc.MainDocumentPart?.FootnotesPart;
+            if (footnotesPart?.Footnotes != null)
+            {
+                int fnIdx = 0;
+                foreach (var fn in footnotesPart.Footnotes.Elements<Footnote>())
+                {
+                    // Skip separator/continuation footnotes (type != null means special)
+                    if (fn.Type?.Value != null) continue;
+                    fnIdx++;
+                    var text = string.Join("", fn.Descendants<Text>().Select(t => t.Text));
+                    if (parsed.ContainsText != null && !text.Contains(parsed.ContainsText, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var fnNode = new DocumentNode
+                    {
+                        Path = $"/footnote[{fn.Id?.Value ?? fnIdx}]",
+                        Type = "footnote",
+                        Text = text
+                    };
+                    if (fn.Id?.Value != null) fnNode.Format["id"] = fn.Id.Value.ToString();
+                    results.Add(fnNode);
+                }
+            }
+            return results;
+        }
+
+        // Handle endnote query
+        bool isEndnoteSelector = parsed.ChildSelector == null && parsed.Element == "endnote";
+        if (isEndnoteSelector)
+        {
+            var endnotesPart = _doc.MainDocumentPart?.EndnotesPart;
+            if (endnotesPart?.Endnotes != null)
+            {
+                int enIdx = 0;
+                foreach (var en in endnotesPart.Endnotes.Elements<Endnote>())
+                {
+                    // Skip separator/continuation endnotes (type != null means special)
+                    if (en.Type?.Value != null) continue;
+                    enIdx++;
+                    var text = string.Join("", en.Descendants<Text>().Select(t => t.Text));
+                    if (parsed.ContainsText != null && !text.Contains(parsed.ContainsText, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var enNode = new DocumentNode
+                    {
+                        Path = $"/endnote[{en.Id?.Value ?? enIdx}]",
+                        Type = "endnote",
+                        Text = text
+                    };
+                    if (en.Id?.Value != null) enNode.Format["id"] = en.Id.Value.ToString();
+                    results.Add(enNode);
                 }
             }
             return results;
