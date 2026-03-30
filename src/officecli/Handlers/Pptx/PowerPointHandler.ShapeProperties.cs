@@ -6,6 +6,7 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
 using OfficeCli.Core;
 using Drawing = DocumentFormat.OpenXml.Drawing;
+using M = DocumentFormat.OpenXml.Math;
 
 namespace OfficeCli.Handlers;
 
@@ -756,11 +757,72 @@ public partial class PowerPointHandler
                     break;
                 }
 
+                case "formula":
+                {
+                    // Replace equation content in shape (a14:m > m:oMathPara > m:oMath)
+                    var textBody = shape.TextBody;
+                    if (textBody == null) { unsupported.Add(key); break; }
+
+                    var mathContent = FormulaParser.Parse(value);
+                    M.OfficeMath oMath = mathContent is M.OfficeMath dm
+                        ? dm : new M.OfficeMath(mathContent.CloneNode(true));
+                    var mathPara = new M.Paragraph(oMath);
+
+                    // Find existing AlternateContent (equation container) or create one
+                    var existingAlt = textBody.Descendants<AlternateContent>().FirstOrDefault();
+                    if (existingAlt != null)
+                    {
+                        // Replace existing equation: update Choice (a14:m) and Fallback
+                        var choice = existingAlt.GetFirstChild<AlternateContentChoice>();
+                        if (choice != null)
+                        {
+                            choice.RemoveAllChildren();
+                            choice.Requires = "a14";
+                            var a14m = new OpenXmlUnknownElement("a14", "m", "http://schemas.microsoft.com/office/drawing/2010/main");
+                            a14m.AppendChild(mathPara.CloneNode(true));
+                            choice.AppendChild(a14m);
+                        }
+                        var fallback = existingAlt.GetFirstChild<AlternateContentFallback>();
+                        if (fallback != null)
+                        {
+                            fallback.RemoveAllChildren();
+                            var fbRun = new Drawing.Run(
+                                new Drawing.RunProperties { Language = "en-US" },
+                                new Drawing.Text { Text = FormulaParser.ToReadableText(mathPara) }
+                            );
+                            fallback.AppendChild(fbRun);
+                        }
+                    }
+                    else
+                    {
+                        // No existing equation — build full structure
+                        var a14m = new OpenXmlUnknownElement("a14", "m", "http://schemas.microsoft.com/office/drawing/2010/main");
+                        a14m.AppendChild(mathPara.CloneNode(true));
+                        var choice = new AlternateContentChoice { Requires = "a14" };
+                        choice.AppendChild(a14m);
+                        var fallback = new AlternateContentFallback();
+                        fallback.AppendChild(new Drawing.Run(
+                            new Drawing.RunProperties { Language = "en-US" },
+                            new Drawing.Text { Text = FormulaParser.ToReadableText(mathPara) }
+                        ));
+                        var altContent = new AlternateContent();
+                        altContent.AppendChild(choice);
+                        altContent.AppendChild(fallback);
+
+                        // Clear text body paragraphs and add equation paragraph
+                        textBody.RemoveAllChildren<Drawing.Paragraph>();
+                        var drawingPara = new Drawing.Paragraph();
+                        drawingPara.AppendChild(altContent);
+                        textBody.AppendChild(drawingPara);
+                    }
+                    break;
+                }
+
                 default:
                     if (!GenericXmlQuery.SetGenericAttribute(shape, key, value))
                     {
                         if (unsupported.Count == 0)
-                            unsupported.Add($"{key} (valid shape props: text, bold, italic, underline, color, fill, size, font, gradient, line, opacity, align, valign, x, y, width, height, rotation, name, link, animation)");
+                            unsupported.Add($"{key} (valid shape props: text, bold, italic, underline, color, fill, size, font, gradient, line, opacity, align, valign, x, y, width, height, rotation, name, link, animation, formula)");
                         else
                             unsupported.Add(key);
                     }

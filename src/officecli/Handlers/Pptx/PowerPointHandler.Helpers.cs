@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text;
+using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Presentation;
 using OfficeCli.Core;
@@ -14,6 +15,16 @@ public partial class PowerPointHandler
 {
     private static bool IsTruthy(string? value) =>
         ParseHelpers.IsTruthy(value);
+
+    /// <summary>
+    /// Normalize cell[R,C] shorthand to tr[R]/tc[C] in paths.
+    /// E.g. /slide[1]/table[1]/cell[2,3] → /slide[1]/table[1]/tr[2]/tc[3]
+    /// Also handles trailing segments: /slide[1]/table[1]/cell[2,3]/txBody → /slide[1]/table[1]/tr[2]/tc[3]/txBody
+    /// </summary>
+    private static string NormalizeCellPath(string path)
+    {
+        return Regex.Replace(path, @"cell\[(\d+),\s*(\d+)\]", m => $"tr[{m.Groups[1].Value}]/tc[{m.Groups[2].Value}]");
+    }
 
     /// <summary>
     /// Find existing Transition element or create one, avoiding duplicates with unknown-element transitions.

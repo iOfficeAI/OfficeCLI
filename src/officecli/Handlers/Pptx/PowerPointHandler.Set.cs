@@ -14,6 +14,8 @@ public partial class PowerPointHandler
 {
     public List<string> Set(string path, Dictionary<string, string> properties)
     {
+        path = NormalizeCellPath(path);
+
         // Batch Set: if path looks like a selector (not starting with /), Query → Set each
         if (!string.IsNullOrEmpty(path) && !path.StartsWith("/"))
         {

@@ -15,6 +15,8 @@ public partial class PowerPointHandler
 {
     public string? Remove(string path)
     {
+        path = NormalizeCellPath(path);
+
         // Handle /slide[N]/notes path (no index bracket)
         var notesMatch = Regex.Match(path, @"^/slide\[(\d+)\]/notes$");
         if (notesMatch.Success)
@@ -58,6 +60,45 @@ public partial class PowerPointHandler
                 throw new ArgumentException($"Row {rowIdx} not found (total: {rows.Count})");
 
             rows[rowIdx - 1].Remove();
+            return null;
+        }
+
+        // Handle /slide[N]/table[M]/col[C] — remove a table column
+        var tableColMatch = Regex.Match(path, @"^/slide\[(\d+)\]/table\[(\d+)\]/col\[(\d+)\]$");
+        if (tableColMatch.Success)
+        {
+            var colSlideIdx = int.Parse(tableColMatch.Groups[1].Value);
+            var colTableIdx = int.Parse(tableColMatch.Groups[2].Value);
+            var colIdx = int.Parse(tableColMatch.Groups[3].Value);
+
+            var (colSlidePart, colTable) = ResolveTable(colSlideIdx, colTableIdx);
+            var tableGrid = colTable.GetFirstChild<Drawing.TableGrid>()
+                ?? throw new InvalidOperationException("Table has no grid");
+            var gridCols = tableGrid.Elements<Drawing.GridColumn>().ToList();
+            if (colIdx < 1 || colIdx > gridCols.Count)
+                throw new ArgumentException($"Column {colIdx} not found (total: {gridCols.Count})");
+
+            // Remove the grid column
+            gridCols[colIdx - 1].Remove();
+
+            // Remove the corresponding cell from each row
+            foreach (var row in colTable.Elements<Drawing.TableRow>())
+            {
+                var cells = row.Elements<Drawing.TableCell>().ToList();
+                if (colIdx <= cells.Count)
+                    cells[colIdx - 1].Remove();
+            }
+
+            // Update GraphicFrame container width
+            var graphicFrame = colTable.Ancestors<GraphicFrame>().FirstOrDefault();
+            if (graphicFrame?.Transform?.Extents != null)
+            {
+                long totalColWidth = tableGrid.Elements<Drawing.GridColumn>()
+                    .Sum(gc => gc.Width?.Value ?? 914400);
+                graphicFrame.Transform.Extents.Cx = totalColWidth;
+            }
+
+            GetSlide(colSlidePart).Save();
             return null;
         }
 

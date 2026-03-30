@@ -191,9 +191,23 @@ public partial class PowerPointHandler
                 var shapeIndices = new List<int>();
                 foreach (var sp in shapeParts)
                 {
-                    if (!int.TryParse(sp.Trim(), out var idx))
-                        throw new ArgumentException($"Invalid 'shapes' value: '{sp.Trim()}' is not a valid integer. Expected comma-separated shape indices (e.g. shapes=1,2,3).");
-                    shapeIndices.Add(idx);
+                    var trimmed = sp.Trim();
+                    if (trimmed.StartsWith("/"))
+                    {
+                        // DOM path: extract shape index from /slide[N]/shape[M]
+                        var pathMatch = Regex.Match(trimmed, @"/slide\[\d+\]/shape\[(\d+)\]");
+                        if (!pathMatch.Success)
+                            throw new ArgumentException($"Invalid shape path: '{trimmed}'. Expected format: /slide[N]/shape[M]");
+                        shapeIndices.Add(int.Parse(pathMatch.Groups[1].Value));
+                    }
+                    else if (int.TryParse(trimmed, out var idx))
+                    {
+                        shapeIndices.Add(idx);
+                    }
+                    else
+                    {
+                        throw new ArgumentException($"Invalid 'shapes' value: '{trimmed}' is not a valid integer or DOM path. Expected comma-separated shape indices (e.g. shapes=1,2,3) or DOM paths (e.g. shapes=/slide[1]/shape[1],/slide[1]/shape[2]).");
+                    }
                 }
                 var allShapes = grpShapeTree.Elements<Shape>().ToList();
 

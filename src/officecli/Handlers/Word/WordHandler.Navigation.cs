@@ -289,6 +289,22 @@ public partial class WordHandler
             return node;
         }
 
+        if (element is Comment comment)
+        {
+            node.Type = "comment";
+            node.Text = string.Join("", comment.Descendants<Text>().Select(t => t.Text));
+            if (comment.Author?.Value != null) node.Format["author"] = comment.Author.Value;
+            if (comment.Initials?.Value != null) node.Format["initials"] = comment.Initials.Value;
+            if (comment.Id?.Value != null) node.Format["id"] = comment.Id.Value;
+            if (comment.Date?.Value != null) node.Format["date"] = comment.Date.Value.ToString("o");
+            if (comment.Id?.Value != null)
+            {
+                var anchorPath = FindCommentAnchorPath(comment.Id.Value);
+                if (anchorPath != null) node.Format["anchoredTo"] = anchorPath;
+            }
+            return node;
+        }
+
         if (element is Paragraph para)
         {
             node.Type = "paragraph";

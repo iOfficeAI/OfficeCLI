@@ -16,6 +16,7 @@ public partial class ExcelHandler
     public string? Remove(string path)
     {
         path = NormalizeExcelPath(path);
+        path = ResolveSheetIndexInPath(path);
         var segments = path.TrimStart('/').Split('/', 2);
         var sheetName = segments[0];
 
