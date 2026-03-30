@@ -132,7 +132,7 @@ public partial class WordHandler
             else if (child.LocalName == "oMath" || child is M.OfficeMath)
             {
                 var latex = FormulaParser.ToLatex(child);
-                sb.Append($"\\({HtmlEncode(latex)}\\)");
+                sb.Append($"<span class=\"katex-formula\" data-formula=\"{HtmlEncode(latex)}\"></span>");
             }
             else if (child.LocalName is "sdt" or "smartTag" or "customXml")
             {

@@ -19,6 +19,7 @@ public partial class PowerPointHandler
         return type.ToLowerInvariant() switch
         {
             "slide" => AddSlide(parentPath, index, properties),
+            "shape" or "textbox" when properties != null && properties.ContainsKey("formula") => AddEquation(parentPath, index, properties),
             "shape" or "textbox" => AddShape(parentPath, index, properties),
             "picture" or "image" or "img" => AddPicture(parentPath, index, properties),
             "chart" => AddChart(parentPath, index, properties),

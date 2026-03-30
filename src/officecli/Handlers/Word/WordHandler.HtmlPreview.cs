@@ -81,7 +81,6 @@ public partial class WordHandler
         // KaTeX for math rendering
         sb.AppendLine("<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css\">");
         sb.AppendLine("<script defer src=\"https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js\"></script>");
-        sb.AppendLine("<script defer src=\"https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js\"></script>");
         sb.AppendLine("</head>");
         sb.AppendLine("<body>");
 
@@ -170,11 +169,11 @@ public partial class WordHandler
         var bodyHeightPt = pgLayout.HeightPt - pgLayout.MarginTopPt - pgLayout.MarginBottomPt;
         sb.AppendLine("<script>");
         sb.AppendLine("function _wordInit(){");
-        sb.AppendLine("  if(typeof renderMathInElement!=='undefined'){");
-        sb.AppendLine("    renderMathInElement(document.body,{delimiters:[");
-        sb.AppendLine("      {left:'\\\\[',right:'\\\\]',display:true},");
-        sb.AppendLine("      {left:'\\\\(',right:'\\\\)',display:false}");
-        sb.AppendLine("    ],throwOnError:false});");
+        sb.AppendLine("  if(typeof katex!=='undefined'){");
+        sb.AppendLine("    document.querySelectorAll('.katex-formula:not(.katex-rendered)').forEach(function(el){");
+        sb.AppendLine("      try{katex.render(el.dataset.formula,el,{throwOnError:false,displayMode:!!el.dataset.display});}catch(e){}");
+        sb.AppendLine("      el.classList.add('katex-rendered');");
+        sb.AppendLine("    });");
         sb.AppendLine("  }");
         // CJK punctuation compression (~25% per JIS X4051): negative margin on punctuation
         sb.AppendLine("  (function(){");
@@ -600,7 +599,7 @@ public partial class WordHandler
                 {
                     CloseAllLists(sb, listStack, ref currentListType, ref pendingLiClose);
                     var latex = FormulaParser.ToLatex(oMathPara);
-                    sb.AppendLine($"<div class=\"equation\">\\[{HtmlEncode(latex)}\\]</div>");
+                    sb.AppendLine($"<div class=\"equation\"><span class=\"katex-formula\" data-formula=\"{HtmlEncode(latex)}\" data-display=\"true\"></span></div>");
                     continue;
                 }
 
@@ -828,7 +827,7 @@ public partial class WordHandler
                     if (mathElements.Count > 0 && runs.Count == 0 && string.IsNullOrWhiteSpace(text))
                     {
                         var latex = string.Concat(mathElements.Select(FormulaParser.ToLatex));
-                        sb.AppendLine($"<div class=\"equation\">\\[{HtmlEncode(latex)}\\]</div>");
+                        sb.AppendLine($"<div class=\"equation\"><span class=\"katex-formula\" data-formula=\"{HtmlEncode(latex)}\" data-display=\"true\"></span></div>");
                         continue;
                     }
 
@@ -849,7 +848,7 @@ public partial class WordHandler
             {
                 CloseAllLists(sb, listStack, ref currentListType, ref pendingLiClose);
                 var latex = FormulaParser.ToLatex(element);
-                sb.AppendLine($"<div class=\"equation\">\\[{HtmlEncode(latex)}\\]</div>");
+                sb.AppendLine($"<div class=\"equation\"><span class=\"katex-formula\" data-formula=\"{HtmlEncode(latex)}\" data-display=\"true\"></span></div>");
             }
             else if (element is Table table)
             {

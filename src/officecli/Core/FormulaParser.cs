@@ -215,9 +215,28 @@ public static class FormulaParser
                 var endChr = dPr?.ChildElements.FirstOrDefault(e => e.LocalName == "endChr");
                 var begin = begChr?.GetAttribute("val", "http://schemas.openxmlformats.org/officeDocument/2006/math").Value ?? "(";
                 var end = endChr?.GetAttribute("val", "http://schemas.openxmlformats.org/officeDocument/2006/math").Value ?? ")";
-                var content = string.Concat(element.ChildElements
-                    .Where(e => e.LocalName == "e")
-                    .Select(ArgToLatex));
+                // Check if delimiter wraps a matrix — emit \begin{pmatrix} etc.
+                var bases = element.ChildElements.Where(e => e.LocalName == "e").ToList();
+                if (bases.Count == 1)
+                {
+                    var inner = bases[0].ChildElements.FirstOrDefault(e => e.LocalName == "m");
+                    if (inner != null)
+                    {
+                        var envName = (begin, end) switch
+                        {
+                            ("(", ")") => "pmatrix",
+                            ("[", "]") => "bmatrix",
+                            ("{", "}") => "Bmatrix",
+                            ("|", "|") => "vmatrix",
+                            _ => null
+                        };
+                        var matrixContent = ToLatexByName(inner);
+                        if (envName != null)
+                            return $"\\begin{{{envName}}}{matrixContent}\\end{{{envName}}}";
+                        return $"\\left{begin}\\begin{{matrix}}{matrixContent}\\end{{matrix}}\\right{end}";
+                    }
+                }
+                var content = string.Concat(bases.Select(ArgToLatex));
                 return $"{begin}{content}{end}";
             }
 
