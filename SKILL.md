@@ -147,15 +147,9 @@ officecli validate slides.pptx    # Must pass before delivery
 officecli set <file> <path> --prop key=value [--prop ...]
 ```
 
-**Settable elements:**
+**Any XML attribute is settable** via element path (found via `get --depth N`) — even attributes not currently present.
 
-| Format | Elements |
-|--------|----------|
-| **pptx** | slide, shape, paragraph (para), run, picture (image), table, cell (td), chart, presentation, connector, video (audio) |
-| **docx** | document, paragraph (para), run, table, row (tr), cell (td), section, style, header-footer, bookmark, watermark, picture, chart |
-| **xlsx** | cell, sheet, table, chart, picture, named range, validation |
-
-Run `officecli <format> set <element>` for properties detail. Run `officecli <format> set <element>.<property>` for value format.
+Run `officecli <format> set` for all settable elements. Run `officecli <format> set <element>` for detail.
 
 **Value formats:**
 
