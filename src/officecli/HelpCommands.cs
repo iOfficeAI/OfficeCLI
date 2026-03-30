@@ -750,9 +750,19 @@ Row properties (/SheetName/row[1]):
   outline        Outline/group level (0-7), collapsed (bool)
 
 Sheet properties (/SheetName):
+  name           Rename the sheet
   freeze         Freeze panes (e.g. "A2" = freeze row 1, "B2" = freeze row 1 + col A)
   zoom           Zoom scale percentage (10-400, default 100)
   tabColor       Sheet tab color (hex RGB, or "none" to remove)
+  protect        true/false — protect the sheet (prevents editing locked cells)
+  password       Protection password (use with protect=true)
+  printArea      Print area range (e.g. "A1:F20")
+  orientation    portrait / landscape
+  paperSize      Paper size number (1=Letter, 9=A4)
+  fitToPage      true/false — fit content to page when printing
+  header         Print header text
+  footer         Print footer text
+  sort           Sort range and column (e.g. "A1:D10,B" or "A1:D10,B,desc")
 
 AutoFilter (/SheetName/autofilter):
   range          Update filter range (e.g. A1:F100)
@@ -1104,7 +1114,7 @@ Format keys returned by Get:
     gradient               Linear "C1-C2[-angle]", radial "radial:C1-C2[-focus]" (focus: tl/tr/bl/br/center)
     image                  Shape image fill (path to image file)
     line, lineWidth, lineDash, lineOpacity (0.0–1.0)
-    preset                 Shape geometry name
+    preset / geometry       Shape geometry name (e.g. roundRect, ellipse, diamond)
     align, valign
     lineSpacing            Unit-qualified: "1.5x" (multiplier) or "18pt" (fixed)
     spaceBefore, spaceAfter  Unit-qualified: "12pt" from first paragraph
@@ -1222,7 +1232,7 @@ Shape properties (/slide[N]/shape[M]) -- applies to all runs:
   lineWidth  Border width (EMU or cm/pt, e.g. 2pt) (alias: line.width)
   lineDash   Border dash style: solid/dot/dash/dashdot/longdash (alias: line.dash)
   lineOpacity  Border opacity 0.0-1.0 (alias: line.opacity)
-  preset     Shape geometry (e.g. roundRect, ellipse, rightArrow, diamond, star5)
+  preset     Shape geometry (e.g. roundRect, ellipse, rightArrow, diamond, star5). Also accepts: geometry=roundRect, shape=roundRect
   geometry   Custom freeform path: SVG-like syntax "M x,y L x,y C x1,y1 x2,y2 x,y Z"
              M=moveTo, L=lineTo, C=cubicBezier, Q=quadBezier, Z=close
              Example: "M 0,100 L 50,0 L 100,100 Z" (triangle in 100x100 space)

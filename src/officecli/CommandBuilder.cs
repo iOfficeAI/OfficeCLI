@@ -1254,6 +1254,7 @@ static class CommandBuilder
         var createFileArg = new Argument<string>("file") { Description = "Output file path (.docx, .xlsx, .pptx)" };
         var createTypeOpt = new Option<string>("--type") { Description = "Document type (docx, xlsx, pptx) — optional, inferred from file extension" };
         var createCommand = new Command("create", "Create a blank Office document");
+        createCommand.Aliases.Add("new");
         createCommand.Add(createFileArg);
         createCommand.Add(createTypeOpt);
         createCommand.Add(jsonOption);
