@@ -39,6 +39,7 @@ public partial class ExcelHandler
         properties ??= new Dictionary<string, string>();
 
         path = NormalizeExcelPath(path);
+        path = ResolveSheetIndexInPath(path);
 
         // Handle root path "/" — document properties
         if (path == "/")

@@ -24,6 +24,7 @@ public partial class ExcelHandler
         properties ??= new Dictionary<string, string>();
 
         parentPath = NormalizeExcelPath(parentPath);
+        parentPath = ResolveSheetIndexInPath(parentPath);
         switch (type.ToLowerInvariant())
         {
             case "sheet":

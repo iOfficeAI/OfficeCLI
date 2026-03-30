@@ -22,6 +22,7 @@ public partial class ExcelHandler
     public string Import(string parentPath, string csvContent, char delimiter, bool hasHeader, string startCell)
     {
         parentPath = NormalizeExcelPath(parentPath);
+        parentPath = ResolveSheetIndexInPath(parentPath);
         var sheetName = parentPath.TrimStart('/').Split('/', 2)[0];
         var worksheet = FindWorksheet(sheetName)
             ?? throw new ArgumentException($"Sheet not found: {sheetName}");

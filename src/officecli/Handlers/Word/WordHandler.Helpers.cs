@@ -176,6 +176,25 @@ public partial class WordHandler
             .ToList();
     }
 
+    /// <summary>
+    /// Find the paragraph path where a CommentRangeStart with the given ID is anchored.
+    /// Returns "/body/p[N]" or null if not found.
+    /// </summary>
+    private string? FindCommentAnchorPath(string commentId)
+    {
+        var body = _doc.MainDocumentPart?.Document?.Body;
+        if (body == null) return null;
+
+        var paragraphs = body.Elements<Paragraph>().ToList();
+        for (int i = 0; i < paragraphs.Count; i++)
+        {
+            var hasRange = paragraphs[i].Descendants<CommentRangeStart>()
+                .Any(rs => rs.Id?.Value == commentId);
+            if (hasRange) return $"/body/p[{i + 1}]";
+        }
+        return null;
+    }
+
     private static string GetRunText(Run run)
     {
         return string.Concat(run.Elements<Text>().Select(t => t.Text));

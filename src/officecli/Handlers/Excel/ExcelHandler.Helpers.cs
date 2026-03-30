@@ -53,6 +53,22 @@ public partial class ExcelHandler
         return path;
     }
 
+    /// <summary>
+    /// Resolve sheet[N] index references in the first segment of a normalized path.
+    /// E.g. /sheet[1]/A1 → /Sheet1/A1 (if the first sheet is named "Sheet1").
+    /// Must be called after NormalizeExcelPath.
+    /// </summary>
+    private string ResolveSheetIndexInPath(string path)
+    {
+        if (!path.StartsWith('/')) return path;
+        var trimmed = path[1..]; // remove leading '/'
+        var slashIdx = trimmed.IndexOf('/');
+        var firstSegment = slashIdx >= 0 ? trimmed[..slashIdx] : trimmed;
+        var resolved = ResolveSheetName(firstSegment);
+        if (resolved == firstSegment) return path;
+        return slashIdx >= 0 ? $"/{resolved}/{trimmed[(slashIdx + 1)..]}" : $"/{resolved}";
+    }
+
     // ==================== Private Helpers ====================
 
     private static Worksheet GetSheet(WorksheetPart part) =>
@@ -266,8 +282,28 @@ public partial class ExcelHandler
         return result;
     }
 
+    private static readonly System.Text.RegularExpressions.Regex SheetIndexPattern =
+        new(@"^sheet\[(\d+)\]$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Resolve a sheet name that may be a 1-based index reference like "sheet[1]"
+    /// to the actual sheet name. Returns the original name if not an index pattern.
+    /// </summary>
+    private string ResolveSheetName(string sheetName)
+    {
+        var m = SheetIndexPattern.Match(sheetName);
+        if (m.Success && int.TryParse(m.Groups[1].Value, out var idx) && idx >= 1)
+        {
+            var sheets = GetWorksheets();
+            if (idx <= sheets.Count)
+                return sheets[idx - 1].Name;
+        }
+        return sheetName;
+    }
+
     private WorksheetPart? FindWorksheet(string sheetName)
     {
+        sheetName = ResolveSheetName(sheetName);
         foreach (var (name, part) in GetWorksheets())
         {
             if (name.Equals(sheetName, StringComparison.OrdinalIgnoreCase))
@@ -955,6 +991,7 @@ public partial class ExcelHandler
 
         node.Format["ref"] = reference;
         node.Format["author"] = authorName;
+        node.Format["anchoredTo"] = $"/{sheetName}/{reference}";
 
         return node;
     }

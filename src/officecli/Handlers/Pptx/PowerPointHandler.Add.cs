@@ -16,6 +16,8 @@ public partial class PowerPointHandler
 {
     public string Add(string parentPath, string type, int? index, Dictionary<string, string> properties)
     {
+        parentPath = NormalizeCellPath(parentPath);
+
         return type.ToLowerInvariant() switch
         {
             "slide" => AddSlide(parentPath, index, properties),
@@ -30,6 +32,7 @@ public partial class PowerPointHandler
             "connector" or "connection" => AddConnector(parentPath, index, properties),
             "group" => AddGroup(parentPath, index, properties),
             "row" or "tr" => AddRow(parentPath, index, properties),
+            "col" or "column" => AddColumn(parentPath, index, properties),
             "cell" or "tc" => AddCell(parentPath, index, properties),
             "animation" or "animate" => AddAnimation(parentPath, index, properties),
             "paragraph" or "para" => AddParagraph(parentPath, index, properties),

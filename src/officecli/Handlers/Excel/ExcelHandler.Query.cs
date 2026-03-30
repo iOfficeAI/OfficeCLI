@@ -18,6 +18,7 @@ public partial class ExcelHandler
         if (string.IsNullOrEmpty(path))
             throw new ArgumentException("Path cannot be empty.");
         path = NormalizeExcelPath(path);
+        path = ResolveSheetIndexInPath(path);
         if (path == "/")
         {
             var node = new DocumentNode { Path = "/", Type = "workbook" };

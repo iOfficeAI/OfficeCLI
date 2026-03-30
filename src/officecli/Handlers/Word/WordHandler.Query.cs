@@ -871,6 +871,11 @@ public partial class WordHandler
                     if (comment.Initials?.Value != null) cNode.Format["initials"] = comment.Initials.Value;
                     if (comment.Id?.Value != null) cNode.Format["id"] = comment.Id.Value;
                     if (comment.Date?.Value != null) cNode.Format["date"] = comment.Date.Value.ToString("o");
+                    if (comment.Id?.Value != null)
+                    {
+                        var anchorPath = FindCommentAnchorPath(comment.Id.Value);
+                        if (anchorPath != null) cNode.Format["anchoredTo"] = anchorPath;
+                    }
                     results.Add(cNode);
                 }
             }

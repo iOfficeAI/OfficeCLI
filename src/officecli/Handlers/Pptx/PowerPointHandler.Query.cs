@@ -19,6 +19,7 @@ public partial class PowerPointHandler
     {
         if (string.IsNullOrEmpty(path))
             throw new ArgumentException("Path cannot be empty.");
+        path = NormalizeCellPath(path);
         if (path == "/")
         {
             var node = new DocumentNode { Path = "/", Type = "presentation" };

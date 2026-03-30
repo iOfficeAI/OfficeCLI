@@ -228,6 +228,76 @@ public partial class PowerPointHandler
     }
 
 
+    private string AddColumn(string parentPath, int? index, Dictionary<string, string> properties)
+    {
+                // Resolve parent table via logical path
+                var colLogical = ResolveLogicalPath(parentPath);
+                if (!colLogical.HasValue || colLogical.Value.element is not Drawing.Table colTable)
+                    throw new ArgumentException("Columns can only be added to a table: /slide[N]/table[M]");
+
+                var colSlidePart = colLogical.Value.slidePart;
+
+                // Determine column width: specified or average of existing columns
+                var tableGrid = colTable.GetFirstChild<Drawing.TableGrid>()
+                    ?? colTable.AppendChild(new Drawing.TableGrid());
+                var existingGridCols = tableGrid.Elements<Drawing.GridColumn>().ToList();
+                long colWidth = properties.TryGetValue("width", out var wVal)
+                    ? ParseEmu(wVal)
+                    : (existingGridCols.Count > 0
+                        ? (long)existingGridCols.Average(gc => gc.Width?.Value ?? 914400)
+                        : 914400); // default ~2.54cm
+
+                // Create and insert the new grid column
+                var newGridCol = new Drawing.GridColumn { Width = colWidth };
+                if (index.HasValue && index.Value < existingGridCols.Count)
+                    tableGrid.InsertBefore(newGridCol, existingGridCols[index.Value]);
+                else
+                    tableGrid.AppendChild(newGridCol);
+
+                var insertIdx = tableGrid.Elements<Drawing.GridColumn>().ToList().IndexOf(newGridCol);
+
+                // Cell text from property
+                var cellText = properties.GetValueOrDefault("text", "");
+
+                // For each row, insert a new cell at the same column index
+                foreach (var row in colTable.Elements<Drawing.TableRow>())
+                {
+                    var newCell = new Drawing.TableCell();
+                    var cPara = new Drawing.Paragraph();
+                    if (!string.IsNullOrEmpty(cellText))
+                        cPara.Append(new Drawing.Run(
+                            new Drawing.RunProperties { Language = "en-US" },
+                            new Drawing.Text { Text = cellText }));
+                    else
+                        cPara.Append(new Drawing.EndParagraphRunProperties { Language = "en-US" });
+                    newCell.Append(new Drawing.TextBody(
+                        new Drawing.BodyProperties(),
+                        new Drawing.ListStyle(),
+                        cPara));
+                    newCell.Append(new Drawing.TableCellProperties());
+
+                    var existingCells = row.Elements<Drawing.TableCell>().ToList();
+                    if (insertIdx < existingCells.Count)
+                        row.InsertBefore(newCell, existingCells[insertIdx]);
+                    else
+                        row.AppendChild(newCell);
+                }
+
+                // Update GraphicFrame container width to match sum of all column widths
+                var graphicFrame = colTable.Ancestors<GraphicFrame>().FirstOrDefault();
+                if (graphicFrame?.Transform?.Extents != null)
+                {
+                    long totalColWidth = tableGrid.Elements<Drawing.GridColumn>()
+                        .Sum(gc => gc.Width?.Value ?? 914400);
+                    graphicFrame.Transform.Extents.Cx = totalColWidth;
+                }
+
+                GetSlide(colSlidePart).Save();
+                var colIdx = tableGrid.Elements<Drawing.GridColumn>().ToList().IndexOf(newGridCol) + 1;
+                return $"{parentPath}/col[{colIdx}]";
+    }
+
+
     private string AddCell(string parentPath, int? index, Dictionary<string, string> properties)
     {
                 // Resolve parent row via logical path
