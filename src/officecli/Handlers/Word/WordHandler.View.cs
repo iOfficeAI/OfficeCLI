@@ -12,6 +12,181 @@ namespace OfficeCli.Handlers;
 
 public partial class WordHandler
 {
+    // ==================== View Helpers ====================
+
+    /// <summary>
+    /// Represents a body element with optional SDT context.
+    /// When a paragraph/table is inside an SdtBlock, SdtBlock is set.
+    /// </summary>
+    private record BodyElementInfo(OpenXmlElement Element, SdtBlock? SdtBlock = null);
+
+    /// <summary>
+    /// Enumerate body elements, preserving SDT context.
+    /// Elements inside SdtBlock are yielded with a reference to their parent SdtBlock.
+    /// </summary>
+    private static IEnumerable<BodyElementInfo> GetBodyElementsWithSdtContext(Body body)
+    {
+        foreach (var element in body.ChildElements)
+        {
+            if (element is SdtBlock sdt)
+            {
+                var content = sdt.SdtContentBlock;
+                if (content != null)
+                {
+                    foreach (var child in content.ChildElements)
+                        yield return new BodyElementInfo(child, sdt);
+                }
+            }
+            else
+            {
+                yield return new BodyElementInfo(element);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Get SDT label string from an SdtBlock: [sdt:alias] or [sdt:tag] or [sdt].
+    /// </summary>
+    private static string GetSdtLabel(SdtBlock sdt)
+    {
+        var props = sdt.SdtProperties;
+        var alias = props?.GetFirstChild<SdtAlias>()?.Val?.Value;
+        if (!string.IsNullOrEmpty(alias))
+            return $"[sdt:{alias}] ";
+        var tag = props?.GetFirstChild<Tag>()?.Val?.Value;
+        if (!string.IsNullOrEmpty(tag))
+            return $"[sdt:{tag}] ";
+        return "[sdt] ";
+    }
+
+    /// <summary>
+    /// Find formfield runs in a paragraph and return (name, type, value) for each.
+    /// </summary>
+    private static List<(string Name, string FieldType, string Value)> FindFormFieldsInParagraph(Paragraph para)
+    {
+        var result = new List<(string, string, string)>();
+        Run? beginRun = null;
+        FormFieldData? ffData = null;
+        var resultRuns = new List<Run>();
+        bool inResult = false;
+
+        foreach (var run in para.Descendants<Run>())
+        {
+            var fldChar = run.GetFirstChild<FieldChar>();
+            if (fldChar != null)
+            {
+                var charType = fldChar.FieldCharType?.Value;
+                if (charType == FieldCharValues.Begin)
+                {
+                    beginRun = run;
+                    ffData = fldChar.FormFieldData;
+                    resultRuns.Clear();
+                    inResult = false;
+                }
+                else if (charType == FieldCharValues.Separate)
+                {
+                    inResult = true;
+                }
+                else if (charType == FieldCharValues.End)
+                {
+                    if (beginRun != null && ffData != null)
+                    {
+                        var name = ffData.GetFirstChild<FormFieldName>()?.Val?.Value ?? "";
+                        var fieldType = "text";
+                        if (ffData.GetFirstChild<CheckBox>() != null) fieldType = "checkbox";
+                        else if (ffData.GetFirstChild<DropDownListFormField>() != null) fieldType = "dropdown";
+
+                        var value = string.Join("", resultRuns.SelectMany(r => r.Elements<Text>()).Select(t => t.Text));
+                        if (fieldType == "checkbox")
+                        {
+                            var cb = ffData.GetFirstChild<CheckBox>();
+                            var isChecked = cb?.GetFirstChild<Checked>()?.Val?.Value
+                                ?? cb?.GetFirstChild<DefaultCheckBoxFormFieldState>()?.Val?.Value
+                                ?? false;
+                            value = isChecked ? "true" : "false";
+                        }
+                        result.Add((name, fieldType, value));
+                    }
+                    beginRun = null;
+                    ffData = null;
+                    resultRuns.Clear();
+                    inResult = false;
+                }
+            }
+            else if (inResult)
+            {
+                resultRuns.Add(run);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Build text line for a paragraph, including formfield markers.
+    /// If the paragraph contains formfields, they are annotated as [formfield:name] value.
+    /// Otherwise returns null (caller uses normal text extraction).
+    /// </summary>
+    private static string? GetParagraphTextWithFormFields(Paragraph para)
+    {
+        var formFields = FindFormFieldsInParagraph(para);
+        if (formFields.Count == 0) return null;
+
+        // Build text by walking through paragraph children, replacing field sequences with markers
+        var sb = new StringBuilder();
+        Run? beginRun = null;
+        FormFieldData? currentFfData = null;
+        var resultRuns = new List<Run>();
+        bool inField = false;
+        bool inResult = false;
+        int ffIdx = 0;
+
+        foreach (var run in para.Descendants<Run>())
+        {
+            var fldChar = run.GetFirstChild<FieldChar>();
+            if (fldChar != null)
+            {
+                var charType = fldChar.FieldCharType?.Value;
+                if (charType == FieldCharValues.Begin)
+                {
+                    beginRun = run;
+                    currentFfData = fldChar.FormFieldData;
+                    resultRuns.Clear();
+                    inField = true;
+                    inResult = false;
+                }
+                else if (charType == FieldCharValues.Separate)
+                {
+                    inResult = true;
+                }
+                else if (charType == FieldCharValues.End)
+                {
+                    if (currentFfData != null && ffIdx < formFields.Count)
+                    {
+                        var ff = formFields[ffIdx++];
+                        var label = !string.IsNullOrEmpty(ff.Name) ? $"[formfield:{ff.Name}]" : "[formfield]";
+                        sb.Append($"{label} {ff.Value}");
+                    }
+                    beginRun = null;
+                    currentFfData = null;
+                    resultRuns.Clear();
+                    inField = false;
+                    inResult = false;
+                }
+            }
+            else if (inField)
+            {
+                if (inResult) resultRuns.Add(run);
+                // Skip instruction runs
+            }
+            else
+            {
+                // Normal run outside any field
+                sb.Append(string.Concat(run.Elements<Text>().Select(t => t.Text)));
+            }
+        }
+        return sb.ToString();
+    }
+
     // ==================== Semantic Layer ====================
 
     public string ViewAsText(int? startLine = null, int? endLine = null, int? maxLines = null, HashSet<string>? cols = null)
@@ -21,15 +196,27 @@ public partial class WordHandler
 
         var sb = new StringBuilder();
         int lineNum = 0;
-        int pIdx = 0, tblIdx = 0, eqIdx = 0;
+        int pIdx = 0, tblIdx = 0, eqIdx = 0, sdtIdx = 0;
         int emitted = 0;
-        var bodyElements = GetBodyElements(body).ToList();
+        var bodyElements = GetBodyElementsWithSdtContext(body).ToList();
         int totalElements = bodyElements.Count;
 
-        foreach (var element in bodyElements)
+        // Track which SdtBlocks we've seen for indexing
+        var sdtIndexMap = new Dictionary<SdtBlock, int>();
+
+        foreach (var item in bodyElements)
         {
+            var element = item.Element;
             lineNum++;
             string path;
+            string sdtLabel = "";
+
+            if (item.SdtBlock != null)
+            {
+                if (!sdtIndexMap.ContainsKey(item.SdtBlock))
+                    sdtIndexMap[item.SdtBlock] = ++sdtIdx;
+                sdtLabel = GetSdtLabel(item.SdtBlock);
+            }
 
             if (element.LocalName == "oMathPara" || element is M.Paragraph)
             {
@@ -39,12 +226,12 @@ public partial class WordHandler
             else if (element is Paragraph)
             {
                 pIdx++;
-                path = $"/body/p[{pIdx}]";
+                path = item.SdtBlock != null ? $"/body/sdt[{sdtIndexMap[item.SdtBlock]}]/p[{pIdx}]" : $"/body/p[{pIdx}]";
             }
             else if (element is Table)
             {
                 tblIdx++;
-                path = $"/body/tbl[{tblIdx}]";
+                path = item.SdtBlock != null ? $"/body/sdt[{sdtIndexMap[item.SdtBlock]}]/tbl[{tblIdx}]" : $"/body/tbl[{tblIdx}]";
             }
             else if (IsStructuralElement(element))
             {
@@ -72,39 +259,47 @@ public partial class WordHandler
                 if (oMathParaChild != null)
                 {
                     var mathText = FormulaParser.ToReadableText(oMathParaChild);
-                    sb.AppendLine($"[{path}] [Equation] {mathText}");
+                    sb.AppendLine($"[{path}] {sdtLabel}[Equation] {mathText}");
                 }
                 else
                 {
+                    // Check for formfields first
+                    var ffText = GetParagraphTextWithFormFields(para);
+
                     // Check for inline math
                     var mathElements = FindMathElements(para);
                     if (mathElements.Count > 0 && string.IsNullOrWhiteSpace(GetParagraphText(para)))
                     {
                         var mathText = string.Concat(mathElements.Select(FormulaParser.ToReadableText));
-                        sb.AppendLine($"[{path}] [Equation] {mathText}");
+                        sb.AppendLine($"[{path}] {sdtLabel}[Equation] {mathText}");
+                    }
+                    else if (ffText != null)
+                    {
+                        var listPrefix = GetListPrefix(para);
+                        sb.AppendLine($"[{path}] {sdtLabel}{listPrefix}{ffText}");
                     }
                     else if (mathElements.Count > 0)
                     {
                         var text = GetParagraphTextWithMath(para);
                         var listPrefix = GetListPrefix(para);
-                        sb.AppendLine($"[{path}] {listPrefix}{text}");
+                        sb.AppendLine($"[{path}] {sdtLabel}{listPrefix}{text}");
                     }
                     else
                     {
                         var text = GetParagraphText(para);
                         var listPrefix = GetListPrefix(para);
-                        sb.AppendLine($"[{path}] {listPrefix}{text}");
+                        sb.AppendLine($"[{path}] {sdtLabel}{listPrefix}{text}");
                     }
                 }
             }
             else if (element.LocalName == "oMathPara" || element is M.Paragraph)
             {
                 var mathText = FormulaParser.ToReadableText(element);
-                sb.AppendLine($"[{path}] [Equation] {mathText}");
+                sb.AppendLine($"[{path}] {sdtLabel}[Equation] {mathText}");
             }
             else if (element is Table table)
             {
-                sb.AppendLine($"[{path}] [Table: {table.Elements<TableRow>().Count()} rows]");
+                sb.AppendLine($"[{path}] {sdtLabel}[Table: {table.Elements<TableRow>().Count()} rows]");
             }
             else if (IsStructuralElement(element))
             {
@@ -123,15 +318,27 @@ public partial class WordHandler
 
         var sb = new StringBuilder();
         int lineNum = 0;
-        int pIdx = 0, tblIdx = 0, eqIdx = 0;
+        int pIdx = 0, tblIdx = 0, eqIdx = 0, sdtIdx = 0;
         int emitted = 0;
-        var bodyElements = GetBodyElements(body).ToList();
+        var bodyElements = GetBodyElementsWithSdtContext(body).ToList();
         int totalElements = bodyElements.Count;
 
-        foreach (var element in bodyElements)
+        // Track which SdtBlocks we've seen for indexing
+        var sdtIndexMap = new Dictionary<SdtBlock, int>();
+
+        foreach (var item in bodyElements)
         {
+            var element = item.Element;
             lineNum++;
             string path;
+            string sdtAnnotation = "";
+
+            if (item.SdtBlock != null)
+            {
+                if (!sdtIndexMap.ContainsKey(item.SdtBlock))
+                    sdtIndexMap[item.SdtBlock] = ++sdtIdx;
+                sdtAnnotation = GetSdtLabel(item.SdtBlock).TrimEnd();
+            }
 
             if (element.LocalName == "oMathPara" || element is M.Paragraph)
             {
@@ -141,12 +348,12 @@ public partial class WordHandler
             else if (element is Paragraph)
             {
                 pIdx++;
-                path = $"/body/p[{pIdx}]";
+                path = item.SdtBlock != null ? $"/body/sdt[{sdtIndexMap[item.SdtBlock]}]/p[{pIdx}]" : $"/body/p[{pIdx}]";
             }
             else if (element is Table)
             {
                 tblIdx++;
-                path = $"/body/tbl[{tblIdx}]";
+                path = item.SdtBlock != null ? $"/body/sdt[{sdtIndexMap[item.SdtBlock]}]/tbl[{tblIdx}]" : $"/body/tbl[{tblIdx}]";
             }
             else
             {
@@ -194,12 +401,16 @@ public partial class WordHandler
 
                 if (runs.Count == 0 && inlineMath.Count == 0)
                 {
-                    sb.AppendLine($"[{path}] [] <- {styleName} | empty paragraph");
+                    var sdtSuffix = !string.IsNullOrEmpty(sdtAnnotation) ? $" | {sdtAnnotation}" : "";
+                    sb.AppendLine($"[{path}] [] <- {styleName} | empty paragraph{sdtSuffix}");
                     emitted++;
                     continue;
                 }
 
                 var listPrefix = GetListPrefix(para);
+
+                // Build a set of runs that are part of formfield sequences for annotation
+                var formFieldRunMap = BuildFormFieldRunMap(para);
 
                 foreach (var run in runs)
                 {
@@ -214,9 +425,19 @@ public partial class WordHandler
 
                     var text = GetRunText(run);
                     var fmt = GetRunFormatDescription(run, para);
-                    var warn = "";
+                    var extraAnnotations = new List<string>();
 
-                    sb.AppendLine($"[{path}] {listPrefix}「{text}」 ← {styleName} | {fmt}{warn}");
+                    // Add SDT annotation
+                    if (!string.IsNullOrEmpty(sdtAnnotation))
+                        extraAnnotations.Add(sdtAnnotation);
+
+                    // Add formfield annotation if this run is part of a formfield
+                    if (formFieldRunMap.TryGetValue(run, out var ffInfo))
+                        extraAnnotations.Add(ffInfo);
+
+                    var suffix = extraAnnotations.Count > 0 ? " | " + string.Join(" | ", extraAnnotations) : "";
+
+                    sb.AppendLine($"[{path}] {listPrefix}「{text}」 ← {styleName} | {fmt}{suffix}");
                 }
 
                 // Show inline math elements
@@ -239,6 +460,63 @@ public partial class WordHandler
         return sb.ToString().TrimEnd();
     }
 
+    /// <summary>
+    /// Build a map from Run to formfield annotation string for runs that are part of formfield sequences.
+    /// </summary>
+    private static Dictionary<Run, string> BuildFormFieldRunMap(Paragraph para)
+    {
+        var map = new Dictionary<Run, string>();
+        Run? beginRun = null;
+        FormFieldData? currentFfData = null;
+        var fieldRuns = new List<Run>();
+        bool inField = false;
+
+        foreach (var run in para.Descendants<Run>())
+        {
+            var fldChar = run.GetFirstChild<FieldChar>();
+            if (fldChar != null)
+            {
+                var charType = fldChar.FieldCharType?.Value;
+                if (charType == FieldCharValues.Begin)
+                {
+                    beginRun = run;
+                    currentFfData = fldChar.FormFieldData;
+                    fieldRuns.Clear();
+                    fieldRuns.Add(run);
+                    inField = true;
+                }
+                else if (charType == FieldCharValues.Separate)
+                {
+                    fieldRuns.Add(run);
+                }
+                else if (charType == FieldCharValues.End)
+                {
+                    fieldRuns.Add(run);
+                    if (currentFfData != null)
+                    {
+                        var name = currentFfData.GetFirstChild<FormFieldName>()?.Val?.Value ?? "";
+                        var fieldType = "text";
+                        if (currentFfData.GetFirstChild<CheckBox>() != null) fieldType = "checkbox";
+                        else if (currentFfData.GetFirstChild<DropDownListFormField>() != null) fieldType = "dropdown";
+
+                        var label = !string.IsNullOrEmpty(name) ? $"[formfield:{name} ({fieldType})]" : $"[formfield ({fieldType})]";
+                        foreach (var fr in fieldRuns)
+                            map[fr] = label;
+                    }
+                    beginRun = null;
+                    currentFfData = null;
+                    fieldRuns.Clear();
+                    inField = false;
+                }
+            }
+            else if (inField)
+            {
+                fieldRuns.Add(run);
+            }
+        }
+        return map;
+    }
+
     public string ViewAsOutline()
     {
         var sb = new StringBuilder();
@@ -250,8 +528,12 @@ public partial class WordHandler
         var tables = GetBodyElements(body).OfType<Table>().ToList();
         var imageCount = body.Descendants<Drawing>().Count();
         var equationCount = body.Descendants().Count(e => e.LocalName == "oMathPara" || e is M.Paragraph);
+        var formFieldCount = FindFormFields().Count;
+        var contentControlCount = body.Descendants<SdtBlock>().Count() + body.Descendants<SdtRun>().Count();
         var statsLine = $"File: {Path.GetFileName(_filePath)} | {paragraphs.Count} paragraphs | {tables.Count} tables | {imageCount} images";
         if (equationCount > 0) statsLine += $" | {equationCount} equations";
+        if (formFieldCount > 0) statsLine += $" | {formFieldCount} formfields";
+        if (contentControlCount > 0) statsLine += $" | {contentControlCount} content controls";
         sb.AppendLine(statsLine);
 
         // Watermark
@@ -435,6 +717,9 @@ public partial class WordHandler
         var imageCount = body.Descendants<Drawing>().Count();
         var equationCount = body.Descendants().Count(e => e.LocalName == "oMathPara" || e is M.Paragraph);
 
+        var formFieldCount = FindFormFields().Count;
+        var contentControlCount = body.Descendants<SdtBlock>().Count() + body.Descendants<SdtRun>().Count();
+
         var result = new JsonObject
         {
             ["fileName"] = Path.GetFileName(_filePath),
@@ -443,6 +728,8 @@ public partial class WordHandler
             ["images"] = imageCount,
             ["equations"] = equationCount
         };
+        if (formFieldCount > 0) result["formfields"] = formFieldCount;
+        if (contentControlCount > 0) result["contentControls"] = contentControlCount;
 
         var watermark = FindWatermark();
         if (watermark != null) result["watermark"] = watermark;
@@ -486,15 +773,27 @@ public partial class WordHandler
 
         var elementsArray = new JsonArray();
         int lineNum = 0;
-        int pIdx = 0, tblIdx = 0, eqIdx = 0;
+        int pIdx = 0, tblIdx = 0, eqIdx = 0, sdtIdx = 0;
         int emitted = 0;
-        var bodyElements = GetBodyElements(body).ToList();
+        var bodyElements = GetBodyElementsWithSdtContext(body).ToList();
+        var sdtIndexMap = new Dictionary<SdtBlock, int>();
 
-        foreach (var element in bodyElements)
+        foreach (var item in bodyElements)
         {
+            var element = item.Element;
             lineNum++;
             string path;
             string type;
+            string? sdtLabel = null;
+
+            if (item.SdtBlock != null)
+            {
+                if (!sdtIndexMap.ContainsKey(item.SdtBlock))
+                    sdtIndexMap[item.SdtBlock] = ++sdtIdx;
+                var props = item.SdtBlock.SdtProperties;
+                sdtLabel = props?.GetFirstChild<SdtAlias>()?.Val?.Value
+                    ?? props?.GetFirstChild<Tag>()?.Val?.Value;
+            }
 
             if (element.LocalName == "oMathPara" || element is M.Paragraph)
             {
@@ -505,13 +804,13 @@ public partial class WordHandler
             else if (element is Paragraph)
             {
                 pIdx++;
-                path = $"/body/p[{pIdx}]";
+                path = item.SdtBlock != null ? $"/body/sdt[{sdtIndexMap[item.SdtBlock]}]/p[{pIdx}]" : $"/body/p[{pIdx}]";
                 type = "paragraph";
             }
             else if (element is Table)
             {
                 tblIdx++;
-                path = $"/body/tbl[{tblIdx}]";
+                path = item.SdtBlock != null ? $"/body/sdt[{sdtIndexMap[item.SdtBlock]}]/tbl[{tblIdx}]" : $"/body/tbl[{tblIdx}]";
                 type = "table";
             }
             else if (IsStructuralElement(element))
@@ -526,6 +825,7 @@ public partial class WordHandler
             if (maxLines.HasValue && emitted >= maxLines.Value) break;
 
             string? text = null;
+            JsonArray? formFieldsJson = null;
             if (element is Paragraph para)
             {
                 var oMathParaChild = para.ChildElements.FirstOrDefault(e => e.LocalName == "oMathPara" || e is M.Paragraph);
@@ -536,13 +836,29 @@ public partial class WordHandler
                 }
                 else
                 {
+                    var ffList = FindFormFieldsInParagraph(para);
+                    var ffText = ffList.Count > 0 ? GetParagraphTextWithFormFields(para) : null;
+
                     var mathElements = FindMathElements(para);
                     if (mathElements.Count > 0 && string.IsNullOrWhiteSpace(GetParagraphText(para)))
                         text = string.Concat(mathElements.Select(FormulaParser.ToReadableText));
+                    else if (ffText != null)
+                        text = GetListPrefix(para) + ffText;
                     else if (mathElements.Count > 0)
                         text = GetParagraphTextWithMath(para);
                     else
                         text = GetListPrefix(para) + GetParagraphText(para);
+
+                    if (ffList.Count > 0)
+                    {
+                        formFieldsJson = new JsonArray();
+                        foreach (var ff in ffList)
+                        {
+                            var ffObj = new JsonObject { ["type"] = ff.FieldType, ["value"] = ff.Value };
+                            if (!string.IsNullOrEmpty(ff.Name)) ffObj["name"] = ff.Name;
+                            formFieldsJson.Add((JsonNode)ffObj);
+                        }
+                    }
                 }
             }
             else if (element.LocalName == "oMathPara" || element is M.Paragraph)
@@ -556,6 +872,9 @@ public partial class WordHandler
                 ["type"] = type
             };
             if (text != null) obj["text"] = text;
+            if (sdtLabel != null) obj["sdt"] = sdtLabel;
+            else if (item.SdtBlock != null) obj["sdt"] = true;
+            if (formFieldsJson != null) obj["formFields"] = formFieldsJson;
             elementsArray.Add((JsonNode)obj);
             emitted++;
         }
@@ -687,5 +1006,230 @@ public partial class WordHandler
         }
 
         return limit.HasValue ? issues.Take(limit.Value).ToList() : issues;
+    }
+
+    public string ViewAsForms()
+    {
+        var sb = new StringBuilder();
+
+        // Document protection
+        var (mode, enforced) = GetDocumentProtection();
+        var protectionDisplay = mode == "none" || !enforced
+            ? "none"
+            : $"{mode} (enforced)";
+        sb.AppendLine($"Document Protection: {protectionDisplay}");
+
+        // Collect all form fields
+        var fields = CollectFormFieldEntries();
+
+        if (fields.Count == 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("No form fields or content controls found.");
+            return sb.ToString().TrimEnd();
+        }
+
+        var editable = fields.Where(f => f.Editable).ToList();
+        var nonEditable = fields.Where(f => !f.Editable).ToList();
+
+        sb.AppendLine();
+        sb.AppendLine($"Editable Fields ({editable.Count}):");
+        for (int i = 0; i < editable.Count; i++)
+            sb.AppendLine($"  #{i + 1} {FormatFormEntry(editable[i])}");
+
+        if (nonEditable.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"Non-editable Fields ({nonEditable.Count}):");
+            for (int i = 0; i < nonEditable.Count; i++)
+                sb.AppendLine($"  #{i + 1} {FormatFormEntry(nonEditable[i])}");
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    public JsonNode ViewAsFormsJson()
+    {
+        var (mode, enforced) = GetDocumentProtection();
+        var fields = CollectFormFieldEntries();
+
+        var result = new JsonObject
+        {
+            ["protection"] = mode,
+            ["protectionEnforced"] = enforced
+        };
+
+        var fieldsArray = new JsonArray();
+        foreach (var f in fields)
+        {
+            var obj = new JsonObject
+            {
+                ["kind"] = f.Kind,
+                ["path"] = f.Path,
+                ["type"] = f.FieldType,
+                ["editable"] = f.Editable
+            };
+            if (f.Name != null) obj["name"] = f.Name;
+            if (f.Alias != null) obj["alias"] = f.Alias;
+            if (f.Value != null) obj["value"] = f.Value;
+            if (f.Items != null) obj["items"] = f.Items;
+            if (f.Lock != null) obj["lock"] = f.Lock;
+            if (f.Checked.HasValue) obj["checked"] = f.Checked.Value;
+            fieldsArray.Add((JsonNode)obj);
+        }
+        result["fields"] = fieldsArray;
+
+        return result;
+    }
+
+    private record FormFieldEntry(
+        string Kind,      // "sdt" or "formfield"
+        string Path,
+        string FieldType, // "text", "date", "dropdown", "combobox", "checkbox", "richtext"
+        bool Editable,
+        string? Name = null,
+        string? Alias = null,
+        string? Value = null,
+        string? Items = null,
+        string? Lock = null,
+        bool? Checked = null);
+
+    private List<FormFieldEntry> CollectFormFieldEntries()
+    {
+        var entries = new List<FormFieldEntry>();
+        var body = _doc.MainDocumentPart?.Document?.Body;
+        if (body == null) return entries;
+
+        // 1. Collect SDTs
+        int blockSdtIdx = 0;
+        foreach (var sdt in body.Descendants().Where(e => e is SdtBlock or SdtRun))
+        {
+            string path;
+            SdtProperties? sdtProps;
+            string text;
+
+            if (sdt is SdtBlock sdtBlock)
+            {
+                blockSdtIdx++;
+                path = $"/body/sdt[{blockSdtIdx}]";
+                sdtProps = sdtBlock.SdtProperties;
+                text = string.Concat(sdtBlock.Descendants<Text>().Select(t => t.Text));
+            }
+            else if (sdt is SdtRun sdtRun)
+            {
+                var parentPara = sdtRun.Ancestors<Paragraph>().FirstOrDefault();
+                if (parentPara != null)
+                {
+                    int pIdx = 1;
+                    foreach (var el in body.ChildElements)
+                    {
+                        if (el == parentPara) break;
+                        if (el is Paragraph) pIdx++;
+                    }
+                    int sdtInParaIdx = 1;
+                    foreach (var child in parentPara.ChildElements)
+                    {
+                        if (child == sdtRun) break;
+                        if (child is SdtRun) sdtInParaIdx++;
+                    }
+                    path = $"/body/p[{pIdx}]/sdt[{sdtInParaIdx}]";
+                }
+                else
+                {
+                    blockSdtIdx++;
+                    path = $"/body/sdt[{blockSdtIdx}]";
+                }
+                sdtProps = sdtRun.SdtProperties;
+                text = string.Concat(sdtRun.Descendants<Text>().Select(t => t.Text));
+            }
+            else continue;
+
+            if (sdtProps == null) continue;
+
+            var alias = sdtProps.GetFirstChild<SdtAlias>()?.Val?.Value;
+            var tag = sdtProps.GetFirstChild<Tag>()?.Val?.Value;
+            var lockEl = sdtProps.GetFirstChild<DocumentFormat.OpenXml.Wordprocessing.Lock>();
+            var lockVal = lockEl?.Val?.InnerText;
+
+            // Determine SDT type
+            string sdtType;
+            if (sdtProps.GetFirstChild<SdtContentDropDownList>() != null) sdtType = "dropdown";
+            else if (sdtProps.GetFirstChild<SdtContentComboBox>() != null) sdtType = "combobox";
+            else if (sdtProps.GetFirstChild<SdtContentDate>() != null) sdtType = "date";
+            else if (sdtProps.GetFirstChild<SdtContentText>() != null) sdtType = "text";
+            else sdtType = "richtext";
+
+            // Items for dropdown/combobox
+            string? items = null;
+            var ddl = sdtProps.GetFirstChild<SdtContentDropDownList>();
+            var combo = sdtProps.GetFirstChild<SdtContentComboBox>();
+            var listItems = ddl?.Elements<ListItem>() ?? combo?.Elements<ListItem>();
+            if (listItems != null)
+            {
+                var itemsList = listItems.Select(li => li.DisplayText?.Value ?? li.Value?.Value ?? "").ToList();
+                if (itemsList.Count > 0) items = string.Join(",", itemsList);
+            }
+
+            var editable = IsSdtEditable(sdtProps);
+            var displayValue = string.IsNullOrEmpty(text) ? "(empty)" : text;
+
+            entries.Add(new FormFieldEntry(
+                Kind: "sdt",
+                Path: path,
+                FieldType: sdtType,
+                Editable: editable,
+                Alias: alias ?? tag,
+                Value: displayValue,
+                Items: items,
+                Lock: lockVal));
+        }
+
+        // 2. Collect legacy form fields
+        var formFields = FindFormFields();
+        for (int i = 0; i < formFields.Count; i++)
+        {
+            var ff = formFields[i];
+            var ffPath = $"/formfield[{i + 1}]";
+            var ffNode = FormFieldToNode(ff, ffPath);
+
+            var ffType = ffNode.Format.TryGetValue("formfieldType", out var ftObj) ? ftObj?.ToString() ?? "text" : "text";
+            var ffName = ffNode.Format.TryGetValue("name", out var nameObj) ? nameObj?.ToString() : null;
+            var ffEditable = ffNode.Format.TryGetValue("editable", out var edObj) && edObj is true;
+
+            string? ffItems = ffNode.Format.TryGetValue("items", out var itemsObj) ? itemsObj?.ToString() : null;
+            bool? ffChecked = ffType == "checkbox" && ffNode.Format.TryGetValue("checked", out var chkObj) ? chkObj is true : null;
+
+            var ffValue = ffType == "checkbox" ? null : (string.IsNullOrEmpty(ffNode.Text) ? "(empty)" : ffNode.Text);
+
+            entries.Add(new FormFieldEntry(
+                Kind: "formfield",
+                Path: ffPath,
+                FieldType: ffType,
+                Editable: ffEditable,
+                Name: ffName,
+                Value: ffValue,
+                Items: ffItems,
+                Checked: ffChecked));
+        }
+
+        return entries;
+    }
+
+    private static string FormatFormEntry(FormFieldEntry f)
+    {
+        var sb = new StringBuilder();
+        sb.Append($"[{f.Kind}] {f.Path}");
+
+        if (f.Alias != null) sb.Append($"  alias=\"{f.Alias}\"");
+        if (f.Name != null) sb.Append($"  name=\"{f.Name}\"");
+        sb.Append($"  type={f.FieldType}");
+
+        if (f.Items != null) sb.Append($"  items=\"{f.Items}\"");
+        if (f.Checked.HasValue) sb.Append($"  checked={f.Checked.Value.ToString().ToLowerInvariant()}");
+        if (f.Value != null) sb.Append($"  value=\"{f.Value}\"");
+        if (f.Lock != null) sb.Append($"  lock={f.Lock}");
+        sb.Append($"  editable={f.Editable.ToString().ToLowerInvariant()}");
+
+        return sb.ToString();
     }
 }
