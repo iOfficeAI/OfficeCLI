@@ -1594,7 +1594,7 @@ public partial class ExcelHandler
                 }
             }
 
-            wsPart.Worksheet.Save();
+            wsPart.Worksheet!.Save();
         }
 
         return totalCount;

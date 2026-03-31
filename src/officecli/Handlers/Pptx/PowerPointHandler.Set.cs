@@ -163,7 +163,7 @@ public partial class PowerPointHandler
                                 fontScheme.MajorFont.LatinFont.Typeface = value;
                             if (fontScheme.MinorFont?.LatinFont != null)
                                 fontScheme.MinorFont.LatinFont.Typeface = value;
-                            masterPart!.ThemePart!.Theme.Save();
+                            masterPart!.ThemePart!.Theme!.Save();
                         }
                         break;
                     }

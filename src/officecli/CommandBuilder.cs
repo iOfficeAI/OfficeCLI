@@ -1120,7 +1120,7 @@ static class CommandBuilder
                 var arr = new System.Text.Json.Nodes.JsonArray();
                 foreach (var (path, msg) in issues)
                 {
-                    arr.Add(new System.Text.Json.Nodes.JsonObject
+                    arr.Add((System.Text.Json.Nodes.JsonNode)new System.Text.Json.Nodes.JsonObject
                     {
                         ["path"] = path,
                         ["issue"] = msg

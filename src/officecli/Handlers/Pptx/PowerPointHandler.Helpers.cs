@@ -899,7 +899,7 @@ public partial class PowerPointHandler
                 }
             }
 
-            slidePart.Slide.Save();
+            slidePart.Slide!.Save();
         }
 
         return totalCount;

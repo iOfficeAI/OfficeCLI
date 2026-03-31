@@ -22,7 +22,7 @@ public partial class PowerPointHandler
         {
             "slide" => AddSlide(parentPath, index, properties),
             "shape" or "textbox" when properties != null && properties.ContainsKey("formula") => AddEquation(parentPath, index, properties),
-            "shape" or "textbox" => AddShape(parentPath, index, properties),
+            "shape" or "textbox" => AddShape(parentPath, index, properties ?? new()),
             "picture" or "image" or "img" => AddPicture(parentPath, index, properties),
             "chart" => AddChart(parentPath, index, properties),
             "table" => AddTable(parentPath, index, properties),
