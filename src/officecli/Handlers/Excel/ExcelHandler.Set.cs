@@ -1903,8 +1903,9 @@ public partial class ExcelHandler
                     if (ColumnNameToIndex(cellCol) != colIdx) continue;
 
                     var text = GetCellDisplayValue(cell);
-                    if (text.Length > maxLen)
-                        maxLen = text.Length;
+                    var textWidth = ParseHelpers.EstimateTextWidthInChars(text);
+                    if (textWidth > maxLen)
+                        maxLen = textWidth;
                 }
             }
         }

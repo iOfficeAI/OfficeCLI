@@ -234,4 +234,48 @@ public static class ParseHelpers
 
         return (hex, null);
     }
+
+    // ==================== CJK Text Width Estimation ====================
+
+    /// <summary>
+    /// Returns true if the character is CJK ideograph, fullwidth, or CJK punctuation.
+    /// These characters occupy approximately 1em width (≈ fontSize) vs ~0.55em for Latin.
+    /// </summary>
+    public static bool IsCjkOrFullWidth(char ch)
+    {
+        // CJK Unified Ideographs
+        if (ch >= 0x4E00 && ch <= 0x9FFF) return true;
+        // CJK Extension A
+        if (ch >= 0x3400 && ch <= 0x4DBF) return true;
+        // CJK Compatibility Ideographs
+        if (ch >= 0xF900 && ch <= 0xFAFF) return true;
+        // CJK Symbols and Punctuation (。、「」etc.)
+        if (ch >= 0x3000 && ch <= 0x303F) return true;
+        // Fullwidth Forms (Ａ-Ｚ, ０-９, fullwidth punctuation)
+        if (ch >= 0xFF01 && ch <= 0xFF60) return true;
+        // Halfwidth Katakana is NOT fullwidth
+        // Hiragana
+        if (ch >= 0x3040 && ch <= 0x309F) return true;
+        // Katakana
+        if (ch >= 0x30A0 && ch <= 0x30FF) return true;
+        // Hangul Syllables
+        if (ch >= 0xAC00 && ch <= 0xD7AF) return true;
+        // Bopomofo
+        if (ch >= 0x3100 && ch <= 0x312F) return true;
+        // Em-dash (U+2014) is fullwidth in CJK contexts
+        if (ch == 0x2014) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Estimate the visual width of a string in "character units" (Latin char = 1.0, CJK/fullwidth = ~1.82).
+    /// Useful for Excel column auto-fit where width is measured in character units.
+    /// </summary>
+    public static double EstimateTextWidthInChars(string text)
+    {
+        double width = 0;
+        foreach (char ch in text)
+            width += IsCjkOrFullWidth(ch) ? 1.82 : 1.0;
+        return width;
+    }
 }
