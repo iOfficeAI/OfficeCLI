@@ -39,7 +39,12 @@ internal record FormulaResult
         {
             var v = NumericValue.Value;
             // Round to 15 significant digits to avoid floating point artifacts (e.g. 25300000.000000004)
-            if (v != 0) v = Math.Round(v, 15 - (int)Math.Floor(Math.Log10(Math.Abs(v))) - 1);
+            if (v != 0)
+            {
+                var digits = 15 - (int)Math.Floor(Math.Log10(Math.Abs(v))) - 1;
+                if (digits is >= 0 and <= 15)
+                    v = Math.Round(v, digits);
+            }
             return v.ToString(CultureInfo.InvariantCulture);
         }
         return BoolValue.HasValue ? (BoolValue.Value ? "1" : "0") : StringValue ?? "";
