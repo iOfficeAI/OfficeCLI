@@ -29,16 +29,19 @@ public static class McpInstaller
             case "vscode" or "copilot":
                 InstallVsCode();
                 break;
+            case "minimax" or "minimax-cli":
+                InstallMiniMax();
+                break;
             case "list":
                 ListStatus();
                 break;
             case "uninstall":
                 Console.WriteLine("Usage: officecli mcp uninstall <target>");
-                Console.WriteLine("Targets: lms, claude, cursor, vscode");
+                Console.WriteLine("Targets: lms, claude, cursor, vscode, minimax");
                 break;
             default:
                 Console.Error.WriteLine($"Unknown target: {target}");
-                Console.Error.WriteLine("Supported: lms (LM Studio), claude (Claude Code), cursor, vscode (Copilot)");
+                Console.Error.WriteLine("Supported: lms (LM Studio), claude (Claude Code), cursor, vscode (Copilot), minimax (MiniMax CLI)");
                 Console.Error.WriteLine("Use 'officecli mcp list' to see current status.");
                 break;
         }
@@ -59,6 +62,9 @@ public static class McpInstaller
                 break;
             case "vscode" or "copilot":
                 UninstallJson("vscode", GetVsCodeMcpPath(), "mcpServers");
+                break;
+            case "minimax" or "minimax-cli":
+                UninstallJson("MiniMax CLI", GetMiniMaxMcpPath(), "mcpServers");
                 break;
             default:
                 Console.Error.WriteLine($"Unknown target: {target}");
@@ -130,6 +136,14 @@ public static class McpInstaller
 
     private static void InstallVsCode() =>
         InstallJson("VS Code Copilot", GetVsCodeMcpPath(), "mcpServers");
+
+    // ==================== MiniMax CLI ====================
+
+    private static string GetMiniMaxMcpPath() =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".minimax", "mcp.json");
+
+    private static void InstallMiniMax() =>
+        InstallJson("MiniMax CLI", GetMiniMaxMcpPath(), "mcpServers");
 
     // ==================== Generic JSON installer ====================
 
@@ -269,10 +283,11 @@ public static class McpInstaller
         CheckJsonStatus("Claude Code", GetClaudeSettingsPath());
         CheckJsonStatus("Cursor", GetCursorMcpPath());
         CheckJsonStatus("VS Code", GetVsCodeMcpPath());
+        CheckJsonStatus("MiniMax CLI", GetMiniMaxMcpPath());
 
         Console.WriteLine();
         Console.WriteLine("Commands:");
-        Console.WriteLine("  officecli mcp <target>              Register (lms, claude, cursor, vscode)");
+        Console.WriteLine("  officecli mcp <target>              Register (lms, claude, cursor, vscode, minimax)");
         Console.WriteLine("  officecli mcp uninstall <target>    Unregister");
     }
 

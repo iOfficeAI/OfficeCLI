@@ -26,6 +26,7 @@ public static class Installer
         ("cursor", ".cursor",                          ["cursor"]),
         ("vscode", ".vscode",                          []),   // no skill equivalent
         ("lms",    ".cache/lm-studio",                 []),   // no skill equivalent
+        ("minimax", ".minimax",                        ["minimax", "minimax-cli"]),
     ];
 
     public static int Run(string[] args)

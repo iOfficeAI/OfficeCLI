@@ -38,7 +38,7 @@ if (args.Length >= 1 && args[0] == "mcp")
         return 0;
     }
     Console.Error.WriteLine("Usage: officecli mcp              Start MCP server");
-    Console.Error.WriteLine("       officecli mcp <target>     Register (lms, claude, cursor, vscode)");
+    Console.Error.WriteLine("       officecli mcp <target>     Register (lms, claude, cursor, vscode, minimax)");
     Console.Error.WriteLine("       officecli mcp uninstall <target>  Unregister");
     Console.Error.WriteLine("       officecli mcp list         Show registration status");
     return 1;

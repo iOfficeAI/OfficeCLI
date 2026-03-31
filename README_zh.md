@@ -274,6 +274,7 @@ officecli mcp claude       # Claude Code
 officecli mcp cursor       # Cursor
 officecli mcp vscode       # VS Code / Copilot
 officecli mcp lmstudio     # LM Studio
+officecli mcp minimax      # MiniMax CLI
 officecli mcp list         # 查看注册状态
 ```
 
