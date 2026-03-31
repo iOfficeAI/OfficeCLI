@@ -140,8 +140,11 @@ public partial class PowerPointHandler
         // Try plain integer first (shape ID)
         if (uint.TryParse(value, out var directId))
         {
-            // Check if this is a 1-based shape index (small number) — resolve to actual shape ID
             var shapes = shapeTree.Elements<Shape>().ToList();
+            // If directId matches an actual shape ID, use it directly
+            if (shapes.Any(s => s.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value == directId))
+                return directId;
+            // Otherwise treat as 1-based shape index
             if (directId >= 1 && directId <= (uint)shapes.Count)
             {
                 var shape = shapes[(int)directId - 1];

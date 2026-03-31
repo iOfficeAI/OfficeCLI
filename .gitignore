@@ -27,6 +27,7 @@ diff/
 
 ## Tests (local only)
 tests/
+test-results/
 
 ## Claude
 .claude/
