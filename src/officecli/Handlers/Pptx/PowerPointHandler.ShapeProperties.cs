@@ -68,8 +68,6 @@ public partial class PowerPointHandler
                     runs.Clear();
                     runs.AddRange(GetAllRuns(shape));
 
-                    // Check for text overflow and warn if text may exceed shape bounds
-                    CheckTextOverflow(shape, value, unsupported);
                     break;
                 }
 
@@ -1532,81 +1530,207 @@ public partial class PowerPointHandler
     }
 
     /// <summary>
-    /// Estimates whether the given text will overflow the shape bounds and adds a warning if so.
-    /// This is a rough heuristic — actual rendering depends on font metrics, kerning, etc.
+    /// Public entry point: resolve shape by path and check for text overflow.
     /// </summary>
-    private static void CheckTextOverflow(Shape shape, string text, List<string> unsupported)
+    public string? CheckShapeTextOverflow(string path)
     {
+        // Parse /slide[N]/shape[M] from path
+        var match = System.Text.RegularExpressions.Regex.Match(path, @"/slide\[(\d+)\]/shape\[(\d+)\]");
+        if (!match.Success) return null;
+        int slideIdx = int.Parse(match.Groups[1].Value);
+        int shapeIdx = int.Parse(match.Groups[2].Value);
+        var slideParts = _doc.PresentationPart?.SlideParts?.ToList();
+        if (slideParts == null || slideIdx < 1 || slideIdx > slideParts.Count) return null;
+        var shapeTree = slideParts[slideIdx - 1].Slide?.CommonSlideData?.ShapeTree;
+        var shapes = shapeTree?.Elements<Shape>().ToList();
+        if (shapes == null || shapeIdx < 1 || shapeIdx > shapes.Count) return null;
+        return CheckTextOverflow(shapes[shapeIdx - 1]);
+    }
+
+    /// <summary>
+    /// Estimates whether the given text will overflow the shape bounds.
+    /// Uses per-character width estimation (CJK vs Latin) and reads actual line spacing from the shape.
+    /// Returns a warning message if overflow is detected, null otherwise.
+    /// </summary>
+    internal static string? CheckTextOverflow(Shape shape)
+    {
+        var text = GetShapeText(shape);
+        if (string.IsNullOrEmpty(text)) return null;
         var spPr = shape.ShapeProperties;
         var xfrm = spPr?.Transform2D;
         var extents = xfrm?.Extents;
-        if (extents?.Cx == null || extents?.Cy == null) return;
+        if (extents?.Cx == null || extents?.Cy == null) return null;
 
         long cx = extents.Cx!.Value;  // width in EMU
         long cy = extents.Cy!.Value;  // height in EMU
 
-        // Convert EMU to points (1pt = 12700 EMU)
         const double emuPerPt = 12700.0;
         double shapeWidthPt = cx / emuPerPt;
         double shapeHeightPt = cy / emuPerPt;
 
-        // Account for internal margins (default PPT margins: 0.1in left/right, 0.05in top/bottom)
-        // 1in = 72pt
-        double marginLeftRight = 0.1 * 72 * 2; // ~14.4pt total
-        double marginTopBottom = 0.05 * 72 * 2; // ~7.2pt total
+        // Read actual margins from BodyProperties, falling back to PPT defaults (0.1in L/R, 0.05in T/B)
+        const long defaultLRInset = 91440;   // 0.1in in EMU
+        const long defaultTBInset = 45720;   // 0.05in in EMU
+        long leftEmu = defaultLRInset, rightEmu = defaultLRInset;
+        long topEmu = defaultTBInset, bottomEmu = defaultTBInset;
 
-        // Check for custom margins on the text body
         var textBody = shape.TextBody;
-        if (textBody?.BodyProperties != null)
+        var bp = textBody?.BodyProperties;
+        if (bp != null)
         {
-            var bp = textBody.BodyProperties;
-            if (bp.LeftInset != null || bp.RightInset != null)
-            {
-                long leftEmu = bp.LeftInset?.Value ?? 91440;  // default 0.1in
-                long rightEmu = bp.RightInset?.Value ?? 91440;
-                marginLeftRight = (leftEmu + rightEmu) / emuPerPt;
-            }
-            if (bp.TopInset != null || bp.BottomInset != null)
-            {
-                long topEmu = bp.TopInset?.Value ?? 45720;  // default 0.05in
-                long bottomEmu = bp.BottomInset?.Value ?? 45720;
-                marginTopBottom = (topEmu + bottomEmu) / emuPerPt;
-            }
+            if (bp.LeftInset != null) leftEmu = bp.LeftInset.Value;
+            if (bp.RightInset != null) rightEmu = bp.RightInset.Value;
+            if (bp.TopInset != null) topEmu = bp.TopInset.Value;
+            if (bp.BottomInset != null) bottomEmu = bp.BottomInset.Value;
         }
 
-        double usableWidth = shapeWidthPt - marginLeftRight;
-        double usableHeight = shapeHeightPt - marginTopBottom;
-        if (usableWidth <= 0 || usableHeight <= 0) return;
+        double usableWidth = shapeWidthPt - (leftEmu + rightEmu) / emuPerPt;
+        double usableHeight = shapeHeightPt - (topEmu + bottomEmu) / emuPerPt;
+        // If usable area is negative/zero, shape is too small for even its own margins
+        double marginPt = (topEmu + bottomEmu) / emuPerPt;
+        if (usableWidth <= 0 || usableHeight <= 0)
+        {
+            // Need at least margins + one line of default text (18pt)
+            double defaultLinePt = 18.0;
+            double needPt = marginPt + defaultLinePt;
+            double minHeightCm = needPt / 72.0 * 2.54;
+            // Round up to 0.05cm for cleaner values
+            minHeightCm = Math.Ceiling(minHeightCm * 20) / 20.0;
+            long minHeightEmu = (long)Math.Round(minHeightCm * 360000.0);
+            return $"text overflow: need ≥{defaultLinePt:F0}pt, usable 0pt (shape {shapeHeightPt:F0}pt < margins {marginPt:F0}pt). suggest.height={EmuConverter.FormatEmu(minHeightEmu)}";
+        }
 
-        // Get font size from first run (hundredths of a point), default 18pt
-        double fontSizePt = 18.0;
-        var firstRun = shape.TextBody?.Descendants<Drawing.Run>().FirstOrDefault();
-        if (firstRun?.RunProperties?.FontSize != null)
-            fontSizePt = firstRun.RunProperties.FontSize.Value / 100.0;
+        // Collect font size from each paragraph's runs; track the max for line height calculation
+        var paragraphs = textBody?.Elements<Drawing.Paragraph>().ToList();
+        if (paragraphs == null || paragraphs.Count == 0) return null;
 
-        // Estimate character width and line height
-        double charWidth = fontSizePt * 0.6;
-        double lineHeight = fontSizePt * 1.4;
+        // Read line spacing from the first paragraph (SpacingPercent as percentage×1000, SpacingPoints as pt×100)
+        double lineSpacingMultiplier = 1.0; // default: single spacing (PPT default is 100000 = 1.0x)
+        double? fixedLineSpacingPt = null;
+        var firstParaProps = paragraphs[0].ParagraphProperties;
+        var lsEl = firstParaProps?.GetFirstChild<Drawing.LineSpacing>();
+        if (lsEl != null)
+        {
+            var pct = lsEl.GetFirstChild<Drawing.SpacingPercent>()?.Val?.Value;
+            if (pct.HasValue)
+                lineSpacingMultiplier = pct.Value / 100000.0;
+            var pts = lsEl.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
+            if (pts.HasValue)
+                fixedLineSpacingPt = pts.Value / 100.0;
+        }
 
-        if (charWidth <= 0) return;
-        int charsPerLine = (int)(usableWidth / charWidth);
-        if (charsPerLine <= 0) charsPerLine = 1;
+        // Read spaceBefore/spaceAfter from first paragraph
+        double spaceBeforePt = 0, spaceAfterPt = 0;
+        var sbEl = firstParaProps?.GetFirstChild<Drawing.SpaceBefore>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
+        if (sbEl.HasValue) spaceBeforePt = sbEl.Value / 100.0;
+        var saEl = firstParaProps?.GetFirstChild<Drawing.SpaceAfter>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
+        if (saEl.HasValue) spaceAfterPt = saEl.Value / 100.0;
 
-        // Calculate total lines needed
+        // Resolve font size: explicit run FontSize → paragraph defRPr → fallback 18pt (PPT default for textboxes)
+        double fontSizePt = 0;
+        foreach (var para in paragraphs)
+        {
+            foreach (var run in para.Elements<Drawing.Run>())
+            {
+                if (run.RunProperties?.FontSize?.HasValue == true)
+                {
+                    double sz = run.RunProperties.FontSize.Value / 100.0;
+                    if (sz > fontSizePt) fontSizePt = sz;
+                }
+            }
+            // Check paragraph default run properties
+            var defRp = para.ParagraphProperties?.GetFirstChild<Drawing.DefaultRunProperties>();
+            if (defRp?.FontSize?.HasValue == true)
+            {
+                double sz = defRp.FontSize.Value / 100.0;
+                if (sz > fontSizePt) fontSizePt = sz;
+            }
+        }
+        // Also check text body list style level 1 default
+        if (fontSizePt <= 0)
+        {
+            var lstDefRp = textBody?.GetFirstChild<Drawing.ListStyle>()
+                ?.GetFirstChild<Drawing.Level1ParagraphProperties>()
+                ?.GetFirstChild<Drawing.DefaultRunProperties>();
+            if (lstDefRp?.FontSize?.HasValue == true)
+                fontSizePt = lstDefRp.FontSize.Value / 100.0;
+        }
+        if (fontSizePt <= 0) fontSizePt = 18.0; // PPT default for new textboxes
+
+        // Line height: fixed spacing overrides multiplier
+        double lineHeight = fixedLineSpacingPt ?? fontSizePt * lineSpacingMultiplier;
+        if (lineHeight <= 0) return null;
+
+        // Estimate text width per line using per-character measurement
         var textLines = text.Replace("\\n", "\n").Split('\n');
         int totalLines = 0;
         foreach (var line in textLines)
         {
             if (line.Length == 0)
+            {
                 totalLines += 1;
-            else
-                totalLines += (int)Math.Ceiling((double)line.Length / charsPerLine);
+                continue;
+            }
+            // Walk characters, accumulate width, wrap when exceeding usable width
+            int linesForSegment = 1;
+            double currentLineWidth = 0;
+            foreach (char ch in line)
+            {
+                double charWidth = IsCjkOrFullWidth(ch) ? fontSizePt : fontSizePt * 0.55;
+                if (currentLineWidth + charWidth > usableWidth && currentLineWidth > 0)
+                {
+                    linesForSegment++;
+                    currentLineWidth = charWidth;
+                }
+                else
+                {
+                    currentLineWidth += charWidth;
+                }
+            }
+            totalLines += linesForSegment;
         }
 
-        double estimatedHeight = totalLines * lineHeight;
-        if (estimatedHeight > usableHeight)
+        double estimatedHeight = totalLines * lineHeight
+            + spaceBeforePt + spaceAfterPt * Math.Max(textLines.Length - 1, 0);
+        if (estimatedHeight > usableHeight * 1.05) // 5% tolerance for rounding
         {
-            unsupported.Add($"text may overflow shape bounds (est. {estimatedHeight:F0}pt text in {usableHeight:F0}pt shape)");
+            // Calculate minimum height: estimated text height + margins, converted to cm
+            double minHeightCm = (estimatedHeight + marginPt) / 72.0 * 2.54;
+            // Round up to 0.05cm for cleaner values
+            minHeightCm = Math.Ceiling(minHeightCm * 20) / 20.0;
+            long minHeightEmu = (long)Math.Round(minHeightCm * 360000.0);
+            return $"text overflow: {totalLines} lines at {fontSizePt:F1}pt need {estimatedHeight:F0}pt, usable {usableHeight:F0}pt. suggest.height={EmuConverter.FormatEmu(minHeightEmu)}";
         }
+        return null;
+    }
+
+    /// <summary>
+    /// Returns true if the character is CJK ideograph, fullwidth, or CJK punctuation.
+    /// These characters occupy approximately 1em width (≈ fontSize) vs ~0.55em for Latin.
+    /// </summary>
+    private static bool IsCjkOrFullWidth(char ch)
+    {
+        // CJK Unified Ideographs
+        if (ch >= 0x4E00 && ch <= 0x9FFF) return true;
+        // CJK Extension A
+        if (ch >= 0x3400 && ch <= 0x4DBF) return true;
+        // CJK Compatibility Ideographs
+        if (ch >= 0xF900 && ch <= 0xFAFF) return true;
+        // CJK Symbols and Punctuation (。、「」etc.)
+        if (ch >= 0x3000 && ch <= 0x303F) return true;
+        // Fullwidth Forms (Ａ-Ｚ, ０-９, fullwidth punctuation)
+        if (ch >= 0xFF01 && ch <= 0xFF60) return true;
+        // Halfwidth Katakana is NOT fullwidth
+        // Hiragana
+        if (ch >= 0x3040 && ch <= 0x309F) return true;
+        // Katakana
+        if (ch >= 0x30A0 && ch <= 0x30FF) return true;
+        // Hangul Syllables
+        if (ch >= 0xAC00 && ch <= 0xD7AF) return true;
+        // Bopomofo
+        if (ch >= 0x3100 && ch <= 0x312F) return true;
+        // Em-dash (U+2014) is fullwidth in CJK contexts
+        if (ch == 0x2014) return true;
+        return false;
     }
 }

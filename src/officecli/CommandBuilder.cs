@@ -633,6 +633,16 @@ static class CommandBuilder
                         Suggestion = "Use different x/y values to avoid overlap"
                     });
                 }
+                var setOverflow = CheckTextOverflow(handler, path);
+                if (setOverflow != null)
+                {
+                    allWarnings.Add(new OfficeCli.Core.CliWarning
+                    {
+                        Message = setOverflow,
+                        Code = "text_overflow",
+                        Suggestion = "Increase shape height/width, reduce font size, or shorten text"
+                    });
+                }
                 var outputMsg = setSpatialLine != null ? $"{message}\n  {setSpatialLine}" : message;
                 bool allFailed = applied.Count == 0 && (stillUnsupported.Count > 0 || unsupported.Count > 0);
                 Console.WriteLine(allFailed
@@ -647,6 +657,9 @@ static class CommandBuilder
                 if (setSpatialLine != null) Console.WriteLine($"  {setSpatialLine}");
                 if (setOverlaps.Count > 0)
                     Console.Error.WriteLine($"  WARNING: Same position as {string.Join(", ", setOverlaps)}");
+                var setOverflowPlain = CheckTextOverflow(handler, path);
+                if (setOverflowPlain != null)
+                    Console.Error.WriteLine($"  WARNING: {setOverflowPlain}");
                 if (stillUnsupported.Count > 0)
                     Console.Error.WriteLine(FormatUnsupported(stillUnsupported));
             }
@@ -782,6 +795,16 @@ static class CommandBuilder
                         Message = $"Same position as {string.Join(", ", overlapNames)}",
                         Code = "position_overlap",
                         Suggestion = "Use --prop x=... y=... to set distinct positions"
+                    });
+                }
+                var addOverflow = CheckTextOverflow(handler, resultPath);
+                if (addOverflow != null)
+                {
+                    addWarnings.Add(new OfficeCli.Core.CliWarning
+                    {
+                        Message = addOverflow,
+                        Code = "text_overflow",
+                        Suggestion = "Increase shape height/width, reduce font size, or shorten text"
                     });
                 }
                 if (json)
@@ -1059,6 +1082,76 @@ static class CommandBuilder
             return errors.Count > 0 ? 1 : 0;
         }, json); });
         rootCommand.Add(validateCommand);
+
+        // ==================== check command ====================
+        var checkFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.pptx)" };
+        var checkCommand = new Command("check", "Scan document for layout issues (text overflow, etc.)");
+        checkCommand.Add(checkFileArg);
+        checkCommand.Add(jsonOption);
+        checkCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
+        {
+            var file = result.GetValue(checkFileArg)!;
+            var ext = file.Extension.ToLowerInvariant();
+            if (ext != ".pptx")
+                throw new OfficeCli.Core.CliException("The 'check' command currently supports .pptx files only. Provide a .pptx file path.");
+
+            using var handler = DocumentHandlerFactory.Open(file.FullName, editable: false);
+            var pptHandler = handler as OfficeCli.Handlers.PowerPointHandler
+                ?? throw new OfficeCli.Core.CliException("Failed to open file as PowerPoint document.");
+
+            var issues = new List<(string Path, string Message)>();
+            var root = pptHandler.Get("/");
+            int slideCount = root?.Children?.Count ?? 0;
+            for (int s = 1; s <= slideCount; s++)
+            {
+                var slideNode = pptHandler.Get($"/slide[{s}]");
+                int shapeCount = slideNode?.Children?.Count ?? 0;
+                for (int sh = 1; sh <= shapeCount; sh++)
+                {
+                    var shapePath = $"/slide[{s}]/shape[{sh}]";
+                    var warning = pptHandler.CheckShapeTextOverflow(shapePath);
+                    if (warning != null)
+                        issues.Add((shapePath, warning));
+                }
+            }
+
+            if (json)
+            {
+                var arr = new System.Text.Json.Nodes.JsonArray();
+                foreach (var (path, msg) in issues)
+                {
+                    arr.Add(new System.Text.Json.Nodes.JsonObject
+                    {
+                        ["path"] = path,
+                        ["issue"] = msg
+                    });
+                }
+                var envelope = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["success"] = true,
+                    ["file"] = file.FullName,
+                    ["issueCount"] = issues.Count,
+                    ["issues"] = arr
+                };
+                Console.WriteLine(envelope.ToJsonString(OutputFormatter.PublicJsonOptions));
+            }
+            else
+            {
+                Console.WriteLine($"Checking layout: {file.FullName}");
+                if (issues.Count == 0)
+                {
+                    Console.WriteLine("No layout issues found.");
+                }
+                else
+                {
+                    foreach (var (path, msg) in issues)
+                        Console.WriteLine($"  {path}: {msg}");
+                    Console.WriteLine($"Found {issues.Count} layout issue(s).");
+                }
+            }
+            return issues.Count > 0 ? 2 : 0;
+        }, json); });
+        rootCommand.Add(checkCommand);
 
         // ==================== batch command ====================
         var batchFileArg = new Argument<FileInfo>("file") { Description = "Office document path" };
@@ -1903,6 +1996,8 @@ static class CommandBuilder
                 var cy = child.Format["y"]?.ToString();
                 if (cx == myX && cy == myY)
                 {
+                    // Skip false positive: both shapes at default (0,0) means neither was explicitly positioned
+                    if (myX == "0cm" && myY == "0cm" && cx == "0cm" && cy == "0cm") continue;
                     var name = child.Format.TryGetValue("name", out var n) ? n?.ToString() : child.Path;
                     overlaps.Add(name ?? child.Path);
                 }
@@ -1910,6 +2005,20 @@ static class CommandBuilder
         }
         catch { /* ignore */ }
         return overlaps;
+    }
+
+    /// <summary>
+    /// Check if a shape's text overflows its bounds using CJK-aware character measurement.
+    /// Returns a warning message or null.
+    /// </summary>
+    private static string? CheckTextOverflow(IDocumentHandler handler, string path)
+    {
+        if (handler is not OfficeCli.Handlers.PowerPointHandler pptHandler) return null;
+        try
+        {
+            return pptHandler.CheckShapeTextOverflow(path);
+        }
+        catch { return null; }
     }
 
     /// <summary>
