@@ -526,6 +526,18 @@ officecli merge invoice-template.docx invoice-001.docx '{"client":"Acme","total"
 officecli validate report.docx && officecli view report.docx issues --json
 ```
 
+### Windows / Git Bash note
+
+On Windows, prefer **PowerShell** when passing OfficeCLI paths or parts that begin with `/`, such as `/document`, `/header[1]`, or `/body/p[3]`.
+
+Git Bash / MSYS may rewrite those values into filesystem paths before `officecli` sees them. If you must use Git Bash, prefix the command with:
+
+```bash
+MSYS_NO_PATHCONV=1 officecli raw doc.docx /document
+```
+
+The same caution applies to `raw-set`, `get`, `query`, `set`, `remove`, and similar commands that accept OfficeCLI document paths.
+
 ## Documentation
 
 The [Wiki](https://github.com/iOfficeAI/OfficeCLI/wiki) has detailed guides for every command, element type, and property:

@@ -227,6 +227,7 @@ Run `officecli <format> raw` for available parts per format.
 | Guessing property names | ❌ Run `officecli <format> set <element>` to see exact names |
 | Modifying an open file | ❌ Close the file in PowerPoint/WPS first |
 | `\n` in shell strings | ❌ Use `\\n` for newlines in `--prop text="..."` |
+| Windows Git Bash with `/document` or `/body/...` | ❌ MSYS may rewrite OfficeCLI paths into filesystem paths. Prefer PowerShell on Windows, or run commands with `MSYS_NO_PATHCONV=1` |
 
 ---
 

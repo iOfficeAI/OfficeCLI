@@ -528,6 +528,18 @@ officecli merge invoice-template.docx invoice-001.docx '{"client":"Acme","total"
 officecli validate report.docx && officecli view report.docx issues --json
 ```
 
+### Windows / Git Bash 注意事项
+
+在 Windows 上，传入 `/document`、`/header[1]`、`/body/p[3]` 这类以 `/` 开头的 OfficeCLI 路径/part 参数时，优先使用 **PowerShell**。
+
+Git Bash / MSYS 可能会在 `officecli` 收到参数之前，把这些值自动改写成文件系统路径。若必须使用 Git Bash，请给命令加上：
+
+```bash
+MSYS_NO_PATHCONV=1 officecli raw doc.docx /document
+```
+
+同样的注意事项也适用于 `raw-set`、`get`、`query`、`set`、`remove` 等接受 OfficeCLI 文档路径参数的命令。
+
 ## 文档
 
 [Wiki](https://github.com/iOfficeAI/OfficeCLI/wiki) 提供了每个命令、元素类型和属性的详细指南：
