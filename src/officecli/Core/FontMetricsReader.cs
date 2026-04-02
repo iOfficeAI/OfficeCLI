@@ -27,7 +27,7 @@ internal static class FontMetricsReader
             var offset = GetFontOffset(reader, fontIndex);
             if (offset < 0) return 1.0;
 
-            var (headOffset, os2Offset) = FindTables(reader, offset);
+            var (headOffset, os2Offset, hheaOffset) = FindTables(reader, offset);
             if (headOffset < 0 || os2Offset < 0) return 1.0;
 
             // head table: unitsPerEm at offset 18 (uint16)
@@ -36,12 +36,24 @@ internal static class FontMetricsReader
             if (upm == 0) return 1.0;
 
             // OS/2 table: usWinAscent at offset 74, usWinDescent at offset 76 (uint16)
-            // (offsets 68-72 are sTypoAscender/sTypoDescender/sTypoLineGap — signed, different purpose)
             fs.Position = os2Offset + 74;
             var winAscent = ReadUInt16BE(reader);
             var winDescent = ReadUInt16BE(reader);
+            var winTotal = (double)(winAscent + winDescent);
 
-            return (double)(winAscent + winDescent) / upm;
+            // hhea table: ascent at offset 4, descent at offset 6 (int16), lineGap at offset 8 (int16)
+            // Chrome uses: max(winAscent+winDescent, hheaAscent+|hheaDescent|+hheaLineGap) / UPM
+            double hheaTotal = 0;
+            if (hheaOffset >= 0)
+            {
+                fs.Position = hheaOffset + 4;
+                var hheaAscent = ReadInt16BE(reader);
+                var hheaDescent = ReadInt16BE(reader);
+                var hheaLineGap = ReadInt16BE(reader);
+                hheaTotal = hheaAscent + Math.Abs(hheaDescent) + Math.Max(0, (int)hheaLineGap);
+            }
+
+            return Math.Max(winTotal, hheaTotal) / upm;
         }
         catch
         {
@@ -69,14 +81,14 @@ internal static class FontMetricsReader
         return 0;
     }
 
-    /// <summary>Find head and OS/2 table offsets from the font directory.</summary>
-    private static (long headOffset, long os2Offset) FindTables(BinaryReader reader, long fontOffset)
+    /// <summary>Find head, OS/2, and hhea table offsets from the font directory.</summary>
+    private static (long headOffset, long os2Offset, long hheaOffset) FindTables(BinaryReader reader, long fontOffset)
     {
         reader.BaseStream.Position = fontOffset + 4; // skip sfVersion
         var numTables = ReadUInt16BE(reader);
         reader.BaseStream.Position = fontOffset + 12; // skip searchRange, entrySelector, rangeShift
 
-        long headOffset = -1, os2Offset = -1;
+        long headOffset = -1, os2Offset = -1, hheaOffset = -1;
         for (int i = 0; i < numTables; i++)
         {
             var tableTag = ReadUInt32BE(reader);
@@ -88,16 +100,24 @@ internal static class FontMetricsReader
                 headOffset = tableOffset;
             else if (tableTag == 0x4F532F32) // "OS/2"
                 os2Offset = tableOffset;
+            else if (tableTag == 0x68686561) // "hhea"
+                hheaOffset = tableOffset;
 
-            if (headOffset >= 0 && os2Offset >= 0) break;
+            if (headOffset >= 0 && os2Offset >= 0 && hheaOffset >= 0) break;
         }
-        return (headOffset, os2Offset);
+        return (headOffset, os2Offset, hheaOffset);
     }
 
     private static ushort ReadUInt16BE(BinaryReader r)
     {
         var b = r.ReadBytes(2);
         return (ushort)((b[0] << 8) | b[1]);
+    }
+
+    private static short ReadInt16BE(BinaryReader r)
+    {
+        var b = r.ReadBytes(2);
+        return (short)((b[0] << 8) | b[1]);
     }
 
     private static uint ReadUInt32BE(BinaryReader r)
@@ -195,7 +215,7 @@ internal static class FontMetricsReader
             var offset = GetFontOffset(reader, 0);
             if (offset < 0) return (0, 0);
 
-            var (headOffset, os2Offset) = FindTables(reader, offset);
+            var (headOffset, os2Offset, _) = FindTables(reader, offset);
             if (headOffset < 0 || os2Offset < 0) return (0, 0);
 
             fs.Position = headOffset + 18;
