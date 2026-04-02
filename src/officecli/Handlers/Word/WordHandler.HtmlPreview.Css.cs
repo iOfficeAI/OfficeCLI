@@ -240,9 +240,9 @@ public partial class WordHandler
                             ?? styleSpacing?.Before?.Value;
             var beforeLinesVal = pProps.SpacingBetweenLines?.BeforeLines?.Value
                                  ?? styleSpacing?.BeforeLines?.Value;
-            if (beforeVal is string beforeTwips && beforeTwips != "0")
+            if (beforeVal is string beforeTwips)
                 parts.Add($"{vSpacingPropBefore}:{Units.TwipsToPt(beforeTwips):0.##}pt");
-            else if (beforeLinesVal is int beforeLines && beforeLines != 0)
+            else if (beforeLinesVal is int beforeLines)
                 parts.Add($"{vSpacingPropBefore}:{beforeLines / 100.0:0.##}em");
 
             // After: try direct, then style fallback (after in twips, afterLines in hundredths of a line)
@@ -250,9 +250,9 @@ public partial class WordHandler
                            ?? styleSpacing?.After?.Value;
             var afterLinesVal = pProps.SpacingBetweenLines?.AfterLines?.Value
                                 ?? styleSpacing?.AfterLines?.Value;
-            if (afterVal is string afterTwips && afterTwips != "0")
+            if (afterVal is string afterTwips)
                 parts.Add($"{vSpacingPropAfter}:{Units.TwipsToPt(afterTwips):0.##}pt");
-            else if (afterLinesVal is int afterLines && afterLines != 0)
+            else if (afterLinesVal is int afterLines)
                 parts.Add($"{vSpacingPropAfter}:{afterLines / 100.0:0.##}em");
 
             // Line: try direct, then style fallback
@@ -264,7 +264,7 @@ public partial class WordHandler
                            ?? styleSpacing?.LineRule?.InnerText;
                 if (rule == "auto" || rule == null)
                 {
-                    if (int.TryParse(lv, out var lvNum) && lvNum != 240)
+                    if (int.TryParse(lv, out var lvNum))
                         parts.Add($"line-height:{lvNum / 240.0:0.##}");
                 }
                 else if (rule == "exact" || rule == "atLeast")
@@ -527,15 +527,15 @@ public partial class WordHandler
                     }
                     if (!parts.Any(p => p.StartsWith("margin-bottom")))
                     {
-                        if (spacing.After?.Value is string a && a != "0")
+                        if (spacing.After?.Value is string a)
                             parts.Add($"margin-bottom:{Units.TwipsToPt(a):0.##}pt");
-                        else if (spacing.AfterLines?.Value is int al && al != 0)
+                        else if (spacing.AfterLines?.Value is int al)
                             parts.Add($"margin-bottom:{al / 100.0:0.##}em");
                     }
                     if (spacing.Line?.Value is string lv && !parts.Any(p => p.StartsWith("line-height")))
                     {
                         var rule = spacing.LineRule?.InnerText;
-                        if ((rule == "auto" || rule == null) && int.TryParse(lv, out var val) && val != 240)
+                        if ((rule == "auto" || rule == null) && int.TryParse(lv, out var val))
                             parts.Add($"line-height:{val / 240.0:0.##}");
                     }
                 }
@@ -817,18 +817,18 @@ public partial class WordHandler
                 parts.Add($"width:{w / 50.0:0.#}%");
         }
 
-        // Padding
+        // Padding — add vertical compensation for CSS vs Word rendering difference
+        // (CSS line-height:1 clips glyph ascenders; Word's layout engine doesn't)
+        const double CellPadVComp = 3.0; // pt
         var margins = tcPr.TableCellMargin;
-        if (margins != null)
         {
-            var padTop = margins.TopMargin?.Width?.Value;
-            var padBot = margins.BottomMargin?.Width?.Value;
-            var padLeft = margins.LeftMargin?.Width?.Value ?? margins.StartMargin?.Width?.Value;
-            var padRight = margins.RightMargin?.Width?.Value ?? margins.EndMargin?.Width?.Value;
-            if (padTop != null || padBot != null || padLeft != null || padRight != null)
-            {
-                parts.Add($"padding:{Units.TwipsToPtStr(padTop ?? "0")} {Units.TwipsToPtStr(padRight ?? "0")} {Units.TwipsToPtStr(padBot ?? "0")} {Units.TwipsToPtStr(padLeft ?? "0")}");
-            }
+            var padTop = Units.TwipsToPt(margins?.TopMargin?.Width?.Value ?? "0") + CellPadVComp;
+            var padBot = Units.TwipsToPt(margins?.BottomMargin?.Width?.Value ?? "0") + CellPadVComp;
+            var leftVal = margins?.LeftMargin?.Width?.Value ?? margins?.StartMargin?.Width?.Value;
+            var rightVal = margins?.RightMargin?.Width?.Value ?? margins?.EndMargin?.Width?.Value;
+            var padLeft = leftVal != null ? $"{Units.TwipsToPt(leftVal):0.#}pt" : "5.4pt";
+            var padRight = rightVal != null ? $"{Units.TwipsToPt(rightVal):0.#}pt" : "5.4pt";
+            parts.Add($"padding:{padTop:0.#}pt {padRight} {padBot:0.#}pt {padLeft}");
         }
 
         return string.Join(";", parts);
@@ -1036,7 +1036,7 @@ public partial class WordHandler
         .doc-footer {{ position: absolute; bottom: {pg.FooterDistancePt:0.#}pt; left: {mL}; right: {mR};
             padding-top: 0.3em; }}
         h1, h2, h3, h4, h5, h6 {{ line-height: 1.4; }}
-        p {{ margin: 0; text-align: justify; text-justify: inter-character; }}
+        p {{ margin: 0; margin-bottom: 10pt; line-height: 1.15; text-align: justify; text-justify: inter-character; }}
         p.empty {{ margin: 0; min-height: 1em; }}
         a {{ color: #2B579A; }} a:hover {{ color: #1a3c6e; }}
         .toc {{ display: flex; text-indent: 0 !important; }}
