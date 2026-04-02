@@ -263,7 +263,10 @@ public partial class WordHandler
         {
             var fonts = rPr.GetFirstChild<RunFonts>();
             if (fonts?.Ascii?.Value != null)
+            {
                 node.Format["docDefaults.font"] = fonts.Ascii.Value;
+                node.Format["defaultFont"] = fonts.Ascii.Value; // legacy alias for backward compat
+            }
             if (fonts?.EastAsia?.Value != null)
                 node.Format["docDefaults.font.eastAsia"] = fonts.EastAsia.Value;
 

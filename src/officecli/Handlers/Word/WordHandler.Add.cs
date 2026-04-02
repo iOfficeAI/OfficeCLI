@@ -134,20 +134,9 @@ public partial class WordHandler
                     break;
 
                 case "defaultfont":
-                    var stylesPart = _doc.MainDocumentPart!.StyleDefinitionsPart;
-                    if (stylesPart?.Styles != null)
-                    {
-                        var defaultRunProps = stylesPart.Styles.DocDefaults?.RunPropertiesDefault?.RunPropertiesBaseStyle;
-                        if (defaultRunProps != null)
-                        {
-                            var fonts = defaultRunProps.GetFirstChild<RunFonts>()
-                                ?? defaultRunProps.AppendChild(new RunFonts());
-                            fonts.Ascii = value;
-                            fonts.HighAnsi = value;
-                            fonts.EastAsia = value;
-                            stylesPart.Styles.Save();
-                        }
-                    }
+                    // Delegate to TrySetDocDefaults which uses EnsureRunPropsDefault()
+                    // to create the DocDefaults chain when absent (e.g. blank documents).
+                    TrySetDocDefaults("docdefaults.font", value);
                     break;
 
                 case "pagewidth":
