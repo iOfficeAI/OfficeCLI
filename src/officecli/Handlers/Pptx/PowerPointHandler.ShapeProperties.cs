@@ -34,8 +34,7 @@ public partial class PowerPointHandler
                     var textLines = value.Replace("\\n", "\n").Split('\n');
                     if (runs.Count == 1 && textLines.Length == 1)
                     {
-                        // Single run, single line: just replace its text
-                        runs[0].Text = new Drawing.Text { Text = textLines[0] };
+                        ReplaceRunWithSegmentedRuns(runs[0], textLines[0]);
                     }
                     else
                     {
@@ -52,15 +51,7 @@ public partial class PowerPointHandler
 
                             foreach (var textLine in textLines)
                             {
-                                var newPara = new Drawing.Paragraph();
-                                if (paraProps != null)
-                                    newPara.ParagraphProperties = paraProps.CloneNode(true) as Drawing.ParagraphProperties;
-                                var newRun = new Drawing.Run();
-                                if (runProps != null)
-                                    newRun.RunProperties = runProps.CloneNode(true) as Drawing.RunProperties;
-                                newRun.Text = new Drawing.Text { Text = textLine };
-                                newPara.Append(newRun);
-                                textBody.Append(newPara);
+                                textBody.Append(BuildParagraphWithSegmentedRuns(textLine, runProps, paraProps));
                             }
                         }
                     }
@@ -921,9 +912,7 @@ public partial class PowerPointHandler
                             new Drawing.BodyProperties(), new Drawing.ListStyle());
                         foreach (var line in lines)
                         {
-                            textBody.AppendChild(new Drawing.Paragraph(new Drawing.Run(
-                                new Drawing.RunProperties { Language = "en-US" },
-                                new Drawing.Text { Text = line })));
+                            textBody.AppendChild(BuildParagraphWithSegmentedRuns(line));
                         }
                         cell.PrependChild(textBody);
                     }
@@ -933,13 +922,7 @@ public partial class PowerPointHandler
                         var runProps = firstRun?.RunProperties?.CloneNode(true) as Drawing.RunProperties;
                         textBody.RemoveAllChildren<Drawing.Paragraph>();
                         foreach (var line in lines)
-                        {
-                            var newRun = new Drawing.Run();
-                            if (runProps != null) newRun.RunProperties = runProps.CloneNode(true) as Drawing.RunProperties;
-                            else newRun.RunProperties = new Drawing.RunProperties { Language = "en-US" };
-                            newRun.Text = new Drawing.Text { Text = line };
-                            textBody.Append(new Drawing.Paragraph(newRun));
-                        }
+                            textBody.Append(BuildParagraphWithSegmentedRuns(line, runProps));
                     }
                     break;
                 }

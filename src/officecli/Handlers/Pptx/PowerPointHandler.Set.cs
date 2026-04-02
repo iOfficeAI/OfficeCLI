@@ -806,7 +806,31 @@ public partial class PowerPointHandler
                             var rowCells = row.Elements<Drawing.TableCell>().ToList();
                             if (cIdx < 1 || cIdx > rowCells.Count)
                                 throw new ArgumentException($"Cell c{cIdx} out of range (row has {rowCells.Count} cells)");
-                            ReplaceCellText(rowCells[cIdx - 1], value);
+                            var targetCell = rowCells[cIdx - 1];
+                            // Replace text in first paragraph's first run, or create one
+                            var txBody = targetCell.TextBody;
+                            if (txBody == null)
+                            {
+                                txBody = new Drawing.TextBody(
+                                    new Drawing.BodyProperties(),
+                                    new Drawing.ListStyle(),
+                                    new Drawing.Paragraph());
+                                targetCell.AppendChild(txBody);
+                            }
+                            var para = txBody.Elements<Drawing.Paragraph>().FirstOrDefault()
+                                ?? txBody.AppendChild(new Drawing.Paragraph());
+                            para.RemoveAllChildren<Drawing.Run>();
+                            para.RemoveAllChildren<Drawing.Break>();
+                            // Remove EndParagraphRunProperties before appending Run,
+                            // then re-add after — schema requires Run before EndParagraphRunProperties
+                            var savedEndParaRPr = para.Elements<Drawing.EndParagraphRunProperties>().FirstOrDefault();
+                            if (savedEndParaRPr != null)
+                                savedEndParaRPr.Remove();
+                            if (!string.IsNullOrEmpty(value))
+                                foreach (var newRun in BuildSegmentedRuns(value))
+                                    para.AppendChild(newRun);
+                            if (savedEndParaRPr != null)
+                                para.AppendChild(savedEndParaRPr);
                         }
                         else
                         {

@@ -993,12 +993,7 @@ public partial class PowerPointHandler
         var lines = text.Replace("\\n", "\n").Split('\n');
         foreach (var line in lines)
         {
-            body.AppendChild(new Drawing.Paragraph(
-                new Drawing.Run(
-                    new Drawing.RunProperties { Language = "en-US" },
-                    new Drawing.Text { Text = line }
-                )
-            ));
+            body.AppendChild(BuildParagraphWithSegmentedRuns(line));
         }
         shape.TextBody = body;
         return shape;

@@ -34,8 +34,6 @@ Modifications by cli-jaw contributors:
 - East Asian character spacing support
 ```
 
-## Build Environment Note (Phase 02)
-- .NET 10 SDK: **NOT INSTALLED** on this machine
-- `dotnet build` and `dotnet publish`: DEFERRED to when .NET SDK is available
-- Using pre-built release binary (v1.0.28) from GitHub Releases in the meantime
-- Phase 03 (CJK integration) requires .NET SDK — install before proceeding
+## Build Environment
+- .NET 10.0.201 SDK installed at ~/.dotnet/
+- `dotnet build src/officecli/officecli.csproj -c Release` — Build succeeded (0 warnings, 0 errors)

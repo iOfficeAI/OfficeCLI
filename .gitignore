@@ -1,0 +1,16 @@
+# Build output
+build-local/
+bin/
+obj/
+*.user
+*.suo
+*.pdb
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

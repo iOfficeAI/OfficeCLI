@@ -145,7 +145,6 @@ public partial class WordHandler
 
         if (properties.TryGetValue("text", out var text))
         {
-            var run = new Run();
             var rProps = new RunProperties();
             if (properties.TryGetValue("font", out var font))
             {
@@ -230,9 +229,8 @@ public partial class WordHandler
                 rProps.Shading = shd;
             }
 
-            run.AppendChild(rProps);
-            run.AppendChild(new Text(text) { Space = SpaceProcessingModeValues.Preserve });
-            para.AppendChild(run);
+            foreach (var segmentedRun in BuildSegmentedRuns(text, rProps))
+                para.AppendChild(segmentedRun);
         }
 
         // Use ChildElements for index lookup so that tables and sectPr
@@ -341,7 +339,6 @@ public partial class WordHandler
         if (parent is not Paragraph targetPara)
             throw new ArgumentException("Runs can only be added to paragraphs");
 
-        var newRun = new Run();
         var newRProps = new RunProperties();
         if (properties.TryGetValue("font", out var rFont))
             newRProps.AppendChild(new RunFonts { Ascii = rFont, HighAnsi = rFont, EastAsia = rFont });
@@ -464,20 +461,21 @@ public partial class WordHandler
             }
         }
 
-        newRun.AppendChild(newRProps);
         var runText = properties.GetValueOrDefault("text", "");
-        newRun.AppendChild(new Text(runText) { Space = SpaceProcessingModeValues.Preserve });
+        var insertedRuns = BuildSegmentedRuns(runText, newRProps);
 
         var runCount = targetPara.Elements<Run>().Count();
         if (index.HasValue && index.Value < runCount)
         {
             var refRun = targetPara.Elements<Run>().ElementAt(index.Value);
-            targetPara.InsertBefore(newRun, refRun);
+            foreach (var segmentedRun in insertedRuns)
+                targetPara.InsertBefore(segmentedRun, refRun);
             resultPath = $"{parentPath}/r[{index.Value + 1}]";
         }
         else
         {
-            targetPara.AppendChild(newRun);
+            foreach (var segmentedRun in insertedRuns)
+                targetPara.AppendChild(segmentedRun);
             resultPath = $"{parentPath}/r[{runCount + 1}]";
         }
 
