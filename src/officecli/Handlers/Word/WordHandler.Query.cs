@@ -316,6 +316,7 @@ public partial class WordHandler
                 if (pPr.Justification?.Val?.Value != null) styleNode.Format["alignment"] = pPr.Justification.Val.InnerText;
                 if (pPr.SpacingBetweenLines?.Before?.Value != null) styleNode.Format["spaceBefore"] = SpacingConverter.FormatWordSpacing(pPr.SpacingBetweenLines.Before.Value);
                 if (pPr.SpacingBetweenLines?.After?.Value != null) styleNode.Format["spaceAfter"] = SpacingConverter.FormatWordSpacing(pPr.SpacingBetweenLines.After.Value);
+                if (pPr.SpacingBetweenLines?.Line?.Value != null) styleNode.Format["lineSpacing"] = SpacingConverter.FormatWordLineSpacing(pPr.SpacingBetweenLines.Line.Value, pPr.SpacingBetweenLines.LineRule?.InnerText);
             }
             return styleNode;
         }

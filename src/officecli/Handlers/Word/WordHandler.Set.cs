@@ -640,6 +640,17 @@ public partial class WordHandler
                         var sp3 = pPr3.SpacingBetweenLines ?? (pPr3.SpacingBetweenLines = new SpacingBetweenLines());
                         sp3.After = SpacingConverter.ParseWordSpacing(value).ToString();
                         break;
+                    case "linespacing" or "lineSpacing":
+                    {
+                        var pPr4 = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                        var sp4 = pPr4.SpacingBetweenLines ?? (pPr4.SpacingBetweenLines = new SpacingBetweenLines());
+                        var (twips, isMultiplier) = SpacingConverter.ParseWordLineSpacing(value);
+                        sp4.Line = twips.ToString();
+                        sp4.LineRule = isMultiplier
+                            ? new DocumentFormat.OpenXml.EnumValue<LineSpacingRuleValues>(LineSpacingRuleValues.Auto)
+                            : new DocumentFormat.OpenXml.EnumValue<LineSpacingRuleValues>(LineSpacingRuleValues.Exact);
+                        break;
+                    }
                     case "pbdr.top" or "pbdr.bottom" or "pbdr.left" or "pbdr.right" or "pbdr.between" or "pbdr.bar" or "pbdr.all" or "pbdr":
                     case "border.all" or "border" or "border.top" or "border.bottom" or "border.left" or "border.right":
                     {
