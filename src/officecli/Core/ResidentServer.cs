@@ -435,6 +435,7 @@ public class ResidentServer : IDisposable
         var issueType = req.GetArgOrNull("type");
         var limit = req.GetIntArg("limit");
         var cols = req.GetCols("cols");
+        var pageFilter = req.GetArgOrNull("page");
 
         if (mode!.ToLowerInvariant() is "html" or "h")
         {
@@ -444,7 +445,7 @@ public class ResidentServer : IDisposable
             else if (_handler is OfficeCli.Handlers.ExcelHandler excelHandler)
                 html = excelHandler.ViewAsHtml();
             else if (_handler is OfficeCli.Handlers.WordHandler wordHandler)
-                html = wordHandler.ViewAsHtml();
+                html = wordHandler.ViewAsHtml(pageFilter);
 
             if (html != null)
             {

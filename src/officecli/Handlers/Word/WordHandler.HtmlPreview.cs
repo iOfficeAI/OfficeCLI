@@ -52,7 +52,7 @@ public partial class WordHandler
     /// Generate a self-contained HTML file that previews the Word document
     /// with formatting, tables, images, and lists.
     /// </summary>
-    public string ViewAsHtml()
+    public string ViewAsHtml(string? pageFilter = null)
     {
         _ctx = new HtmlRenderContext();
         var body = _doc.MainDocumentPart?.Document?.Body;
@@ -141,6 +141,26 @@ public partial class WordHandler
             pageList.Add(pc);
         }
 
+        // Parse page filter (e.g. "1", "2-5", "1,3,5", "2-4,7")
+        HashSet<int>? requestedPages = null;
+        int totalServerPages = pageList.Count;
+        if (!string.IsNullOrWhiteSpace(pageFilter))
+        {
+            requestedPages = new HashSet<int>();
+            foreach (var part in pageFilter.Split(','))
+            {
+                var trimmed = part.Trim();
+                if (trimmed.Contains('-'))
+                {
+                    var range = trimmed.Split('-', 2);
+                    if (int.TryParse(range[0].Trim(), out var from) && int.TryParse(range[1].Trim(), out var to))
+                        for (int p = from; p <= to; p++) requestedPages.Add(p);
+                }
+                else if (int.TryParse(trimmed, out var num))
+                    requestedPages.Add(num);
+            }
+        }
+
         // Detect PAGE field in footer and replace with placeholder
         // Footer typically contains: <span ...>1</span> where "1" is the cached PAGE field value
         // We replace single-digit page numbers in the footer with a placeholder for per-page substitution
@@ -150,6 +170,10 @@ public partial class WordHandler
 
         for (int i = 0; i < pageList.Count; i++)
         {
+            // Skip pages not in the requested set
+            if (requestedPages != null && !requestedPages.Contains(i + 1))
+                continue;
+
             sb.AppendLine($"<div class=\"page\" data-page=\"{i + 1}\" style=\"{maxW}\">");
             if (i == 0) sb.Append(headerHtml);
             sb.Append("<div class=\"page-body\">");
