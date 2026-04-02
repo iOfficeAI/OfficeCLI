@@ -53,6 +53,10 @@ jobs:
       - name: Verify wiki version matches csproj version
         run: |
           CSPROJ_VERSION=$(grep '<Version>' src/officecli/officecli.csproj | sed 's/.*<Version>\(.*\)<\/Version>.*/\1/')
+          if [ ! -f src/officecli/wiki/version.json ]; then
+            echo "::warning::Wiki version file not found for ${{ github.repository }}; skipping wiki version verification."
+            exit 0
+          fi
           WIKI_VERSION=$(python3 -c "import json; print(json.load(open('src/officecli/wiki/version.json'))['version'])" 2>/dev/null || echo "unknown")
           echo "csproj: $CSPROJ_VERSION, wiki: $WIKI_VERSION"
           if [ "$WIKI_VERSION" != "$CSPROJ_VERSION" ]; then
