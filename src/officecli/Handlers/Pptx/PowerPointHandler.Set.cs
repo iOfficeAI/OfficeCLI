@@ -168,10 +168,18 @@ public partial class PowerPointHandler
                         break;
                     }
                     default:
-                        if (unsupported.Count == 0)
-                            unsupported.Add($"{key} (valid presentation props: slideWidth, slideHeight, slideSize, width, height, title, author, subject, description, category, keywords, lastModifiedBy, revision, defaultFont)");
-                        else
-                            unsupported.Add(key);
+                        var lowerKey = key.ToLowerInvariant();
+                        if (!TrySetPresentationSetting(lowerKey, value)
+                            && !Core.ThemeHandler.TrySetTheme(
+                                _doc.PresentationPart?.SlideMasterParts?.FirstOrDefault()?.ThemePart, lowerKey, value)
+                            && !Core.ExtendedPropertiesHandler.TrySetExtendedProperty(
+                                Core.ExtendedPropertiesHandler.GetOrCreateExtendedPart(_doc), lowerKey, value))
+                        {
+                            if (unsupported.Count == 0)
+                                unsupported.Add($"{key} (valid presentation props: slideWidth, slideHeight, slideSize, title, author, defaultFont, firstSlideNum, rtl, compatMode, print.*, show.*)");
+                            else
+                                unsupported.Add(key);
+                        }
                         break;
                 }
             }

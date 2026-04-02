@@ -71,7 +71,12 @@ public partial class ExcelHandler
                     case "lastmodifiedby": pkg.LastModifiedBy = value; break;
                     case "revision": pkg.Revision = value; break;
                     default:
-                        unsupported.Add(key);
+                        var lowerKey = key.ToLowerInvariant();
+                        if (!TrySetWorkbookSetting(lowerKey, value)
+                            && !Core.ThemeHandler.TrySetTheme(_doc.WorkbookPart?.ThemePart, lowerKey, value)
+                            && !Core.ExtendedPropertiesHandler.TrySetExtendedProperty(
+                                Core.ExtendedPropertiesHandler.GetOrCreateExtendedPart(_doc), lowerKey, value))
+                            unsupported.Add(key);
                         break;
                 }
             }

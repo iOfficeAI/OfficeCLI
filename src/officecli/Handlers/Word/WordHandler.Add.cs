@@ -129,7 +129,7 @@ public partial class WordHandler
                         ?? _doc.MainDocumentPart.AddNewPart<DocumentSettingsPart>();
                     settingsPart.Settings ??= new Settings();
                     if (settingsPart.Settings.GetFirstChild<DisplayBackgroundShape>() == null)
-                        settingsPart.Settings.AppendChild(new DisplayBackgroundShape());
+                        InsertBeforeCompatibility(settingsPart.Settings, new DisplayBackgroundShape());
                     settingsPart.Settings.Save();
                     break;
 
@@ -237,7 +237,16 @@ public partial class WordHandler
                     break;
 
                 default:
-                    unsupported?.Add(key);
+                    // Try document settings, section layout, compatibility, and docDefaults
+                    var lowerKey = key.ToLowerInvariant();
+                    if (!TrySetDocSetting(lowerKey, value)
+                        && !TrySetSectionLayout(lowerKey, value)
+                        && !TrySetCompatibility(lowerKey, value)
+                        && !TrySetDocDefaults(lowerKey, value)
+                        && !Core.ThemeHandler.TrySetTheme(_doc.MainDocumentPart?.ThemePart, lowerKey, value)
+                        && !Core.ExtendedPropertiesHandler.TrySetExtendedProperty(
+                            Core.ExtendedPropertiesHandler.GetOrCreateExtendedPart(_doc), lowerKey, value))
+                        unsupported?.Add(key);
                     break;
             }
         }
@@ -253,7 +262,16 @@ public partial class WordHandler
             body.AppendChild(sectPr);
         }
         if (sectPr.GetFirstChild<PageSize>() == null)
-            sectPr.AppendChild(new PageSize { Width = 11906, Height = 16838 }); // A4 default
+        {
+            var pgSz = new PageSize { Width = 11906, Height = 16838 }; // A4 default
+            // Schema order: pgSz must come before pgMar, cols, and docGrid
+            var firstNonRef = sectPr.ChildElements.FirstOrDefault(c =>
+                c is not HeaderReference && c is not FooterReference && c is not SectionType);
+            if (firstNonRef != null)
+                firstNonRef.InsertBeforeSelf(pgSz);
+            else
+                sectPr.AppendChild(pgSz);
+        }
         return sectPr;
     }
 

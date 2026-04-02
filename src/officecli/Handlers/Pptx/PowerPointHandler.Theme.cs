@@ -242,7 +242,8 @@ public partial class PowerPointHandler
         colorEl.RemoveAllChildren<Drawing.HslColor>();
         colorEl.RemoveAllChildren<Drawing.PresetColor>();
 
-        var rgb = value.TrimStart('#').ToUpperInvariant();
+        // Use SanitizeColorForOoxml to support 3-char shorthand, named colors, rgb(), ARGB, etc.
+        var (rgb, _) = ParseHelpers.SanitizeColorForOoxml(value);
         if (rgb.Length == 6 && rgb.All(char.IsAsciiHexDigit))
             colorEl.AppendChild(new Drawing.RgbColorModelHex { Val = rgb });
         else

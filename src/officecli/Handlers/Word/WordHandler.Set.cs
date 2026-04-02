@@ -56,6 +56,14 @@ public partial class WordHandler
             return unsupported;
         }
 
+        // Handle /settings path — route to SetDocumentProperties which calls TrySetDocSetting
+        if (path.Equals("/settings", StringComparison.OrdinalIgnoreCase))
+        {
+            SetDocumentProperties(properties, unsupported);
+            EnsureSettings().Save();
+            return unsupported;
+        }
+
         // Handle /watermark path
         if (path.Equals("/watermark", StringComparison.OrdinalIgnoreCase))
         {

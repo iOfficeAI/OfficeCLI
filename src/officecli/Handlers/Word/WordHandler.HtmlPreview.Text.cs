@@ -15,6 +15,11 @@ namespace OfficeCli.Handlers;
 
 public partial class WordHandler
 {
+    // CJK line-break hooks — partial methods are eliminated by the compiler when no implementation exists
+    partial void OnHtmlParagraphBegin(Paragraph para);
+    partial void OnHtmlParagraphEnd(StringBuilder sb);
+    partial void OnHtmlRenderText(StringBuilder sb, string text, RunProperties? rProps, string? runStyle, ref bool handled);
+
     // ==================== Paragraph Content ====================
 
     private void RenderParagraphHtml(StringBuilder sb, Paragraph para)
@@ -36,6 +41,8 @@ public partial class WordHandler
 
     private void RenderParagraphContentHtml(StringBuilder sb, Paragraph para)
     {
+        OnHtmlParagraphBegin(para);
+
         // Render bookmark anchors for internal hyperlink targets
         foreach (var bm in para.Elements<BookmarkStart>())
         {
@@ -147,6 +154,8 @@ public partial class WordHandler
                     RenderRunHtml(sb, fldRun, para);
             }
         }
+
+        OnHtmlParagraphEnd(sb);
     }
 
     // ==================== Run Rendering ====================
@@ -194,7 +203,10 @@ public partial class WordHandler
         var rProps = ResolveEffectiveRunProperties(run, para);
         var style = GetRunInlineCss(rProps);
         var needsSpan = !string.IsNullOrEmpty(style);
-        if (needsSpan)
+
+        // When line-break tracking is active, text is buffered and flushed later
+        // with style spans — skip the outer span to avoid double-wrapping
+        if (needsSpan && !_ctx.LineBreakEnabled)
             sb.Append($"<span style=\"{style}\">");
 
         foreach (var child in run.ChildElements)
@@ -241,7 +253,12 @@ public partial class WordHandler
             else if (child.LocalName == "softHyphen")
                 sb.Append("&shy;");
             else if (child is Text t && !string.IsNullOrEmpty(t.Text))
-                sb.Append(HtmlEncode(t.Text));
+            {
+                bool handled = false;
+                OnHtmlRenderText(sb, t.Text, rProps, style, ref handled);
+                if (!handled)
+                    sb.Append(HtmlEncode(t.Text));
+            }
             else if (child is SymbolChar sym)
             {
                 // w:sym — render with correct font family for symbol fonts
@@ -259,7 +276,7 @@ public partial class WordHandler
             }
         }
 
-        if (needsSpan)
+        if (needsSpan && !_ctx.LineBreakEnabled)
             sb.Append("</span>");
     }
 

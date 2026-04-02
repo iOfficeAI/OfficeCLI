@@ -53,7 +53,7 @@ public partial class PowerPointHandler
             var masterPart = _doc.PresentationPart?.SlideMasterParts?.FirstOrDefault();
             var fontScheme = masterPart?.ThemePart?.Theme?.ThemeElements?.FontScheme;
             if (fontScheme?.MinorFont?.LatinFont?.Typeface != null)
-                node.Format["defaultFont"] = fontScheme.MinorFont.LatinFont.Typeface;
+                node.Format["defaultFont"] = fontScheme.MinorFont.LatinFont.Typeface!.Value!;
 
             // Core document properties
             var props = _doc.PackageProperties;
@@ -104,6 +104,12 @@ public partial class PowerPointHandler
 
                 node.Children.Add(slideNode);
             }
+            // Presentation-level settings
+            PopulatePresentationSettings(node);
+            Core.ThemeHandler.PopulateTheme(
+                _doc.PresentationPart?.SlideMasterParts?.FirstOrDefault()?.ThemePart, node);
+            Core.ExtendedPropertiesHandler.PopulateExtendedProperties(_doc.ExtendedFilePropertiesPart, node);
+
             node.ChildCount = node.Children.Count;
             return node;
         }

@@ -127,6 +127,15 @@ public partial class WordHandler
             node.Format["protectionEnforced"] = false;
         }
 
+        // Document-level settings (DocGrid, CJK, print/display, font embedding, layout flags, columns, etc.)
+        PopulateDocSettings(node);
+        PopulateCompatibility(node);
+        PopulateDocDefaults(node);
+
+        // Theme and Extended Properties
+        Core.ThemeHandler.PopulateTheme(_doc.MainDocumentPart?.ThemePart, node);
+        Core.ExtendedPropertiesHandler.PopulateExtendedProperties(_doc.ExtendedFilePropertiesPart, node);
+
         node.Children = children;
         node.ChildCount = children.Count;
         return node;

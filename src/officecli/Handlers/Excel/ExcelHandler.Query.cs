@@ -51,6 +51,11 @@ public partial class ExcelHandler
 
                 node.Children.Add(sheetNode);
             }
+            // Workbook-level settings
+            PopulateWorkbookSettings(node);
+            Core.ThemeHandler.PopulateTheme(_doc.WorkbookPart?.ThemePart, node);
+            Core.ExtendedPropertiesHandler.PopulateExtendedProperties(_doc.ExtendedFilePropertiesPart, node);
+
             node.ChildCount = node.Children.Count;
             return node;
         }

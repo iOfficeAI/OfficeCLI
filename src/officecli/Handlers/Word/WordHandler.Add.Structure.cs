@@ -221,7 +221,10 @@ public partial class WordHandler
             ?? _doc.MainDocumentPart.AddNewPart<DocumentSettingsPart>();
         settingsPart2.Settings ??= new Settings();
         if (settingsPart2.Settings.GetFirstChild<UpdateFieldsOnOpen>() == null)
-            settingsPart2.Settings.AppendChild(new UpdateFieldsOnOpen { Val = true });
+        {
+            var updateFields = new UpdateFieldsOnOpen { Val = true };
+            InsertBeforeCompatibility(settingsPart2.Settings, updateFields);
+        }
         settingsPart2.Settings.Save();
 
         // Count TOC fields in document to determine index

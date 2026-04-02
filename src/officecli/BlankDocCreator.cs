@@ -50,10 +50,54 @@ public static class BlankDocCreator
     {
         using var doc = WordprocessingDocument.Create(path, WordprocessingDocumentType.Document);
         var mainPart = doc.AddMainDocumentPart();
-        mainPart.Document = new Document(new Body());
+
+        // Section with no docGrid snap
+        var sectPr = new SectionProperties(
+            new DocGrid { Type = DocGridValues.Default }
+        );
+
+        // Compatibility: do not compress punctuation spacing
+        // Schema order: characterSpacingControl must come before compat in w:settings
+        var settings = new DocumentFormat.OpenXml.Wordprocessing.Settings(
+            new CharacterSpacingControl { Val = CharacterSpacingValues.DoNotCompress },
+            new Compatibility(
+                new SpaceForUnderline(),
+                new BalanceSingleByteDoubleByteWidth(),
+                new DoNotLeaveBackslashAlone(),
+                new UnderlineTrailingSpaces(),
+                new DoNotExpandShiftReturn(),
+                new AdjustLineHeightInTable(),
+                new CompatibilitySetting
+                {
+                    Name = new EnumValue<CompatSettingNameValues>(CompatSettingNameValues.DoNotFlipMirrorIndents),
+                    Val = new StringValue("1"),
+                    Uri = new StringValue("http://schemas.microsoft.com/office/word")
+                }
+            )
+        );
+        var settingsPart = mainPart.AddNewPart<DocumentFormat.OpenXml.Packaging.DocumentSettingsPart>();
+        settingsPart.Settings = settings;
+        settingsPart.Settings.Save();
+
+        mainPart.Document = new Document(new Body(sectPr));
+
+        // Default paragraph style: disable CJK-specific layout
         var stylesPart = mainPart.AddNewPart<DocumentFormat.OpenXml.Packaging.StyleDefinitionsPart>();
-        stylesPart.Styles = new Styles();
+        stylesPart.Styles = new Styles(
+            new DocDefaults(
+                new ParagraphPropertiesDefault(
+                    new ParagraphPropertiesBaseStyle
+                    {
+                        AutoSpaceDE = new AutoSpaceDE { Val = false },
+                        AutoSpaceDN = new AutoSpaceDN { Val = false },
+                        Kinsoku = new DocumentFormat.OpenXml.Wordprocessing.Kinsoku { Val = false },
+                        OverflowPunctuation = new OverflowPunctuation { Val = false },
+                    }
+                )
+            )
+        );
         stylesPart.Styles.Save();
+
         var numberingPart = mainPart.AddNewPart<DocumentFormat.OpenXml.Packaging.NumberingDefinitionsPart>();
         numberingPart.Numbering = new DocumentFormat.OpenXml.Wordprocessing.Numbering();
         numberingPart.Numbering.Save();
