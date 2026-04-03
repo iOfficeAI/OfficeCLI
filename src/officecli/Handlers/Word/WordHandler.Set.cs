@@ -1121,6 +1121,32 @@ public partial class WordHandler
                 }
             }
         }
+        else if (element is M.Paragraph mPara)
+        {
+            foreach (var (key, value) in properties)
+            {
+                var k = key.ToLowerInvariant();
+                switch (k)
+                {
+                    case "formula":
+                    {
+                        // Clear existing oMath children and rebuild from new formula
+                        foreach (var child in mPara.ChildElements.ToList())
+                            child.Remove();
+                        var mathContent = FormulaParser.Parse(value);
+                        M.OfficeMath oMath = mathContent is M.OfficeMath dm
+                            ? dm : new M.OfficeMath(mathContent.CloneNode(true));
+                        mPara.AppendChild(oMath);
+                        break;
+                    }
+                    default:
+                        unsupported.Add(unsupported.Count == 0
+                            ? $"{key} (valid equation props: formula)"
+                            : key);
+                        break;
+                }
+            }
+        }
         else if (element is Paragraph para)
         {
             var pProps = para.ParagraphProperties ?? para.PrependChild(new ParagraphProperties());
