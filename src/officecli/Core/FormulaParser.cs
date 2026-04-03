@@ -1213,11 +1213,11 @@ public static class FormulaParser
                 var cancelArg = ParseBracedArg(tokens, ref pos);
                 var bbPr = new M.BorderBoxProperties();
                 if (cmd is "bcancel")
-                    bbPr.AppendChild(new M.StrikeBLTR { Val = M.BooleanValues.True });
+                    bbPr.AppendChild(new M.StrikeBottomLeftToTopRight { Val = M.BooleanValues.True });
                 else if (cmd is "xcancel")
                 {
                     bbPr.AppendChild(new M.StrikeHorizontal { Val = M.BooleanValues.True });
-                    bbPr.AppendChild(new M.StrikeBLTR { Val = M.BooleanValues.True });
+                    bbPr.AppendChild(new M.StrikeBottomLeftToTopRight { Val = M.BooleanValues.True });
                 }
                 else
                     bbPr.AppendChild(new M.StrikeHorizontal { Val = M.BooleanValues.True });
