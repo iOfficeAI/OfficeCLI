@@ -76,7 +76,7 @@ curl -fsSL https://officecli.ai/SKILL.md
 
 ## 开发者 — 30 秒亲眼看到效果
 
-[安装二进制文件](#安装)，然后：
+[安装](#安装)，然后：
 
 ```bash
 # 1. 创建一个空白 PowerPoint

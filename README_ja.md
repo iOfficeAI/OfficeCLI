@@ -76,7 +76,7 @@ curl -fsSL https://officecli.ai/SKILL.md
 
 ## 開発者向け — 30秒でライブ体験
 
-[バイナリをインストール](#インストール)してから：
+[インストール](#インストール)してから：
 
 ```bash
 # 1. 空の PowerPoint を作成

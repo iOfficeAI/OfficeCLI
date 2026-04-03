@@ -76,7 +76,7 @@ Just describe what you want, and AionUi handles the rest.
 
 ## For Developers — See It Live in 30 Seconds
 
-[Install the binary](#installation), then:
+[Install](#installation), then:
 
 ```bash
 # 1. Create a blank PowerPoint
