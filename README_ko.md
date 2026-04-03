@@ -76,16 +76,17 @@ curl -fsSL https://officecli.ai/SKILL.md
 
 ## 개발자용 — 30초 만에 라이브로 확인
 
-[설치](#설치) 후:
-
 ```bash
-# 1. 빈 PowerPoint 생성
+# 1. 설치
+curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
+
+# 2. 빈 PowerPoint 생성
 officecli create deck.pptx
 
-# 2. 라이브 미리보기 시작 — 브라우저에서 http://localhost:26315 이 열립니다
+# 3. 라이브 미리보기 시작 — 브라우저에서 http://localhost:26315 이 열립니다
 officecli watch deck.pptx --port 26315
 
-# 3. 다른 터미널을 열고 슬라이드 추가 — 브라우저가 즉시 업데이트됩니다
+# 4. 다른 터미널을 열고 슬라이드 추가 — 브라우저가 즉시 업데이트됩니다
 officecli add deck.pptx / --type slide --prop title="Hello, World!"
 ```
 

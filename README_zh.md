@@ -76,16 +76,17 @@ curl -fsSL https://officecli.ai/SKILL.md
 
 ## 开发者 — 30 秒亲眼看到效果
 
-[安装](#安装)，然后：
-
 ```bash
-# 1. 创建一个空白 PowerPoint
+# 1. 安装
+curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
+
+# 2. 创建一个空白 PowerPoint
 officecli create deck.pptx
 
-# 2. 启动实时预览 — 浏览器自动打开 http://localhost:26315
+# 3. 启动实时预览 — 浏览器自动打开 http://localhost:26315
 officecli watch deck.pptx --port 26315
 
-# 3. 打开另一个终端，添加一页幻灯片 — 浏览器即时刷新
+# 4. 打开另一个终端，添加一页幻灯片 — 浏览器即时刷新
 officecli add deck.pptx / --type slide --prop title="Hello, World!"
 ```
 
