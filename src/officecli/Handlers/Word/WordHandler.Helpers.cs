@@ -100,7 +100,15 @@ public partial class WordHandler
 
     private static string GetParagraphText(Paragraph para)
     {
-        return string.Concat(para.Elements<Run>().SelectMany(r => r.Elements<Text>()).Select(t => t.Text));
+        var sb = new StringBuilder();
+        foreach (var child in para.ChildElements)
+        {
+            if (child is Run run)
+                sb.Append(string.Concat(run.Elements<Text>().Select(t => t.Text)));
+            else if (child is Hyperlink hyperlink)
+                sb.Append(string.Concat(hyperlink.Descendants<Text>().Select(t => t.Text)));
+        }
+        return sb.ToString();
     }
 
     /// <summary>
