@@ -46,7 +46,46 @@ static partial class CommandBuilder
                 return 0;
             }
 
-            // Fork a background process running the resident server
+            if (OperatingSystem.IsWindows())
+            {
+                // Windows: run the resident server in-process on a background thread.
+                // Forking a child process deadlocks on Windows due to .NET single-file
+                // host + redirected-pipe interactions. In-process avoids this while
+                // keeping the same named-pipe API.
+                //
+                // Readiness is detected via ManualResetEventSlim instead of connecting
+                // back through the named pipe (same-process pipe I/O via
+                // StreamReader/StreamWriter deadlocks on Windows).
+                var server = new ResidentServer(filePath);
+                var cts = new CancellationTokenSource();
+                var serverTask = Task.Run(() => server.RunAsync(cts.Token));
+
+                if (!server.WaitUntilReady(TimeSpan.FromSeconds(5)))
+                {
+                    if (serverTask.IsCompleted)
+                    {
+                        server.Dispose();
+                        if (serverTask.IsFaulted)
+                            throw new InvalidOperationException($"Resident server failed: {serverTask.Exception?.InnerException?.Message}");
+                        throw new InvalidOperationException("Resident server exited unexpectedly.");
+                    }
+                    cts.Cancel();
+                    server.Dispose();
+                    throw new InvalidOperationException("Resident server failed to start.");
+                }
+
+                var msg2 = $"Opened {file.Name} (remember to call close when done)";
+                if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(msg2));
+                else Console.WriteLine(msg2);
+                // Block on the server task — keeps the process alive until
+                // close is called via the named pipe.
+                try { serverTask.GetAwaiter().GetResult(); } catch (OperationCanceledException) { }
+                server.Dispose();
+                return 0;
+            }
+
+            // Linux/macOS: fork a background process running the resident server.
+            // The open command returns immediately, leaving the child alive.
             var exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
             if (exePath == null)
                 throw new InvalidOperationException("Cannot determine executable path.");
@@ -71,9 +110,9 @@ static partial class CommandBuilder
                 Thread.Sleep(100);
                 if (ResidentClient.TryConnect(filePath, out _))
                 {
-                    var msg = $"Opened {file.Name} (remember to call close when done)";
-                    if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(msg));
-                    else Console.WriteLine(msg);
+                    var msg2 = $"Opened {file.Name} (remember to call close when done)";
+                    if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(msg2));
+                    else Console.WriteLine(msg2);
                     return 0;
                 }
                 if (process.HasExited)

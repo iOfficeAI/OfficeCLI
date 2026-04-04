@@ -20,15 +20,12 @@ public static class ResidentClient
             using var client = new NamedPipeClientStream(".", pipeName + "-ping", PipeDirection.InOut);
             client.Connect(100); // 100ms timeout
 
-            using var reader = new StreamReader(client, Encoding.UTF8, leaveOpen: true);
-            using var writer = new StreamWriter(client, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
-
             // Ping to verify it's the right file
             var pingRequest = new ResidentRequest { Command = "__ping__" };
             var json = System.Text.Json.JsonSerializer.Serialize(pingRequest, ResidentJsonContext.Default.ResidentRequest);
-            writer.WriteLine(json);
+            PipeWriteLine(client, json);
 
-            var responseLine = reader.ReadLine();
+            var responseLine = PipeReadLine(client);
             if (responseLine == null) return false;
 
             var response = System.Text.Json.JsonSerializer.Deserialize<ResidentResponse>(responseLine, ResidentJsonContext.Default.ResidentResponse);
@@ -60,13 +57,10 @@ public static class ResidentClient
                 using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut);
                 client.Connect(1000); // 1s timeout (was 200ms — too short under load)
 
-                using var reader = new StreamReader(client, Encoding.UTF8, leaveOpen: true);
-                using var writer = new StreamWriter(client, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
-
                 var json = System.Text.Json.JsonSerializer.Serialize(request, ResidentJsonContext.Default.ResidentRequest);
-                writer.WriteLine(json);
+                PipeWriteLine(client, json);
 
-                var responseLine = reader.ReadLine();
+                var responseLine = PipeReadLine(client);
                 if (responseLine == null) continue;
 
                 var response = System.Text.Json.JsonSerializer.Deserialize<ResidentResponse>(responseLine, ResidentJsonContext.Default.ResidentResponse);
@@ -91,16 +85,13 @@ public static class ResidentClient
         try
         {
             using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut);
-            client.Connect(200);
-
-            using var reader = new StreamReader(client, Encoding.UTF8, leaveOpen: true);
-            using var writer = new StreamWriter(client, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
+            client.Connect(2000);
 
             var request = new ResidentRequest { Command = "__close__" };
             var json = System.Text.Json.JsonSerializer.Serialize(request, ResidentJsonContext.Default.ResidentRequest);
-            writer.WriteLine(json);
+            PipeWriteLine(client, json);
 
-            var responseLine = reader.ReadLine();
+            var responseLine = PipeReadLine(client);
             if (responseLine == null) return false;
 
             var response = System.Text.Json.JsonSerializer.Deserialize<ResidentResponse>(responseLine, ResidentJsonContext.Default.ResidentResponse);
@@ -109,6 +100,41 @@ public static class ResidentClient
         catch
         {
             return false;
+        }
+    }
+
+    // ==================== Pipe I/O helpers ====================
+    //
+    // On Windows, StreamReader/StreamWriter deadlock on named pipes under .NET 11
+    // preview — the managed stream wrapper's internal buffering stalls reads even
+    // when bytes are available on the wire.  Raw byte I/O avoids the issue.
+    //
+    // On Linux/macOS, StreamReader/StreamWriter work fine, but raw byte I/O is
+    // equally correct and avoids any future cross-platform divergence, so we use
+    // the same path everywhere.
+
+    private static void PipeWriteLine(Stream pipe, string line)
+    {
+        var bytes = Encoding.UTF8.GetBytes(line + "\n");
+        pipe.Write(bytes, 0, bytes.Length);
+        pipe.Flush();
+    }
+
+    private static string? PipeReadLine(Stream pipe)
+    {
+        var buffer = new byte[1];
+        var lineBytes = new List<byte>(256);
+        while (true)
+        {
+            var bytesRead = pipe.Read(buffer, 0, 1);
+            if (bytesRead == 0) return lineBytes.Count > 0 ? Encoding.UTF8.GetString(lineBytes.ToArray()) : null;
+            if (buffer[0] == (byte)'\n')
+            {
+                if (lineBytes.Count > 0 && lineBytes[^1] == (byte)'\r')
+                    lineBytes.RemoveAt(lineBytes.Count - 1);
+                return Encoding.UTF8.GetString(lineBytes.ToArray());
+            }
+            lineBytes.Add(buffer[0]);
         }
     }
 }
