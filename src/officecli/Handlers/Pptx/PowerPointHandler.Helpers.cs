@@ -170,7 +170,7 @@ public partial class PowerPointHandler
 
             if (attrName == "id" && nvPr.Id?.Value.ToString() == attrValue)
                 return i + 1;
-            if (attrName == "name" && string.Equals(nvPr.Name?.Value, attrValue, StringComparison.OrdinalIgnoreCase))
+            if (attrName == "name" && MatchesShapeName(nvPr.Name?.Value, attrValue))
                 return i + 1;
         }
 
@@ -178,21 +178,54 @@ public partial class PowerPointHandler
     }
 
     /// <summary>
-    /// Generate a unique random cNvPr.Id for a slide's shape tree.
-    /// Uses random uint to avoid collisions (same approach as Word paraId).
+    /// Scan all slides to initialize the global shape ID counter.
+    /// Called once on document open (editable mode).
     /// </summary>
-    private static uint GenerateUniqueShapeId(ShapeTree shapeTree)
+    private void InitShapeIdCounter()
     {
-        var usedIds = new HashSet<uint>();
-        foreach (var nvPr in shapeTree.Descendants<NonVisualDrawingProperties>())
+        const uint minStartId = 10000;
+        _usedShapeIds = new HashSet<uint>();
+        uint maxId = minStartId - 1;
+
+        foreach (var slidePart in GetSlideParts())
         {
-            if (nvPr.Id?.HasValue == true)
-                usedIds.Add(nvPr.Id.Value);
+            var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree;
+            if (shapeTree == null) continue;
+            foreach (var nvPr in shapeTree.Descendants<NonVisualDrawingProperties>())
+            {
+                if (nvPr.Id?.HasValue == true)
+                {
+                    _usedShapeIds.Add(nvPr.Id.Value);
+                    if (nvPr.Id.Value > maxId)
+                        maxId = nvPr.Id.Value;
+                }
+            }
         }
 
-        uint newId;
-        do { newId = (uint)Random.Shared.Next(2, int.MaxValue); } while (usedIds.Contains(newId));
-        return newId;
+        _nextShapeId = maxId + 1;
+        if (_nextShapeId < maxId) // uint overflow
+            _nextShapeId = minStartId;
+    }
+
+    /// <summary>
+    /// Generate a unique deterministic cNvPr.Id across all slides.
+    /// Uses global instance counter for reproducible, non-repeating IDs.
+    /// </summary>
+    private uint GenerateUniqueShapeId(ShapeTree shapeTree)
+    {
+        const uint minStartId = 10000;
+        var startId = _nextShapeId;
+        while (true)
+        {
+            var id = _nextShapeId;
+            _nextShapeId++;
+            if (_nextShapeId < id) // uint overflow
+                _nextShapeId = minStartId;
+            if (_usedShapeIds.Add(id))
+                return id;
+            if (_nextShapeId == startId)
+                throw new InvalidOperationException("No available shape ID slots");
+        }
     }
 
     /// <summary>

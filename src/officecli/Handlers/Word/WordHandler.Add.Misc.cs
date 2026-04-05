@@ -432,7 +432,7 @@ public partial class WordHandler
             var sdtProps = new SdtProperties();
 
             // ID
-            var inlineSdtIdVal = Random.Shared.Next(1, int.MaxValue);
+            var inlineSdtIdVal = NextSdtId();
             sdtProps.AppendChild(new SdtId { Val = inlineSdtIdVal });
 
             if (!string.IsNullOrEmpty(alias))
@@ -521,7 +521,7 @@ public partial class WordHandler
             var sdtBlock = new SdtBlock();
             var sdtProps = new SdtProperties();
 
-            sdtProps.AppendChild(new SdtId { Val = Random.Shared.Next(1, int.MaxValue) });
+            sdtProps.AppendChild(new SdtId { Val = NextSdtId() });
 
             if (!string.IsNullOrEmpty(alias))
                 sdtProps.AppendChild(new SdtAlias { Val = alias });

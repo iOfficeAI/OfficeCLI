@@ -1676,16 +1676,32 @@ public partial class WordHandler
     /// <summary>
     /// Generate a unique 8-character uppercase hex ID for w14:paraId / w14:textId.
     /// OOXML spec requires value &lt; 0x80000000 (MaxExclusive).
+    /// Uses deterministic increment from _nextParaId, wraps around on overflow,
+    /// skips IDs already in use.
     /// </summary>
-    private static string GenerateParaId()
+    private string GenerateParaId()
     {
-        return Random.Shared.Next(0, int.MaxValue).ToString("X8");
+        const int maxExclusive = 0x7FFFFFFF; // OOXML spec limit
+        const int minStartId = 0x100000;
+        var startId = _nextParaId;
+        while (true)
+        {
+            var id = _nextParaId.ToString("X8");
+            _nextParaId++;
+            if (_nextParaId > maxExclusive)
+                _nextParaId = minStartId;
+            if (_usedParaIds.Add(id))
+                return id;
+            // Safety: if we've wrapped all the way around, something is very wrong
+            if (_nextParaId == startId)
+                throw new InvalidOperationException("No available paraId slots");
+        }
     }
 
     /// <summary>
     /// Assign paraId and textId to a paragraph if not already set.
     /// </summary>
-    private static void AssignParaId(Paragraph para)
+    private void AssignParaId(Paragraph para)
     {
         if (string.IsNullOrEmpty(para.ParagraphId?.Value))
             para.ParagraphId = GenerateParaId();
@@ -1702,7 +1718,7 @@ public partial class WordHandler
         var mainPart = _doc.MainDocumentPart;
         if (mainPart?.Document?.Body == null) return;
 
-        var usedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        _usedParaIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // Collect all paragraphs from body + headers + footers
         var allParagraphs = mainPart.Document.Body.Descendants<Paragraph>().AsEnumerable();
@@ -1715,8 +1731,9 @@ public partial class WordHandler
 
         var paragraphs = allParagraphs.ToList();
 
-        // Collect existing IDs, detect duplicates, and assign missing IDs
+        // Collect existing IDs, detect duplicates, and track max for deterministic increment
         var paraIdSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        int maxId = 0;
 
         foreach (var para in paragraphs)
         {
@@ -1724,29 +1741,36 @@ public partial class WordHandler
             if (!string.IsNullOrEmpty(para.ParagraphId?.Value))
             {
                 if (!paraIdSeen.Add(para.ParagraphId.Value))
+                {
                     para.ParagraphId = null!; // duplicate — will be reassigned
+                }
                 else
-                    usedIds.Add(para.ParagraphId.Value);
+                {
+                    _usedParaIds.Add(para.ParagraphId.Value);
+                    if (int.TryParse(para.ParagraphId.Value, System.Globalization.NumberStyles.HexNumber, null, out var numId) && numId > maxId)
+                        maxId = numId;
+                }
             }
             if (!string.IsNullOrEmpty(para.TextId?.Value))
-                usedIds.Add(para.TextId.Value);
+            {
+                _usedParaIds.Add(para.TextId.Value);
+                if (int.TryParse(para.TextId.Value, System.Globalization.NumberStyles.HexNumber, null, out var numId) && numId > maxId)
+                    maxId = numId;
+            }
         }
+
+        // Start deterministic increment from max+1, minimum 0x100000 to avoid conflicts with small IDs
+        const int minStartId = 0x100000;
+        _nextParaId = Math.Max(maxId + 1, minStartId);
+        if (_nextParaId > 0x7FFFFFFF) _nextParaId = minStartId;
 
         // Assign IDs to paragraphs that don't have them (including cleared duplicates)
         foreach (var para in paragraphs)
         {
             if (string.IsNullOrEmpty(para.ParagraphId?.Value))
-            {
-                string newId;
-                do { newId = GenerateParaId(); } while (!usedIds.Add(newId));
-                para.ParagraphId = newId;
-            }
+                para.ParagraphId = GenerateParaId();
             if (string.IsNullOrEmpty(para.TextId?.Value))
-            {
-                string newId;
-                do { newId = GenerateParaId(); } while (!usedIds.Add(newId));
-                para.TextId = newId;
-            }
+                para.TextId = GenerateParaId();
         }
 
         // Ensure mc:Ignorable includes "w14" so Word 2007 skips w14:paraId/textId attributes
@@ -1762,6 +1786,26 @@ public partial class WordHandler
             doc.MCAttributes ??= new DocumentFormat.OpenXml.MarkupCompatibilityAttributes();
             doc.MCAttributes.Ignorable = string.IsNullOrEmpty(ignorable) ? "w14" : $"{ignorable} w14";
         }
+    }
+
+    // ==================== SDT IDs (content controls) ====================
+
+    /// <summary>
+    /// Generate a deterministic unique SdtId by scanning max existing value + 1.
+    /// </summary>
+    private int NextSdtId()
+    {
+        int maxId = 0;
+        var body = _doc.MainDocumentPart?.Document?.Body;
+        if (body != null)
+        {
+            foreach (var sdtId in body.Descendants<SdtId>())
+            {
+                if (sdtId.Val?.HasValue == true && sdtId.Val.Value > maxId)
+                    maxId = sdtId.Val.Value;
+            }
+        }
+        return maxId + 1;
     }
 
     // ==================== DocPr IDs (pictures, charts) ====================

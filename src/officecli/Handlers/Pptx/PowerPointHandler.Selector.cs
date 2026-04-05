@@ -168,17 +168,21 @@ public partial class PowerPointHandler
                 continue;
             }
 
+            var isNameKey = string.Equals(key, "name", StringComparison.OrdinalIgnoreCase);
+
             if (negate)
             {
                 // [attr!=value]: must not equal
-                if (hasKey && NormalizedEquals(actualStr, expected))
+                var matches = isNameKey ? MatchesShapeName(actualStr, expected) : NormalizedEquals(actualStr, expected);
+                if (hasKey && matches)
                     return false;
             }
             else
             {
                 // [attr=value]: must exist and equal
                 if (!hasKey) return false;
-                if (!NormalizedEquals(actualStr, expected))
+                var matches = isNameKey ? MatchesShapeName(actualStr, expected) : NormalizedEquals(actualStr, expected);
+                if (!matches)
                 {
                     // Special case: boolean properties stored as `true`/`True` matching "true"
                     if (actual is bool b && string.Equals(expected, b.ToString(), StringComparison.OrdinalIgnoreCase))
@@ -208,6 +212,25 @@ public partial class PowerPointHandler
         var bNorm = b.TrimStart('#');
         if (aNorm != a || bNorm != b)
             return string.Equals(aNorm, bNorm, StringComparison.OrdinalIgnoreCase);
+        return false;
+    }
+
+    /// <summary>
+    /// Match shape name with !! morph prefix awareness.
+    /// "my-box" matches both "my-box" and "!!my-box".
+    /// "!!my-box" matches both "!!my-box" and "my-box".
+    /// </summary>
+    private static bool MatchesShapeName(string? actual, string expected)
+    {
+        if (actual == null) return false;
+        if (string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+            return true;
+        // Strip !! prefix from actual name and compare
+        if (actual.StartsWith("!!") && string.Equals(actual[2..], expected, StringComparison.OrdinalIgnoreCase))
+            return true;
+        // Strip !! prefix from expected and compare
+        if (expected.StartsWith("!!") && string.Equals(actual, expected[2..], StringComparison.OrdinalIgnoreCase))
+            return true;
         return false;
     }
 

@@ -16,12 +16,16 @@ public partial class PowerPointHandler : IDocumentHandler
 {
     private readonly PresentationDocument _doc;
     private readonly string _filePath;
+    private HashSet<uint> _usedShapeIds = new();
+    private uint _nextShapeId = 10000;
     public int LastFindMatchCount { get; internal set; }
 
     public PowerPointHandler(string filePath, bool editable)
     {
         _filePath = filePath;
         _doc = PresentationDocument.Open(filePath, editable);
+        if (editable)
+            InitShapeIdCounter();
     }
 
     /// <summary>
