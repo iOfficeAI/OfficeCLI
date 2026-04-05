@@ -173,14 +173,14 @@ public partial class ExcelHandler
         var colWidths = GetColumnWidths(GetSheet(worksheetPart));
         var (widthPt, heightPt) = EstimateChartSize(gf, colWidths);
 
-        // 5. Create renderer with Excel-appropriate colors (light background)
+        // 5. Create renderer — colors from OOXML with Excel-appropriate fallbacks
         var renderer = new ChartSvgRenderer
         {
-            ValueColor = "#333",
-            CatColor = "#555",
-            AxisColor = "#666",
-            GridColor = "#ddd",
-            AxisLineColor = "#999",
+            ValueColor = info.ValFontColor ?? "#333",
+            CatColor = info.CatFontColor ?? "#555",
+            AxisColor = info.ValFontColor ?? "#666",
+            GridColor = info.GridlineColor ?? "#ddd",
+            AxisLineColor = info.AxisLineColor ?? "#999",
             ValFontPx = info.ValFontPx,
             CatFontPx = info.CatFontPx
         };
@@ -188,8 +188,15 @@ public partial class ExcelHandler
         // 6. Build SVG
         var svgW = Math.Max(widthPt, 225);
         var svgH = Math.Max(heightPt, 150);
-        var titleH = string.IsNullOrEmpty(info.Title) ? 0 : 30;
-        var legendH = info.HasLegend ? 30 : 0;
+        // Title/legend height from actual font sizes
+        var titleFontPt = 10.0;
+        if (!string.IsNullOrEmpty(info.TitleFontSize) && double.TryParse(info.TitleFontSize.Replace("pt", ""), out var tfp))
+            titleFontPt = tfp;
+        var titleH = string.IsNullOrEmpty(info.Title) ? 0 : (int)(titleFontPt * 1.6 + 8);
+        var legendFontPt = 8.0;
+        if (!string.IsNullOrEmpty(info.LegendFontSize) && double.TryParse(info.LegendFontSize.Replace("pt", ""), out var lfp))
+            legendFontPt = lfp;
+        var legendH = info.HasLegend ? (int)(legendFontPt * 1.6 + 12) : 0;
         var chartSvgH = svgH - titleH - legendH;
         if (chartSvgH < 80) return;
 
@@ -197,8 +204,9 @@ public partial class ExcelHandler
         // Use estimated width as max-width, but allow stretching to fill parent (e.g. colspan td)
         sb.AppendLine($"<div class=\"chart-container\" style=\"max-width:max({svgW}pt,100%);flex:1;min-width:200pt;{bgStyle}\">");
 
+        var titleColor = info.TitleFontColor ?? "#333";
         if (!string.IsNullOrEmpty(info.Title))
-            sb.AppendLine($"  <div style=\"text-align:center;font-size:{info.TitleFontSize};font-weight:bold;padding:6px 0;color:#333\">{HtmlEncode(info.Title)}</div>");
+            sb.AppendLine($"  <div style=\"text-align:center;font-size:{info.TitleFontSize};font-weight:bold;padding:6px 0;color:{titleColor}\">{HtmlEncode(info.Title)}</div>");
 
         sb.AppendLine($"  <svg viewBox=\"0 0 {svgW} {chartSvgH}\" style=\"width:100%;height:auto\" preserveAspectRatio=\"xMidYMin meet\">");
 
@@ -206,7 +214,8 @@ public partial class ExcelHandler
 
         sb.AppendLine("  </svg>");
 
-        renderer.RenderLegendHtml(sb, info, "#555");
+        var legendColor = info.LegendFontColor ?? "#555";
+        renderer.RenderLegendHtml(sb, info, legendColor);
 
         sb.AppendLine("</div>");
     }

@@ -113,6 +113,20 @@ public partial class ExcelHandler
             return;
         }
 
+        // Read default dimensions from sheetFormatPr
+        var sheetFmtPr = ws.GetFirstChild<SheetFormatProperties>();
+        var defaultColWidthPt = sheetFmtPr?.DefaultColumnWidth?.Value != null
+            ? sheetFmtPr.DefaultColumnWidth.Value * 5.625 + 3.75 : 48.0;
+        var defaultRowHeightPt = sheetFmtPr?.DefaultRowHeight?.Value ?? 15.0;
+
+        // Read default font size from stylesheet
+        var defaultFontPt = 11.0;
+        if (stylesheet?.Fonts != null && stylesheet.Fonts.Elements<Font>().Any())
+        {
+            var defFont = stylesheet.Fonts.Elements<Font>().First();
+            defaultFontPt = defFont.FontSize?.Val?.Value ?? 11.0;
+        }
+
         // Create formula evaluator for this sheet to compute uncached formula values
         var evaluator = new Core.FormulaEvaluator(sheetData, _doc.WorkbookPart);
 
@@ -137,7 +151,7 @@ public partial class ExcelHandler
             for (int fc = 1; fc <= frozenCols; fc++)
             {
                 frozenLeftOffsets[fc] = cumLeft;
-                cumLeft += colWidths.TryGetValue(fc, out var w) ? w : 48.0;
+                cumLeft += colWidths.TryGetValue(fc, out var w) ? w : defaultColWidthPt;
             }
         }
 
@@ -231,7 +245,7 @@ public partial class ExcelHandler
                 else
                 {
                     // Estimate row height from max font size in the row's cells
-                    double maxFontPt = 11; // default font size
+                    double maxFontPt = defaultFontPt;
                     foreach (var cell in cellMap.Where(kv => kv.Key.row == fr).Select(kv => kv.Value))
                     {
                         var si = cell.StyleIndex?.Value ?? 0;
@@ -242,7 +256,7 @@ public partial class ExcelHandler
                             if (stylesheet.Fonts != null && fontId < (uint)stylesheet.Fonts.Elements<Font>().Count())
                             {
                                 var font = stylesheet.Fonts.Elements<Font>().ElementAt((int)fontId);
-                                var sz = font.FontSize?.Val?.Value ?? 11;
+                                var sz = font.FontSize?.Val?.Value ?? defaultFontPt;
                                 if (sz > maxFontPt) maxFontPt = sz;
                             }
                         }
@@ -269,7 +283,7 @@ public partial class ExcelHandler
         for (int c = 1; c <= maxCol; c++)
         {
             if (hiddenCols.Contains(c)) continue; // skip hidden cols — tds are also skipped
-            var width = colWidths.TryGetValue(c, out var w) ? w : 48.0; // default ~8.43 chars ≈ 48pt
+            var width = colWidths.TryGetValue(c, out var w) ? w : defaultColWidthPt;
             sb.Append($"<col style=\"width:{width:0.##}pt\">");
         }
         sb.AppendLine("</colgroup>");

@@ -28,6 +28,7 @@ internal class ChartSvgRenderer
     public string AxisLineColor { get; set; } = "#555";
     public int ValFontPx { get; set; } = 9;
     public int CatFontPx { get; set; } = 9;
+    public int DataLabelFontPx { get; set; } = 8;
     public int AxisTickCount { get; set; } = 4;
 
     public static string HtmlEncode(string text) =>
@@ -181,7 +182,7 @@ internal class ChartSvgRenderer
                         if (showDataLabels)
                         {
                             var vlabel = rawVal % 1 == 0 ? $"{(int)rawVal}" : $"{rawVal:0.#}";
-                            sb.AppendLine($"        <text x=\"{bx + barW / 2:0.#}\" y=\"{by - 3:0.#}\" fill=\"{ValueColor}\" font-size=\"8\" text-anchor=\"middle\">{vlabel}</text>");
+                            sb.AppendLine($"        <text x=\"{bx + barW / 2:0.#}\" y=\"{by - 3:0.#}\" fill=\"{ValueColor}\" font-size=\"{DataLabelFontPx}\" text-anchor=\"middle\">{vlabel}</text>");
                         }
                     }
                 }
@@ -241,7 +242,7 @@ internal class ChartSvgRenderer
                     {
                         var val = series[s].values[p];
                         var vlabel = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
-                        sb.AppendLine($"        <text x=\"{parts[0]}\" y=\"{double.Parse(parts[1]) - 6:0.#}\" fill=\"{ValueColor}\" font-size=\"7\" text-anchor=\"middle\">{vlabel}</text>");
+                        sb.AppendLine($"        <text x=\"{parts[0]}\" y=\"{double.Parse(parts[1]) - 6:0.#}\" fill=\"{ValueColor}\" font-size=\"{DataLabelFontPx}\" text-anchor=\"middle\">{vlabel}</text>");
                     }
                 }
             }
@@ -879,9 +880,16 @@ internal class ChartSvgRenderer
         public string? ChartFillColor { get; set; }
         public bool HasLegend { get; set; }
         public string LegendFontSize { get; set; } = "8pt";
+        public string? LegendFontColor { get; set; }
         public int ValFontPx { get; set; } = 9;
+        public string? ValFontColor { get; set; }
         public int CatFontPx { get; set; } = 9;
+        public string? CatFontColor { get; set; }
         public string? ValNumFmt { get; set; }
+        public string? TitleFontColor { get; set; }
+        public string? GridlineColor { get; set; }
+        public string? AxisLineColor { get; set; }
+        public int DataLabelFontPx { get; set; } = 8;
     }
 
     /// <summary>Extract all chart metadata from OOXML PlotArea and Chart elements.</summary>
@@ -921,9 +929,10 @@ internal class ChartSvgRenderer
                 .Select(r => r.GetFirstChild<Drawing.Text>()?.Text)
                 .Where(t => t != null);
             info.Title = string.Join("", titleRuns);
-            var titleFontSize = titleEl.Descendants<Drawing.RunProperties>().FirstOrDefault()?.FontSize;
-            if (titleFontSize?.HasValue == true)
-                info.TitleFontSize = $"{titleFontSize.Value / 100.0:0.##}pt";
+            var titleRPr = titleEl.Descendants<Drawing.RunProperties>().FirstOrDefault();
+            if (titleRPr?.FontSize?.HasValue == true)
+                info.TitleFontSize = $"{titleRPr.FontSize.Value / 100.0:0.##}pt";
+            info.TitleFontColor = ExtractFontColor(titleRPr);
         }
 
         // Data labels
@@ -976,6 +985,16 @@ internal class ChartSvgRenderer
             var valDefRPr = valTxPr?.Descendants<Drawing.DefaultRunProperties>().FirstOrDefault();
             if (valDefRPr?.FontSize?.HasValue == true)
                 info.ValFontPx = (int)(valDefRPr.FontSize.Value / 100.0);
+            info.ValFontColor = ExtractFontColor(valDefRPr);
+
+            // Gridline color
+            var majorGridlines = valAxis.Elements().FirstOrDefault(e => e.LocalName == "majorGridlines");
+            var gridSpPr = majorGridlines?.Elements().FirstOrDefault(e => e.LocalName == "spPr");
+            info.GridlineColor = ExtractLineColor(gridSpPr);
+
+            // Axis line color
+            var valSpPr = valAxis.Elements().FirstOrDefault(e => e.LocalName == "spPr");
+            info.AxisLineColor = ExtractLineColor(valSpPr);
 
             // Value axis number format (e.g. "$#,##0")
             var numFmtEl = valAxis.Elements().FirstOrDefault(e => e.LocalName == "numFmt");
@@ -997,6 +1016,16 @@ internal class ChartSvgRenderer
             var catDefRPr = catTxPr?.Descendants<Drawing.DefaultRunProperties>().FirstOrDefault();
             if (catDefRPr?.FontSize?.HasValue == true)
                 info.CatFontPx = (int)(catDefRPr.FontSize.Value / 100.0);
+            info.CatFontColor = ExtractFontColor(catDefRPr);
+        }
+
+        // Data label font size
+        if (dLbls != null)
+        {
+            var dLblDefRPr = dLbls.Descendants<Drawing.DefaultRunProperties>().FirstOrDefault();
+            var dLblFontSize = dLblDefRPr?.FontSize ?? dLbls.Descendants<Drawing.RunProperties>().FirstOrDefault()?.FontSize;
+            if (dLblFontSize?.HasValue == true)
+                info.DataLabelFontPx = (int)(dLblFontSize.Value / 100.0);
         }
 
         // Gap width
@@ -1020,9 +1049,10 @@ internal class ChartSvgRenderer
             var deleteEl = legendEl.Elements().FirstOrDefault(e => e.LocalName == "delete");
             var delVal = deleteEl?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
             info.HasLegend = delVal != "1";
-            var legendFontSize = legendEl.Descendants<Drawing.RunProperties>().FirstOrDefault()?.FontSize;
-            if (legendFontSize?.HasValue == true)
-                info.LegendFontSize = $"{legendFontSize.Value / 100.0:0.##}pt";
+            var legendRPr = legendEl.Descendants<Drawing.RunProperties>().FirstOrDefault();
+            if (legendRPr?.FontSize?.HasValue == true)
+                info.LegendFontSize = $"{legendRPr.FontSize.Value / 100.0:0.##}pt";
+            info.LegendFontColor = ExtractFontColor(legendRPr);
         }
         else
         {
@@ -1090,13 +1120,40 @@ internal class ChartSvgRenderer
         return srgb?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
     }
 
+    /// <summary>Extract font color from RunProperties or DefaultRunProperties (solidFill > srgbClr).</summary>
+    private static string? ExtractFontColor(OpenXmlElement? rPr)
+    {
+        if (rPr == null) return null;
+        var solidFill = rPr.Elements().FirstOrDefault(e => e.LocalName == "solidFill");
+        var srgb = solidFill?.Elements().FirstOrDefault(e => e.LocalName == "srgbClr");
+        var val = srgb?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+        return val != null ? $"#{val}" : null;
+    }
+
+    /// <summary>Extract line/outline color from spPr (ln > solidFill > srgbClr).</summary>
+    private static string? ExtractLineColor(OpenXmlElement? spPr)
+    {
+        if (spPr == null) return null;
+        var ln = spPr.Elements().FirstOrDefault(e => e.LocalName == "ln");
+        if (ln == null) return null;
+        var solidFill = ln.Elements().FirstOrDefault(e => e.LocalName == "solidFill");
+        var srgb = solidFill?.Elements().FirstOrDefault(e => e.LocalName == "srgbClr");
+        var val = srgb?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+        return val != null ? $"#{val}" : null;
+    }
+
     /// <summary>Render the chart SVG content (inside an already-opened svg tag) based on ChartInfo.</summary>
     public void RenderChartSvgContent(StringBuilder sb, ChartInfo info, int svgW, int svgH,
         int marginLeft = 45, int marginTop = 10, int marginRight = 15, int marginBottom = 30)
     {
-        // Sync instance font sizes from ChartInfo
+        // Sync instance font sizes and colors from ChartInfo
         ValFontPx = info.ValFontPx;
         CatFontPx = info.CatFontPx;
+        if (info.ValFontColor != null) AxisColor = info.ValFontColor;
+        if (info.CatFontColor != null) CatColor = info.CatFontColor;
+        if (info.GridlineColor != null) GridColor = info.GridlineColor;
+        if (info.AxisLineColor != null) AxisLineColor = info.AxisLineColor;
+        DataLabelFontPx = info.DataLabelFontPx;
 
         // Increase right margin for long axis labels (e.g. "$1,000,000")
         if (!string.IsNullOrEmpty(info.ValNumFmt) && marginRight < 30)
@@ -1264,7 +1321,7 @@ internal class ChartSvgRenderer
                     sb.AppendLine($"        <rect x=\"{bx:0.#}\" y=\"{by:0.#}\" width=\"{barW:0.#}\" height=\"{barH:0.#}\" fill=\"{color}\" opacity=\"0.9\"/>");
                     sb.AppendLine($"        <polygon points=\"{bx + barW:0.#},{by:0.#} {bx + barW + DxIso:0.#},{by + DyIso:0.#} {bx + barW + DxIso:0.#},{by + barH + DyIso:0.#} {bx + barW:0.#},{by + barH:0.#}\" fill=\"{sideColor}\" opacity=\"0.9\"/>");
                     var vlabel = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
-                    sb.AppendLine($"        <text x=\"{bx + barW + DxIso + 4:0.#}\" y=\"{by + barH / 2:0.#}\" fill=\"{ValueColor}\" font-size=\"7\" text-anchor=\"start\" dominant-baseline=\"middle\">{vlabel}</text>");
+                    sb.AppendLine($"        <text x=\"{bx + barW + DxIso + 4:0.#}\" y=\"{by + barH / 2:0.#}\" fill=\"{ValueColor}\" font-size=\"{DataLabelFontPx}\" text-anchor=\"start\" dominant-baseline=\"middle\">{vlabel}</text>");
                 }
             }
             for (int c = 0; c < catCount; c++)
@@ -1312,7 +1369,7 @@ internal class ChartSvgRenderer
                     sb.AppendLine($"        <polygon points=\"{bx:0.#},{by:0.#} {bx + barW:0.#},{by:0.#} {bx + barW + DxIso:0.#},{by + DyIso:0.#} {bx + DxIso:0.#},{by + DyIso:0.#}\" fill=\"{topColor}\" opacity=\"0.9\"/>");
                     sb.AppendLine($"        <polygon points=\"{bx + barW:0.#},{by:0.#} {bx + barW + DxIso:0.#},{by + DyIso:0.#} {bx + barW + DxIso:0.#},{oy + ph + DyIso:0.#} {bx + barW:0.#},{oy + ph:0.#}\" fill=\"{sideColor}\" opacity=\"0.9\"/>");
                     var vlabel = val % 1 == 0 ? $"{(int)val}" : $"{val:0.#}";
-                    sb.AppendLine($"        <text x=\"{bx + barW / 2 + DxIso / 2:0.#}\" y=\"{by + DyIso - 3:0.#}\" fill=\"{ValueColor}\" font-size=\"7\" text-anchor=\"middle\">{vlabel}</text>");
+                    sb.AppendLine($"        <text x=\"{bx + barW / 2 + DxIso / 2:0.#}\" y=\"{by + DyIso - 3:0.#}\" fill=\"{ValueColor}\" font-size=\"{DataLabelFontPx}\" text-anchor=\"middle\">{vlabel}</text>");
                 }
             }
             for (int c = 0; c < catCount; c++)
