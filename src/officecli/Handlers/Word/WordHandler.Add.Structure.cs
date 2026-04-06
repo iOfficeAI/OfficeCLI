@@ -37,8 +37,20 @@ public partial class WordHandler
         var sectPr = new SectionProperties();
         sectPr.AppendChild(new SectionType { Val = sectType });
 
-        // Copy page size/margins from document section, or use A4 defaults
+        // Ensure body-level sectPr has pgSz/pgMar (fix for docs created by older versions)
         var bodySectPr = body.GetFirstChild<SectionProperties>();
+        if (bodySectPr != null && bodySectPr.GetFirstChild<PageSize>() == null)
+        {
+            bodySectPr.InsertBefore(new PageSize { Width = 11906, Height = 16838 },
+                bodySectPr.GetFirstChild<DocGrid>());
+        }
+        if (bodySectPr != null && bodySectPr.GetFirstChild<PageMargin>() == null)
+        {
+            bodySectPr.InsertBefore(new PageMargin { Top = 1440, Right = 1800U, Bottom = 1440, Left = 1800U },
+                bodySectPr.GetFirstChild<DocGrid>());
+        }
+
+        // Copy page size/margins from document section, or use A4 defaults
         var srcPageSize = bodySectPr?.GetFirstChild<PageSize>();
         sectPr.AppendChild(new PageSize
         {

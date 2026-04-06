@@ -51,8 +51,10 @@ public static class BlankDocCreator
         using var doc = WordprocessingDocument.Create(path, WordprocessingDocumentType.Document);
         var mainPart = doc.AddMainDocumentPart();
 
-        // Section with no docGrid snap
+        // Section with A4 page size, standard margins, and no docGrid snap
         var sectPr = new SectionProperties(
+            new PageSize { Width = 11906, Height = 16838 },
+            new PageMargin { Top = 1440, Right = 1800U, Bottom = 1440, Left = 1800U },
             new DocGrid { Type = DocGridValues.Default }
         );
 
