@@ -780,9 +780,11 @@ public partial class PowerPointHandler
         var innerEnd = svgContent.LastIndexOf("</svg>", StringComparison.Ordinal);
         var innerSvg = svgContent[innerStart..innerEnd];
 
-        // Extract chart title from HTML
+        // Extract chart title and font-size from HTML
         var titleMatch = System.Text.RegularExpressions.Regex.Match(chartHtml, @"font-weight:bold[^>]*>([^<]+)<");
         var title = titleMatch.Success ? titleMatch.Groups[1].Value : "";
+        var titleFsMatch = System.Text.RegularExpressions.Regex.Match(chartHtml, @"font-size:(\d+\.?\d*)pt");
+        var titleFontPx = titleFsMatch.Success && double.TryParse(titleFsMatch.Groups[1].Value, out var tfp) ? (int)(tfp * 1.33) : 11;
 
         // Embed as nested SVG at the chart position
         sb.Append($"<g transform=\"translate({cx:0.##},{cy:0.##})\">");
@@ -795,7 +797,7 @@ public partial class PowerPointHandler
         if (!string.IsNullOrEmpty(title))
         {
             titleH = 16;
-            sb.Append($"<text x=\"{cw / 2:0.##}\" y=\"12\" text-anchor=\"middle\" font-size=\"11\" font-weight=\"bold\" fill=\"{_chartValueColor}\">{SvgEncode(title)}</text>");
+            sb.Append($"<text x=\"{cw / 2:0.##}\" y=\"12\" text-anchor=\"middle\" font-size=\"{titleFontPx}\" font-weight=\"bold\" fill=\"{_chartValueColor}\">{SvgEncode(title)}</text>");
         }
 
         // Nested SVG for chart content

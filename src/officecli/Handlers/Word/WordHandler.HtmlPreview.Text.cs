@@ -289,7 +289,9 @@ public partial class WordHandler
         if (fnPart?.Footnotes == null) return;
 
         var fnSize = ResolveStyleFontSize("FootnoteText") ?? "10pt";
-        sb.AppendLine($"<div class=\"footnotes\" style=\"font-size:{fnSize};color:#555\">");
+        var fnColor = ResolveStyleColor("FootnoteText");
+        var fnColorCss = fnColor != null ? $";color:{fnColor}" : "";
+        sb.AppendLine($"<div class=\"footnotes\" style=\"font-size:{fnSize}{fnColorCss}\">");
         sb.AppendLine("<hr style=\"margin-top:0;margin-bottom:0.5em;border:none;border-top:1px solid #ccc;width:33%\">");
 
         var fnFmt = GetFootnoteNumFmt();

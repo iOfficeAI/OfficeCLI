@@ -1205,6 +1205,24 @@ public partial class WordHandler
         return null;
     }
 
+    private string? ResolveStyleColor(string styleId)
+    {
+        var visited = new HashSet<string>();
+        var current = styleId;
+        while (current != null && visited.Add(current))
+        {
+            var style = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
+                ?.Elements<Style>().FirstOrDefault(s => s.StyleId?.Value == current);
+            if (style == null) break;
+            var cv = style.StyleRunProperties?.Color?.Val?.Value;
+            if (cv != null && cv != "auto") return $"#{cv}";
+            var tc = style.StyleRunProperties?.Color?.ThemeColor?.InnerText;
+            if (tc != null && GetThemeColors().TryGetValue(tc, out var tcHex)) return $"#{tcHex}";
+            current = style.BasedOn?.Val?.Value;
+        }
+        return null;
+    }
+
     private string? ResolveStyleIndent(string styleId)
     {
         var visited = new HashSet<string>();

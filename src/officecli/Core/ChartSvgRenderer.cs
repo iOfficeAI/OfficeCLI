@@ -353,7 +353,7 @@ internal class ChartSvgRenderer
                 else
                     label = pct >= 5 ? $"{pct:0}%" : ""; // default to percent for pie
                 if (!string.IsNullOrEmpty(label))
-                    sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{ly:0.#}\" fill=\"#fff\" font-size=\"9\" font-weight=\"bold\" text-anchor=\"middle\" dominant-baseline=\"central\">{label}</text>");
+                    sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{ly:0.#}\" fill=\"#fff\" font-size=\"{DataLabelFontPx}\" font-weight=\"bold\" text-anchor=\"middle\" dominant-baseline=\"central\">{label}</text>");
                 labelAngle += sliceAngle;
             }
         }
@@ -475,12 +475,12 @@ internal class ChartSvgRenderer
                 var angle = -Math.PI / 2 + 2 * Math.PI * c / catCount;
                 gridPoints.Add($"{cx + rr * Math.Cos(angle):0.#},{cy + rr * Math.Sin(angle):0.#}");
             }
-            sb.AppendLine($"        <polygon points=\"{string.Join(" ", gridPoints)}\" fill=\"none\" stroke=\"#ccc\" stroke-width=\"0.5\"/>");
+            sb.AppendLine($"        <polygon points=\"{string.Join(" ", gridPoints)}\" fill=\"none\" stroke=\"{GridColor}\" stroke-width=\"0.5\"/>");
         }
         for (int c = 0; c < catCount; c++)
         {
             var angle = -Math.PI / 2 + 2 * Math.PI * c / catCount;
-            sb.AppendLine($"        <line x1=\"{cx:0.#}\" y1=\"{cy:0.#}\" x2=\"{cx + r * Math.Cos(angle):0.#}\" y2=\"{cy + r * Math.Sin(angle):0.#}\" stroke=\"#ccc\" stroke-width=\"0.5\"/>");
+            sb.AppendLine($"        <line x1=\"{cx:0.#}\" y1=\"{cy:0.#}\" x2=\"{cx + r * Math.Cos(angle):0.#}\" y2=\"{cy + r * Math.Sin(angle):0.#}\" stroke=\"{GridColor}\" stroke-width=\"0.5\"/>");
         }
         for (int s = 0; s < series.Count; s++)
         {
@@ -819,7 +819,7 @@ internal class ChartSvgRenderer
         var range = maxVal - minVal;
         var catCount = Math.Max(categories.Length, series.Max(s => s.values.Length));
 
-        var upColor = "#2ECC71"; var downColor = "#E74C3C";
+        var upColor = "#FFFFFF"; var downColor = "#000000"; // OOXML spec defaults
         var stockChart = plotArea.GetFirstChild<StockChart>();
         if (stockChart != null)
         {
@@ -992,7 +992,7 @@ internal class ChartSvgRenderer
         {
             var holeSizeEl = chartTypeEl?.Elements().FirstOrDefault(e => e.LocalName == "holeSize");
             var holeSizeVal = holeSizeEl?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
-            info.HoleRatio = (holeSizeVal != null && int.TryParse(holeSizeVal, out var hs) ? hs : 50) / 100.0;
+            info.HoleRatio = (holeSizeVal != null && int.TryParse(holeSizeVal, out var hs) ? hs : 10) / 100.0; // OOXML spec default: 10%
         }
 
         // Axis info

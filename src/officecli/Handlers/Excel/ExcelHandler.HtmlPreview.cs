@@ -1166,7 +1166,7 @@ public partial class ExcelHandler
         styles.Add($"border-{side}:{width} {cssStyle} {color}");
     }
 
-    private static void BuildAlignmentCss(CellFormat xf, List<string> styles, Cell? cell = null)
+    private void BuildAlignmentCss(CellFormat xf, List<string> styles, Cell? cell = null)
     {
         var alignment = xf.Alignment;
         bool hasExplicitHAlign = alignment?.Horizontal?.HasValue == true;
@@ -1233,7 +1233,13 @@ public partial class ExcelHandler
         }
 
         if (alignment.Indent?.HasValue == true && alignment.Indent.Value > 0)
-            styles.Add($"padding-left:{alignment.Indent.Value * 6}pt");
+        {
+            // 1 indent level ≈ width of "0" in default font ≈ fontSize × 0.6
+            var defFontSz = _doc.WorkbookPart?.WorkbookStylesPart?.Stylesheet
+                ?.Fonts?.Elements<Font>().FirstOrDefault()?.FontSize?.Val?.Value ?? 11.0;
+            var indentPt = alignment.Indent.Value * defFontSz * 0.6;
+            styles.Add($"padding-left:{indentPt:0.#}pt");
+        }
 
         // Reading order: 1=LTR, 2=RTL (for mixed-direction content)
         if (alignment.ReadingOrder?.HasValue == true)
