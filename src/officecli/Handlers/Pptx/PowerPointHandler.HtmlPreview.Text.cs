@@ -70,7 +70,42 @@ public partial class PowerPointHandler
             if (hasBullet)
             {
                 var bullet = bulletChar ?? "\u2022";
-                sb.Append($"<span class=\"bullet\">{HtmlEncode(bullet)} </span>");
+                var buStyles = new List<string>();
+
+                // Bullet color: explicit buClr > first run color > default (inherit)
+                var buClrFill = pProps?.GetFirstChild<Drawing.BulletColor>()
+                    ?.GetFirstChild<Drawing.SolidFill>();
+                var bulletColor = ResolveFillColor(buClrFill, themeColors);
+                if (bulletColor == null)
+                {
+                    // Follow first run text color (same as LibreOffice/POI behavior)
+                    var firstRun = para.Elements<Drawing.Run>().FirstOrDefault();
+                    var firstRunFill = firstRun?.RunProperties?.GetFirstChild<Drawing.SolidFill>();
+                    bulletColor = ResolveFillColor(firstRunFill, themeColors);
+                }
+                if (bulletColor != null) buStyles.Add($"color:{bulletColor}");
+
+                // Bullet size: explicit buSzPts/buSzPct > first run size > default size
+                var buSzPts = pProps?.GetFirstChild<Drawing.BulletSizePoints>();
+                var buSzPct = pProps?.GetFirstChild<Drawing.BulletSizePercentage>();
+                if (buSzPts?.Val?.HasValue == true)
+                {
+                    buStyles.Add($"font-size:{buSzPts.Val.Value / 100.0:0.##}pt");
+                }
+                else
+                {
+                    // Determine base font size from first run or default
+                    var firstRun = para.Elements<Drawing.Run>().FirstOrDefault();
+                    var baseSizeHundredths = firstRun?.RunProperties?.FontSize?.Value ?? defaultFontSizeHundredths;
+                    if (baseSizeHundredths.HasValue)
+                    {
+                        var pct = buSzPct?.Val?.HasValue == true ? buSzPct.Val.Value / 100000.0 : 1.0;
+                        buStyles.Add($"font-size:{baseSizeHundredths.Value / 100.0 * pct:0.##}pt");
+                    }
+                }
+
+                var buStyle = buStyles.Count > 0 ? $" style=\"{string.Join(";", buStyles)}\"" : "";
+                sb.Append($"<span class=\"bullet\"{buStyle}>{HtmlEncode(bullet)} </span>");
             }
 
             // Check for OfficeMath (a14:m inside mc:AlternateContent) in paragraph XML
