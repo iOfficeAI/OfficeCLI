@@ -242,7 +242,10 @@ public partial class WordHandler
                     {
                         var offsetEl = hPos.Descendants().FirstOrDefault(e => e.LocalName == "posOffset");
                         if (offsetEl != null && long.TryParse(offsetEl.InnerText, out var offsetEmu))
-                            isRight = offsetEmu > 3000000; // ~half of typical page width in EMU
+                        {
+                            var halfPageEmu = (long)(GetPageLayout().WidthPt * 12700); // pt to EMU
+                            isRight = offsetEmu > halfPageEmu;
+                        }
                     }
                     floatCss = isRight
                         ? "float:right;margin:0 0 8px 8px"

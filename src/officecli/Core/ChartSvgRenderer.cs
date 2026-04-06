@@ -13,11 +13,40 @@ namespace OfficeCli.Core;
 /// </summary>
 internal class ChartSvgRenderer
 {
-    // Default chart colors matching Office theme accent colors
-    public static readonly string[] DefaultColors = [
+    // Fallback chart colors — used only when no theme is available
+    public static readonly string[] FallbackColors = [
         "#4472C4", "#ED7D31", "#A5A5A5", "#FFC000", "#5B9BD5", "#70AD47",
         "#264478", "#9E480E", "#636363", "#997300", "#255E91", "#43682B"
     ];
+
+    /// <summary>
+    /// Theme-derived accent colors for chart series. Set from document theme accent1-6.
+    /// Falls back to FallbackColors if not set.
+    /// </summary>
+    public string[]? ThemeAccentColors { get; set; }
+
+    /// <summary>Get effective default colors: theme accents (with shade/tint variants) or fallback.</summary>
+    public string[] DefaultColors => ThemeAccentColors ?? FallbackColors;
+
+    /// <summary>Build theme accent color array from theme color map (accent1-6 + shade variants).</summary>
+    public static string[] BuildThemeAccentColors(Dictionary<string, string> themeColors)
+    {
+        var accents = new List<string>();
+        for (int i = 1; i <= 6; i++)
+        {
+            if (themeColors.TryGetValue($"accent{i}", out var hex))
+                accents.Add($"#{hex}");
+            else
+                accents.Add(FallbackColors[(i - 1) % FallbackColors.Length]);
+        }
+        // Generate shade variants for cycling (darker versions of accent1-6)
+        foreach (var accent in accents.ToList())
+        {
+            var raw = accent.TrimStart('#');
+            accents.Add(ColorMath.ApplyTransforms(raw, shade: 50000)); // 50% shade
+        }
+        return accents.ToArray();
+    }
 
     // Chart styling — configurable per chart instance
     public string ValueColor { get; set; } = "#D0D8E0";
@@ -1098,7 +1127,7 @@ internal class ChartSvgRenderer
                     return idxEl.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value == i.ToString();
                 });
                 var rgb = ExtractFillColor(dPt?.Elements().FirstOrDefault(e => e.LocalName == "spPr"));
-                colors.Add(rgb != null ? $"#{rgb}" : DefaultColors[i % DefaultColors.Length]);
+                colors.Add(rgb != null ? $"#{rgb}" : FallbackColors[i % FallbackColors.Length]);
             }
         }
         else
@@ -1120,7 +1149,7 @@ internal class ChartSvgRenderer
                     // Fallback to solidFill
                     rgb ??= ExtractFillColor(spPr);
                 }
-                colors.Add(rgb != null ? $"#{rgb}" : DefaultColors[i % DefaultColors.Length]);
+                colors.Add(rgb != null ? $"#{rgb}" : FallbackColors[i % FallbackColors.Length]);
             }
         }
         return colors;

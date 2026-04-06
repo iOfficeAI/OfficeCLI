@@ -465,7 +465,8 @@ public partial class WordHandler
         return result;
     }
 
-    private record DocDef(string Font, double SizePt, double LineHeight, string Color, double GridLinePitchPt);
+    private record DocDef(string Font, double SizePt, double LineHeight, string Color, double GridLinePitchPt,
+        double SpaceAfterPt = 0, string DefaultAlign = "left");
 
     private DocDef ReadDocDefaults()
     {
@@ -497,7 +498,7 @@ public partial class WordHandler
             sizePt = hp / 2.0;
         if (sizePt == 0 && defaultRPr?.FontSize?.Val?.Value is string nsz && int.TryParse(nsz, out var nhp))
             sizePt = nhp / 2.0;
-        if (sizePt == 0) sizePt = 10.5;
+        if (sizePt == 0) sizePt = 10.0; // OOXML spec default: 20 half-points = 10pt
 
         // Line spacing: docDefaults pPrDefault → Normal style pPr → fallback
         double lineH = 0;
@@ -528,7 +529,31 @@ public partial class WordHandler
         if (cv != null && cv != "auto") color = $"#{cv}";
         else if (GetThemeColors().TryGetValue("dk1", out var dk1)) color = $"#{dk1}";
 
-        return new DocDef(font ?? "Calibri", sizePt, lineH, color, gridLinePitchPt);
+        // Space after: Normal style pPr → docDefaults pPr → 0
+        double spaceAfterPt = 0;
+        var defSp = defaultStyle?.StyleParagraphProperties?.SpacingBetweenLines;
+        var defSpAfter = defaultStyle?.StyleParagraphProperties?.GetFirstChild<SpacingBetweenLines>() != null
+            ? defaultStyle.StyleParagraphProperties.SpacingBetweenLines?.After?.Value : null;
+        if (defSpAfter == null)
+            defSpAfter = defs?.ParagraphPropertiesDefault?.ParagraphPropertiesBaseStyle?.SpacingBetweenLines?.After?.Value;
+        if (defSpAfter != null && int.TryParse(defSpAfter, out var saVal))
+            spaceAfterPt = saVal / 20.0; // twips to pt
+
+        // Default paragraph alignment: Normal style jc → left
+        var defaultAlign = "left";
+        var jc = defaultStyle?.StyleParagraphProperties?.Justification?.Val;
+        if (jc != null)
+        {
+            defaultAlign = jc.InnerText switch
+            {
+                "center" => "center",
+                "right" or "end" => "right",
+                "both" or "distribute" => "justify",
+                _ => "left"
+            };
+        }
+
+        return new DocDef(font ?? "Calibri", sizePt, lineH, color, gridLinePitchPt, spaceAfterPt, defaultAlign);
     }
 
     /// <summary>Collect all distinct font names from document body, styles, and theme.</summary>

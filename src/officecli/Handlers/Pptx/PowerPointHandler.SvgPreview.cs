@@ -1292,7 +1292,8 @@ public partial class PowerPointHandler
 
                     // Color
                     var runFill = rp?.GetFirstChild<Drawing.SolidFill>();
-                    var color = ResolveFillColor(runFill, themeColors) ?? textColorOverride ?? "#000000";
+                    var color = ResolveFillColor(runFill, themeColors) ?? textColorOverride
+                        ?? (themeColors.TryGetValue("dk1", out var dk1c) ? $"#{dk1c}" : "#000000");
                     styles.Add($"color:{color}");
 
                     // Character spacing

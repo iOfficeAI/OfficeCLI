@@ -59,11 +59,12 @@ public partial class PowerPointHandler
         // Create renderer with theme-derived colors
         var renderer = new ChartSvgRenderer
         {
+            ThemeAccentColors = ChartSvgRenderer.BuildThemeAccentColors(themeColors),
             ValueColor = chartTextColor,
             CatColor = chartTextColor,
             AxisColor = chartTextColor,
-            GridColor = isDarkText ? "#ccc" : "#333",
-            AxisLineColor = isDarkText ? "#aaa" : "#555",
+            GridColor = info.GridlineColor != null ? $"#{info.GridlineColor}" : (isDarkText ? "#ccc" : "#333"),
+            AxisLineColor = info.AxisLineColor != null ? $"#{info.AxisLineColor}" : (isDarkText ? "#aaa" : "#555"),
             ValFontPx = info.ValFontPx,
             CatFontPx = info.CatFontPx
         };

@@ -183,7 +183,7 @@ public partial class PowerPointHandler
         var sp3d = shape.ShapeProperties?.GetFirstChild<Drawing.Shape3DType>();
         if (sp3d?.BevelTop != null)
         {
-            var bevelW = sp3d.BevelTop.Width?.HasValue == true ? sp3d.BevelTop.Width.Value / 12700.0 : 4;
+            var bevelW = sp3d.BevelTop.Width?.HasValue == true ? sp3d.BevelTop.Width.Value / 12700.0 : 6; // OOXML default 76200 EMU = 6pt
             var bW = Math.Max(1, bevelW * 0.5);
             styles.Add($"box-shadow:inset {bW:0.#}px {bW:0.#}px {bW * 1.5:0.#}px rgba(255,255,255,0.25),inset -{bW:0.#}px -{bW:0.#}px {bW * 1.5:0.#}px rgba(0,0,0,0.15)");
         }

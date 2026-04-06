@@ -246,7 +246,8 @@ public partial class PowerPointHandler
     {
         if (outline.GetFirstChild<Drawing.NoFill>() != null) return null;
 
-        var color = ResolveFillColor(outline.GetFirstChild<Drawing.SolidFill>(), themeColors) ?? "#000000";
+        var color = ResolveFillColor(outline.GetFirstChild<Drawing.SolidFill>(), themeColors)
+            ?? (themeColors.TryGetValue("dk1", out var dk1Hex) ? $"#{dk1Hex}" : "#000000");
         var widthPt = outline.Width?.HasValue == true ? outline.Width.Value / 12700.0 : 1.0;
         if (widthPt < 0.5) widthPt = 0.5;
 
@@ -335,9 +336,9 @@ public partial class PowerPointHandler
             }
         }
 
-        var blurPt = shadow.BlurRadius?.HasValue == true ? shadow.BlurRadius.Value / 12700.0 : 4;
-        var distPt = shadow.Distance?.HasValue == true ? shadow.Distance.Value / 12700.0 : 3;
-        var angleDeg = shadow.Direction?.HasValue == true ? shadow.Direction.Value / 60000.0 : 45;
+        var blurPt = shadow.BlurRadius?.HasValue == true ? shadow.BlurRadius.Value / 12700.0 : 0;
+        var distPt = shadow.Distance?.HasValue == true ? shadow.Distance.Value / 12700.0 : 0;
+        var angleDeg = shadow.Direction?.HasValue == true ? shadow.Direction.Value / 60000.0 : 0;
         var angleRad = angleDeg * Math.PI / 180;
         var offsetX = distPt * Math.Cos(angleRad);
         var offsetY = distPt * Math.Sin(angleRad);
@@ -380,7 +381,19 @@ public partial class PowerPointHandler
             }
             else
             {
-                color = $"rgba(0,120,215,{opacity:0.##})";
+                // No color specified — use theme accent1 or transparent
+                var acc1 = themeColors.TryGetValue("accent1", out var a1) ? a1 : null;
+                if (acc1 != null)
+                {
+                    var r = Convert.ToInt32(acc1[..2], 16);
+                    var g = Convert.ToInt32(acc1[2..4], 16);
+                    var b = Convert.ToInt32(acc1[4..6], 16);
+                    color = $"rgba({r},{g},{b},{opacity:0.##})";
+                }
+                else
+                {
+                    color = $"rgba(0,0,0,0)"; // transparent — no glow visible
+                }
             }
         }
 

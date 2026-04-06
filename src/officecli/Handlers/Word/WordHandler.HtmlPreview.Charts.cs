@@ -38,14 +38,15 @@ public partial class WordHandler
             int svgW = extent?.Cx?.Value > 0 ? (int)(extent.Cx.Value / 9525) : 500;
             int svgH = extent?.Cy?.Value > 0 ? (int)(extent.Cy.Value / 9525) : 300;
 
-            // Renderer with light-background colors
+            // Renderer — use chart XML colors if available, else reasonable defaults
             var renderer = new ChartSvgRenderer
             {
-                CatColor = "#333333",
-                AxisColor = "#555555",
-                ValueColor = "#444444",
-                GridColor = "#ddd",
-                AxisLineColor = "#999",
+                ThemeAccentColors = ChartSvgRenderer.BuildThemeAccentColors(GetThemeColors()),
+                CatColor = info.CatFontColor != null ? $"#{info.CatFontColor}" : "#333333",
+                AxisColor = info.ValFontColor != null ? $"#{info.ValFontColor}" : "#555555",
+                ValueColor = info.ValFontColor != null ? $"#{info.ValFontColor}" : "#444444",
+                GridColor = info.GridlineColor != null ? $"#{info.GridlineColor}" : "#ddd",
+                AxisLineColor = info.AxisLineColor != null ? $"#{info.AxisLineColor}" : "#999",
                 ValFontPx = info.ValFontPx,
                 CatFontPx = info.CatFontPx
             };

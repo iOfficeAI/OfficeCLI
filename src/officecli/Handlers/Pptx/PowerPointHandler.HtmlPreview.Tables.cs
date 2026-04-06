@@ -107,8 +107,7 @@ public partial class PowerPointHandler
                     var rp = firstRun.RunProperties;
                     if (rp.FontSize?.HasValue == true)
                         cellStyles.Add($"font-size:{rp.FontSize.Value / 100.0:0.##}pt");
-                    else
-                        cellStyles.Add("font-size:18pt"); // PowerPoint default table cell font size
+                    // else: inherit from table style / slideMaster (no hardcoded default)
                     if (rp.Bold?.Value == true)
                         cellStyles.Add("font-weight:bold");
                     var fontVal = rp.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value
@@ -135,9 +134,8 @@ public partial class PowerPointHandler
                     if (br != null) cellStyles.Add($"border-right:{br}");
                     if (bt != null) cellStyles.Add($"border-top:{bt}");
                     if (bb != null) cellStyles.Add($"border-bottom:{bb}");
-                    // If no explicit borders at all, render a thin default border
-                    if (bl == null && br == null && bt == null && bb == null)
-                        cellStyles.Add("border:1px solid rgba(0,0,0,0.2)");
+                    // No explicit borders → no border rendered (table style borders
+                    // should come from tableStyles.xml but are not yet resolved)
                 }
 
                 // Cell margins/padding

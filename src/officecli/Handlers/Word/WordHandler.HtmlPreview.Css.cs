@@ -340,9 +340,9 @@ public partial class WordHandler
                     lineHMult = dlvi / 240.0;
                 var bodyLineH = defSz * lineHMult;
                 var dropCapHeight = lineCount * bodyLineH;
-                // Read hSpace from framePr (default ~3pt)
+                // Read hSpace from framePr (OOXML spec default: 0)
                 var hSpaceAttr = framePr.GetAttributes().FirstOrDefault(a => a.LocalName == "hSpace").Value;
-                var hSpacePt = hSpaceAttr != null && int.TryParse(hSpaceAttr, out var hsTwips) ? hsTwips / 20.0 : 3.0;
+                var hSpacePt = hSpaceAttr != null && int.TryParse(hSpaceAttr, out var hsTwips) ? hsTwips / 20.0 : 0;
                 parts.Add("float:left");
                 parts.Add($"line-height:{dropCapHeight:0.#}pt");
                 parts.Add($"padding-right:{hSpacePt:0.#}pt");
@@ -1205,6 +1205,25 @@ public partial class WordHandler
         return null;
     }
 
+    private string? ResolveStyleIndent(string styleId)
+    {
+        var visited = new HashSet<string>();
+        var current = styleId;
+        while (current != null && visited.Add(current))
+        {
+            var style = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
+                ?.Elements<Style>().FirstOrDefault(s => s.StyleId?.Value == current);
+            if (style == null) break;
+            var ind = style.StyleParagraphProperties?.Indentation;
+            if (ind?.Left?.Value is string lv && int.TryParse(lv, out var twips))
+                return $"{twips / 20.0:0.#}pt";
+            if (ind?.FirstLine?.Value is string flv && int.TryParse(flv, out var flTwips))
+                return $"{flTwips / 20.0:0.#}pt";
+            current = style.BasedOn?.Val?.Value;
+        }
+        return null;
+    }
+
     private static string CssSanitize(string value) =>
         Regex.Replace(value, @"[""'\\<>&;{}]", "");
 
@@ -1296,13 +1315,13 @@ public partial class WordHandler
         .page-body {{ flex: 1; display: flex; flex-direction: column; text-autospace: ideograph-alpha ideograph-numeric; }}
         .page-body > :first-child {{ margin-top: 0 !important; }}
         .page-body > img + h1, .page-body > img + img + h1 {{ margin-top: 0 !important; }}
-        .doc-header, .doc-footer {{ color: #888; font-size: 9pt; }}
+        .doc-header, .doc-footer {{ font-size: {dd.SizePt:0.##}pt; }}
         .doc-header {{ position: absolute; top: {pg.HeaderDistancePt:0.#}pt; left: {mL}; right: {mR};
             padding-bottom: 0.3em; }}
         .doc-footer {{ position: absolute; bottom: {pg.FooterDistancePt:0.#}pt; left: {mL}; right: {mR};
             padding-top: 0.3em; }}
         h1, h2, h3, h4, h5, h6 {{ line-height: normal; }}
-        p {{ margin: 0; margin-bottom: {(HasLinkedStyles() ? "10pt" : "0")}; line-height: {(HasLinkedStyles() ? 1.15 : 1.0) * FontMetricsReader.GetRatio(dd.Font):0.##}; text-align: justify; text-justify: inter-character; text-autospace: ideograph-alpha ideograph-numeric; }}
+        p {{ margin: 0; margin-bottom: {(dd.SpaceAfterPt > 0 ? $"{dd.SpaceAfterPt:0.##}pt" : "0")}; line-height: {dd.LineHeight * FontMetricsReader.GetRatio(dd.Font):0.##}; text-align: {dd.DefaultAlign};{(dd.DefaultAlign == "justify" ? " text-justify: inter-character;" : "")} text-autospace: ideograph-alpha ideograph-numeric; }}
         p.empty {{ margin: 0; min-height: 1em; }}
         a {{ color: #2B579A; }} a:hover {{ color: #1a3c6e; }}
         .toc {{ display: flex; text-indent: 0 !important; }}

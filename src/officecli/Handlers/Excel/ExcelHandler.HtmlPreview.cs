@@ -5,11 +5,77 @@ using System.Text;
 using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
-
 namespace OfficeCli.Handlers;
 
 public partial class ExcelHandler
 {
+    // Theme color map (lazy-initialized from theme1.xml)
+    private Dictionary<string, string>? _excelThemeColors;
+    // Indexed color palette (default 64 + custom overrides from styles.xml)
+    private string[]? _resolvedIndexedColors;
+
+    private Dictionary<string, string> GetExcelThemeColors()
+    {
+        if (_excelThemeColors != null) return _excelThemeColors;
+        var colorScheme = _doc.WorkbookPart?.ThemePart?.Theme?.ThemeElements?.ColorScheme;
+        _excelThemeColors = Core.ThemeColorResolver.BuildColorMap(colorScheme);
+        return _excelThemeColors;
+    }
+
+    /// <summary>
+    /// Excel theme color index mapping:
+    /// 0=lt1, 1=dk1, 2=lt2, 3=dk2, 4=accent1, 5=accent2, 6=accent3, 7=accent4, 8=accent5, 9=accent6
+    /// </summary>
+    private static readonly string[] ThemeIndexToName =
+        ["lt1", "dk1", "lt2", "dk2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6"];
+
+    private string? ResolveThemeColor(uint themeIndex, double? tintValue = null)
+    {
+        if (themeIndex >= (uint)ThemeIndexToName.Length) return null;
+        var themeColors = GetExcelThemeColors();
+        if (!themeColors.TryGetValue(ThemeIndexToName[themeIndex], out var hex)) return null;
+
+        if (tintValue.HasValue && Math.Abs(tintValue.Value) > 0.001)
+        {
+            // Excel tint: positive = tint toward white, negative = shade toward black
+            // Convert to OOXML 0-100000 range
+            var t = tintValue.Value;
+            if (t > 0)
+                return Core.ColorMath.ApplyTransforms(hex, tint: (int)((1 - t) * 100000));
+            else
+                return Core.ColorMath.ApplyTransforms(hex, shade: (int)((1 + t) * 100000));
+        }
+
+        return $"#{hex}";
+    }
+
+    private string[] GetResolvedIndexedColors()
+    {
+        if (_resolvedIndexedColors != null) return _resolvedIndexedColors;
+
+        // Start with default palette
+        _resolvedIndexedColors = (string[])DefaultIndexedColors.Clone();
+
+        // Check for custom overrides in styles.xml
+        var stylesheet = _doc.WorkbookPart?.WorkbookStylesPart?.Stylesheet;
+        var colors = stylesheet?.GetFirstChild<Colors>();
+        var indexedColors = colors?.GetFirstChild<IndexedColors>();
+        if (indexedColors != null)
+        {
+            int idx = 0;
+            foreach (var rgbColor in indexedColors.Elements<RgbColor>())
+            {
+                if (idx < _resolvedIndexedColors.Length && rgbColor.Rgb?.Value != null)
+                {
+                    var raw = rgbColor.Rgb.Value;
+                    _resolvedIndexedColors[idx] = FormatColorForCss(raw);
+                }
+                idx++;
+            }
+        }
+        return _resolvedIndexedColors;
+    }
+
     /// <summary>
     /// Generate a self-contained HTML file that previews all sheets as spreadsheet tables.
     /// Supports cell formatting (font, fill, borders, alignment), merged cells,
@@ -940,7 +1006,9 @@ public partial class ExcelHandler
         if (cell == null || stylesheet == null)
         {
             // Frozen rows need opaque background so scrolling content doesn't show through
-            if (isFrozenRow) styles.Add("background:#fff");
+            // Use actual cell fill if available; fallback to white for cells with no explicit fill
+            if (isFrozenRow && !styles.Any(s => s.StartsWith("background")))
+                styles.Add("background:#fff");
             return styles.Count > 0 ? $" style=\"{string.Join(";", styles)}\"" : "";
         }
 
@@ -985,7 +1053,7 @@ public partial class ExcelHandler
         return styles.Count > 0 ? $" style=\"{string.Join(";", styles)}\"" : "";
     }
 
-    private static void BuildFontCss(CellFormat xf, Stylesheet stylesheet, List<string> styles)
+    private void BuildFontCss(CellFormat xf, Stylesheet stylesheet, List<string> styles)
     {
         var fontId = xf.FontId?.Value ?? 0;
         var fonts = stylesheet.Fonts;
@@ -1022,7 +1090,7 @@ public partial class ExcelHandler
         if (color != null) styles.Add($"color:{color}");
     }
 
-    private static void BuildFillCss(CellFormat xf, Stylesheet stylesheet, List<string> styles)
+    private void BuildFillCss(CellFormat xf, Stylesheet stylesheet, List<string> styles)
     {
         var fillId = xf.FillId?.Value ?? 0;
         if (fillId <= 1) return; // 0=none, 1=gray125 pattern (default)
@@ -1061,7 +1129,7 @@ public partial class ExcelHandler
         }
     }
 
-    private static void BuildBorderCss(CellFormat xf, Stylesheet stylesheet, List<string> styles)
+    private void BuildBorderCss(CellFormat xf, Stylesheet stylesheet, List<string> styles)
     {
         var borderId = xf.BorderId?.Value ?? 0;
         if (borderId == 0) return;
@@ -1077,7 +1145,7 @@ public partial class ExcelHandler
         AddBorderSideCss(border.LeftBorder, "left", styles);
     }
 
-    private static void AddBorderSideCss(BorderPropertiesType? bp, string side, List<string> styles)
+    private void AddBorderSideCss(BorderPropertiesType? bp, string side, List<string> styles)
     {
         if (bp?.Style?.Value == null || bp.Style.Value == BorderStyleValues.None) return;
 
@@ -1178,7 +1246,7 @@ public partial class ExcelHandler
 
     // ==================== Color Resolution ====================
 
-    private static string? ResolveFontColor(Font font)
+    private string? ResolveFontColor(Font font)
     {
         if (font.Color?.Rgb?.Value != null)
         {
@@ -1187,20 +1255,14 @@ public partial class ExcelHandler
         }
         if (font.Color?.Theme?.Value != null)
         {
-            // Theme 0=lt1 (usually white bg), 1=dk1 (usually black text)
-            // For HTML preview, map common theme colors
-            return font.Color.Theme.Value switch
-            {
-                0 => "#FFFFFF",
-                1 => "#000000",
-                _ => null // skip unresolved theme colors — will use default
-            };
+            var tint = font.Color.Tint?.Value;
+            return ResolveThemeColor(font.Color.Theme.Value, tint);
         }
         return null;
     }
 
-    // Standard Excel indexed color palette (first 64 colors)
-    private static readonly string[] IndexedColors = [
+    // Standard Excel indexed color palette (first 64 colors) — can be overridden by styles.xml
+    private static readonly string[] DefaultIndexedColors = [
         "#000000","#FFFFFF","#FF0000","#00FF00","#0000FF","#FFFF00","#FF00FF","#00FFFF",
         "#000000","#FFFFFF","#FF0000","#00FF00","#0000FF","#FFFF00","#FF00FF","#00FFFF",
         "#800000","#008000","#000080","#808000","#800080","#008080","#C0C0C0","#808080",
@@ -1211,34 +1273,23 @@ public partial class ExcelHandler
         "#003366","#339966","#003300","#333300","#993300","#993366","#333399","#333333"
     ];
 
-    private static string? ResolveColorRgb(ColorType? color)
+    private string? ResolveColorRgb(ColorType? color)
     {
         if (color?.Rgb?.Value != null)
             return FormatColorForCss(color.Rgb.Value);
         if (color?.Indexed?.Value != null)
         {
             var idx = (int)color.Indexed.Value;
-            if (idx >= 0 && idx < IndexedColors.Length)
-                return IndexedColors[idx];
+            var palette = GetResolvedIndexedColors();
+            if (idx >= 0 && idx < palette.Length)
+                return palette[idx];
             if (idx == 64) return null; // system foreground (context dependent)
             if (idx == 65) return null; // system background
         }
         if (color?.Theme?.Value != null)
         {
-            return color.Theme.Value switch
-            {
-                0 => "#FFFFFF", // lt1
-                1 => "#000000", // dk1
-                2 => "#E7E6E6", // lt2
-                3 => "#44546A", // dk2
-                4 => "#4472C4", // accent1
-                5 => "#ED7D31", // accent2
-                6 => "#A5A5A5", // accent3
-                7 => "#FFC000", // accent4
-                8 => "#5B9BD5", // accent5
-                9 => "#70AD47", // accent6
-                _ => null
-            };
+            var tint = color.Tint?.Value;
+            return ResolveThemeColor(color.Theme.Value, tint);
         }
         return null;
     }
@@ -1556,7 +1607,19 @@ public partial class ExcelHandler
 
     // ==================== CSS ====================
 
-    private static string GenerateExcelCss() => """
+    private string GenerateExcelCss()
+    {
+        // Read default font from workbook styles (font index 0)
+        var defFontName = "Calibri";
+        var defFontSize = "11";
+        var stylesheet = _doc.WorkbookPart?.WorkbookStylesPart?.Stylesheet;
+        if (stylesheet?.Fonts != null && stylesheet.Fonts.Elements<Font>().Any())
+        {
+            var f0 = stylesheet.Fonts.Elements<Font>().First();
+            if (f0.FontName?.Val?.Value != null) defFontName = f0.FontName.Val.Value;
+            if (f0.FontSize?.Val?.Value != null) defFontSize = f0.FontSize.Val.Value.ToString("0.##");
+        }
+        return $$"""
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body { height: 100%; }
         body {
@@ -1623,8 +1686,8 @@ public partial class ExcelHandler
         }
         table {
             border-collapse: collapse;
-            font-size: 11px;
-            font-family: 'Calibri', 'Segoe UI', sans-serif;
+            font-size: {{defFontSize}}px;
+            font-family: '{{defFontName}}', 'Segoe UI', sans-serif;
             table-layout: fixed;
         }
         .row-header-col { width: 30pt; }
@@ -1701,6 +1764,7 @@ public partial class ExcelHandler
             td { max-width: none !important; white-space: normal !important; overflow: visible !important; }
         }
         """;
+    }
 
     // ==================== JavaScript ====================
 

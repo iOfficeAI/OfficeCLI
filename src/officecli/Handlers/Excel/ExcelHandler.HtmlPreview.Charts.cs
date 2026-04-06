@@ -166,7 +166,7 @@ public partial class ExcelHandler
         if (info.Series.Count == 0) return;
         // Ensure colors match series count (ExtractChartInfo may have extracted for a different count)
         while (info.Colors.Count < info.Series.Count)
-            info.Colors.Add(ChartSvgRenderer.DefaultColors[info.Colors.Count % ChartSvgRenderer.DefaultColors.Length]);
+            info.Colors.Add(ChartSvgRenderer.FallbackColors[info.Colors.Count % ChartSvgRenderer.FallbackColors.Length]);
         if (info.Colors.Count > info.Series.Count && !info.ChartType.Contains("pie") && !info.ChartType.Contains("doughnut"))
             info.Colors = info.Colors.Take(info.Series.Count).ToList();
 
@@ -177,6 +177,7 @@ public partial class ExcelHandler
         // 5. Create renderer — colors from OOXML with Excel-appropriate fallbacks
         var renderer = new ChartSvgRenderer
         {
+            ThemeAccentColors = ChartSvgRenderer.BuildThemeAccentColors(GetExcelThemeColors()),
             ValueColor = info.ValFontColor ?? "#333",
             CatColor = info.CatFontColor ?? "#555",
             AxisColor = info.ValFontColor ?? "#666",
