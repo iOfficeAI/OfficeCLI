@@ -16,7 +16,7 @@ static partial class CommandBuilder
         var pathArg = new Argument<string>("path") { Description = "DOM path to the element to mark" };
         var propsOpt = new Option<string[]>("--prop")
         {
-            Description = "Mark property: find=..., color=..., note=..., expect=..., regex=true",
+            Description = "Mark property: find=..., color=..., note=..., tofix=..., regex=true",
             AllowMultipleArgumentsPerToken = true,
         };
 
@@ -61,10 +61,23 @@ static partial class CommandBuilder
                 Find = string.IsNullOrEmpty(findText) ? null : findText,
                 Color = props.TryGetValue("color", out var c) ? c : null,
                 Note = props.TryGetValue("note", out var n) ? n : null,
-                Expect = props.TryGetValue("expect", out var e) ? e : null,
+                Tofix = props.TryGetValue("tofix", out var e) ? e : null,
             };
 
-            var id = WatchNotifier.AddMark(file.FullName, req);
+            string? id;
+            try
+            {
+                id = WatchNotifier.AddMark(file.FullName, req);
+            }
+            catch (MarkRejectedException rex)
+            {
+                // BUG-BT-001: server rejected the request (invalid color, invalid
+                // path, etc.). Surface the actual reason instead of silently
+                // returning success with an empty id.
+                if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(rex.Message));
+                else Console.Error.WriteLine(rex.Message);
+                return 1;
+            }
             if (id == null)
             {
                 var err = $"No watch process is running for {file.Name}. Start one with: officecli watch {file.Name}";

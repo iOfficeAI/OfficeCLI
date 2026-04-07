@@ -100,9 +100,14 @@ public static class WatchNotifier
     /// </summary>
     public static string? AddMark(string filePath, MarkRequest request)
     {
+        // BUG-BT-001: distinguish "no watch running" from "watch rejected the
+        // request". Pipe failures → return null so CLI prints "start watch first".
+        // Server-side reject (Error field) → throw MarkRejectedException so CLI
+        // surfaces the real error instead of silently treating empty id as success.
+        string? result = null;
+        string? error = null;
         try
         {
-            string? result = null;
             RunWithTimeout(() =>
             {
                 var pipeName = WatchServer.GetWatchPipeName(filePath);
@@ -119,14 +124,16 @@ public static class WatchNotifier
                 var responseLine = reader.ReadLine();
                 if (string.IsNullOrEmpty(responseLine)) { result = null; return; }
                 var resp = JsonSerializer.Deserialize(responseLine, WatchMarkJsonContext.Default.MarkResponse);
-                result = resp?.Id;
+                if (!string.IsNullOrEmpty(resp?.Error)) { error = resp!.Error; return; }
+                result = string.IsNullOrEmpty(resp?.Id) ? null : resp.Id;
             }, PipeTimeout);
-            return result;
         }
         catch
         {
-            return null; // no watch running, or error
+            return null; // no watch running, or pipe failure
         }
+        if (error != null) throw new MarkRejectedException(error);
+        return result;
     }
 
     /// <summary>

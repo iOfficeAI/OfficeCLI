@@ -20,6 +20,11 @@ namespace OfficeCli.Core;
 ///   • literal:  find = "hello"
 ///   • regex:    find = r"[abc]"  OR  find = "[abc]" with regex=true flag
 /// The flag is normalized into the r"..." form on insert (see WatchServer).
+///
+/// Tofix is a free-form display label rendered in the mark tooltip alongside
+/// the find pattern. It does NOT participate in matching or staleness — when
+/// a mark goes stale (find no longer hits), tofix is the human hint for
+/// "what should be done about it".
 /// </summary>
 public class WatchMark
 {
@@ -38,8 +43,8 @@ public class WatchMark
     [JsonPropertyName("note")]
     public string? Note { get; set; }
 
-    [JsonPropertyName("expect")]
-    public string? Expect { get; set; }
+    [JsonPropertyName("tofix")]
+    public string? Tofix { get; set; }
 
     /// <summary>
     /// Always an array. For literal find: 0 entries (no match → stale)
@@ -71,8 +76,8 @@ public class MarkRequest
     [JsonPropertyName("note")]
     public string? Note { get; set; }
 
-    [JsonPropertyName("expect")]
-    public string? Expect { get; set; }
+    [JsonPropertyName("tofix")]
+    public string? Tofix { get; set; }
 }
 
 /// <summary>Request payload for the "unmark" pipe command.</summary>
@@ -85,18 +90,42 @@ public class UnmarkRequest
     public bool All { get; set; }
 }
 
-/// <summary>Response payload for "mark" — returns the assigned id.</summary>
+/// <summary>
+/// Response payload for "mark". On success, <see cref="Id"/> is the assigned
+/// mark id. On server-side rejection (invalid color, invalid path, malformed
+/// request), <see cref="Error"/> carries the reason and Id is empty.
+/// BUG-BT-001: callers MUST check Error first — an empty Id is not the same
+/// as a null pipe response.
+/// </summary>
 public class MarkResponse
 {
     [JsonPropertyName("id")]
     public string Id { get; set; } = "";
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
 }
 
-/// <summary>Response payload for "unmark" — returns the removed count.</summary>
+/// <summary>Response payload for "unmark" — returns the removed count or error.</summary>
 public class UnmarkResponse
 {
     [JsonPropertyName("removed")]
     public int Removed { get; set; }
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+}
+
+/// <summary>
+/// Thrown by <see cref="WatchNotifier.AddMark"/> / RemoveMarks when the
+/// running watch process accepts the pipe call but rejects the request
+/// (invalid color, invalid path, etc.). Distinct from "no watch running"
+/// (which returns null) so the CLI can surface the actual error message
+/// instead of silently treating an empty id as success.
+/// </summary>
+public sealed class MarkRejectedException : Exception
+{
+    public MarkRejectedException(string message) : base(message) { }
 }
 
 /// <summary>

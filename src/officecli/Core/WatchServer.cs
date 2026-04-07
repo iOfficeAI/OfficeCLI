@@ -136,10 +136,10 @@ public class WatchServer : IDisposable
             }
             function _markTitle(m) {
                 var find = m.find || '';
-                var expect = m.expect || '';
+                var tofix = m.tofix || '';
                 var note = m.note || '';
-                if (expect) {
-                    var head = find ? (find + ' → ' + expect) : ('→ ' + expect);
+                if (tofix) {
+                    var head = find ? (find + ' → ' + tofix) : ('→ ' + tofix);
                     return note ? (head + '\n' + note) : head;
                 }
                 return note;
@@ -1141,7 +1141,7 @@ public class WatchServer : IDisposable
                 Find = req.Find,
                 Color = string.IsNullOrEmpty(trimmedColor) ? "#ffeb3b" : trimmedColor,
                 Note = req.Note,
-                Expect = req.Expect,
+                Tofix = req.Tofix,
                 MatchedText = Array.Empty<string>(),
                 Stale = false,
                 CreatedAt = DateTime.UtcNow,
@@ -1445,7 +1445,7 @@ public class WatchServer : IDisposable
             Find = mark.Find,
             Color = mark.Color,
             Note = mark.Note,
-            Expect = mark.Expect,
+            Tofix = mark.Tofix,
             CreatedAt = mark.CreatedAt,
             // Defaults get overwritten below.
             MatchedText = Array.Empty<string>(),
@@ -2000,7 +2000,7 @@ public class WatchServer : IDisposable
     /// The version field is a monotonically-increasing counter that clients
     /// can use for CAS-style update detection.
     ///
-    /// Uses the Relaxed encoder so CJK find/note/expect bytes flow through
+    /// Uses the Relaxed encoder so CJK find/note/tofix bytes flow through
     /// as literal characters instead of \uXXXX escapes.
     /// </summary>
     private static string BuildMarkUpdateJson(WatchMark[] marks, int version)

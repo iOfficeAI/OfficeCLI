@@ -201,7 +201,35 @@ done
 - **All connected browsers share one selection.** Opening the watch URL in two tabs gives a shared cursor; clicking in one updates highlights in the other. Last-write-wins.
 - **Same-file single-watch.** A given file can have only one watch process at a time; the second `watch <file>` errors.
 - **Group shapes select as a whole.** Clicking any shape inside a `<group>` selects the group container, not the inner shape. The CLI sees `/slide[1]/group[@id=N]`. Drilling into individual children of a group is not supported in v1.
-- **PPT only in v1.** Word/Excel HtmlPreview do not yet emit `data-path`; selection currently works on shapes/pictures/tables/charts/connectors/groups in `.pptx` watches only. Inherited layout/master decorations (footers, logos) are also not selectable.
+- **PPT and top-level Word.** Selection / mark works on `.pptx` shapes, pictures, tables, charts, connectors, groups, and on `.docx` top-level paragraphs (`<p>`/`<h1-6>`/`<li>`/`.empty`) and top-level `<table>`. Inherited layout/master decorations (footers, logos) and Word nested elements (table cells, run-level) are not addressable. **Excel `.xlsx` does not emit `data-path`** — `mark`/`selection` on xlsx will always resolve to `stale=true`. Excel support is a v2 candidate.
+
+## Marks — temporary visual annotations (no file mutation)
+
+`mark` / `unmark` / `get-marks` attach in-memory advisory marks to document elements via the running watch process. Marks are **not written to the file** and disappear when watch closes.
+
+```bash
+officecli mark <file> <path> [--prop find=...] [--prop color=...] [--prop note=...] [--prop tofix=...] [--prop regex=true] [--json]
+officecli unmark <file> [--path <p> | --all] [--json]
+officecli get-marks <file> [--json]
+```
+
+- **Path** must be in `data-path` format as emitted by watch HTML (e.g. `/p[1]`, `/slide[1]/shape[@id=N]`), not native handler query paths like `/body/p[@paraId=...]`. Padded paths (`" /p[1] "`) are auto-trimmed; pure-whitespace and paths not starting with `/` are rejected.
+- **find** is the literal string to highlight; `regex=true` switches to regex (or use raw-string `find='r"[abc]"'`). Catastrophic-backtracking patterns are bounded by a 500ms match timeout.
+- **color** must be a CSS color from the server-side whitelist: hex `#FFEB3B` / `#FFF` / `#FFFFFFAA`, `rgb(...)` / `rgba(...)`, or one of 22 named colors. Invalid colors are rejected with a clear error (CSS injection blocked).
+- **tofix** carries a structured proposed value for AI dry-run workflows: agent marks problems with `find` + `tofix`, human reviews in browser, then a separate pipeline applies the changes via real `set` commands.
+- All command output supports `--json` for machine consumption. Server rejections produce a non-zero exit + error envelope; do not parse "success" without checking the error field.
+
+**Workflow — AI校对 dry-run:**
+
+```bash
+officecli watch report.docx &
+# Agent scans the document and proposes fixes
+officecli mark report.docx /p[3] --prop find="资钱" --prop tofix="资金" --prop color=red --prop note="术语错误"
+officecli mark report.docx /p[7] --prop 'find=[的地得]' --prop regex=true --prop color=yellow
+# Human opens browser, reviews highlights, decides what to apply
+# Apply mode (separate pipeline reads get-marks --json, runs `set` for each accepted mark)
+officecli get-marks report.docx --json | jq '.marks[] | select(.tofix != null)'
+```
 
 ---
 
