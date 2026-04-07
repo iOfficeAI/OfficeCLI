@@ -166,6 +166,44 @@ officecli validate slides.pptx    # Must pass before delivery
 
 ---
 
+## Watch & Interactive Selection
+
+Live HTML preview that auto-refreshes on every file change. Browsers can click / shift-click / box-drag to select shapes; the CLI can read the current browser selection and act on it.
+
+```bash
+officecli watch <file> [--port N]      # Start preview server (default port 18080)
+officecli unwatch <file>               # Stop the preview server
+```
+
+Open the printed `http://localhost:N` URL in a browser. Click any shape to select (blue outline highlight); shift/cmd/ctrl+click to multi-select; drag from empty space to box-select (rubber-band).
+
+### `get <file> selected` — read what the user clicked
+
+```bash
+officecli get <file> selected [--json]
+```
+
+Returns the DocumentNodes for whatever is currently selected in the watching browser(s). Empty result if nothing selected. Exit code != 0 if no watch is running for this file.
+
+**Workflow** — agent acts on what the user visually selected:
+
+```bash
+# User clicks shapes in the browser, then asks "make these red"
+PATHS=$(officecli get deck.pptx selected --json | jq -r '.data.Results[].path')
+for p in $PATHS; do
+  officecli set deck.pptx "$p" --prop fill=FF0000
+done
+```
+
+### Key properties
+
+- **Selection survives file edits.** Paths use the stable `@id=` form (e.g. `/slide[1]/shape[@id=10000]`), so editing other shapes — or even the selected one — does not lose the selection.
+- **All connected browsers share one selection.** Opening the watch URL in two tabs gives a shared cursor; clicking in one updates highlights in the other. Last-write-wins.
+- **Same-file single-watch.** A given file can have only one watch process at a time; the second `watch <file>` errors.
+- **PPT only in v1.** Word/Excel HtmlPreview do not yet emit `data-path`; selection currently works on shapes/pictures/tables/charts/connectors in `.pptx` watches only.
+
+---
+
 ## L2: DOM Operations
 
 ### set — modify properties
