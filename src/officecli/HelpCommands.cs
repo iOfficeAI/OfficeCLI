@@ -8,6 +8,7 @@ namespace OfficeCli;
 /// <summary>
 /// Format-specific help: docx, xlsx, pptx with nested verb help (view, get, set, add, etc.).
 /// These are help-only commands — they do not execute any document operations.
+/// Real format-prefixed commands are rewritten in Program.cs before this handler runs.
 /// Args are intercepted before System.CommandLine parsing so --help works naturally.
 /// </summary>
 internal static class HelpCommands
@@ -49,10 +50,25 @@ internal static class HelpCommands
             break;
         }
 
-        // If extra args beyond element look like file paths or document paths,
-        // this is a real command — don't intercept for help
-        if (extraArg != null && (extraArg.Contains('.') || extraArg.Contains('/')))
-            return false;
+        static bool LooksLikeOfficeFilePath(string arg)
+        {
+            if (string.IsNullOrWhiteSpace(arg) || arg.StartsWith("--"))
+                return false;
+
+            var ext = System.IO.Path.GetExtension(arg).ToLowerInvariant();
+            return ext is ".doc" or ".docx" or ".xls" or ".xlsx" or ".ppt" or ".pptx";
+        }
+
+        if (verb is "add" or "set" or "get" or "query" or "remove" or "view" or "raw" or "raw-set")
+        {
+            if (elementArg != null && LooksLikeOfficeFilePath(elementArg))
+                return false;
+
+            // If extra args beyond element look like file paths or document paths,
+            // this is a real command — don't intercept for help
+            if (extraArg != null && (LooksLikeOfficeFilePath(extraArg) || extraArg.Contains('/') || extraArg.Contains('\\')))
+                return false;
+        }
 
         // Parse element.property syntax
         string? element = null;
@@ -654,8 +670,8 @@ Available parts:
   /styles        Style definitions
   /numbering     List/numbering definitions
   /settings      Document settings
-  /header[N]     Header N (0-based)
-  /footer[N]     Footer N (0-based)
+  /header[N]     Header N (1-based)
+  /footer[N]     Footer N (1-based)
 
 raw-set actions: append, prepend, insertbefore, insertafter, replace, remove, setattr
 No xmlns declarations needed -- prefixes auto-registered: w, a, r, mc, wp, wps, v, wp14
