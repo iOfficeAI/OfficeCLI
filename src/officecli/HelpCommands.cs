@@ -767,7 +767,35 @@ Paths:
   /Sheet1/validation[N] Data validation (sqref, type, formula1, ...)
   /Sheet1/cf[N]        Conditional formatting
   /Sheet1/autofilter   AutoFilter range
+  /Sheet1/pivottable[N] Pivot table (name, location, rows, cols, filters, dataField{N}, style)
   /namedrange[N]       Named range by index or name
+
+PivotTable attributes (Get readback keys — canonical):
+  name              Pivot table name
+  cacheId           Cache definition ID
+  location          Cell range where the pivot is placed
+  fieldCount        Total number of source fields
+  rows              Comma-separated row field names
+  cols              Comma-separated column field names
+  filters           Comma-separated filter field names
+  dataFieldCount    Number of data (value) fields
+  dataField{N}      Data field info, format: "name:func:fieldIdx"
+  dataField{N}.showAs  showAs token (percent_of_row / percent_of_col / ...)
+  style             Applied pivot table style name
+
+Example pivot readback:
+  /Sheet1/pivottable[1]
+    name: SalesPivot
+    cacheId: 1
+    location: H1:K15
+    fieldCount: 5
+    rows: Region,Category
+    cols: Year
+    filters: Status
+    dataFieldCount: 2
+    dataField1: Sum of Sales:sum:3
+    dataField2: Count of Qty:count:4
+    style: PivotStyleMedium9
 
 Options:
   --depth N   Depth of child nodes (default 1)
