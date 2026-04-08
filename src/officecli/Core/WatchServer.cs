@@ -1108,11 +1108,13 @@ public class WatchServer : IDisposable
             //   3. Require leading '/': zero-width space U+200B and BOM U+FEFF
             //      are not .NET whitespace but are never valid data-path prefixes,
             //      so a StartsWith('/') check also filters them out.
-            //   4. Store the trimmed form so later `unmark --path /p[1]` matches
-            //      what the user typed, not `" /p[1] "` with padding.
+            //   4. Store the trimmed form so later `unmark --path /body/p[1]`
+            //      matches what the user typed, not `" /body/p[1] "` with padding.
+            // BUG-BT-R303: error messages must be actionable for AI agents — say
+            // what the accepted format is, not just "invalid".
             var trimmedPath = req.Path?.Trim() ?? "";
             if (string.IsNullOrWhiteSpace(trimmedPath) || !trimmedPath.StartsWith("/"))
-                return "{\"error\":\"invalid path\"}";
+                return "{\"error\":\"invalid path: must start with '/' (e.g. /body/p[1] for Word, /slide[1]/shape[@id=N] for PowerPoint)\"}";
 
             // BUG-TESTER-002: validate color server-side. The browser sets
             // el.style.backgroundColor = mark.color verbatim, so an unsanitized
@@ -1128,12 +1130,14 @@ public class WatchServer : IDisposable
             var trimmedColor = req.Color?.Trim();
             // BUG-A-R2-M01: accept bare hex (FF00FF, F0F) for consistency with the
             // rest of officecli's color parsers. The validator below requires the
-            // canonical #RRGGBB form, so promote 3/6-digit bare hex to that form
-            // before validation. Anything else (named colors, rgb(...), already-
-            // hashed hex) passes through unchanged.
+            // canonical #-prefixed form, so promote 3/6/8-digit bare hex to that
+            // form before validation. Anything else (named colors, rgb(...),
+            // already-hashed hex) passes through unchanged.
             trimmedColor = NormalizeMarkColorInput(trimmedColor);
+            // BUG-BT-R303: actionable error message — list the accepted formats
+            // so AI agents can self-correct without reading the source.
             if (!string.IsNullOrEmpty(trimmedColor) && !IsValidMarkColor(trimmedColor))
-                return "{\"error\":\"invalid color\"}";
+                return "{\"error\":\"invalid color: accepted forms are #RGB / #RRGGBB / #RRGGBBAA hex (with or without # prefix), rgb(r,g,b), rgba(r,g,b,a), or named colors (red, blue, yellow, orange, green, purple, ...)\"}";
 
             var mark = new WatchMark
             {
@@ -1311,19 +1315,23 @@ public class WatchServer : IDisposable
         "navy", "olive", "maroon", "silver", "gold", "transparent",
     };
 
-    // BUG-A-R2-M01: Promote bare 3- or 6-digit hex to #RRGGBB so the validator
-    // and storage match the rest of officecli's color convention. Returns the
-    // input unchanged for any other shape (named, rgb(...), already #-prefixed,
-    // or null/empty). Idempotent.
+    // BUG-A-R2-M01 / BUG-TESTER-R302: Promote bare 3-, 6-, or 8-digit hex to
+    // #-prefixed form so the validator and storage match the rest of officecli's
+    // color convention. Returns the input unchanged for any other shape (named,
+    // rgb(...), already #-prefixed, or null/empty). Idempotent.
     private static readonly System.Text.RegularExpressions.Regex _bareHex6Rx =
         new("^[0-9a-fA-F]{6}$", System.Text.RegularExpressions.RegexOptions.Compiled);
     private static readonly System.Text.RegularExpressions.Regex _bareHex3Rx =
         new("^[0-9a-fA-F]{3}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _bareHex8Rx =
+        new("^[0-9a-fA-F]{8}$", System.Text.RegularExpressions.RegexOptions.Compiled);
     internal static string? NormalizeMarkColorInput(string? color)
     {
         if (string.IsNullOrEmpty(color)) return color;
         if (color[0] == '#') return color;
         if (_bareHex6Rx.IsMatch(color))
+            return "#" + color.ToUpperInvariant();
+        if (_bareHex8Rx.IsMatch(color))
             return "#" + color.ToUpperInvariant();
         if (_bareHex3Rx.IsMatch(color))
         {

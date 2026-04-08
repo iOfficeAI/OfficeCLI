@@ -44,6 +44,16 @@ static partial class CommandBuilder
             Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 
             using var watch = new WatchServer(file.FullName, port, initialHtml: initialHtml);
+            // BUG-BT-R302: SIGTERM (pkill, kill) does NOT run `using` finally
+            // blocks, so the WatchServer.Dispose() pipe-socket cleanup never
+            // runs and stale CoreFxPipe_* files accumulate in $TMPDIR. Hook
+            // ProcessExit so a graceful SIGTERM still triggers Dispose. SIGKILL
+            // is unrecoverable by definition (kernel-level), so this only
+            // covers cooperative shutdown.
+            AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+            {
+                try { watch.Dispose(); } catch { /* best effort */ }
+            };
             watch.RunAsync(cts.Token).GetAwaiter().GetResult();
             return 0;
         }));

@@ -213,7 +213,11 @@ officecli unmark <file> [--path <p> | --all] [--json]
 officecli get-marks <file> [--json]
 ```
 
-- **Path** must be in `data-path` format as emitted by watch HTML (e.g. `/p[1]`, `/slide[1]/shape[@id=N]`), not native handler query paths like `/body/p[@paraId=...]`. Padded paths (`" /p[1] "`) are auto-trimmed; pure-whitespace and paths not starting with `/` are rejected.
+- **Path** must be in `data-path` format as emitted by watch HTML:
+  - Word: `/body/p[N]` for paragraphs/headings/lists, `/body/table[N]` for top-level tables
+  - PowerPoint: `/slide[N]/shape[@id=ID]` (stable id form, prefer this), or `/slide[N]/shape[N]` (positional fallback when no cNvPr id)
+  - Excel: not supported in v1 — `mark` on `.xlsx` will always be `stale=true` because the Excel preview does not yet emit `data-path`
+  Native handler query paths like `/body/p[@paraId=...]` will NOT resolve as data-path. Padded paths (`" /body/p[1] "`) are auto-trimmed; pure-whitespace paths and paths not starting with `/` are rejected.
 - **find** is the literal string to highlight; `regex=true` switches to regex (or use raw-string `find='r"[abc]"'`). Catastrophic-backtracking patterns are bounded by a 500ms match timeout.
 - **color** must be a CSS color from the server-side whitelist: hex `#FFEB3B` / `#FFF` / `#FFFFFFAA`, `rgb(...)` / `rgba(...)`, or one of 22 named colors. Invalid colors are rejected with a clear error (CSS injection blocked).
 - **tofix** carries a structured proposed value for AI dry-run workflows: agent marks problems with `find` + `tofix`, human reviews in browser, then a separate pipeline applies the changes via real `set` commands.
@@ -224,8 +228,8 @@ officecli get-marks <file> [--json]
 ```bash
 officecli watch report.docx &
 # Agent scans the document and proposes fixes
-officecli mark report.docx /p[3] --prop find="资钱" --prop tofix="资金" --prop color=red --prop note="术语错误"
-officecli mark report.docx /p[7] --prop 'find=[的地得]' --prop regex=true --prop color=yellow
+officecli mark report.docx /body/p[3] --prop find="资钱" --prop tofix="资金" --prop color=red --prop note="术语错误"
+officecli mark report.docx /body/p[7] --prop 'find=[的地得]' --prop regex=true --prop color=yellow
 # Human opens browser, reviews highlights, decides what to apply
 # Apply mode (separate pipeline reads get-marks --json, runs `set` for each accepted mark)
 officecli get-marks report.docx --json | jq '.marks[] | select(.tofix != null)'

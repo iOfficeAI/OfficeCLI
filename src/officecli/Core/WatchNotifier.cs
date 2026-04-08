@@ -124,7 +124,10 @@ public static class WatchNotifier
                 var responseLine = reader.ReadLine();
                 if (string.IsNullOrEmpty(responseLine)) { result = null; return; }
                 var resp = JsonSerializer.Deserialize(responseLine, WatchMarkJsonContext.Default.MarkResponse);
-                if (!string.IsNullOrEmpty(resp?.Error)) { error = resp!.Error; return; }
+                // BUG-FUZZER-R3-M01: use IsNullOrWhiteSpace for symmetry with the
+                // server-side path/color validation. A whitespace-only error string
+                // would otherwise spuriously throw MarkRejectedException.
+                if (!string.IsNullOrWhiteSpace(resp?.Error)) { error = resp!.Error; return; }
                 result = string.IsNullOrEmpty(resp?.Id) ? null : resp.Id;
             }, PipeTimeout);
         }
