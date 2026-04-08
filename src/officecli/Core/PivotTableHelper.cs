@@ -32,13 +32,23 @@ internal static class PivotTableHelper
     //   "asc"         — StringComparer.Ordinal ascending (DEFAULT, preserves
     //                   byte-level regression baselines)
     //   "desc"        — StringComparer.Ordinal descending
-    //   "locale"      — CurrentCulture ascending (pinyin for zh-CN, etc.)
-    //   "locale-desc" — CurrentCulture descending
+    //   "locale"      — zh-CN culture ascending (pinyin). Hard-coded to
+    //                   zh-CN rather than StringComparer.CurrentCulture:
+    //                   on non-Chinese process locales (e.g. en-US on CI or
+    //                   most developer machines) CurrentCulture silently
+    //                   degrades to Ordinal for CJK strings, making locale
+    //                   indistinguishable from asc. Pinyin is the primary
+    //                   use case this mode exists for; honoring it regardless
+    //                   of process locale is worth the lost generality.
+    //   "locale-desc" — zh-CN culture descending
     [ThreadStatic] private static string? _axisSortMode;
+
+    private static readonly IComparer<string> ZhCnComparer =
+        StringComparer.Create(System.Globalization.CultureInfo.GetCultureInfo("zh-CN"), ignoreCase: false);
 
     private static IComparer<string> ActiveAxisComparer => _axisSortMode switch
     {
-        "locale" or "locale-desc" => StringComparer.CurrentCulture,
+        "locale" or "locale-desc" => ZhCnComparer,
         _ => StringComparer.Ordinal
     };
 
@@ -163,6 +173,118 @@ internal static class PivotTableHelper
             : source.OrderBy(keySelector, ActiveAxisComparer);
     }
 
+    // ==================== Top-N filter ====================
+    //
+    // Applies a Top-N filter to the source data BEFORE the cache / renderer
+    // see it. Semantics (V1):
+    //   * Ranks values of the OUTERMOST row field by the FIRST value field's
+    //     aggregate (using that value field's func: sum/avg/count/...).
+    //   * Keeps the top N keys by that aggregate (descending — "top = largest").
+    //   * Drops source rows whose outer-row-field value is not in the kept set.
+    //
+    // Why filter source rows instead of emitting <top10>/<autoShow> OOXML:
+    // the renderer writes pivot cells directly into sheetData as a static
+    // snapshot. There is no Excel-side recompute step for an OOXML-level
+    // filter to honour, so filtering the source is what keeps cache,
+    // rendered cells, and grand totals in lock-step.
+    //
+    // Interaction with `sort`: independent. `topN` picks the set by VALUE
+    // (largest aggregates), `sort` arranges the kept set by LABEL
+    // (asc/desc/locale). Both compose cleanly.
+    //
+    // Known limitations (tracked for v2 expansion):
+    //   * Outermost row field only — col-axis and inner-level Top-N are not
+    //     supported.
+    //   * Always "top" (largest). "bottom" / worst-N is not supported.
+    //   * Ranks by the FIRST value field when multiple values exist.
+    //   * Set operation does NOT re-apply Top-N (cache is already built at
+    //     that point). Users must remove + re-add the pivot to re-filter.
+    //
+    // No-op cases (silently skipped — mirrors how `sort` handles degenerate
+    // inputs):
+    //   * topN <= 0
+    //   * rows empty (nothing to rank on)
+    //   * values empty (nothing to rank by)
+    //   * topN >= distinct outer keys (keeps everything)
+    private static void ApplyTopNFilter(
+        List<string[]> columnData,
+        List<int> rowFields,
+        List<(int idx, string func, string showAs, string name)> valueFields,
+        int topN)
+    {
+        if (topN <= 0 || rowFields.Count == 0 || valueFields.Count == 0 || columnData.Count == 0)
+            return;
+
+        var outerFieldIdx = rowFields[0];
+        var valueFieldIdx = valueFields[0].idx;
+        var valueFunc = valueFields[0].func;
+        if (outerFieldIdx < 0 || outerFieldIdx >= columnData.Count) return;
+        if (valueFieldIdx < 0 || valueFieldIdx >= columnData.Count) return;
+
+        var outerCol = columnData[outerFieldIdx];
+        var valueCol = columnData[valueFieldIdx];
+        var rowCount = outerCol.Length;
+        if (rowCount == 0) return;
+
+        // Aggregate per outer-key using the first value field's function.
+        var buckets = new Dictionary<string, List<double>>(StringComparer.Ordinal);
+        for (int r = 0; r < rowCount; r++)
+        {
+            var key = outerCol[r];
+            if (string.IsNullOrEmpty(key)) continue;
+            if (r >= valueCol.Length) continue;
+            if (!double.TryParse(valueCol[r], System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var v))
+                continue;
+            if (!buckets.TryGetValue(key, out var list))
+            {
+                list = new List<double>();
+                buckets[key] = list;
+            }
+            list.Add(v);
+        }
+
+        if (buckets.Count <= topN) return; // keeps everything — no-op
+
+        // Rank keys by aggregate descending; stable tie-break by ordinal label
+        // so the kept set is deterministic across runs.
+        var kept = buckets
+            .Select(kv => (key: kv.Key, agg: ReducePivotValues(kv.Value, valueFunc)))
+            .OrderByDescending(t => t.agg)
+            .ThenBy(t => t.key, StringComparer.Ordinal)
+            .Take(topN)
+            .Select(t => t.key)
+            .ToHashSet(StringComparer.Ordinal);
+
+        // Build keep-mask over source rows.
+        var keep = new bool[rowCount];
+        int keepCount = 0;
+        for (int r = 0; r < rowCount; r++)
+        {
+            var k = outerCol[r];
+            if (!string.IsNullOrEmpty(k) && kept.Contains(k))
+            {
+                keep[r] = true;
+                keepCount++;
+            }
+        }
+
+        if (keepCount == rowCount) return; // nothing to drop
+
+        // Apply mask to every column in place.
+        for (int c = 0; c < columnData.Count; c++)
+        {
+            var src = columnData[c];
+            var dst = new string[keepCount];
+            int w = 0;
+            for (int r = 0; r < rowCount && r < src.Length; r++)
+            {
+                if (keep[r]) dst[w++] = src[r];
+            }
+            columnData[c] = dst;
+        }
+    }
+
     /// <summary>
     /// Create a pivot table on the target worksheet.
     /// </summary>
@@ -197,6 +319,29 @@ internal static class PivotTableHelper
         if (headers.Length == 0)
             throw new ArgumentException("Source range has no data");
 
+        // 1b. Date auto-grouping preprocessing. Scans rows/cols/filters props
+        // for `fieldName:grouping` syntax (e.g. `rows='日期:month,城市'`) and
+        // creates a new virtual column per grouped field containing the
+        // bucketed labels. The raw field spec is rewritten to reference the
+        // new virtual column so ParseFieldList below sees a clean name.
+        //
+        // Supported groupings:
+        //   :year    → "2024"
+        //   :quarter → "2024-Q1"
+        //   :month   → "2024-01"
+        //   :day     → "2024-01-05"
+        //
+        // Compose multiple groupings for hierarchical date layouts:
+        // `rows='日期:year,日期:quarter'` → 2-level year-then-quarter.
+        //
+        // Returns a list of DateGroupSpec describing each derived field so
+        // BuildCacheDefinition can emit the native <fieldGroup> + <rangePr> +
+        // <groupItems> XML that Excel requires to accept the pivot as a
+        // real date-grouped table (without it, Excel detects a "fieldGroup
+        // shape mismatch" and refuses to render the inner hierarchy levels).
+        List<DateGroupSpec> dateGroups;
+        (headers, columnData, dateGroups) = ApplyDateGrouping(headers, columnData, properties);
+
         // 2. Parse field assignments from properties
         var rowFields = ParseFieldList(properties, "rows", headers);
         var colFields = ParseFieldList(properties, "cols", headers);
@@ -217,6 +362,18 @@ internal static class PivotTableHelper
             }
         }
 
+        // 2b. Apply Top-N filter to the source rows (ranked by the first value
+        // field's aggregate on the outermost row field). Runs BEFORE cache
+        // build so the cache, rendered cells, and grand totals all reflect
+        // the filtered subset. See ApplyTopNFilter for semantics & limits.
+        if ((properties.TryGetValue("topN", out var topNStr)
+             || properties.TryGetValue("topn", out topNStr))
+            && int.TryParse(topNStr, System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture, out var topN))
+        {
+            ApplyTopNFilter(columnData, rowFields, valueFields, topN);
+        }
+
         // 3. Generate unique cache ID
         uint cacheId = 0;
         var workbook = workbookPart.Workbook
@@ -232,8 +389,20 @@ internal static class PivotTableHelper
         // Build cache definition + per-field shared-item index maps. The maps are
         // needed to write pivotCacheRecords below: each non-numeric field value is
         // referenced as <x v="N"/> where N is the value's position in sharedItems.
+        //
+        // Axis fields (row/col/filter) ALWAYS go through the string/indexed
+        // path even if their values parse as numeric. Otherwise the pivotField
+        // items list (which AppendFieldItems builds by index) and the cache
+        // records (which would emit <n v="..."/>) disagree on what "index 0"
+        // means, and Excel refuses to render the row/col hierarchy. Date
+        // grouping's "year" bucket (values like "2024"/"2025") was the
+        // triggering case — the fix is to mark axis fields here.
+        var axisFieldSet = new HashSet<int>();
+        foreach (var r in rowFields) axisFieldSet.Add(r);
+        foreach (var c in colFields) axisFieldSet.Add(c);
+        foreach (var f in filterFields) axisFieldSet.Add(f);
         var (cacheDef, fieldNumeric, fieldValueIndex) =
-            BuildCacheDefinition(sourceSheetName, sourceRef, headers, columnData);
+            BuildCacheDefinition(sourceSheetName, sourceRef, headers, columnData, axisFieldSet, dateGroups);
         cachePart.PivotCacheDefinition = cacheDef;
         cachePart.PivotCacheDefinition.Save();
 
@@ -242,7 +411,14 @@ internal static class PivotTableHelper
         // because saveData defaults to true. Writing real records also makes the file
         // self-contained for non-refreshing consumers (POI, third-party parsers).
         var recordsPart = cachePart.AddNewPart<PivotTableCacheRecordsPart>();
-        recordsPart.PivotCacheRecords = BuildCacheRecords(columnData, fieldNumeric, fieldValueIndex);
+        // Derived date-group fields (databaseField="0") must be excluded from
+        // pivotCacheRecords — Excel computes them from the base field's
+        // <fieldGroup> definition on the fly. Pass their indices so the
+        // record writer skips them.
+        var derivedFieldSet = dateGroups.Count > 0
+            ? new HashSet<int>(dateGroups.Select(g => g.DerivedFieldIdx))
+            : null;
+        recordsPart.PivotCacheRecords = BuildCacheRecords(columnData, fieldNumeric, fieldValueIndex, derivedFieldSet);
         recordsPart.PivotCacheRecords.Save();
 
         // The pivotCacheDefinition element MUST carry an r:id attribute pointing to the
@@ -2648,6 +2824,226 @@ internal static class PivotTableHelper
         return cell;
     }
 
+    // ==================== Date Grouping Preprocessing ====================
+
+    /// <summary>
+    /// Metadata describing one date-grouped derived field. Used by the cache
+    /// builder to emit native Excel <c>&lt;fieldGroup&gt;</c> XML that makes
+    /// Excel recognize the derived field as a proper date bucket (required
+    /// for the rendered layout to appear — without this, Excel detects a
+    /// "fieldGroup shape mismatch" and falls back to grand-total only).
+    /// </summary>
+    private sealed class DateGroupSpec
+    {
+        /// <summary>Index of the original date field in the final columnData list.</summary>
+        public int BaseFieldIdx { get; set; }
+        /// <summary>Index of this derived field in the final columnData list.</summary>
+        public int DerivedFieldIdx { get; set; }
+        /// <summary>Grouping kind: "year" / "quarter" / "month" / "day".</summary>
+        public string Grouping { get; set; } = "";
+        /// <summary>Minimum date observed across the source column.</summary>
+        public DateTime? MinDate { get; set; }
+        /// <summary>Maximum date observed across the source column.</summary>
+        public DateTime? MaxDate { get; set; }
+    }
+
+    /// <summary>
+    /// Scans rows/cols/filters properties for <c>fieldName:grouping</c> syntax
+    /// and creates a new virtual column per unique (field, grouping) pair. The
+    /// original property strings are rewritten in-place so downstream
+    /// ParseFieldList sees clean names.
+    ///
+    /// Example: input properties
+    ///     rows = "日期:year,日期:quarter"
+    ///     cols = "产品"
+    /// With source columns [日期, 产品, 金额], returns:
+    ///     headers    = [日期, 产品, 金额, 日期 (Year), 日期 (Quarter)]
+    ///     columnData = [orig days, products, amounts, year labels, quarter labels]
+    ///     dateGroups = [ {Base=0, Derived=3, Grouping=year}, {Base=0, Derived=4, Grouping=quarter} ]
+    /// And mutates properties to:
+    ///     rows = "日期 (Year),日期 (Quarter)"
+    ///
+    /// Multiple field specs referencing the same (field, grouping) pair share
+    /// the single virtual column. Rows that don't parse as dates pass through
+    /// unchanged so columns with a few stray non-date rows don't break.
+    /// </summary>
+    private static (string[] headers, List<string[]> columnData, List<DateGroupSpec> dateGroups) ApplyDateGrouping(
+        string[] headers, List<string[]> columnData, Dictionary<string, string> properties)
+    {
+        // Track virtual columns keyed by (srcIdx, grouping). Value = new
+        // column's header name, used to rewrite property references.
+        var virtualColumns = new Dictionary<(int srcIdx, string grouping), string>();
+
+        bool RewriteFieldListProp(string propKey)
+        {
+            if (!properties.TryGetValue(propKey, out var raw) || string.IsNullOrEmpty(raw))
+                return false;
+
+            var parts = raw.Split(',');
+            var outParts = new List<string>(parts.Length);
+            bool changed = false;
+
+            foreach (var p in parts)
+            {
+                var spec = p.Trim();
+                if (spec.Length == 0) continue;
+
+                // Grouping suffix is allowed only if the prefix matches an
+                // existing header. Otherwise the ':' might be part of the
+                // field name (unlikely in practice but allowed by the parser)
+                // and we must not mangle it.
+                var colonIdx = spec.LastIndexOf(':');
+                if (colonIdx <= 0 || colonIdx == spec.Length - 1)
+                {
+                    outParts.Add(spec);
+                    continue;
+                }
+
+                var fieldName = spec.Substring(0, colonIdx).Trim();
+                var grouping = spec.Substring(colonIdx + 1).Trim().ToLowerInvariant();
+                if (grouping != "year" && grouping != "quarter"
+                    && grouping != "month" && grouping != "day")
+                {
+                    outParts.Add(spec);
+                    continue;
+                }
+
+                // Locate the source field.
+                int srcIdx = -1;
+                for (int i = 0; i < headers.Length; i++)
+                {
+                    if (headers[i] != null && headers[i].Equals(fieldName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        srcIdx = i;
+                        break;
+                    }
+                }
+                if (srcIdx < 0)
+                {
+                    outParts.Add(spec);
+                    continue;
+                }
+
+                if (!virtualColumns.TryGetValue((srcIdx, grouping), out var virtName))
+                {
+                    virtName = $"{fieldName} ({CapitalizeFirst(grouping)})";
+                    virtualColumns[(srcIdx, grouping)] = virtName;
+                }
+                outParts.Add(virtName);
+                changed = true;
+            }
+
+            if (changed)
+                properties[propKey] = string.Join(",", outParts);
+            return changed;
+        }
+
+        bool any = false;
+        any |= RewriteFieldListProp("rows");
+        any |= RewriteFieldListProp("cols");
+        any |= RewriteFieldListProp("columns");
+        any |= RewriteFieldListProp("filters");
+
+        var dateGroups = new List<DateGroupSpec>();
+
+        if (!any || virtualColumns.Count == 0)
+            return (headers, columnData, dateGroups);
+
+        // Materialize each virtual column AND record a DateGroupSpec so the
+        // cache builder can emit <fieldGroup> XML. Output ordering follows
+        // the insertion order of virtualColumns (first reference in props).
+        // Also walk the source date column once to find min/max for the
+        // rangePr startDate/endDate attributes Excel requires.
+        var newHeaders = new List<string>(headers);
+        foreach (var ((srcIdx, grouping), virtName) in virtualColumns)
+        {
+            var src = columnData[srcIdx];
+            var derived = new string[src.Length];
+            DateTime? min = null, max = null;
+            for (int r = 0; r < src.Length; r++)
+            {
+                derived[r] = BucketDateValue(src[r], grouping);
+                if (TryParseSourceDate(src[r], out var dt))
+                {
+                    if (!min.HasValue || dt < min.Value) min = dt;
+                    if (!max.HasValue || dt > max.Value) max = dt;
+                }
+            }
+            newHeaders.Add(virtName);
+            columnData.Add(derived);
+            dateGroups.Add(new DateGroupSpec
+            {
+                BaseFieldIdx = srcIdx,
+                DerivedFieldIdx = columnData.Count - 1,
+                Grouping = grouping,
+                MinDate = min,
+                MaxDate = max,
+            });
+        }
+
+        return (newHeaders.ToArray(), columnData, dateGroups);
+    }
+
+    /// <summary>
+    /// Parse a cell value as a DateTime, handling both string form
+    /// ("2024-01-05") and Excel's OLE serial number form ("45296"). Used by
+    /// ApplyDateGrouping to find the min/max needed for fieldGroup rangePr.
+    /// </summary>
+    private static bool TryParseSourceDate(string raw, out DateTime dt)
+    {
+        dt = default;
+        if (string.IsNullOrEmpty(raw)) return false;
+        if (DateTime.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeLocal, out dt))
+            return true;
+        if (double.TryParse(raw, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var serial))
+        {
+            try { dt = DateTime.FromOADate(serial); return true; }
+            catch { return false; }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Transform a raw cell value into a date bucket label for the given
+    /// grouping. Accepts either a formatted date string ("2024-01-05") or
+    /// Excel's serial number form ("45296"). Unparseable values pass through
+    /// unchanged.
+    /// </summary>
+    private static string BucketDateValue(string raw, string grouping)
+    {
+        if (string.IsNullOrEmpty(raw)) return raw ?? string.Empty;
+
+        DateTime dt;
+        if (!DateTime.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeLocal, out dt))
+        {
+            if (double.TryParse(raw, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var serial))
+            {
+                try { dt = DateTime.FromOADate(serial); }
+                catch { return raw; }
+            }
+            else
+            {
+                return raw;
+            }
+        }
+
+        return grouping switch
+        {
+            "year"    => dt.Year.ToString("D4", System.Globalization.CultureInfo.InvariantCulture),
+            "quarter" => $"{dt.Year:D4}-Q{(dt.Month - 1) / 3 + 1}",
+            "month"   => dt.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture),
+            "day"     => dt.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            _         => raw,
+        };
+    }
+
+    private static string CapitalizeFirst(string s)
+        => string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s.Substring(1);
+
     // ==================== Source Data Reader ====================
 
     private static (string[] headers, List<string[]> columnData, uint?[] columnStyleIds) ReadSourceData(
@@ -2743,7 +3139,9 @@ internal static class PivotTableHelper
     private static (PivotCacheDefinition def, bool[] fieldNumeric, Dictionary<string, int>[] fieldValueIndex)
         BuildCacheDefinition(
             string sourceSheetName, string sourceRef,
-            string[] headers, List<string[]> columnData)
+            string[] headers, List<string[]> columnData,
+            HashSet<int>? axisFieldIndices = null,
+            List<DateGroupSpec>? dateGroups = null)
     {
         var recordCount = columnData.Count > 0 ? columnData[0].Length : 0;
 
@@ -2781,15 +3179,71 @@ internal static class PivotTableHelper
         //   - fieldNumeric[i]: true if field i is numeric (records emit <n v=".."/>)
         //   - fieldValueIndex[i]: value→sharedItems index map for non-numeric fields
         //     (records emit <x v="N"/> referencing this index)
+        //
+        // Date group handling:
+        //   - Base date field gets standard enumerated items PLUS a <fieldGroup
+        //     par="N"/> pointer to the FIRST derived field (Excel's convention).
+        //   - Each derived field writes a synthetic cacheField with
+        //     databaseField="0", a <fieldGroup base="baseIdx"> containing
+        //     <rangePr groupBy="..." startDate=".." endDate=".." /> and a
+        //     <groupItems> list of string labels — including LEADING/TRAILING
+        //     sentinels ("<startDate" / ">endDate") that Excel requires.
+        //   - Derived fields emit NO entries in pivotCacheRecords (databaseField=0).
+        //     BuildCacheRecords in the caller must skip them, which we signal by
+        //     setting fieldNumeric[derivedIdx] = false AND leaving fieldValueIndex
+        //     entries pointing into the enumerated shared items of the synthetic
+        //     field. See BuildCacheRecords for the skip logic.
         var fieldNumeric = new bool[headers.Length];
         var fieldValueIndex = new Dictionary<string, int>[headers.Length];
+
+        // Build quick lookups from the date group specs.
+        var derivedByIdx = new Dictionary<int, DateGroupSpec>();
+        var baseFields = new HashSet<int>();
+        if (dateGroups != null)
+        {
+            foreach (var g in dateGroups)
+            {
+                derivedByIdx[g.DerivedFieldIdx] = g;
+                baseFields.Add(g.BaseFieldIdx);
+            }
+        }
 
         var cacheFields = new CacheFields { Count = (uint)headers.Length };
         for (int i = 0; i < headers.Length; i++)
         {
             var fieldName = string.IsNullOrEmpty(headers[i]) ? $"Column{i + 1}" : headers[i];
             var values = i < columnData.Count ? columnData[i] : Array.Empty<string>();
-            cacheFields.AppendChild(BuildCacheField(fieldName, values, out fieldNumeric[i], out fieldValueIndex[i]));
+
+            if (derivedByIdx.TryGetValue(i, out var spec))
+            {
+                // Derived date group field — synthesized, no records entries.
+                cacheFields.AppendChild(BuildDateGroupDerivedCacheField(fieldName, spec,
+                    out fieldValueIndex[i]));
+                fieldNumeric[i] = false; // records should skip this field
+                continue;
+            }
+
+            if (baseFields.Contains(i))
+            {
+                // Base date field — enumerate date items (not a plain numeric
+                // column) and add a <fieldGroup par="N"/> pointing at the first
+                // derived field for this base. Records for this field emit
+                // <x v="N"/> referencing the enumerated date items.
+                int parIdx = derivedByIdx
+                    .Where(kv => kv.Value.BaseFieldIdx == i)
+                    .Min(kv => kv.Key);
+                cacheFields.AppendChild(BuildDateGroupBaseCacheField(fieldName, values, parIdx,
+                    out fieldValueIndex[i]));
+                fieldNumeric[i] = false;
+                continue;
+            }
+
+            // Axis fields (row/col/filter) go through the string/indexed path
+            // even when their values parse as numeric, so pivotField items
+            // indices and cache record references stay in sync.
+            bool forceStringIndexed = axisFieldIndices?.Contains(i) == true;
+            cacheFields.AppendChild(BuildCacheField(
+                fieldName, values, out fieldNumeric[i], out fieldValueIndex[i], forceStringIndexed));
         }
         cacheDef.AppendChild(cacheFields);
 
@@ -2797,11 +3251,18 @@ internal static class PivotTableHelper
     }
 
     private static CacheField BuildCacheField(
-        string name, string[] values, out bool isNumeric, out Dictionary<string, int> valueIndex)
+        string name, string[] values, out bool isNumeric, out Dictionary<string, int> valueIndex,
+        bool forceStringIndexed = false)
     {
         var field = new CacheField { Name = name, NumberFormatId = 0u };
-        isNumeric = values.Length > 0 && values.All(v =>
+        bool valuesAreNumeric = values.Length > 0 && values.All(v =>
             string.IsNullOrEmpty(v) || double.TryParse(v, System.Globalization.CultureInfo.InvariantCulture, out _));
+        // When forceStringIndexed is true (axis fields), report isNumeric=false
+        // so downstream record-writing code uses the valueIndex map to emit
+        // <x v="N"/> references instead of <n v="..."/> direct values. The
+        // local 'valuesAreNumeric' still determines which sharedItems branch
+        // we take below.
+        isNumeric = valuesAreNumeric && !forceStringIndexed;
         valueIndex = new Dictionary<string, int>(StringComparer.Ordinal);
 
         var sharedItems = new SharedItems();
@@ -2854,6 +3315,232 @@ internal static class PivotTableHelper
         return field;
     }
 
+    // ==================== Date Group Cache Field Builders ====================
+
+    /// <summary>
+    /// Build the base date cacheField for a date-grouped column. Enumerates
+    /// every parsed source date as a <c>&lt;d v="..."/&gt;</c> shared item and
+    /// appends a <c>&lt;fieldGroup par="N"/&gt;</c> pointing at the first
+    /// derived field for this base (Excel convention: even when there are
+    /// multiple derived fields — year + quarter + month — only the lowest
+    /// par index is written on the base).
+    ///
+    /// Verified against Excel-authored /tmp/date_authored.xlsx: the base
+    /// field has <c>containsDate="1"</c>, enumerated ISO-format dates, no
+    /// <c>containsString</c>/<c>containsNumber</c> attributes.
+    /// </summary>
+    private static CacheField BuildDateGroupBaseCacheField(
+        string name, string[] values, int parDerivedIdx,
+        out Dictionary<string, int> valueIndex)
+    {
+        var field = new CacheField { Name = name, NumberFormatId = 164u };
+        valueIndex = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        // Collect unique parsed dates in source order. Excel enumerates them
+        // in the order they first appear in the data, which keeps the cache
+        // record indices stable and human-readable.
+        var uniqueDates = new List<DateTime>();
+        var dateToIdx = new Dictionary<DateTime, int>();
+        DateTime? min = null, max = null;
+        for (int r = 0; r < values.Length; r++)
+        {
+            if (!TryParseSourceDate(values[r], out var dt)) continue;
+            if (!dateToIdx.ContainsKey(dt))
+            {
+                dateToIdx[dt] = uniqueDates.Count;
+                uniqueDates.Add(dt);
+            }
+            if (!min.HasValue || dt < min.Value) min = dt;
+            if (!max.HasValue || dt > max.Value) max = dt;
+        }
+
+        var sharedItems = new SharedItems
+        {
+            ContainsSemiMixedTypes = false,
+            ContainsNonDate = false,
+            ContainsDate = true,
+            ContainsString = false,
+            Count = (uint)uniqueDates.Count
+        };
+        if (min.HasValue) sharedItems.MinDate = min.Value;
+        if (max.HasValue) sharedItems.MaxDate = max.Value;
+
+        foreach (var dt in uniqueDates)
+        {
+            sharedItems.AppendChild(new DateTimeItem { Val = dt });
+        }
+
+        // Populate the value→index map so BuildCacheRecords can resolve each
+        // source row's date value to the correct sharedItems index. The map
+        // keys are the ORIGINAL raw cell values (not the normalized dates),
+        // since that's what the record writer will look up.
+        for (int r = 0; r < values.Length; r++)
+        {
+            var raw = values[r];
+            if (string.IsNullOrEmpty(raw)) continue;
+            if (valueIndex.ContainsKey(raw)) continue;
+            if (TryParseSourceDate(raw, out var dt) && dateToIdx.TryGetValue(dt, out var idx))
+                valueIndex[raw] = idx;
+        }
+
+        field.AppendChild(sharedItems);
+
+        // <fieldGroup par="N"/> — the "par" attribute points at the FIRST
+        // derived field for this base. Verified against /tmp/date_authored.xlsx
+        // where the base had par=3 pointing at the Quarters field at idx 3.
+        field.AppendChild(new FieldGroup { ParentId = (uint)parDerivedIdx });
+        return field;
+    }
+
+    /// <summary>
+    /// Build a derived date-group cacheField (Year / Quarter / Month / Day)
+    /// with <c>databaseField="0"</c> and a synthetic <c>&lt;fieldGroup base=&gt;
+    /// &lt;rangePr groupBy="..."/&gt; &lt;groupItems&gt;...&lt;/groupItems&gt;
+    /// &lt;/fieldGroup&gt;</c> structure.
+    ///
+    /// The groupItems list follows Excel's sentinel convention: a leading
+    /// <c>&lt;startDate</c> and trailing <c>&gt;endDate</c> sentinel bracket
+    /// the real buckets. Excel uses sentinel indices (0 and last) internally
+    /// to mark "out of range" values, but for our purposes only the middle
+    /// real buckets matter. The renderer writes bucket labels directly into
+    /// sheetData so the sentinel placeholder semantics are moot.
+    ///
+    /// The valueIndex map lets BuildCacheRecords resolve each source row's
+    /// bucketed LABEL value back into a groupItems index ≥ 1 (skipping the
+    /// leading sentinel). Derived fields do NOT emit records entries because
+    /// databaseField="0", but we still populate the map defensively.
+    /// </summary>
+    private static CacheField BuildDateGroupDerivedCacheField(
+        string name, DateGroupSpec spec, out Dictionary<string, int> valueIndex)
+    {
+        valueIndex = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        var field = new CacheField
+        {
+            Name = name,
+            NumberFormatId = 0u,
+            DatabaseField = false  // Derived — not backed by a record column
+        };
+
+        // Compute bucket labels for the grouping. The order and count must
+        // match Excel's convention because rowItems/colItems reference these
+        // indices. Year buckets are per-year observed in the data; quarter
+        // labels use the Qtr1..Qtr4 short form Excel writes natively.
+        List<string> buckets = ComputeDateGroupBuckets(spec);
+
+        // Wrap the buckets with Excel's sentinel items:
+        //   idx 0:        "<startDate"
+        //   idx 1..N:     real buckets (Qtr1, Qtr2, ...; 2024, 2025, ...)
+        //   idx N+1:      ">endDate"
+        var startSentinel = spec.MinDate.HasValue
+            ? "<" + spec.MinDate.Value.ToString("yyyy.MM.dd", System.Globalization.CultureInfo.InvariantCulture)
+            : "<start";
+        var endSentinel = spec.MaxDate.HasValue
+            ? ">" + spec.MaxDate.Value.AddDays(1).ToString("yyyy.MM.dd", System.Globalization.CultureInfo.InvariantCulture)
+            : ">end";
+
+        var allItems = new List<string>(buckets.Count + 2);
+        allItems.Add(startSentinel);
+        allItems.AddRange(buckets);
+        allItems.Add(endSentinel);
+
+        // Populate valueIndex so raw bucket labels (the ones our renderer
+        // wrote into columnData) resolve to the correct groupItems index.
+        for (int i = 0; i < buckets.Count; i++)
+        {
+            valueIndex[buckets[i]] = i + 1; // +1 for leading sentinel
+        }
+
+        var fieldGroup = new FieldGroup { Base = (uint)spec.BaseFieldIdx };
+
+        var rangePr = new RangeProperties
+        {
+            GroupBy = spec.Grouping switch
+            {
+                "year"    => GroupByValues.Years,
+                "quarter" => GroupByValues.Quarters,
+                "month"   => GroupByValues.Months,
+                "day"     => GroupByValues.Days,
+                _         => GroupByValues.Days,
+            },
+        };
+        if (spec.MinDate.HasValue) rangePr.StartDate = spec.MinDate.Value;
+        if (spec.MaxDate.HasValue) rangePr.EndDate = spec.MaxDate.Value.AddDays(1);
+        fieldGroup.AppendChild(rangePr);
+
+        var groupItems = new GroupItems { Count = (uint)allItems.Count };
+        foreach (var label in allItems)
+            groupItems.AppendChild(new StringItem { Val = label });
+        fieldGroup.AppendChild(groupItems);
+
+        field.AppendChild(fieldGroup);
+        return field;
+    }
+
+    /// <summary>
+    /// Compute the ordered list of bucket labels for a given date group spec.
+    /// Ordering is deterministic and matches the display order our renderer
+    /// expects (year: 2024, 2025; quarter: Qtr1, Qtr2, ...; month: 01, 02, ...
+    /// but spanning whichever years are in-range; day: per-day).
+    ///
+    /// Excel's quarter / month / day bucket names are FIXED (Qtr1..Qtr4,
+    /// Jan..Dec, 01..31) — they reuse the same bucket across years. But our
+    /// renderer uses ${year}-Q${q} labels (to keep leaf rows unique across
+    /// years in a year+quarter hierarchy). That works because the renderer
+    /// relies on columnData labels, not cache indices, to place cells. The
+    /// cache's groupItems content is only read by Excel for interactive
+    /// drill-down (which we don't need), so any sane label set passes.
+    /// </summary>
+    private static List<string> ComputeDateGroupBuckets(DateGroupSpec spec)
+    {
+        // If we don't have a min/max we can't compute the range — fall back
+        // to an empty list (still valid, just no drill-down items).
+        if (!spec.MinDate.HasValue || !spec.MaxDate.HasValue) return new List<string>();
+        var min = spec.MinDate.Value;
+        var max = spec.MaxDate.Value;
+
+        var result = new List<string>();
+        switch (spec.Grouping)
+        {
+            case "year":
+                for (int y = min.Year; y <= max.Year; y++)
+                    result.Add(y.ToString("D4", System.Globalization.CultureInfo.InvariantCulture));
+                break;
+
+            case "quarter":
+                // Match our renderer's label convention: "yyyy-Q1".
+                for (int y = min.Year; y <= max.Year; y++)
+                {
+                    int startQ = (y == min.Year) ? (min.Month - 1) / 3 + 1 : 1;
+                    int endQ = (y == max.Year) ? (max.Month - 1) / 3 + 1 : 4;
+                    for (int q = startQ; q <= endQ; q++)
+                        result.Add($"{y:D4}-Q{q}");
+                }
+                break;
+
+            case "month":
+                var monthCursor = new DateTime(min.Year, min.Month, 1);
+                var monthEnd = new DateTime(max.Year, max.Month, 1);
+                while (monthCursor <= monthEnd)
+                {
+                    result.Add(monthCursor.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture));
+                    monthCursor = monthCursor.AddMonths(1);
+                }
+                break;
+
+            case "day":
+                var dayCursor = min.Date;
+                var dayEnd = max.Date;
+                while (dayCursor <= dayEnd)
+                {
+                    result.Add(dayCursor.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
+                    dayCursor = dayCursor.AddDays(1);
+                }
+                break;
+        }
+        return result;
+    }
+
     // ==================== Cache Records Builder ====================
 
     /// <summary>
@@ -2872,7 +3559,8 @@ internal static class PivotTableHelper
     /// because their cacheField only carries min/max metadata, not enumerated items.
     /// </summary>
     private static PivotCacheRecords BuildCacheRecords(
-        List<string[]> columnData, bool[] fieldNumeric, Dictionary<string, int>[] fieldValueIndex)
+        List<string[]> columnData, bool[] fieldNumeric, Dictionary<string, int>[] fieldValueIndex,
+        HashSet<int>? skipFieldIndices = null)
     {
         var recordCount = columnData.Count > 0 ? columnData[0].Length : 0;
         var fieldCount = columnData.Count;
@@ -2883,6 +3571,13 @@ internal static class PivotTableHelper
             var record = new PivotCacheRecord();
             for (int f = 0; f < fieldCount; f++)
             {
+                // Derived date-group fields carry databaseField="0" and therefore
+                // don't contribute entries to pivotCacheRecords — they're computed
+                // on-the-fly by Excel from the base date field's <fieldGroup>
+                // <rangePr>/<groupItems> definition. Skip them here so the record
+                // column count matches the non-derived fields.
+                if (skipFieldIndices?.Contains(f) == true) continue;
+
                 var v = columnData[f][r];
                 if (string.IsNullOrEmpty(v))
                 {
@@ -3026,25 +3721,37 @@ internal static class PivotTableHelper
             var isNumeric = values.Length > 0 && values.All(v =>
                 string.IsNullOrEmpty(v) || double.TryParse(v, System.Globalization.CultureInfo.InvariantCulture, out _));
 
+            // Axis fields (row/col/filter) MUST enumerate <items> regardless of
+            // whether the values look numeric. The "skip items for numeric
+            // fields" optimization is only valid for data/value fields, whose
+            // values are referenced directly via <n v="..."/> in cache records.
+            // Row/col/filter fields are referenced by INDEX through the
+            // pivotField items list, so omitting the list leaves rowItems /
+            // colItems entries dangling. Failure mode verified against a
+            // date-grouped pivot where year bucket values "2024"/"2025" parse
+            // as numeric but render as labels — Excel showed only the grand
+            // total row instead of the year hierarchy.
             if (rowFieldIndices.Contains(i))
             {
                 pf.Axis = PivotTableAxisValues.AxisRow;
-                if (!isNumeric) AppendFieldItems(pf, values);
+                AppendFieldItems(pf, values);
             }
             else if (colFieldIndices.Contains(i))
             {
                 pf.Axis = PivotTableAxisValues.AxisColumn;
-                if (!isNumeric) AppendFieldItems(pf, values);
+                AppendFieldItems(pf, values);
             }
             else if (filterFieldIndices.Contains(i))
             {
                 pf.Axis = PivotTableAxisValues.AxisPage;
-                if (!isNumeric) AppendFieldItems(pf, values);
+                AppendFieldItems(pf, values);
             }
             else if (valueFields.Any(vf => vf.idx == i))
             {
                 pf.DataField = true;
             }
+
+            _ = isNumeric; // kept for readability; consumed only by data fields above
 
             pivotFields.AppendChild(pf);
         }
