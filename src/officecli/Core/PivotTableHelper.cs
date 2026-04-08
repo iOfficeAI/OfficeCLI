@@ -1144,7 +1144,11 @@ internal static class PivotTableHelper
             colLabelRow.AppendChild(MakeStringCell(anchorColIdx, colLabelRowIdx, rowFieldName));
             for (int c = 0; c < uniqueCols.Count; c++)
                 colLabelRow.AppendChild(MakeStringCell(anchorColIdx + 1 + c, colLabelRowIdx, uniqueCols[c]));
-            colLabelRow.AppendChild(MakeStringCell(anchorColIdx + 1 + uniqueCols.Count, colLabelRowIdx, totalColLabel));
+            // CONSISTENCY(grand-totals): rowGrandTotals=false drops the rightmost
+            // 总计 column entirely — header label, per-row totals, and the grand
+            // total row's rightmost cells all gated on ActiveRowGrandTotals.
+            if (ActiveRowGrandTotals)
+                colLabelRow.AppendChild(MakeStringCell(anchorColIdx + 1 + uniqueCols.Count, colLabelRowIdx, totalColLabel));
         }
         else
         {
@@ -1157,9 +1161,12 @@ internal static class PivotTableHelper
                 colLabelRow.AppendChild(MakeStringCell(colStart, colLabelRowIdx, uniqueCols[c]));
             }
             // Grand total area: K cells, one per data field, labeled "Total <name>"
-            int totalStart = anchorColIdx + 1 + uniqueCols.Count * K;
-            for (int d = 0; d < K; d++)
-                colLabelRow.AppendChild(MakeStringCell(totalStart + d, colLabelRowIdx, "Total " + valueFields[d].name));
+            if (ActiveRowGrandTotals)
+            {
+                int totalStart = anchorColIdx + 1 + uniqueCols.Count * K;
+                for (int d = 0; d < K; d++)
+                    colLabelRow.AppendChild(MakeStringCell(totalStart + d, colLabelRowIdx, "Total " + valueFields[d].name));
+            }
         }
         sheetData.AppendChild(colLabelRow);
 
@@ -1207,28 +1214,44 @@ internal static class PivotTableHelper
                 }
             }
             // Row totals — K cells (one per data field).
-            int rowTotalStart = anchorColIdx + 1 + uniqueCols.Count * K;
-            for (int d = 0; d < K; d++)
-                dataRow.AppendChild(MakeNumericCell(rowTotalStart + d, rowIdx, rowTotals[r, d], valueStyleIds[d]));
+            // CONSISTENCY(grand-totals): gated on ActiveRowGrandTotals so the
+            // rightmost 总计 column disappears entirely when grandTotals=none|cols.
+            if (ActiveRowGrandTotals)
+            {
+                int rowTotalStart = anchorColIdx + 1 + uniqueCols.Count * K;
+                for (int d = 0; d < K; d++)
+                    dataRow.AppendChild(MakeNumericCell(rowTotalStart + d, rowIdx, rowTotals[r, d], valueStyleIds[d]));
+            }
             sheetData.AppendChild(dataRow);
         }
 
         // ----- Grand total row -----
-        var grandRowIdx = firstDataRow + uniqueRows.Count;
-        var grandRow = new Row { RowIndex = (uint)grandRowIdx };
-        grandRow.AppendChild(MakeStringCell(anchorColIdx, grandRowIdx, totalColLabel));
-        for (int c = 0; c < uniqueCols.Count; c++)
+        // CONSISTENCY(grand-totals): the entire bottom 总计 row is omitted
+        // when ActiveColGrandTotals is false (grandTotals=none|rows). The
+        // rightmost cells inside the row are independently gated on
+        // ActiveRowGrandTotals so grandTotals=cols still renders the bottom
+        // row but without the trailing K row-grand cells.
+        if (ActiveColGrandTotals)
         {
-            for (int d = 0; d < K; d++)
+            var grandRowIdx = firstDataRow + uniqueRows.Count;
+            var grandRow = new Row { RowIndex = (uint)grandRowIdx };
+            grandRow.AppendChild(MakeStringCell(anchorColIdx, grandRowIdx, totalColLabel));
+            for (int c = 0; c < uniqueCols.Count; c++)
             {
-                int colIdx = anchorColIdx + 1 + c * K + d;
-                grandRow.AppendChild(MakeNumericCell(colIdx, grandRowIdx, colTotals[c, d], valueStyleIds[d]));
+                for (int d = 0; d < K; d++)
+                {
+                    int colIdx = anchorColIdx + 1 + c * K + d;
+                    grandRow.AppendChild(MakeNumericCell(colIdx, grandRowIdx, colTotals[c, d], valueStyleIds[d]));
+                }
             }
+            if (ActiveRowGrandTotals)
+            {
+                int grandTotalStart = anchorColIdx + 1 + uniqueCols.Count * K;
+                for (int d = 0; d < K; d++)
+                    grandRow.AppendChild(MakeNumericCell(grandTotalStart + d, grandRowIdx, grandTotals[d], valueStyleIds[d]));
+            }
+            sheetData.AppendChild(grandRow);
         }
-        int grandTotalStart = anchorColIdx + 1 + uniqueCols.Count * K;
-        for (int d = 0; d < K; d++)
-            grandRow.AppendChild(MakeNumericCell(grandTotalStart + d, grandRowIdx, grandTotals[d], valueStyleIds[d]));
-        sheetData.AppendChild(grandRow);
 
         // Page filter cells: rendered ABOVE the table at rows
         // (anchorRow - filterCount - 1) ... (anchorRow - 2). One row per filter
