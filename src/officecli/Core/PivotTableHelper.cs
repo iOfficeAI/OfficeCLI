@@ -13,6 +13,72 @@ namespace OfficeCli.Core;
 /// </summary>
 internal static class PivotTableHelper
 {
+    // ==================== Axis sort options ====================
+    //
+    // Axis labels on every level are sorted through a single comparer that
+    // CreatePivotTable / SetPivotTableProperties publishes into _axisSortMode
+    // for the duration of the operation. Every sort site below reads
+    // ActiveAxisComparer / ActiveAxisDescending rather than hard-coding
+    // StringComparer.Ordinal.
+    //
+    // Why ThreadStatic instead of a parameter: the sort opts have to reach
+    // ~15 deeply-nested call sites (cache builders, pivotField items writers,
+    // per-level index maps, 5 specialized renderers). Threading a parameter
+    // through all of them would balloon 15+ signatures with pass-through
+    // boilerplate. The CLI is single-threaded per pivot operation, so
+    // ThreadStatic is safe and dramatically less invasive.
+    //
+    // Supported modes:
+    //   "asc"         — StringComparer.Ordinal ascending (DEFAULT, preserves
+    //                   byte-level regression baselines)
+    //   "desc"        — StringComparer.Ordinal descending
+    //   "locale"      — CurrentCulture ascending (pinyin for zh-CN, etc.)
+    //   "locale-desc" — CurrentCulture descending
+    [ThreadStatic] private static string? _axisSortMode;
+
+    private static IComparer<string> ActiveAxisComparer => _axisSortMode switch
+    {
+        "locale" or "locale-desc" => StringComparer.CurrentCulture,
+        _ => StringComparer.Ordinal
+    };
+
+    private static bool ActiveAxisDescending => _axisSortMode switch
+    {
+        "desc" or "locale-desc" => true,
+        _ => false
+    };
+
+    /// <summary>
+    /// Set axis sort mode from the pivot properties and return a token that
+    /// restores the previous value on Dispose. Usage:
+    ///   using (PushAxisSortMode(properties)) { ... build pivot ... }
+    /// </summary>
+    private static IDisposable PushAxisSortMode(Dictionary<string, string> properties)
+    {
+        var prev = _axisSortMode;
+        if (properties.TryGetValue("sort", out var mode) && !string.IsNullOrWhiteSpace(mode))
+            _axisSortMode = mode.Trim().ToLowerInvariant();
+        return new SortModeScope(prev);
+    }
+
+    private sealed class SortModeScope : IDisposable
+    {
+        private readonly string? _prev;
+        public SortModeScope(string? prev) { _prev = prev; }
+        public void Dispose() { _axisSortMode = _prev; }
+    }
+
+    /// <summary>
+    /// Apply axis ordering (ascending/descending) to an OrderBy clause using
+    /// the currently-active sort mode. All axis sort sites use this helper.
+    /// </summary>
+    private static IOrderedEnumerable<T> OrderByAxis<T>(this IEnumerable<T> source, Func<T, string> keySelector)
+    {
+        return ActiveAxisDescending
+            ? source.OrderByDescending(keySelector, ActiveAxisComparer)
+            : source.OrderBy(keySelector, ActiveAxisComparer);
+    }
+
     /// <summary>
     /// Create a pivot table on the target worksheet.
     /// </summary>
@@ -33,6 +99,11 @@ internal static class PivotTableHelper
         string position,
         Dictionary<string, string> properties)
     {
+        // Publish the axis sort mode (asc/desc/locale/locale-desc) so every
+        // sort site below — cache builder, pivotField items writer, per-level
+        // index maps, specialized renderers — reads the same comparer.
+        using var _sortScope = PushAxisSortMode(properties);
+
         // 1. Read source data to build cache
         var (headers, columnData, columnStyleIds) = ReadSourceData(sourceSheet, sourceRef);
         if (headers.Length == 0)
@@ -266,7 +337,9 @@ internal static class PivotTableHelper
 
     private static void SortAxisTreeRecursive(AxisNode node)
     {
-        node.Children.Sort((a, b) => StringComparer.Ordinal.Compare(a.Label, b.Label));
+        var cmp = ActiveAxisComparer;
+        var sign = ActiveAxisDescending ? -1 : 1;
+        node.Children.Sort((a, b) => sign * cmp.Compare(a.Label, b.Label));
         foreach (var c in node.Children) SortAxisTreeRecursive(c);
     }
 
@@ -671,9 +744,9 @@ internal static class PivotTableHelper
 
         // Unique row/col labels in cache order (alphabetical ordinal).
         var uniqueRows = rowValues.Where(v => !string.IsNullOrEmpty(v)).Distinct()
-            .OrderBy(v => v, StringComparer.Ordinal).ToList();
+            .OrderByAxis(v => v).ToList();
         var uniqueCols = colValues.Where(v => !string.IsNullOrEmpty(v)).Distinct()
-            .OrderBy(v => v, StringComparer.Ordinal).ToList();
+            .OrderByAxis(v => v).ToList();
 
         // Bucket source values per (rowLabel, colLabel, dataFieldIdx) so each data
         // field is aggregated independently. The aggregator function differs per
@@ -965,7 +1038,7 @@ internal static class PivotTableHelper
         // the rendered cells match the rowItems indices position-for-position.
         var groups = BuildOuterInnerGroups(outerFieldIdx, innerFieldIdx, columnData);
         var uniqueCols = colVals.Where(v => !string.IsNullOrEmpty(v)).Distinct()
-            .OrderBy(v => v, StringComparer.Ordinal).ToList();
+            .OrderByAxis(v => v).ToList();
 
         // Aggregate per (outer, inner, col, dataFieldIdx). For K=1 the d
         // dimension is degenerate but the same data structure works uniformly.
@@ -1242,7 +1315,7 @@ internal static class PivotTableHelper
 
         var colGroups = BuildOuterInnerGroups(outerColIdx, innerColIdx, columnData);
         var uniqueRows = rowVals.Where(v => !string.IsNullOrEmpty(v)).Distinct()
-            .OrderBy(v => v, StringComparer.Ordinal).ToList();
+            .OrderByAxis(v => v).ToList();
 
         // Aggregate per (row, outerCol, innerCol, dataFieldIdx). For K=1 the d
         // dimension is degenerate but the same data structure works uniformly.
@@ -2655,7 +2728,7 @@ internal static class PivotTableHelper
             var uniqueValues = values
                 .Where(v => !string.IsNullOrEmpty(v))
                 .Distinct()
-                .OrderBy(v => v, StringComparer.Ordinal)
+                .OrderByAxis(v => v)
                 .ToList();
             sharedItems.Count = (uint)uniqueValues.Count;
             for (int i = 0; i < uniqueValues.Count; i++)
@@ -3198,14 +3271,14 @@ internal static class PivotTableHelper
                 combos.Add((ov, iv));
         }
 
-        // Sort by ordinal so display order matches the pivotField items list,
-        // which is built with the same StringComparer.Ordinal sort. This is what
-        // keeps the rowItems indices in sync with the rendered cell labels.
+        // Sort using the active axis comparer so display order matches the
+        // pivotField items list (which sorts via the same comparer). This
+        // keeps rowItems indices in sync with rendered cell labels.
         return combos
-            .GroupBy(c => c.outer, StringComparer.Ordinal)
-            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .GroupBy(c => c.outer, StringComparer.Ordinal)  // equality, not ordering
+            .OrderByAxis(g => g.Key)
             .Select(g => (g.Key, g.Select(c => c.inner)
-                .OrderBy(v => v, StringComparer.Ordinal).ToList()))
+                .OrderByAxis(v => v).ToList()))
             .ToList();
     }
 
@@ -3237,13 +3310,13 @@ internal static class PivotTableHelper
         var outerOrder = columnData[outerIdx]
             .Where(v => !string.IsNullOrEmpty(v))
             .Distinct()
-            .OrderBy(v => v, StringComparer.Ordinal)
+            .OrderByAxis(v => v)
             .Select((v, i) => (v, i))
             .ToDictionary(t => t.v, t => t.i, StringComparer.Ordinal);
         var innerOrder = columnData[innerIdx]
             .Where(v => !string.IsNullOrEmpty(v))
             .Distinct()
-            .OrderBy(v => v, StringComparer.Ordinal)
+            .OrderByAxis(v => v)
             .Select((v, i) => (v, i))
             .ToDictionary(t => t.v, t => t.i, StringComparer.Ordinal);
 
@@ -3314,13 +3387,13 @@ internal static class PivotTableHelper
         var outerOrder = columnData[outerIdx]
             .Where(v => !string.IsNullOrEmpty(v))
             .Distinct()
-            .OrderBy(v => v, StringComparer.Ordinal)
+            .OrderByAxis(v => v)
             .Select((v, i) => (v, i))
             .ToDictionary(t => t.v, t => t.i, StringComparer.Ordinal);
         var innerOrder = columnData[innerIdx]
             .Where(v => !string.IsNullOrEmpty(v))
             .Distinct()
-            .OrderBy(v => v, StringComparer.Ordinal)
+            .OrderByAxis(v => v)
             .Select((v, i) => (v, i))
             .ToDictionary(t => t.v, t => t.i, StringComparer.Ordinal);
 
@@ -3465,7 +3538,7 @@ internal static class PivotTableHelper
             perLevelOrder[level] = columnData[fi]
                 .Where(v => !string.IsNullOrEmpty(v))
                 .Distinct()
-                .OrderBy(v => v, StringComparer.Ordinal)
+                .OrderByAxis(v => v)
                 .Select((v, i) => (v, i))
                 .ToDictionary(t => t.v, t => t.i, StringComparer.Ordinal);
         }
@@ -3614,7 +3687,7 @@ internal static class PivotTableHelper
 
     private static void AppendFieldItems(PivotField pf, string[] values)
     {
-        var unique = values.Where(v => !string.IsNullOrEmpty(v)).Distinct().OrderBy(v => v).ToList();
+        var unique = values.Where(v => !string.IsNullOrEmpty(v)).Distinct().OrderByAxis(v => v).ToList();
         var items = new Items { Count = (uint)(unique.Count + 1) };
         for (int i = 0; i < unique.Count; i++)
             items.AppendChild(new Item { Index = (uint)i });
@@ -3688,6 +3761,11 @@ internal static class PivotTableHelper
 
     internal static List<string> SetPivotTableProperties(PivotTablePart pivotPart, Dictionary<string, string> properties)
     {
+        // Publish sort mode for this Set operation so the re-rendered items /
+        // renderers use the requested order. Sort only affects the rendered
+        // layout — sharedItems order in the cache is fixed at Create time.
+        using var _sortScope = PushAxisSortMode(properties);
+
         var unsupported = new List<string>();
         var pivotDef = pivotPart.PivotTableDefinition;
         if (pivotDef == null) { unsupported.AddRange(properties.Keys); return unsupported; }
@@ -3720,6 +3798,20 @@ internal static class PivotTableHelper
                 case "values":
                 case "filters":
                     fieldAreaProps[key.ToLowerInvariant() == "columns" ? "cols" : key.ToLowerInvariant()] = value;
+                    break;
+                case "sort":
+                    // Already consumed by PushAxisSortMode at the top of this
+                    // method; re-rendering below reads _axisSortMode directly.
+                    // Trigger a re-render even if no field areas changed so
+                    // the layout reflects the new sort.
+                    if (!fieldAreaProps.ContainsKey("rows") && !fieldAreaProps.ContainsKey("cols")
+                        && !fieldAreaProps.ContainsKey("values") && !fieldAreaProps.ContainsKey("filters"))
+                    {
+                        // Seed an empty entry so RebuildFieldAreas runs with
+                        // current field assignments and re-renders with the
+                        // new sort.
+                        fieldAreaProps["__sort_only__"] = value;
+                    }
                     break;
                 default:
                     unsupported.Add(key);
