@@ -454,15 +454,15 @@ Run `officecli <format> raw` for available parts per format.
 
 This skill covers the officecli CLI basics. For complex scenarios, load the dedicated skill for better results:
 
-| Scenario | Skill | Min Version | When to Use |
-|----------|-------|:-----------:|-------------|
-| **Word documents** | `officecli-docx` | v1.0.23 | Create, read, edit .docx — reports, letters, memos, proposals |
-| **Academic papers** | `officecli-academic-paper` | v1.0.24 | Research papers, white papers with TOC, equations, footnotes, bibliography |
-| **Presentations** | `officecli-pptx` | v1.0.23 | Create, read, edit .pptx — general slide decks |
-| **Pitch decks** | `officecli-pitch-deck` | v1.0.24 | Investor decks, product launches, sales decks with charts and stat callouts |
-| **Morph PPT** | `morph-ppt` | v1.0.24 | Morph-animated cinematic presentations |
-| **Excel** | `officecli-xlsx` | v1.0.23 | Create, read, edit .xlsx — financial models, trackers, formulas |
-| **Data dashboards** | `officecli-data-dashboard` | v1.0.24 | CSV/tabular data → Excel dashboards with KPI cards, charts, sparklines |
+| Scenario | Skill | When to Use |
+|----------|-------|-------------|
+| **Word documents** | `officecli-docx` | Create, read, edit .docx — reports, letters, memos, proposals |
+| **Academic papers** | `officecli-academic-paper` | Research papers, white papers with TOC, equations, footnotes, bibliography |
+| **Presentations** | `officecli-pptx` | Create, read, edit .pptx — general slide decks |
+| **Pitch decks** | `officecli-pitch-deck` | Investor decks, product launches, sales decks with charts and stat callouts |
+| **Morph PPT** | `morph-ppt` | Morph-animated cinematic presentations |
+| **Excel** | `officecli-xlsx` | Create, read, edit .xlsx — financial models, trackers, formulas |
+| **Data dashboards** | `officecli-data-dashboard` | CSV/tabular data → Excel dashboards with KPI cards, charts, sparklines |
 
 > **How to load:** Ask your AI tool to enable the skill by name, or load the skill file from `skills/<skill-name>/SKILL.md`.
 
