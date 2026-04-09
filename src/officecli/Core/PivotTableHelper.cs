@@ -2970,8 +2970,15 @@ internal static class PivotTableHelper
 
         // Walk both trees in display order. Each entry is the absolute display
         // position relative to the start of the data area.
-        var rowPositions = WalkAxisTree(rowTree, isCol: false).ToList();
-        var colPositions = WalkAxisTree(colTree, isCol: true).ToList();
+        // CONSISTENCY(subtotals-opts): when off, drop all subtotal positions
+        // (internal tree nodes) from both axes. Leaf positions keep their
+        // relative ordering, and the grand total column block is still
+        // controlled separately by ActiveRow/ColGrandTotals below.
+        bool emitSubtotals = ActiveDefaultSubtotal;
+        var rowPositions = WalkAxisTree(rowTree, isCol: false)
+            .Where(p => emitSubtotals || !p.isSubtotal).ToList();
+        var colPositions = WalkAxisTree(colTree, isCol: true)
+            .Where(p => emitSubtotals || !p.isSubtotal).ToList();
 
         // Build per-source-row tuples once so cell value lookups are O(rows × K)
         // instead of O(rows × cells × N).
