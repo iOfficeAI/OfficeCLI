@@ -1,0 +1,52 @@
+name: Translate README
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - README.md
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Use the built-in token so the commit the job creates does not
+          # re-trigger this workflow (avoids infinite loops).
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install openai
+
+      - name: Translate README
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # Optional overrides – set these repository secrets/variables if needed:
+          # OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          # OPENAI_MODEL:    ${{ vars.OPENAI_MODEL }}
+        run: |
+          python .github/scripts/translate_readme.py \
+            --source README.md \
+            --targets README_zh.md:Chinese README_ja.md:Japanese README_ko.md:Korean
+
+      - name: Commit translated files
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README_zh.md README_ja.md README_ko.md
+          # Only commit if something actually changed.
+          git diff --cached --quiet || \
+            git commit -m "docs: sync translated READMEs from README.md [skip ci]"
+          git push
