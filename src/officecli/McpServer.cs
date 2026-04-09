@@ -1,6 +1,7 @@
 // Copyright 2025 OfficeCli (officecli.ai)
 // SPDX-License-Identifier: Apache-2.0
 
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using OfficeCli.Core;
@@ -68,7 +69,8 @@ public static class McpServer
         w.WriteStartObject("capabilities");
         w.WriteStartObject("tools"); w.WriteBoolean("listChanged", false); w.WriteEndObject();
         w.WriteEndObject();
-        w.WriteStartObject("serverInfo"); w.WriteString("name", "officecli"); w.WriteString("version", "1.0.17"); w.WriteEndObject();
+        var ver = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0";
+        w.WriteStartObject("serverInfo"); w.WriteString("name", "officecli"); w.WriteString("version", ver); w.WriteEndObject();
         w.WriteEndObject();
         w.WriteEndObject();
     });
