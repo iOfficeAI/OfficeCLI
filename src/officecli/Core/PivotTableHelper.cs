@@ -5015,6 +5015,25 @@ internal static class PivotTableHelper
         var location = pivotDef.GetFirstChild<Location>();
         if (location?.Reference?.HasValue == true) node.Format["location"] = location.Reference.Value;
 
+        // R15-3: Round-trip the source range so `Get`'s output is symmetric
+        // with the `source=Sheet1!A1:C3` input form accepted by Add/Set.
+        // Pull from the cache definition's WorksheetSource (Sheet + Reference);
+        // emit the "Sheet!Ref" form, or just "Ref" when the sheet attribute
+        // is absent (same-sheet fallback used by BuildCacheDefinition).
+        if (pivotPart != null)
+        {
+            var cachePartForSrc = pivotPart.GetPartsOfType<PivotTableCacheDefinitionPart>().FirstOrDefault();
+            var wsSrc = cachePartForSrc?.PivotCacheDefinition?.CacheSource?.WorksheetSource;
+            if (wsSrc?.Reference?.HasValue == true)
+            {
+                var refVal = wsSrc.Reference.Value;
+                var sheetVal = wsSrc.Sheet?.Value;
+                node.Format["source"] = string.IsNullOrEmpty(sheetVal)
+                    ? refVal!
+                    : $"{sheetVal}!{refVal}";
+            }
+        }
+
         // Count fields
         var pivotFields = pivotDef.GetFirstChild<PivotFields>();
         if (pivotFields != null)
