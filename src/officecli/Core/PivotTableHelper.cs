@@ -2944,6 +2944,12 @@ internal static class PivotTableHelper
             ws.AppendChild(sheetData);
         }
 
+        // CONSISTENCY(grand-totals): cache the grand totals toggles once per
+        // render call. emitRowGrand → right grand total column block;
+        // emitColGrand → bottom grand total row.
+        bool emitRowGrand = ActiveRowGrandTotals;
+        bool emitColGrand = ActiveColGrandTotals;
+
         // Pre-compute absolute col indices for every col position × data field.
         // colPositions does not include the grand total column — that's tracked
         // separately so the writer doesn't accidentally include it inside the
@@ -2954,7 +2960,7 @@ internal static class PivotTableHelper
         for (int p = 0; p < colPositions.Count; p++)
             for (int d = 0; d < K; d++)
                 colIdxByPosition[p, d] = firstDataCol + p * K + d;
-        int grandTotalColStart = firstDataCol + colCells;
+        int grandTotalColStart = firstDataCol + colCells;  // unused when !emitRowGrand
 
         // Header rows. Layout depends on (N_col, K):
         //   - 1 caption row (row 0)
@@ -3069,7 +3075,7 @@ internal static class PivotTableHelper
 
             // Grand total column header label appears at the LAST col header row
             // (or in the K>1 case it's spread across all data field columns).
-            if (level == colFieldIndices.Count)
+            if (level == colFieldIndices.Count && emitRowGrand)
             {
                 if (K == 1)
                     headerRow.AppendChild(MakeStringCell(grandTotalColStart, headerRowIdx, totalLabel));
@@ -3122,31 +3128,40 @@ internal static class PivotTableHelper
             }
 
             // Grand total cells (per data field) — the row's value across all cols.
-            var grandRowNode = new AxisNode(string.Empty, 0, Array.Empty<string>());
-            for (int d = 0; d < K; d++)
-                row.AppendChild(MakeNumericCell(grandTotalColStart + d, rowIdx,
-                    ComputeCell(rowNode, grandRowNode, d), valueStyleIds[d]));
+            if (emitRowGrand)
+            {
+                var grandRowNode = new AxisNode(string.Empty, 0, Array.Empty<string>());
+                for (int d = 0; d < K; d++)
+                    row.AppendChild(MakeNumericCell(grandTotalColStart + d, rowIdx,
+                        ComputeCell(rowNode, grandRowNode, d), valueStyleIds[d]));
+            }
             sheetData.AppendChild(row);
         }
 
         // Final grand total row.
-        int grandRowIdx = firstDataRowIdx + rowPositions.Count;
-        var grandRow = new Row { RowIndex = (uint)grandRowIdx };
-        grandRow.AppendChild(MakeStringCell(anchorColIdx, grandRowIdx, totalLabel));
-        var grandRowNodeFinal = new AxisNode(string.Empty, 0, Array.Empty<string>());
-        for (int cp = 0; cp < colPositions.Count; cp++)
+        if (emitColGrand)
         {
-            var (colNode, _, _) = colPositions[cp];
-            for (int d = 0; d < K; d++)
+            int grandRowIdx = firstDataRowIdx + rowPositions.Count;
+            var grandRow = new Row { RowIndex = (uint)grandRowIdx };
+            grandRow.AppendChild(MakeStringCell(anchorColIdx, grandRowIdx, totalLabel));
+            var grandRowNodeFinal = new AxisNode(string.Empty, 0, Array.Empty<string>());
+            for (int cp = 0; cp < colPositions.Count; cp++)
             {
-                var v = ComputeCell(grandRowNodeFinal, colNode, d);
-                grandRow.AppendChild(MakeNumericCell(colIdxByPosition[cp, d], grandRowIdx, v, valueStyleIds[d]));
+                var (colNode, _, _) = colPositions[cp];
+                for (int d = 0; d < K; d++)
+                {
+                    var v = ComputeCell(grandRowNodeFinal, colNode, d);
+                    grandRow.AppendChild(MakeNumericCell(colIdxByPosition[cp, d], grandRowIdx, v, valueStyleIds[d]));
+                }
             }
+            if (emitRowGrand)
+            {
+                for (int d = 0; d < K; d++)
+                    grandRow.AppendChild(MakeNumericCell(grandTotalColStart + d, grandRowIdx,
+                        ComputeCell(grandRowNodeFinal, grandRowNodeFinal, d), valueStyleIds[d]));
+            }
+            sheetData.AppendChild(grandRow);
         }
-        for (int d = 0; d < K; d++)
-            grandRow.AppendChild(MakeNumericCell(grandTotalColStart + d, grandRowIdx,
-                ComputeCell(grandRowNodeFinal, grandRowNodeFinal, d), valueStyleIds[d]));
-        sheetData.AppendChild(grandRow);
 
         // Page filter cells (same logic as the other renderers).
         if (filterFieldIndices != null && filterFieldIndices.Count > 0)
