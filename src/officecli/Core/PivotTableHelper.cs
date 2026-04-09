@@ -3589,25 +3589,19 @@ internal static class PivotTableHelper
     {
         var recordCount = columnData.Count > 0 ? columnData[0].Length : 0;
 
-        // refreshOnLoad=1 tells Excel to re-render the pivot from the cache when the
-        // file is opened. We need this because officecli (a pure DOM library) does NOT
-        // have a pivot computation engine — we cannot materialize the rendered cells
-        // into sheetData ourselves. Real Excel/LibreOffice DO write rendered cells on
-        // save (verified against pivot5.xlsx and pivot_dark1.xlsx fixtures), so opening
-        // their files shows data immediately. Without refreshOnLoad, our pivot-only
-        // sheet would render empty even though the cache and definition are valid.
-        //
-        // Trade-off: Excel may prompt for trust before refreshing, and consumers that
-        // do not implement refresh (POI, third-party parsers) will still see an empty
-        // sheet. The proper long-term fix is a built-in render engine; this flag is
-        // the lowest-cost workaround until that lands.
+        // RenderPivotIntoSheet now materializes all pivot cells into sheetData,
+        // so Excel displays the pre-rendered values directly without needing a
+        // cache refresh. Do NOT set RefreshOnLoad — it causes Excel to clear the
+        // pre-rendered cells and attempt a live rebuild from the cache definition.
+        // If the rebuild fails (e.g. complex N≥3 rowItems structure, security
+        // policy blocking refresh, or WPS Office limited pivot support), the user
+        // sees an empty pivot skeleton instead of the correct data.
         var cacheDef = new PivotCacheDefinition
         {
             CreatedVersion = 3,
             MinRefreshableVersion = 3,
             RefreshedVersion = 3,
-            RecordCount = (uint)recordCount,
-            RefreshOnLoad = true
+            RecordCount = (uint)recordCount
         };
 
         // CacheSource -> WorksheetSource
