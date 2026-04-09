@@ -5470,8 +5470,54 @@ internal static class PivotTableHelper
                     }
                     break;
                 default:
+                {
+                    // R15-4: accept `dataField{N}.showAs=<token>` as the
+                    // write-side counterpart of the Get readback key. N is
+                    // 1-indexed over the current DataFields list; map to
+                    // the positional `showdataas` list so RebuildFieldAreas
+                    // can apply the transform through its existing showAs
+                    // override path. Consistency with the Get readback
+                    // symmetry rule: users copy a key from Get and Set it
+                    // back without learning a second vocabulary.
+                    var lkDf = key.ToLowerInvariant();
+                    if (lkDf.StartsWith("datafield") && lkDf.EndsWith(".showas"))
+                    {
+                        var idxStr = lkDf.Substring("datafield".Length,
+                            lkDf.Length - "datafield".Length - ".showas".Length);
+                        if (int.TryParse(idxStr, out var oneBasedIdx) && oneBasedIdx >= 1)
+                        {
+                            var existingDf = pivotDef.DataFields?.Elements<DataField>().ToList();
+                            var dfCount = existingDf?.Count ?? 0;
+                            if (oneBasedIdx > dfCount)
+                                throw new ArgumentException(
+                                    $"dataField{oneBasedIdx}.showAs: index out of range " +
+                                    $"(1..{dfCount} data field(s) defined)");
+
+                            // Build / extend the positional showdataas list
+                            // so slot oneBasedIdx-1 carries the new token,
+                            // leaving earlier slots empty (RebuildFieldAreas
+                            // treats empty slot as "keep current").
+                            fieldAreaProps.TryGetValue("showdataas", out var existingShow);
+                            var slots = existingShow?.Split(',').Select(s => s.Trim()).ToList()
+                                        ?? new List<string>();
+                            while (slots.Count < oneBasedIdx) slots.Add("");
+                            slots[oneBasedIdx - 1] = value;
+                            fieldAreaProps["showdataas"] = string.Join(",", slots);
+
+                            // Force RebuildFieldAreas to run even without
+                            // any rows/cols/values/filters in this call.
+                            if (!fieldAreaProps.ContainsKey("rows") && !fieldAreaProps.ContainsKey("cols")
+                                && !fieldAreaProps.ContainsKey("values") && !fieldAreaProps.ContainsKey("filters")
+                                && !fieldAreaProps.ContainsKey("__sort_only__"))
+                            {
+                                fieldAreaProps["__sort_only__"] = "";
+                            }
+                            break;
+                        }
+                    }
                     unsupported.Add(key);
                     break;
+                }
             }
         }
 
