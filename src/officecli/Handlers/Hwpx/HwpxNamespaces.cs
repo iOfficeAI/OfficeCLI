@@ -9,7 +9,7 @@ namespace OfficeCli.Handlers;
 /// <remarks>
 /// CRITICAL: Use XNamespace (static readonly), NOT string const.
 /// "Hp" not "HP" — matches OWPML spec prefix.
-/// OPF namespace has NO trailing slash.
+/// OPF namespace uses trailing slash (matches Hancom output); no-slash variant normalized via LegacyToCanonical.
 /// </remarks>
 public static class HwpxNs
 {
@@ -24,7 +24,8 @@ public static class HwpxNs
     public static readonly XNamespace Hc = "http://www.hancom.co.kr/hwpml/2011/core";
 
     // OPF manifest (META-INF/container.xml or mimetype OPF)
-    public static readonly XNamespace Opf = "http://www.idpf.org/2007/opf";   // NO trailing slash
+    // Real Hancom files use trailing slash; some tooling omits it — support both via LegacyToCanonical
+    public static readonly XNamespace Opf = "http://www.idpf.org/2007/opf/";
     public static readonly XNamespace Dc  = "http://purl.org/dc/elements/1.1/";
 
     // Namespace URIs that appear in HWPML 2016 docs — must be normalized to 2011 before parsing
@@ -35,5 +36,7 @@ public static class HwpxNs
         ["http://www.hancom.co.kr/hwpml/2016/head"]       = "http://www.hancom.co.kr/hwpml/2011/head",
         ["http://www.hancom.co.kr/hwpml/2016/core"]       = "http://www.hancom.co.kr/hwpml/2011/core",
         ["http://www.hancom.co.kr/hwpml/2016/app"]        = "http://www.hancom.co.kr/hwpml/2011/app",
+        // OPF: Hancom uses trailing slash; normalize no-slash variant
+        ["http://www.idpf.org/2007/opf\""]                = "http://www.idpf.org/2007/opf/\"",
     };
 }

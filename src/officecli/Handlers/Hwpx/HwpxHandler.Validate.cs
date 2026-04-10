@@ -222,7 +222,7 @@ public partial class HwpxHandler
                             "idref_dangling",
                             $"charPrIDRef=\"{charPrIdRef}\" references non-existent charPr in header.xml",
                             path,
-                            $"Contents/section{section.Index}.xml"));
+                            section.EntryPath));
                     }
                 }
             }
@@ -251,7 +251,7 @@ public partial class HwpxHandler
                         "idref_dangling",
                         $"paraPrIDRef=\"{paraPrIdRef}\" references non-existent paraPr in header.xml",
                         path,
-                        $"Contents/section{section.Index}.xml"));
+                        section.EntryPath));
                 }
             }
         }
@@ -279,7 +279,7 @@ public partial class HwpxHandler
                         "idref_dangling",
                         $"styleIDRef=\"{styleIdRef}\" references non-existent style in header.xml",
                         path,
-                        $"Contents/section{section.Index}.xml"));
+                        section.EntryPath));
                 }
             }
         }
@@ -310,7 +310,7 @@ public partial class HwpxHandler
                     {
                         tcIdx++;
                         var basePath = $"/section[{section.Index + 1}]/tbl[{tblIdx}]/tr[{trIdx}]/tc[{tcIdx}]";
-                        var part = $"Contents/section{section.Index}.xml";
+                        var part = section.EntryPath;
 
                         // Check cellAddr (dual-format: child element OR tc attributes — require BOTH colAddr AND rowAddr)
                         var cellAddrChild = tc.Element(HwpxNs.Hp + "cellAddr");
@@ -438,7 +438,7 @@ public partial class HwpxHandler
                     $"Section {section.Index + 1} root missing Hs namespace declaration " +
                     $"({HwpxNs.Hs.NamespaceName})",
                     $"/section[{section.Index + 1}]",
-                    $"Contents/section{section.Index}.xml"));
+                    section.EntryPath));
             }
 
             // Check for Hp namespace (used by child elements)
@@ -453,7 +453,7 @@ public partial class HwpxHandler
                     $"Section {section.Index + 1} root missing Hp namespace declaration " +
                     $"({HwpxNs.Hp.NamespaceName}) — elements use this namespace",
                     $"/section[{section.Index + 1}]",
-                    $"Contents/section{section.Index}.xml"));
+                    section.EntryPath));
             }
         }
 
@@ -480,7 +480,7 @@ public partial class HwpxHandler
                         $"header.xml root missing Hh namespace declaration " +
                         $"({HwpxNs.Hh.NamespaceName}) — elements use this namespace",
                         "/header",
-                        "Contents/header.xml"));
+                        _doc.HeaderEntryPath ?? "Contents/header.xml"));
                 }
             }
         }

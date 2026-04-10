@@ -8,7 +8,9 @@ namespace OfficeCli.Handlers;
 internal class HwpxSection
 {
     public int Index { get; init; }
-    public XDocument Document { get; init; } = null!;
+    /// <summary>Actual ZIP entry path discovered from manifest (e.g. "Contents/section0.xml", "Contents/body_section.xml").</summary>
+    public string EntryPath { get; init; } = null!;
+    public XDocument Document { get; set; } = null!;
     public XElement Root => Document.Root!;
     public List<XElement> Paragraphs => Root.Elements(HwpxNs.Hp + "p").ToList();
     public List<XElement> Tables => Root.Elements(HwpxNs.Hp + "tbl").ToList();

@@ -261,7 +261,7 @@ public partial class HwpxHandler
         var containsMatch = Regex.Match(trimmed, @"^p:contains\((.+)\)$");
         if (containsMatch.Success)
         {
-            var searchText = containsMatch.Groups[1].Value;
+            var searchText = containsMatch.Groups[1].Value.Trim('"', '\'');
             foreach (var sec in _doc.Sections)
             {
                 foreach (var p in sec.Paragraphs)

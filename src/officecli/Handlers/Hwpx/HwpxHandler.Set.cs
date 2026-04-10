@@ -508,9 +508,9 @@ public partial class HwpxHandler
     /// </summary>
     private void SaveHeader()
     {
-        if (_doc.Header == null) return;
+        if (_doc.Header == null || _doc.HeaderEntryPath == null) return;
 
-        var entry = _doc.Archive.GetEntry("Contents/header.xml");
+        var entry = _doc.Archive.GetEntry(_doc.HeaderEntryPath);
         if (entry == null) return;
 
         var entryName = entry.FullName;

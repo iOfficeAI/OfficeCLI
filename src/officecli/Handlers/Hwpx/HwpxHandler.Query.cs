@@ -381,7 +381,7 @@ public partial class HwpxHandler
             throw new InvalidOperationException("Cannot determine section for element");
 
         var section = _doc.Sections.First(s => s.Root == current);
-        var entryName = $"Contents/section{section.Index}.xml";
+        var entryName = section.EntryPath;
         var entry = _doc.Archive.GetEntry(entryName)
             ?? throw new InvalidOperationException($"Section entry {entryName} not found");
 

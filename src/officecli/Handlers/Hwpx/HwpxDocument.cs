@@ -9,7 +9,9 @@ namespace OfficeCli.Handlers;
 internal class HwpxDocument
 {
     public ZipArchive Archive { get; init; } = null!;
-    public XDocument? Header { get; set; }     // Contents/header.xml
+    public XDocument? Header { get; set; }
+    /// <summary>Actual ZIP entry path of header.xml (e.g. "Contents/header.xml").</summary>
+    public string? HeaderEntryPath { get; set; }
     public List<HwpxSection> Sections { get; } = new();
     public HwpxSection PrimarySection => Sections[0];  // convenience
 

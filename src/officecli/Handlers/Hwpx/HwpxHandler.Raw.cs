@@ -114,6 +114,32 @@ public partial class HwpxHandler
         var newEntry = _doc.Archive.CreateEntry(entryName, CompressionLevel.Optimal);
         using var writeStream = newEntry.Open();
         part.Save(writeStream);
+
+        // Refresh in-memory DOM so subsequent get/query/set/validate see the raw edit
+        RefreshCachedDocument(partPath, part);
+    }
+
+    /// <summary>
+    /// After a raw ZIP write, synchronize the in-memory XDocument cache for the affected part.
+    /// Prevents stale reads in resident mode where the same handler instance is reused.
+    /// </summary>
+    private void RefreshCachedDocument(string partPath, XDocument updatedDoc)
+    {
+        // Check if this is the header
+        if (_doc.HeaderEntryPath != null
+            && string.Equals(partPath, _doc.HeaderEntryPath, StringComparison.OrdinalIgnoreCase))
+        {
+            _doc.Header = updatedDoc;
+            return;
+        }
+
+        // Check if this is a section
+        var section = _doc.Sections.FirstOrDefault(s =>
+            string.Equals(s.EntryPath, partPath, StringComparison.OrdinalIgnoreCase));
+        if (section != null)
+        {
+            section.Document = updatedDoc;
+        }
     }
 
     /// <summary>

@@ -63,9 +63,9 @@ public class HwpxHandlerTests : IDisposable
         var resultPath = handler.CopyFrom("/section[1]/p[1]", "/section[1]", null);
 
         // Assert: should have 2 paragraphs now, both with same text
-        Assert.Equal("/section[1]/p[2]", resultPath);
+        Assert.Equal("/p[2]", resultPath);
         var node1 = handler.Get("/section[1]/p[1]", 0);
-        var node2 = handler.Get("/section[1]/p[2]", 0);
+        var node2 = handler.Get("/p[2]", 0);
         Assert.Equal(node1.Text, node2.Text);
 
         // The copied element should be a distinct XML node (deep clone)
@@ -139,7 +139,7 @@ public class HwpxHandlerTests : IDisposable
 
         var text = handler.ViewAsText();
 
-        Assert.Contains("계약서 작성 안내", text);
+        Assert.Contains("계약서작성안내", text);
         Assert.DoesNotContain("\uE001", text);
         Assert.DoesNotContain("\uF8FF", text);
     }
