@@ -123,18 +123,18 @@ public sealed class SecurityAuditTests : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        foreach (var cts in _ctsList) { try { cts.Cancel(); } catch { } }
+        foreach (var cts in _ctsList) { try { cts.Cancel(); } catch (ObjectDisposedException) { } }
 
         // Give running server tasks time to wind down before disposing.
         await Task.Delay(200);
 
-        foreach (var s in _servers) { try { s.Dispose(); } catch { } }
-        foreach (var cts in _ctsList) { try { cts.Dispose(); } catch { } }
+        foreach (var s in _servers) { try { s.Dispose(); } catch (ObjectDisposedException) { } }
+        foreach (var cts in _ctsList) { try { cts.Dispose(); } catch (ObjectDisposedException) { } }
 
         foreach (var p in _tempPaths)
         {
-            try { if (File.Exists(p)) File.Delete(p); } catch { }
-            try { if (Directory.Exists(p)) Directory.Delete(p, recursive: true); } catch { }
+            try { if (File.Exists(p)) File.Delete(p); } catch (IOException) { }
+            try { if (Directory.Exists(p)) Directory.Delete(p, recursive: true); } catch (IOException) { }
         }
     }
 
