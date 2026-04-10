@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using OfficeCli.Core;
@@ -14,11 +15,46 @@ public class ResidentServer : IDisposable
     private readonly IDocumentHandler _handler;
     private readonly string _filePath;
     private readonly string _pipeName;
-    private CancellationTokenSource _cts = new();
+    // Shutdown uses TWO independent CTSs so the ping pipe can outlive the
+    // handler dispose. This establishes the critical invariant that
+    // TryResident relies on:
+    //
+    //   ping responds  ⇔  handler holds the file
+    //
+    // _mainCts gates the main command loop (accept + HandleClient). It is
+    // cancelled FIRST during shutdown so no new commands start while we
+    // are draining the in-flight one.
+    //
+    // _pingCts gates the ping responder and idle watchdog. It is cancelled
+    // AFTER _handler.Dispose() completes, so any client that saw a live
+    // ping is guaranteed to race against a still-locked file — and
+    // therefore any subsequent fallback to direct file access will either
+    // find the file released (ping gone) or get a retryable "busy" error.
+    private CancellationTokenSource _mainCts = new();
+    private CancellationTokenSource _pingCts = new();
     private readonly SemaphoreSlim _commandLock = new(1, 1);
-    private readonly TimeSpan _idleTimeout = TimeSpan.FromMinutes(12);
+    private readonly TimeSpan _idleTimeout = ResolveIdleTimeout();
     private CancellationTokenSource _idleCts = new();
     private bool _disposed;
+
+    // Idle timeout is configurable via OFFICECLI_RESIDENT_IDLE_SECONDS so
+    // tests can exercise the auto-shutdown path in seconds instead of
+    // minutes, and so future "open file → auto-start resident" UX can
+    // tune how aggressively the background process exits.
+    // Valid range: 1s .. 24h. Anything outside falls back to the 12min
+    // default. A value of "0" is rejected (would be an infinite-busy
+    // spin on the watchdog task).
+    private static TimeSpan ResolveIdleTimeout()
+    {
+        var raw = Environment.GetEnvironmentVariable("OFFICECLI_RESIDENT_IDLE_SECONDS");
+        if (!string.IsNullOrWhiteSpace(raw)
+            && int.TryParse(raw, out var secs)
+            && secs >= 1 && secs <= 86400)
+        {
+            return TimeSpan.FromSeconds(secs);
+        }
+        return TimeSpan.FromMinutes(12);
+    }
     // Shared shutdown Task so __close__ and Dispose coordinate on a single
     // ordered teardown: drain in-flight command → dispose handler → ack client.
     private readonly object _shutdownLock = new();
@@ -44,14 +80,66 @@ public class ResidentServer : IDisposable
 
     public async Task RunAsync(CancellationToken externalToken = default)
     {
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, externalToken);
-        var token = linkedCts.Token;
+        // Main command loop is gated by _mainCts; ping responder and idle
+        // watchdog are gated by _pingCts. The external token cancels both
+        // via two linked CTSs so a caller's cancellation still shuts the
+        // whole server down.
+        using var mainLinked = CancellationTokenSource.CreateLinkedTokenSource(_mainCts.Token, externalToken);
+        using var pingLinked = CancellationTokenSource.CreateLinkedTokenSource(_pingCts.Token, externalToken);
+        var mainToken = mainLinked.Token;
+        var pingToken = pingLinked.Token;
+
+        // Hook graceful shutdown signals. Without this, a terminal HUP,
+        // a cooperative `kill`, or a launcher's SIGTERM would terminate
+        // the process before handler.Dispose() could flush the in-memory
+        // tree to disk — the file lock would release but the user's
+        // unsaved edits would be lost.
+        //
+        // PosixSignalRegistration runs our handler BEFORE the .NET
+        // runtime begins its shutdown sequence, while the ThreadPool is
+        // still fully healthy, so Task.Run continuations inside
+        // DoShutdownAsync can complete reliably. On Unix it hooks
+        // SIGTERM/SIGINT/SIGQUIT; on Windows it hooks the equivalent
+        // console control events. Calling Cancel() on the context
+        // suppresses the default abort so our shutdown can run to
+        // completion.
+        var signalRegs = new List<PosixSignalRegistration>();
+        void HandleSignal(PosixSignalContext ctx)
+        {
+            ctx.Cancel = true;
+            try { ShutdownAsync().Wait(TimeSpan.FromMinutes(10)); } catch { }
+            Environment.Exit(0);
+        }
+        // SIGTERM and SIGINT work on every supported platform (Windows
+        // maps SIGINT to Ctrl+C and SIGTERM to its equivalent console
+        // control). SIGQUIT and SIGHUP are POSIX-only and throw
+        // PlatformNotSupportedException on Windows — register each
+        // individually so a Windows host still gets SIGTERM/SIGINT
+        // coverage.
+        void TryRegister(PosixSignal sig)
+        {
+            try { signalRegs.Add(PosixSignalRegistration.Create(sig, HandleSignal)); }
+            catch (PlatformNotSupportedException) { /* skip on unsupported host */ }
+        }
+        TryRegister(PosixSignal.SIGTERM);
+        TryRegister(PosixSignal.SIGINT);
+        TryRegister(PosixSignal.SIGQUIT);
+        TryRegister(PosixSignal.SIGHUP);
+
+        // Also hook ProcessExit as a last-resort safety net for any exit
+        // path that PosixSignalRegistration didn't cover (e.g.
+        // Environment.Exit from other code).
+        void OnProcessExit(object? s, EventArgs e)
+        {
+            try { ShutdownAsync().Wait(TimeSpan.FromMinutes(10)); } catch { }
+        }
+        AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
 
         // Start ping responder on a dedicated pipe (never blocked by business commands)
-        var pingTask = RunPingResponderAsync(token);
+        var pingTask = RunPingResponderAsync(pingToken);
 
         // Start idle watchdog
-        var idleTask = RunIdleWatchdogAsync(token);
+        var idleTask = RunIdleWatchdogAsync(pingToken);
 
         // Main command loop - accept connections concurrently, serialize
         // command execution. CONSISTENCY(pipe-precreate): same pre-create
@@ -70,17 +158,17 @@ public class ResidentServer : IDisposable
         var currentMain = NewMainServer();
         try
         {
-            while (!token.IsCancellationRequested)
+            while (!mainToken.IsCancellationRequested)
             {
                 try
                 {
-                    await currentMain.WaitForConnectionAsync(token);
+                    await currentMain.WaitForConnectionAsync(mainToken);
                     // Hand over the accepted instance and immediately stand
                     // up a replacement so the pipe is never unlistened while
                     // the handler runs.
                     var accepted = currentMain;
                     currentMain = NewMainServer();
-                    _ = HandleClientWithLockAsync(accepted, token);
+                    _ = HandleClientWithLockAsync(accepted, mainToken);
                 }
                 catch (OperationCanceledException)
                 {
@@ -99,9 +187,19 @@ public class ResidentServer : IDisposable
             try { await currentMain.DisposeAsync(); } catch { }
         }
 
-        // Both tasks observe the same token; swallow cancellation on shutdown
+        // Main loop exited (via _mainCts cancel). The ping responder and
+        // idle watchdog are still live under _pingCts; they will be
+        // cancelled by DoShutdownAsync AFTER handler.Dispose() has
+        // released the file lock. This keeps the ping-liveness invariant
+        // intact even while the slow handler.Dispose() is running.
+        try { await ShutdownAsync(); } catch { }
+
         try { await pingTask; } catch (OperationCanceledException) { }
         try { await idleTask; } catch (OperationCanceledException) { }
+
+        AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
+        foreach (var reg in signalRegs)
+            try { reg.Dispose(); } catch { }
     }
 
     private void ResetIdleTimer()
@@ -123,9 +221,13 @@ public class ResidentServer : IDisposable
                 using var linked = CancellationTokenSource.CreateLinkedTokenSource(idleCts.Token, token);
                 await Task.Delay(_idleTimeout, linked.Token);
 
-                // Reached here = idle timeout elapsed without reset
+                // Reached here = idle timeout elapsed without reset.
+                // Kick off the ordered shutdown path instead of raw-
+                // cancelling _mainCts / _pingCts, so the "ping liveness ⇔
+                // file locked" invariant is preserved end-to-end: the
+                // ping pipe stays alive until handler.Dispose() completes.
                 Console.Error.WriteLine($"Resident idle for {_idleTimeout.TotalMinutes} minutes, closing.");
-                _cts.Cancel();
+                _ = ShutdownAsync();
                 break;
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested)
@@ -139,14 +241,22 @@ public class ResidentServer : IDisposable
     {
         var pingPipeName = _pipeName + "-ping";
 
-        // BUG-FUZZER-R6-B-01: pre-create the next server instance BEFORE the
-        // current one is disposed, so there is no window where TryConnect can
-        // return false even though the resident is alive. Without this, a
-        // second `officecli open` racing into the dispose-and-recreate gap
-        // would think no resident exists and spawn a duplicate process.
-        // Both instances live concurrently via MaxAllowedServerInstances; the
-        // OS routes the next client to whichever server is in
-        // WaitForConnectionAsync first.
+        // CONSISTENCY(pipe-precreate): pre-create the next server instance
+        // BEFORE handing off the accepted one, so there is no window where
+        // TryConnect can return false even though the resident is alive
+        // (BUG-FUZZER-R6-B-01). Both instances live concurrently via
+        // MaxAllowedServerInstances; the OS routes the next client to
+        // whichever server is in WaitForConnectionAsync first.
+        //
+        // CONCURRENCY: the per-connection request handler runs
+        // fire-and-forget so multiple ping probes can be serviced in
+        // parallel. Without this, a burst of N concurrent
+        // `ResidentClient.TryConnect` calls (e.g. from a fan-out of `set`
+        // commands right after `open` returns) would serialize behind the
+        // single accepted connection — and clients whose Connect(100ms)
+        // expired during the wait would incorrectly conclude "no resident"
+        // and fall back to direct file access, racing against the locked
+        // file.
         NamedPipeServerStream NewServer() => new(pingPipeName, PipeDirection.InOut,
             NamedPipeServerStream.MaxAllowedServerInstances,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
@@ -160,75 +270,80 @@ public class ResidentServer : IDisposable
                 {
                     await current.WaitForConnectionAsync(token);
 
-                    // Hand over the just-accepted server to the request
-                    // handler and immediately stand up the replacement so the
-                    // pipe is never unlistened. The OS holds the new server
-                    // ready while this request is being processed.
                     var accepted = current;
                     current = NewServer();
 
-                    // Use raw byte I/O instead of StreamReader/StreamWriter.
-                    // StreamReader.ReadLineAsync(CancellationToken) can deadlock on
-                    // Windows named pipes under .NET 11 preview — the cancellation-aware
-                    // overload uses a different code path that never completes the read.
-                    try
-                    {
-                        var requestLine = await ReadLineFromPipeAsync(accepted, token);
-                        if (requestLine != null)
-                        {
-                            var request = System.Text.Json.JsonSerializer.Deserialize<ResidentRequest>(requestLine, ResidentJsonContext.Default.ResidentRequest);
-                            if (request?.Command == "__ping__")
-                            {
-                                var response = MakeResponse(0, _filePath, "");
-                                await WriteLineToPipeAsync(accepted, response, token);
-                            }
-                            else if (request?.Command == "__close__")
-                            {
-                                // BUG(close-race): previously we sent the "Closing resident." ack
-                                // immediately and let handler.Dispose() run afterwards inside the
-                                // outer `using var server` block. The client observed success while
-                                // the resident was still finalizing writes and holding the file
-                                // open, so a racing `rm + open` on the same path could attach new
-                                // writes to the dying resident (holding the deleted inode) and
-                                // lose them on save. Fix: fully shut down the handler BEFORE
-                                // acking, so the file is guaranteed released when the client sees
-                                // success. ShutdownAsync is idempotent — Dispose awaits the same
-                                // cached task and is a no-op after this path completes.
-                                try { await ShutdownAsync(); }
-                                catch (Exception ex)
-                                {
-                                    Console.Error.WriteLine($"Shutdown error during __close__: {ex.Message}");
-                                }
-
-                                var response = MakeResponse(0, "Closing resident.", "");
-                                // ShutdownAsync cancelled `token`; use a fresh CTS for the response
-                                // write so the client still gets its acknowledgement.
-                                using var writeCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                                try { await WriteLineToPipeAsync(accepted, response, writeCts.Token); }
-                                catch { /* client may have disconnected; nothing to do */ }
-                                return;
-                            }
-                        }
-                    }
-                    finally
-                    {
-                        await accepted.DisposeAsync();
-                    }
+                    // Fire-and-forget the per-request handler so the loop
+                    // can immediately go back to WaitForConnectionAsync on
+                    // the replacement server. Exceptions are swallowed
+                    // inside HandlePingRequestAsync.
+                    _ = HandlePingRequestAsync(accepted, token);
                 }
                 catch (OperationCanceledException)
                 {
                     break;
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Ignore individual request errors; the next iteration's
-                    // current server is already standing by.
+                    Console.Error.WriteLine($"Ping responder error: {ex.Message}");
+                    // currentMain/current is already the replacement;
+                    // loop continues.
                 }
             }
         }
         finally
         {
             try { await current.DisposeAsync(); } catch { }
+        }
+    }
+
+    private async Task HandlePingRequestAsync(NamedPipeServerStream accepted, CancellationToken token)
+    {
+        try
+        {
+            // Use raw byte I/O to dodge the StreamReader cancellation-
+            // path deadlock on Windows named pipes under .NET 11 preview.
+            var requestLine = await ReadLineFromPipeAsync(accepted, token);
+            if (requestLine == null) return;
+
+            var request = System.Text.Json.JsonSerializer.Deserialize<ResidentRequest>(
+                requestLine, ResidentJsonContext.Default.ResidentRequest);
+            if (request == null) return;
+
+            if (request.Command == "__ping__")
+            {
+                var response = MakeResponse(0, _filePath, "");
+                await WriteLineToPipeAsync(accepted, response, token);
+                return;
+            }
+
+            if (request.Command == "__close__")
+            {
+                // Fully shut down the handler BEFORE acking, so the
+                // client's subsequent file access races a guaranteed-
+                // released file (see close-race commit for details).
+                try { await ShutdownAsync(); }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Shutdown error during __close__: {ex.Message}");
+                }
+
+                var response = MakeResponse(0, "Closing resident.", "");
+                // ShutdownAsync cancelled the ping token; write on a
+                // fresh CTS so the client still gets the ack.
+                using var writeCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                try { await WriteLineToPipeAsync(accepted, response, writeCts.Token); }
+                catch { /* client may have disconnected; nothing to do */ }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Ping handler error: {ex.Message}");
+        }
+        finally
+        {
+            try { await accepted.DisposeAsync(); } catch { }
         }
     }
 
@@ -884,22 +999,35 @@ public class ResidentServer : IDisposable
         }
 
         try { _commandLock.Dispose(); } catch { }
-        try { _cts.Dispose(); } catch { }
+        try { _mainCts.Dispose(); } catch { }
+        try { _pingCts.Dispose(); } catch { }
         try { _idleCts.Dispose(); } catch { }
     }
 
     /// <summary>
-    /// Idempotent, ordered resident shutdown. Safe to call from any thread and
-    /// from both __close__ (ping pipe) and Dispose (process teardown) — all
-    /// callers await the same cached <see cref="Task"/>. Steps:
-    ///   1. Cancel the main loop / ping responder token (stop accepting new work)
-    ///   2. Kick both pipe listeners out of WaitForConnectionAsync
-    ///   3. Wait for any in-flight command to drain (preserves data integrity)
-    ///   4. Dispose the document handler (persists in-memory changes to disk
-    ///      and releases the file handle)
-    /// Step 4 must complete before the __close__ handler returns, otherwise
-    /// the client can race a follow-up rm/open against a still-alive resident
-    /// and lose writes.
+    /// Idempotent, ordered resident shutdown. Safe to call from any thread
+    /// and from every teardown entrypoint (__close__, idle watchdog,
+    /// Dispose, ProcessExit, Ctrl+C) — all callers await the same cached
+    /// <see cref="Task"/>.
+    ///
+    /// Ordering enforces the critical invariant
+    /// <c>ping responds ⇔ handler holds the file</c>:
+    ///
+    ///   1. Cancel _mainCts → main command loop stops accepting NEW work.
+    ///      Ping + idle are still live under _pingCts.
+    ///   2. Kick the main pipe to unstick any in-flight WaitForConnectionAsync.
+    ///   3. Drain _commandLock → the one in-flight command (if any) finishes.
+    ///   4. Dispose the document handler → in-memory tree written to disk,
+    ///      file lock released. This is the slow, load-bearing step.
+    ///   5. Cancel _pingCts → ping responder and idle watchdog stop.
+    ///   6. Kick the ping pipe to unstick its WaitForConnectionAsync.
+    ///
+    /// Between (1) and (4) the ping pipe is intentionally kept alive so
+    /// clients can observe "resident still holds the file" and behave
+    /// accordingly (return busy, retry, etc). Fallback paths that probe
+    /// via <see cref="ResidentClient.TryConnect"/> therefore get a
+    /// consistent answer: ping live ⇒ do NOT try to open the file
+    /// directly, ping dead ⇒ safe to open.
     /// </summary>
     private Task ShutdownAsync()
     {
@@ -911,15 +1039,12 @@ public class ResidentServer : IDisposable
 
     private async Task DoShutdownAsync()
     {
-        // 1. Stop accepting new connections. Swallow ObjectDisposedException
-        //    in case Dispose already raced us here.
-        try { _cts.Cancel(); } catch (ObjectDisposedException) { }
+        // 1. Stop accepting new main-pipe commands. Ping responder and
+        //    idle watchdog remain live under _pingCts.
+        try { _mainCts.Cancel(); } catch (ObjectDisposedException) { }
 
-        // 2. Kick both pipe listeners out of WaitForConnectionAsync so the
-        //    loops unwind promptly. Cross-platform: Windows named pipes and
-        //    macOS/Linux CoreFxPipe (unix sockets) both honour Connect kicks.
+        // 2. Kick the main pipe to wake WaitForConnectionAsync.
         KickPipe(_pipeName);
-        KickPipe(_pipeName + "-ping");
 
         // 3. Drain any currently-executing command. Typical command takes
         //    tens of ms (reads) up to a few hundred ms (writes); the 10 min
@@ -938,14 +1063,23 @@ public class ResidentServer : IDisposable
         }
         catch (ObjectDisposedException) { /* _commandLock already disposed */ }
 
-        // 4. Dispose the handler. This is the slow, load-bearing step — it
-        //    writes the in-memory OpenXML tree back to disk and closes the
-        //    file handle. Must complete before __close__ acks the client.
+        // 4. Dispose the handler. Slow (writes the OpenXML tree back to
+        //    disk and closes the file handle). The ping pipe is still
+        //    live right now, so any TryResident caller will correctly
+        //    conclude "resident still owns the file".
         try { _handler.Dispose(); }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Warning: handler dispose error: {ex.Message}");
         }
+
+        // 5. NOW cancel ping + idle. Clients observing the ping pipe from
+        //    this moment on will see it dead and can safely open the file
+        //    directly.
+        try { _pingCts.Cancel(); } catch (ObjectDisposedException) { }
+
+        // 6. Kick ping pipe so RunPingResponderAsync unsticks.
+        KickPipe(_pipeName + "-ping");
     }
 
     private static void KickPipe(string pipeName)
