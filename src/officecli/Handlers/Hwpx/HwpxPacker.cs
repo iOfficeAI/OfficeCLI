@@ -181,10 +181,5 @@ public static class HwpxPacker
             RegexOptions.Singleline);
     }
 
-    /// <summary>Minify XML to single-line output.</summary>
-    public static string MinifyXml(string xml)
-    {
-        return XDocument.Parse(xml, LoadOptions.None)
-                        .ToString(SaveOptions.DisableFormatting);
-    }
+    // Removed duplicate MinifyXml — the one above (regex-based) handles inter-element whitespace correctly
 }
