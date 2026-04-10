@@ -16,7 +16,7 @@ static partial class CommandBuilder
         var jsonOption = new Option<bool>("--json") { Description = "Output as JSON (AI-friendly)" };
 
         var rootCommand = new RootCommand("""
-            officecli: AI-friendly CLI for Office documents (.docx, .xlsx, .pptx)
+            officecli: AI-friendly CLI for Office documents (.docx, .xlsx, .pptx, .hwpx)
 
             Help navigation (start from the deepest level you know):
               officecli pptx set              All settable elements and their properties

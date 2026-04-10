@@ -21,6 +21,7 @@ internal static class HelpCommands
         rootCommand.Add(new Command("docx", "Word (.docx) help — run 'officecli docx [view|get|query|set|add|raw]' for details"));
         rootCommand.Add(new Command("xlsx", "Excel (.xlsx) help — run 'officecli xlsx [view|get|query|set|add|raw]' for details"));
         rootCommand.Add(new Command("pptx", "PowerPoint (.pptx) help — run 'officecli pptx [view|get|query|set|add|raw]' for details"));
+        rootCommand.Add(new Command("hwpx", "HWPX (.hwpx) help — run 'officecli hwpx [view|get|query|set|raw]' for details"));
     }
 
     /// <summary>
@@ -34,7 +35,7 @@ internal static class HelpCommands
     {
         if (args.Length == 0) return false;
         var format = args[0].ToLowerInvariant();
-        if (format is not ("docx" or "xlsx" or "pptx")) return false;
+        if (format is not ("docx" or "xlsx" or "pptx" or "hwpx")) return false;
 
         // Extract verb and optional element.property (skip --help flags)
         string? verb = null;
@@ -133,6 +134,15 @@ internal static class HelpCommands
             "add" => PptxAdd,
             "raw" => PptxRaw,
             _ => PptxOverview,
+        },
+        "hwpx" => verb switch
+        {
+            "view" => HwpxView,
+            "get" => HwpxGet,
+            "query" => HwpxQuery,
+            "set" => HwpxSet,
+            "raw" => HwpxRaw,
+            _ => HwpxOverview,
         },
         _ => ""
     };
@@ -1833,5 +1843,131 @@ Examples:
   officecli raw pres.pptx '/slide[1]'
   officecli raw pres.pptx '/slideMaster[1]'
   officecli raw-set pres.pptx '/slide[1]' --xpath "//p:cSld/p:spTree" --action append --xml '<p:sp>...</p:sp>'
+""";
+
+    // ======================== HWPX ========================
+
+    const string HwpxOverview = """
+HWPX (.hwpx) Reference
+=======================
+
+Path system (1-based):
+  /section[N]                Section N
+  /section[N]/p[M]           Paragraph M in section N
+  /section[N]/tbl[M]         Table M in section N
+  /section[N]/tbl[M]/tr[R]/tc[C]  Table cell
+  /header                    Document header (style definitions)
+  /p[N]                      Shorthand for /section[1]/p[N]
+
+Commands:
+  officecli view doc.hwpx text|annotated|outline|stats|issues
+  officecli get doc.hwpx '/section[1]/p[1]'
+  officecli query doc.hwpx 'p:contains("keyword")'
+  officecli set doc.hwpx '/section[1]/p[1]' --props 'text=Hello'
+  officecli raw doc.hwpx 'Contents/section0.xml'
+  officecli validate doc.hwpx
+
+Note: .hwp (binary) files are NOT supported. Convert to .hwpx in Hancom Office.
+""";
+
+    const string HwpxView = """
+officecli view <file.hwpx> <mode>
+
+Modes:
+  text       Plain text extraction from all sections
+  annotated  Text with formatting annotations (charPr refs)
+  outline    Heading-based document outline (개요 styles)
+  stats      Document statistics (sections, paragraphs, tables, words)
+  issues     Content/structure issues detected by validation
+
+Options:
+  --start-line N   Start from line N (text/annotated only)
+  --end-line N     End at line N
+  --max-lines N    Limit output lines
+
+Examples:
+  officecli view doc.hwpx text
+  officecli view doc.hwpx stats
+  officecli view doc.hwpx text --start-line 1 --end-line 50
+""";
+
+    const string HwpxGet = """
+officecli get <file.hwpx> <path> [--depth N]
+
+Retrieve document node at path. Returns JSON with type, text, style, format, children.
+
+Paths:
+  /section[1]/p[1]           First paragraph of first section
+  /section[1]/tbl[1]         First table
+  /section[1]/tbl[1]/tr[1]/tc[1]  First cell of first table
+  /header                    Header (style definitions)
+
+Options:
+  --depth N   Child traversal depth (default: 1)
+
+Examples:
+  officecli get doc.hwpx '/section[1]/p[1]'
+  officecli get doc.hwpx '/section[1]/tbl[1]' --depth 3
+""";
+
+    const string HwpxQuery = """
+officecli query <file.hwpx> <selector>
+
+Query document nodes by type and pseudo-selectors.
+
+Selectors:
+  p                All paragraphs
+  tbl              All tables
+  p:contains("X")  Paragraphs containing text X
+  p:empty          Empty paragraphs
+  tbl:has(tc)      Tables with cells
+
+Examples:
+  officecli query doc.hwpx 'p:contains("계약")'
+  officecli query doc.hwpx 'p:empty'
+  officecli query doc.hwpx 'tbl'
+""";
+
+    const string HwpxSet = """
+officecli set <file.hwpx> <path> --props '<key>=<value>[,...]'
+
+Set properties on document elements.
+
+Paragraph properties:
+  text          Set paragraph text
+  alignment     Set alignment (LEFT, CENTER, RIGHT, JUSTIFY)
+  indent.left   Set left indent (HWPUNIT)
+  indent.right  Set right indent (HWPUNIT)
+
+Run properties:
+  text          Set run text
+  bold          Toggle bold (true/false)
+  italic        Toggle italic (true/false)
+  underline     Toggle underline (true/false)
+  fontSize      Set font size in points
+
+Examples:
+  officecli set doc.hwpx '/section[1]/p[1]' --props 'text=Hello World'
+  officecli set doc.hwpx '/section[1]/p[1]' --props 'alignment=CENTER'
+""";
+
+    const string HwpxRaw = """
+officecli raw <file.hwpx> <partPath>
+
+Read raw XML from a ZIP entry.
+
+Common parts:
+  Contents/section0.xml    First section body
+  Contents/header.xml      Document header (styles, fonts)
+  Contents/content.hpf     OPF manifest
+
+officecli raw-set <file.hwpx> <partPath> --xpath <expr> --action <action> [--xml <fragment>]
+
+Actions: append, prepend, insertbefore, insertafter, replace, remove, setattr
+
+Examples:
+  officecli raw doc.hwpx 'Contents/section0.xml'
+  officecli raw doc.hwpx 'Contents/header.xml'
+  officecli raw-set doc.hwpx 'Contents/section0.xml' --xpath '//hp:p[1]' --action replace --xml '<hp:p>...</hp:p>'
 """;
 }
