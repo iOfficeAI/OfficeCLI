@@ -1026,9 +1026,10 @@ public partial class HwpxHandler
     // ==================== Comment / Memo ====================
 
     /// <summary>
-    /// Add a memo to the section-level memogroup container.
+    /// Add a memo to the section-level memogroup container and attach a
+    /// fieldBegin/fieldEnd anchor to the last paragraph so Hancom displays it.
     /// HWPX memos live in: section > hp:memogroup > hp:memo > hp:paraList > hp:p
-    /// NOT inside hp:ctrl inline (that causes Hancom to crash).
+    /// The anchor uses fieldBegin type="MEMO" with parameters linking to the memo.
     /// Props: text (required).
     /// </summary>
     private XElement AddMemoToGroup(XElement sectionParent, Dictionary<string, string>? props)
@@ -1067,6 +1068,66 @@ public partial class HwpxHandler
                         new XElement(HwpxNs.Hp + "t", text)))));
 
         memoGroup.Add(memo);
+
+        // Attach fieldBegin/fieldEnd anchor to last paragraph
+        var lastPara = section.Elements(HwpxNs.Hp + "p").LastOrDefault();
+        if (lastPara != null)
+        {
+            var fieldId = Guid.NewGuid().ToString("N");
+            var now = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
+            // fieldBegin run
+            var runBegin = new XElement(HwpxNs.Hp + "run",
+                new XAttribute("charPrIDRef", "0"),
+                new XElement(HwpxNs.Hp + "ctrl",
+                    new XElement(HwpxNs.Hp + "fieldBegin",
+                        new XAttribute("id", fieldId),
+                        new XAttribute("type", "MEMO"),
+                        new XAttribute("editable", "true"),
+                        new XAttribute("dirty", "false"),
+                        new XAttribute("fieldid", fieldId),
+                        new XElement(HwpxNs.Hp + "parameters",
+                            new XAttribute("count", "5"),
+                            new XAttribute("name", ""),
+                            new XElement(HwpxNs.Hp + "stringParam",
+                                new XAttribute("name", "ID"), memoId),
+                            new XElement(HwpxNs.Hp + "integerParam",
+                                new XAttribute("name", "Number"), "1"),
+                            new XElement(HwpxNs.Hp + "stringParam",
+                                new XAttribute("name", "CreateDateTime"), now),
+                            new XElement(HwpxNs.Hp + "stringParam",
+                                new XAttribute("name", "Author"), ""),
+                            new XElement(HwpxNs.Hp + "stringParam",
+                                new XAttribute("name", "MemoShapeID"), memoShapeId)),
+                        new XElement(HwpxNs.Hp + "subList",
+                            new XAttribute("id", $"memo-field-{memoId}"),
+                            new XAttribute("textDirection", "HORIZONTAL"),
+                            new XAttribute("lineWrap", "BREAK"),
+                            new XAttribute("vertAlign", "TOP"),
+                            new XElement(HwpxNs.Hp + "p",
+                                new XAttribute("id", NewId()),
+                                new XAttribute("paraPrIDRef", "0"),
+                                new XAttribute("styleIDRef", "0"),
+                                new XAttribute("pageBreak", "0"),
+                                new XAttribute("columnBreak", "0"),
+                                new XAttribute("merged", "0"),
+                                new XElement(HwpxNs.Hp + "run",
+                                    new XAttribute("charPrIDRef", "0"),
+                                    new XElement(HwpxNs.Hp + "t", memoId)))))));
+
+            // fieldEnd run
+            var runEnd = new XElement(HwpxNs.Hp + "run",
+                new XAttribute("charPrIDRef", "0"),
+                new XElement(HwpxNs.Hp + "ctrl",
+                    new XElement(HwpxNs.Hp + "fieldEnd",
+                        new XAttribute("beginIDRef", fieldId),
+                        new XAttribute("fieldid", fieldId))));
+
+            // Insert at beginning and end of paragraph
+            lastPara.AddFirst(runBegin);
+            lastPara.Add(runEnd);
+        }
+
         return memo;
     }
 
