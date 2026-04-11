@@ -27,6 +27,14 @@ public partial class HwpxHandler
             return $"/section[{newSection.Index + 1}]";
         }
 
+        // Style: header-level, not section-level
+        if (type.Equals("style", StringComparison.OrdinalIgnoreCase))
+        {
+            var newStyle = CreateStyleElement(properties);
+            _dirty = true;
+            return $"/header/style[{newStyle.Attribute("id")?.Value}]";
+        }
+
         var parent = ResolvePath(parentPath);
 
         // Header/footer: special handling — adds to secPr, not to parent directly
@@ -52,7 +60,10 @@ public partial class HwpxHandler
         // TOC: special handling — generates multiple paragraphs from headings
         if (type.Equals("toc", StringComparison.OrdinalIgnoreCase) || type.Equals("tableofcontents", StringComparison.OrdinalIgnoreCase))
         {
-            var tocParas = CreateStaticToc(properties);
+            var mode = properties?.GetValueOrDefault("mode") ?? "static";
+            var tocParas = mode.Equals("field", StringComparison.OrdinalIgnoreCase)
+                ? CreateFieldToc(properties)
+                : CreateStaticToc(properties);
             foreach (var p in tocParas)
                 parent.Add(p);
             _dirty = true;
@@ -75,6 +86,19 @@ public partial class HwpxHandler
             "pagenum" or "pagenumber"     => CreatePageNum(properties),
             "bookmark"                    => CreateBookmark(properties),
             "equation" or "eq"            => CreateEquation(properties),
+            "line"                        => CreateLine(properties),
+            "rect" or "rectangle"         => CreateRect(properties),
+            "ellipse" or "circle"         => CreateEllipse(properties),
+            "textbox"                     => CreateTextBox(properties),
+            "polygon"                     => CreatePolygon(properties),
+            "triangle"                    => CreatePolygon(MergeProps(properties, "sides", "3")),
+            "pentagon"                    => CreatePolygon(MergeProps(properties, "sides", "5")),
+            "arrow"                       => CreateArrow(properties),
+            "field"                       => CreateField(properties),
+            "date"                        => CreateField(MergeProps(properties, "type", "DATE")),
+            "filepath" or "path"          => CreateField(MergeProps(properties, "type", "PATH")),
+            "clickhere"                   => CreateField(MergeProps(properties, "type", "CLICK_HERE")),
+            "summary" or "summery"        => CreateField(MergeProps(properties, "type", "SUMMERY")),
             _ => throw new CliException($"Unsupported element type: {type}")
         };
 
@@ -88,6 +112,30 @@ public partial class HwpxHandler
         }
 
         // Insert at index or append
+
+        // Auto-replace first empty paragraph: if parent is section-like and first paragraph
+        // has no text (only secPr), replace it instead of appending after it.
+        // This prevents the "always empty first line" issue with base.hwpx template.
+        if (!index.HasValue && newElement.Name == HwpxNs.Hp + "p" && IsSectionLike(parent))
+        {
+            var firstP = parent.Elements(HwpxNs.Hp + "p").FirstOrDefault();
+            if (firstP != null)
+            {
+                var hasText = firstP.Descendants(HwpxNs.Hp + "t").Any(t => !string.IsNullOrEmpty(t.Value));
+                var isOnlyPara = parent.Elements(HwpxNs.Hp + "p").Count() == 1;
+                if (!hasText && isOnlyPara)
+                {
+                    // Preserve secPr from the first paragraph (it's structurally required)
+                    var secPrRun = firstP.Elements(HwpxNs.Hp + "run")
+                        .FirstOrDefault(r => r.Element(HwpxNs.Hp + "secPr") != null);
+                    if (secPrRun != null)
+                        newElement.AddFirst(secPrRun);
+                    firstP.ReplaceWith(newElement);
+                    goto afterInsert;
+                }
+            }
+        }
+
         if (index.HasValue)
         {
             var targetName = newElement.Name;
@@ -118,6 +166,7 @@ public partial class HwpxHandler
         {
             parent.Add(newElement);
         }
+        afterInsert:
 
         // Apply formatting properties (fontsize, bold, italic, color, align, etc.)
         // to the newly created paragraph — CreateParagraph only handles text/style/IDRef
@@ -1780,6 +1829,495 @@ public partial class HwpxHandler
         return Interlocked.Increment(ref _idCounter).ToString();
     }
 
+    // ==================== Fields (golden 기반: CLICK_HERE, SUMMERY, PATH) ====================
+
+    /// <summary>
+    /// Create a field (fieldBegin + display text + fieldEnd).
+    /// Props: "type" (required), "text" (display), "command", "direction"
+    /// Golden structure: hp:ctrl > hp:fieldBegin with parameters > hp:run > hp:t > hp:ctrl > hp:fieldEnd
+    /// </summary>
+    private XElement CreateField(Dictionary<string, string>? props)
+    {
+        var fieldType = props?.GetValueOrDefault("type")?.ToUpperInvariant()
+            ?? throw new CliException("field requires 'type' property") { Code = "invalid_prop" };
+        var displayText = props?.GetValueOrDefault("text") ?? GetDefaultFieldText(fieldType, props);
+        var fieldId = NewId();
+        var instId = NewId();
+
+        // Build fieldBegin with golden-accurate attributes
+        var editable = fieldType == "CLICK_HERE" ? "1" : (props?.GetValueOrDefault("editable") ?? "0");
+        var dirty = "0"; // golden: always 0 for fresh fields
+
+        var fieldBeginEl = new XElement(HwpxNs.Hp + "fieldBegin",
+            new XAttribute("id", instId),
+            new XAttribute("type", fieldType),
+            new XAttribute("name", ""),
+            new XAttribute("editable", editable),
+            new XAttribute("dirty", dirty),
+            new XAttribute("zorder", "-1"),
+            new XAttribute("fieldid", fieldId),
+            new XAttribute("metaTag", ""));
+
+        // Add parameters based on field type (golden structure)
+        var parameters = BuildFieldParameters(fieldType, props);
+        if (parameters != null)
+            fieldBeginEl.Add(parameters);
+
+        // Golden structure: separate runs for fieldBegin, text, fieldEnd
+        // CLICK_HERE display text uses red italic charPr (golden: textColor=#FF0000 + italic)
+        var textCharPr = "0";
+        if (fieldType == "CLICK_HERE")
+            textCharPr = EnsureClickHereCharPr().ToString();
+
+        return new XElement(HwpxNs.Hp + "p",
+            new XAttribute("id", NewId()),
+            new XAttribute("styleIDRef", "0"),
+            new XAttribute("paraPrIDRef", "0"),
+            new XElement(HwpxNs.Hp + "run", new XAttribute("charPrIDRef", "0"),
+                new XElement(HwpxNs.Hp + "ctrl", fieldBeginEl)),
+            new XElement(HwpxNs.Hp + "run",
+                new XAttribute("charPrIDRef", textCharPr),
+                new XElement(HwpxNs.Hp + "t", displayText)),
+            new XElement(HwpxNs.Hp + "run", new XAttribute("charPrIDRef", "0"),
+                new XElement(HwpxNs.Hp + "ctrl",
+                    new XElement(HwpxNs.Hp + "fieldEnd",
+                        new XAttribute("beginIDRef", instId),
+                        new XAttribute("fieldid", fieldId))),
+                new XElement(HwpxNs.Hp + "t")));
+    }
+
+    private XElement? BuildFieldParameters(string fieldType, Dictionary<string, string>? props)
+    {
+        return fieldType switch
+        {
+            "CLICK_HERE" => new XElement(HwpxNs.Hp + "parameters",
+                new XAttribute("cnt", "3"), new XAttribute("name", ""),
+                new XElement(HwpxNs.Hp + "integerParam", new XAttribute("name", "Prop"), "9"),
+                new XElement(HwpxNs.Hp + "stringParam", new XAttribute("name", "Command"),
+                    new XAttribute(XNamespace.Xml + "space", "preserve"),
+                    $"Clickhere:set:66:Direction:wstring:{(props?.GetValueOrDefault("direction") ?? "이곳을 클릭하세요").Length}:{props?.GetValueOrDefault("direction") ?? "이곳을 클릭하세요"} HelpState:wstring:0:  "),
+                new XElement(HwpxNs.Hp + "stringParam", new XAttribute("name", "Direction"),
+                    props?.GetValueOrDefault("direction") ?? "이곳을 클릭하세요")),
+
+            "SUMMERY" => new XElement(HwpxNs.Hp + "parameters",
+                new XAttribute("cnt", "3"), new XAttribute("name", ""),
+                new XElement(HwpxNs.Hp + "integerParam", new XAttribute("name", "Prop"), "8"),
+                new XElement(HwpxNs.Hp + "stringParam", new XAttribute("name", "Command"),
+                    props?.GetValueOrDefault("command") ?? "$createtime"),
+                new XElement(HwpxNs.Hp + "stringParam", new XAttribute("name", "Property"),
+                    props?.GetValueOrDefault("command") ?? "$createtime")),
+
+            "PATH" => new XElement(HwpxNs.Hp + "parameters",
+                new XAttribute("cnt", "3"), new XAttribute("name", ""),
+                new XElement(HwpxNs.Hp + "integerParam", new XAttribute("name", "Prop"), "8"),
+                new XElement(HwpxNs.Hp + "stringParam", new XAttribute("name", "Command"),
+                    props?.GetValueOrDefault("format") ?? "$P$F"),
+                new XElement(HwpxNs.Hp + "stringParam", new XAttribute("name", "Format"),
+                    props?.GetValueOrDefault("format") ?? "$P$F")),
+
+            _ => null
+        };
+    }
+
+    private static string GetDefaultFieldText(string type, Dictionary<string, string>? props) => type switch
+    {
+        "DATE" => DateTime.Now.ToString("yyyy-MM-dd"),
+        "PATH" => "(filepath)",
+        "CLICK_HERE" => props?.GetValueOrDefault("text")
+            ?? props?.GetValueOrDefault("direction")
+            ?? "이곳을 마우스로 누르고 내용을 입력하세요.",
+        "SUMMERY" => props?.GetValueOrDefault("command") switch
+        {
+            "$lastsaveby" => "(author)",
+            "$createtime" => DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+            _ => "(summary)"
+        },
+        _ => $"({type})"
+    };
+
+    /// <summary>Ensure a red italic charPr exists for CLICK_HERE display text. Returns its ID.</summary>
+    private int EnsureClickHereCharPr()
+    {
+        if (_doc.Header?.Root == null) return 0;
+        // Check if a red italic charPr already exists
+        var charPrs = _doc.Header.Root.Descendants(HwpxNs.Hh + "charPr").ToList();
+        foreach (var cp in charPrs)
+        {
+            if (cp.Attribute("textColor")?.Value == "#FF0000"
+                && cp.Element(HwpxNs.Hh + "italic") != null)
+                return int.TryParse(cp.Attribute("id")?.Value, out var existingId) ? existingId : 0;
+        }
+        // Create new charPr: clone charPr 0 + set red + italic
+        var baseCharPr = charPrs.FirstOrDefault(c => c.Attribute("id")?.Value == "0");
+        if (baseCharPr == null) return 0;
+        var newCharPr = new XElement(baseCharPr);
+        var newId = charPrs.Select(c => int.TryParse(c.Attribute("id")?.Value, out var i) ? i : 0).Max() + 1;
+        newCharPr.SetAttributeValue("id", newId.ToString());
+        newCharPr.SetAttributeValue("textColor", "#FF0000");
+        // Add italic if missing
+        if (newCharPr.Element(HwpxNs.Hh + "italic") == null)
+            newCharPr.Add(new XElement(HwpxNs.Hh + "italic"));
+        var container = baseCharPr.Parent!;
+        container.Add(newCharPr);
+        container.SetAttributeValue("itemCnt", container.Elements(HwpxNs.Hh + "charPr").Count().ToString());
+        SaveHeader();
+        return newId;
+    }
+
+    private static Dictionary<string, string> MergeProps(Dictionary<string, string>? props, string key, string value)
+    {
+        var result = props != null ? new Dictionary<string, string>(props, StringComparer.OrdinalIgnoreCase) : new(StringComparer.OrdinalIgnoreCase);
+        result[key] = value;
+        return result;
+    }
+
+    // ==================== Style ====================
+
+    private XElement CreateStyleElement(Dictionary<string, string> props)
+    {
+        var name = props.GetValueOrDefault("name")
+            ?? throw new CliException("style requires 'name'") { Code = "invalid_prop" };
+        var engName = props.GetValueOrDefault("engname") ?? name;
+        var type = props.GetValueOrDefault("type")?.ToUpperInvariant() ?? "PARA";
+
+        var styles = _doc.Header!.Root!.Descendants(HwpxNs.Hh + "style").ToList();
+        var maxId = styles.Select(s => int.TryParse(s.Attribute("id")?.Value, out var i) ? i : 0)
+            .DefaultIfEmpty(0).Max();
+        var newId = (maxId + 1).ToString();
+
+        var style = new XElement(HwpxNs.Hh + "style",
+            new XAttribute("id", newId),
+            new XAttribute("type", type),
+            new XAttribute("name", name),
+            new XAttribute("engName", engName),
+            new XAttribute("paraPrIDRef", "0"),
+            new XAttribute("charPrIDRef", "0"),
+            new XAttribute("nextStyleIDRef", newId));
+
+        var container = _doc.Header.Root.Descendants(HwpxNs.Hh + "styles").FirstOrDefault();
+        if (container != null)
+        {
+            container.Add(style);
+            container.SetAttributeValue("itemCnt",
+                container.Elements(HwpxNs.Hh + "style").Count().ToString());
+        }
+        SaveHeader();
+        return style;
+    }
+
+    // ==================== Shapes (golden54 기반) ====================
+
+    /// <summary>Create common shape child elements matching golden template structure.</summary>
+    private XElement[] CreateShapeCommonChildren(int w, int h, Dictionary<string, string>? props)
+    {
+        var x = int.TryParse(props?.GetValueOrDefault("x"), out var xv) ? xv : 0;
+        var y = int.TryParse(props?.GetValueOrDefault("y"), out var yv) ? yv : 0;
+        var treatAsChar = props?.GetValueOrDefault("wrap")?.Equals("char", StringComparison.OrdinalIgnoreCase) == true;
+        var cx = w / 2; var cy = h / 2;
+
+        XElement identity(string name) => new XElement(HwpxNs.Hc + name,
+            new XAttribute("e1", "1"), new XAttribute("e2", "0"), new XAttribute("e3", "0"),
+            new XAttribute("e4", "0"), new XAttribute("e5", "1"), new XAttribute("e6", "0"));
+
+        return new XElement[]
+        {
+            new XElement(HwpxNs.Hp + "offset", new XAttribute("x", "0"), new XAttribute("y", "0")),
+            new XElement(HwpxNs.Hp + "orgSz", new XAttribute("width", w), new XAttribute("height", h)),
+            new XElement(HwpxNs.Hp + "curSz", new XAttribute("width", "0"), new XAttribute("height", "0")),
+            new XElement(HwpxNs.Hp + "flip", new XAttribute("horizontal", "0"), new XAttribute("vertical", "0")),
+            new XElement(HwpxNs.Hp + "rotationInfo",
+                new XAttribute("angle", "0"), new XAttribute("centerX", cx), new XAttribute("centerY", cy),
+                new XAttribute("rotateimage", "1")),
+            new XElement(HwpxNs.Hp + "renderingInfo", identity("transMatrix"), identity("scaMatrix"), identity("rotMatrix")),
+        };
+    }
+
+    private XElement CreateShapeSzPosMargin(int w, int h, Dictionary<string, string>? props)
+    {
+        // Returns a container — caller extracts children
+        var x = int.TryParse(props?.GetValueOrDefault("x"), out var xv) ? xv : 0;
+        var y = int.TryParse(props?.GetValueOrDefault("y"), out var yv) ? yv : 0;
+        var treatAsChar = props?.GetValueOrDefault("wrap")?.Equals("char", StringComparison.OrdinalIgnoreCase) == true;
+
+        return new XElement("_tmp",
+            new XElement(HwpxNs.Hp + "sz",
+                new XAttribute("width", w), new XAttribute("widthRelTo", "ABSOLUTE"),
+                new XAttribute("height", h), new XAttribute("heightRelTo", "ABSOLUTE"),
+                new XAttribute("protect", "0")),
+            new XElement(HwpxNs.Hp + "pos",
+                new XAttribute("treatAsChar", treatAsChar ? "1" : "0"),
+                new XAttribute("affectLSpacing", "0"), new XAttribute("flowWithText", "1"),
+                new XAttribute("allowOverlap", treatAsChar ? "1" : "0"),
+                new XAttribute("holdAnchorAndSO", "0"),
+                new XAttribute("vertRelTo", "PARA"), new XAttribute("horzRelTo", "COLUMN"),
+                new XAttribute("vertAlign", "TOP"), new XAttribute("horzAlign", "LEFT"),
+                new XAttribute("vertOffset", y), new XAttribute("horzOffset", x)),
+            new XElement(HwpxNs.Hp + "outMargin",
+                new XAttribute("left", "0"), new XAttribute("right", "0"),
+                new XAttribute("top", "0"), new XAttribute("bottom", "0")));
+    }
+
+    private static XElement CreateLineShapeElement(Dictionary<string, string>? props)
+    {
+        var color = props?.GetValueOrDefault("color") ?? props?.GetValueOrDefault("linecolor") ?? "#000000";
+        var width = props?.GetValueOrDefault("linewidth") ?? "33";
+        var style = props?.GetValueOrDefault("linestyle") ?? "SOLID";
+        return new XElement(HwpxNs.Hp + "lineShape",
+            new XAttribute("color", color), new XAttribute("width", width),
+            new XAttribute("style", style), new XAttribute("endCap", "FLAT"),
+            new XAttribute("headStyle", "NORMAL"), new XAttribute("tailStyle", "NORMAL"),
+            new XAttribute("headfill", "1"), new XAttribute("tailfill", "1"),
+            new XAttribute("headSz", "MEDIUM_MEDIUM"), new XAttribute("tailSz", "MEDIUM_MEDIUM"),
+            new XAttribute("outlineStyle", "NORMAL"), new XAttribute("alpha", "0"));
+    }
+
+    private static XElement? CreateFillBrush(Dictionary<string, string>? props)
+    {
+        var fill = props?.GetValueOrDefault("fillcolor") ?? props?.GetValueOrDefault("fill");
+        if (fill == null) return null;
+        return new XElement(HwpxNs.Hc + "fillBrush",
+            new XElement(HwpxNs.Hc + "winBrush",
+                new XAttribute("faceColor", fill), new XAttribute("hatchColor", "#000000"),
+                new XAttribute("alpha", "0")));
+    }
+
+    private XElement CreateLine(Dictionary<string, string>? props)
+    {
+        var w = int.TryParse(props?.GetValueOrDefault("width"), out var wv) ? wv : 20000;
+        var h = 43; // golden: line height is minimal
+        var common = CreateShapeCommonChildren(w, h, props);
+        var szPosMargin = CreateShapeSzPosMargin(w, h, props);
+
+        var line = new XElement(HwpxNs.Hp + "line",
+            new XAttribute("id", NewId()), new XAttribute("zOrder", "0"),
+            new XAttribute("numberingType", "PICTURE"),
+            new XAttribute("textWrap", "TOP_AND_BOTTOM"), new XAttribute("textFlow", "BOTH_SIDES"),
+            new XAttribute("lock", "0"), new XAttribute("dropcapstyle", "None"),
+            new XAttribute("href", ""), new XAttribute("groupLevel", "0"),
+            new XAttribute("instid", NewId()), new XAttribute("isReverseHV", "0"));
+        line.Add(common);
+        line.Add(CreateLineShapeElement(props));
+        line.Add(new XElement(HwpxNs.Hp + "shadow",
+            new XAttribute("type", "NONE"), new XAttribute("color", "#B2B2B2"),
+            new XAttribute("offsetX", "0"), new XAttribute("offsetY", "0"), new XAttribute("alpha", "0")));
+        line.Add(new XElement(HwpxNs.Hc + "startPt", new XAttribute("x", "0"), new XAttribute("y", h)));
+        line.Add(new XElement(HwpxNs.Hc + "endPt", new XAttribute("x", w), new XAttribute("y", "0")));
+        line.Add(szPosMargin.Elements());
+        line.Add(new XElement(HwpxNs.Hp + "shapeComment", "선입니다."));
+
+        return new XElement(HwpxNs.Hp + "p",
+            new XAttribute("id", NewId()), new XAttribute("styleIDRef", "0"), new XAttribute("paraPrIDRef", "0"),
+            new XElement(HwpxNs.Hp + "run", new XAttribute("charPrIDRef", "0"), line,
+                new XElement(HwpxNs.Hp + "t", "")));
+    }
+
+    private XElement CreateRect(Dictionary<string, string>? props)
+    {
+        var w = int.TryParse(props?.GetValueOrDefault("width"), out var wv) ? wv : 20000;
+        var h = int.TryParse(props?.GetValueOrDefault("height"), out var hv) ? hv : 10000;
+        var text = props?.GetValueOrDefault("text");
+        var common = CreateShapeCommonChildren(w, h, props);
+        var szPosMargin = CreateShapeSzPosMargin(w, h, props);
+        var fillBrush = CreateFillBrush(props);
+
+        var rect = new XElement(HwpxNs.Hp + "rect",
+            new XAttribute("id", NewId()), new XAttribute("zOrder", "0"),
+            new XAttribute("numberingType", "PICTURE"),
+            new XAttribute("textWrap", "TOP_AND_BOTTOM"), new XAttribute("textFlow", "BOTH_SIDES"),
+            new XAttribute("lock", "0"), new XAttribute("dropcapstyle", "None"),
+            new XAttribute("href", ""), new XAttribute("groupLevel", "0"),
+            new XAttribute("instid", NewId()), new XAttribute("ratio", "0"));
+        rect.Add(common);
+        rect.Add(CreateLineShapeElement(props));
+        if (fillBrush != null) rect.Add(fillBrush);
+        rect.Add(new XElement(HwpxNs.Hp + "shadow",
+            new XAttribute("type", "NONE"), new XAttribute("color", "#B2B2B2"),
+            new XAttribute("offsetX", "0"), new XAttribute("offsetY", "0"), new XAttribute("alpha", "178")));
+        // drawText (text inside shape)
+        if (text != null)
+        {
+            rect.Add(new XElement(HwpxNs.Hp + "drawText",
+                new XAttribute("lastWidth", w), new XAttribute("name", ""), new XAttribute("editable", "0"),
+                new XElement(HwpxNs.Hp + "subList",
+                    new XAttribute("id", ""), new XAttribute("textDirection", "HORIZONTAL"),
+                    new XAttribute("lineWrap", "BREAK"), new XAttribute("vertAlign", "CENTER"),
+                    new XAttribute("linkListIDRef", "0"), new XAttribute("linkListNextIDRef", "0"),
+                    new XAttribute("textWidth", "0"), new XAttribute("textHeight", "0"),
+                    new XAttribute("hasTextRef", "0"), new XAttribute("hasNumRef", "0"),
+                    new XElement(HwpxNs.Hp + "p",
+                        new XAttribute("id", NewId()), new XAttribute("styleIDRef", "0"), new XAttribute("paraPrIDRef", "0"),
+                        new XElement(HwpxNs.Hp + "run", new XAttribute("charPrIDRef", "0"),
+                            new XElement(HwpxNs.Hp + "t", text)))),
+                new XElement(HwpxNs.Hp + "textMargin",
+                    new XAttribute("left", "283"), new XAttribute("right", "283"),
+                    new XAttribute("top", "283"), new XAttribute("bottom", "283"))));
+        }
+        // Corner points
+        rect.Add(new XElement(HwpxNs.Hc + "pt0", new XAttribute("x", "0"), new XAttribute("y", "0")));
+        rect.Add(new XElement(HwpxNs.Hc + "pt1", new XAttribute("x", w), new XAttribute("y", "0")));
+        rect.Add(new XElement(HwpxNs.Hc + "pt2", new XAttribute("x", w), new XAttribute("y", h)));
+        rect.Add(new XElement(HwpxNs.Hc + "pt3", new XAttribute("x", "0"), new XAttribute("y", h)));
+        rect.Add(szPosMargin.Elements());
+
+        return new XElement(HwpxNs.Hp + "p",
+            new XAttribute("id", NewId()), new XAttribute("styleIDRef", "0"), new XAttribute("paraPrIDRef", "0"),
+            new XElement(HwpxNs.Hp + "run", new XAttribute("charPrIDRef", "0"), rect,
+                new XElement(HwpxNs.Hp + "t", "")));
+    }
+
+    private XElement CreateEllipse(Dictionary<string, string>? props)
+    {
+        var w = int.TryParse(props?.GetValueOrDefault("width"), out var wv) ? wv : 15000;
+        var h = int.TryParse(props?.GetValueOrDefault("height"), out var hv) ? hv : 10000;
+        var common = CreateShapeCommonChildren(w, h, props);
+        var szPosMargin = CreateShapeSzPosMargin(w, h, props);
+        var fillBrush = CreateFillBrush(props);
+        var cx = w / 2; var cy = h / 2;
+
+        var ellipse = new XElement(HwpxNs.Hp + "ellipse",
+            new XAttribute("id", NewId()), new XAttribute("zOrder", "0"),
+            new XAttribute("numberingType", "PICTURE"),
+            new XAttribute("textWrap", "TOP_AND_BOTTOM"), new XAttribute("textFlow", "BOTH_SIDES"),
+            new XAttribute("lock", "0"), new XAttribute("dropcapstyle", "None"),
+            new XAttribute("href", ""), new XAttribute("groupLevel", "0"),
+            new XAttribute("instid", NewId()),
+            new XAttribute("intervalDirty", "0"), new XAttribute("hasArcPr", "0"),
+            new XAttribute("arcType", "NORMAL"));
+        ellipse.Add(common);
+        ellipse.Add(CreateLineShapeElement(props));
+        if (fillBrush != null) ellipse.Add(fillBrush);
+        ellipse.Add(new XElement(HwpxNs.Hp + "shadow",
+            new XAttribute("type", "NONE"), new XAttribute("color", "#B2B2B2"),
+            new XAttribute("offsetX", "0"), new XAttribute("offsetY", "0"), new XAttribute("alpha", "178")));
+        // Ellipse geometry
+        ellipse.Add(new XElement(HwpxNs.Hc + "center", new XAttribute("x", cx), new XAttribute("y", cy)));
+        ellipse.Add(new XElement(HwpxNs.Hc + "ax1", new XAttribute("x", w), new XAttribute("y", cy)));
+        ellipse.Add(new XElement(HwpxNs.Hc + "ax2", new XAttribute("x", cx), new XAttribute("y", "0")));
+        ellipse.Add(new XElement(HwpxNs.Hc + "start1", new XAttribute("x", "0"), new XAttribute("y", "0")));
+        ellipse.Add(new XElement(HwpxNs.Hc + "end1", new XAttribute("x", "0"), new XAttribute("y", "0")));
+        ellipse.Add(new XElement(HwpxNs.Hc + "start2", new XAttribute("x", "0"), new XAttribute("y", "0")));
+        ellipse.Add(new XElement(HwpxNs.Hc + "end2", new XAttribute("x", "0"), new XAttribute("y", "0")));
+        ellipse.Add(szPosMargin.Elements());
+
+        return new XElement(HwpxNs.Hp + "p",
+            new XAttribute("id", NewId()), new XAttribute("styleIDRef", "0"), new XAttribute("paraPrIDRef", "0"),
+            new XElement(HwpxNs.Hp + "run", new XAttribute("charPrIDRef", "0"), ellipse,
+                new XElement(HwpxNs.Hp + "t", "")));
+    }
+
+    private XElement CreateTextBox(Dictionary<string, string>? props)
+    {
+        // TextBox = rect with drawText and default fill
+        var merged = new Dictionary<string, string>(props ?? new(), StringComparer.OrdinalIgnoreCase);
+        if (!merged.ContainsKey("fill") && !merged.ContainsKey("fillcolor"))
+            merged["fillcolor"] = "#FFFFFF";
+        if (!merged.ContainsKey("text"))
+            merged["text"] = "";
+        return CreateRect(merged);
+    }
+
+    private XElement CreatePolygon(Dictionary<string, string>? props)
+    {
+        var w = int.TryParse(props?.GetValueOrDefault("width"), out var wv) ? wv : 15000;
+        var h = int.TryParse(props?.GetValueOrDefault("height"), out var hv) ? hv : 15000;
+        var sides = int.TryParse(props?.GetValueOrDefault("sides"), out var sv) ? sv : 5;
+        var text = props?.GetValueOrDefault("text");
+        var common = CreateShapeCommonChildren(w, h, props);
+        var szPosMargin = CreateShapeSzPosMargin(w, h, props);
+        var fillBrush = CreateFillBrush(props);
+
+        var polygon = new XElement(HwpxNs.Hp + "polygon",
+            new XAttribute("id", NewId()), new XAttribute("zOrder", "0"),
+            new XAttribute("numberingType", "PICTURE"),
+            new XAttribute("textWrap", "TOP_AND_BOTTOM"), new XAttribute("textFlow", "BOTH_SIDES"),
+            new XAttribute("lock", "0"), new XAttribute("dropcapstyle", "None"),
+            new XAttribute("href", ""), new XAttribute("groupLevel", "0"),
+            new XAttribute("instid", NewId()));
+        polygon.Add(common);
+        polygon.Add(CreateLineShapeElement(props));
+        if (fillBrush != null) polygon.Add(fillBrush);
+        polygon.Add(new XElement(HwpxNs.Hp + "shadow",
+            new XAttribute("type", "NONE"), new XAttribute("color", "#B2B2B2"),
+            new XAttribute("offsetX", "0"), new XAttribute("offsetY", "0"), new XAttribute("alpha", "0")));
+        // drawText
+        if (text != null)
+        {
+            polygon.Add(new XElement(HwpxNs.Hp + "drawText",
+                new XAttribute("lastWidth", w), new XAttribute("name", ""), new XAttribute("editable", "0"),
+                new XElement(HwpxNs.Hp + "subList",
+                    new XAttribute("id", ""), new XAttribute("textDirection", "HORIZONTAL"),
+                    new XAttribute("lineWrap", "BREAK"), new XAttribute("vertAlign", "CENTER"),
+                    new XAttribute("linkListIDRef", "0"), new XAttribute("linkListNextIDRef", "0"),
+                    new XAttribute("textWidth", "0"), new XAttribute("textHeight", "0"),
+                    new XAttribute("hasTextRef", "0"), new XAttribute("hasNumRef", "0"),
+                    new XElement(HwpxNs.Hp + "p",
+                        new XAttribute("id", NewId()), new XAttribute("styleIDRef", "0"), new XAttribute("paraPrIDRef", "0"),
+                        new XElement(HwpxNs.Hp + "run", new XAttribute("charPrIDRef", "0"),
+                            new XElement(HwpxNs.Hp + "t", text)))),
+                new XElement(HwpxNs.Hp + "textMargin",
+                    new XAttribute("left", "283"), new XAttribute("right", "283"),
+                    new XAttribute("top", "283"), new XAttribute("bottom", "283"))));
+        }
+        // Generate regular polygon vertices in orgSz coordinate space
+        var cx = w / 2.0; var cy = h / 2.0;
+        var r = Math.Min(cx, cy);
+        for (int i = 0; i <= sides; i++)
+        {
+            var angle = -Math.PI / 2 + 2 * Math.PI * i / sides;
+            var px = (int)(cx + r * Math.Cos(angle));
+            var py = (int)(cy + r * Math.Sin(angle));
+            polygon.Add(new XElement(HwpxNs.Hc + "pt", new XAttribute("x", px), new XAttribute("y", py)));
+        }
+        polygon.Add(szPosMargin.Elements());
+
+        return new XElement(HwpxNs.Hp + "p",
+            new XAttribute("id", NewId()), new XAttribute("styleIDRef", "0"), new XAttribute("paraPrIDRef", "0"),
+            new XElement(HwpxNs.Hp + "run", new XAttribute("charPrIDRef", "0"), polygon,
+                new XElement(HwpxNs.Hp + "t", "")));
+    }
+
+    private XElement CreateArrow(Dictionary<string, string>? props)
+    {
+        // Arrow = line with tailStyle arrow
+        var merged = new Dictionary<string, string>(props ?? new(), StringComparer.OrdinalIgnoreCase);
+        merged["linestyle"] = merged.GetValueOrDefault("linestyle") ?? "SOLID";
+        var w = int.TryParse(merged.GetValueOrDefault("width"), out var wv) ? wv : 20000;
+        var h = 43;
+        var common = CreateShapeCommonChildren(w, h, merged);
+        var szPosMargin = CreateShapeSzPosMargin(w, h, merged);
+        var color = merged.GetValueOrDefault("color") ?? "#000000";
+        var lineWidth = merged.GetValueOrDefault("linewidth") ?? "33";
+
+        var line = new XElement(HwpxNs.Hp + "line",
+            new XAttribute("id", NewId()), new XAttribute("zOrder", "0"),
+            new XAttribute("numberingType", "PICTURE"),
+            new XAttribute("textWrap", "TOP_AND_BOTTOM"), new XAttribute("textFlow", "BOTH_SIDES"),
+            new XAttribute("lock", "0"), new XAttribute("dropcapstyle", "None"),
+            new XAttribute("href", ""), new XAttribute("groupLevel", "0"),
+            new XAttribute("instid", NewId()), new XAttribute("isReverseHV", "0"));
+        line.Add(common);
+        // Arrow lineShape: tailStyle = arrow
+        line.Add(new XElement(HwpxNs.Hp + "lineShape",
+            new XAttribute("color", color), new XAttribute("width", lineWidth),
+            new XAttribute("style", "SOLID"), new XAttribute("endCap", "FLAT"),
+            new XAttribute("headStyle", "NORMAL"), new XAttribute("tailStyle", "ARROW"),
+            new XAttribute("headfill", "1"), new XAttribute("tailfill", "1"),
+            new XAttribute("headSz", "MEDIUM_MEDIUM"), new XAttribute("tailSz", "MEDIUM_MEDIUM"),
+            new XAttribute("outlineStyle", "NORMAL"), new XAttribute("alpha", "0")));
+        line.Add(new XElement(HwpxNs.Hp + "shadow",
+            new XAttribute("type", "NONE"), new XAttribute("color", "#B2B2B2"),
+            new XAttribute("offsetX", "0"), new XAttribute("offsetY", "0"), new XAttribute("alpha", "0")));
+        line.Add(new XElement(HwpxNs.Hc + "startPt", new XAttribute("x", "0"), new XAttribute("y", "0")));
+        line.Add(new XElement(HwpxNs.Hc + "endPt", new XAttribute("x", w), new XAttribute("y", "0")));
+        line.Add(szPosMargin.Elements());
+        line.Add(new XElement(HwpxNs.Hp + "shapeComment", "화살표입니다."));
+
+        return new XElement(HwpxNs.Hp + "p",
+            new XAttribute("id", NewId()), new XAttribute("styleIDRef", "0"), new XAttribute("paraPrIDRef", "0"),
+            new XElement(HwpxNs.Hp + "run", new XAttribute("charPrIDRef", "0"), line,
+                new XElement(HwpxNs.Hp + "t", "")));
+    }
+
     // ==================== TOC ====================
 
     /// <summary>
@@ -1787,6 +2325,85 @@ public partial class HwpxHandler
     /// Returns multiple paragraph elements — one title + one per heading.
     /// Props: "maxlevel" → max heading depth (default 3), "title" → TOC title (default "목차").
     /// </summary>
+    /// <summary>
+    /// Create a field-based TOC. Hancom can regenerate via "도구 > 필드 업데이트".
+    /// Golden structure: fieldBegin(TABLEOFCONTENTS) with Command parameter → content → fieldEnd
+    /// </summary>
+    private List<XElement> CreateFieldToc(Dictionary<string, string>? props)
+    {
+        var maxLevel = int.TryParse(props?.GetValueOrDefault("maxlevel"), out var ml) ? ml : 3;
+        var title = props?.GetValueOrDefault("title") ?? "차례";
+        var headings = CollectHeadings(maxLevel);
+        if (headings.Count == 0)
+            throw new CliException("No headings found in document.") { Code = "no_headings" };
+
+        var instId = NewId();
+        var fieldId = NewId();
+        var result = new List<XElement>();
+
+        // Golden-accurate fieldBegin with Command parameter
+        var commandStr = $"TableOfContents:set:140:ContentsMake:uint:31 ContentsStyles:wstring:0: ContentsLevel:int:{maxLevel} ContentsAutoTabRight:int:0 ContentsLeader:int:3 ContentsHyperlink:bool:1  ";
+
+        // Field begin paragraph
+        result.Add(new XElement(HwpxNs.Hp + "p",
+            new XAttribute("id", NewId()),
+            new XAttribute("styleIDRef", "0"),
+            new XAttribute("paraPrIDRef", "0"),
+            new XElement(HwpxNs.Hp + "run", new XAttribute("charPrIDRef", "0"),
+                new XElement(HwpxNs.Hp + "ctrl",
+                    new XElement(HwpxNs.Hp + "fieldBegin",
+                        new XAttribute("id", instId),
+                        new XAttribute("type", "TABLEOFCONTENTS"),
+                        new XAttribute("name", ""),
+                        new XAttribute("editable", "1"),
+                        new XAttribute("dirty", "0"),
+                        new XAttribute("zorder", "-1"),
+                        new XAttribute("fieldid", fieldId),
+                        new XAttribute("metaTag", ""),
+                        new XElement(HwpxNs.Hp + "parameters",
+                            new XAttribute("cnt", "2"), new XAttribute("name", ""),
+                            new XElement(HwpxNs.Hp + "integerParam", new XAttribute("name", "Prop"), "8"),
+                            new XElement(HwpxNs.Hp + "stringParam",
+                                new XAttribute("name", "Command"),
+                                new XAttribute(XNamespace.Xml + "space", "preserve"),
+                                commandStr)))))));
+
+        // TOC title
+        var titleProps = new Dictionary<string, string>
+            { ["text"] = title, ["fontsize"] = "14", ["bold"] = "true" };
+        var titlePara = CreateParagraph(titleProps);
+        var structuralKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "text", "styleidref", "styleIDRef", "charpridref", "charPrIDRef", "parapridref", "paraPrIDRef" };
+        foreach (var (k, v) in titleProps)
+            if (!structuralKeys.Contains(k)) SetParagraphProp(titlePara, k, v);
+        result.Add(titlePara);
+
+        // Heading entries
+        foreach (var (level, text) in headings)
+        {
+            var indent = new string('\u3000', level - 1);
+            var entryProps = new Dictionary<string, string> { ["text"] = $"{indent}{text}", ["fontsize"] = "9" };
+            var entryPara = CreateParagraph(entryProps);
+            foreach (var (k, v) in entryProps)
+                if (!structuralKeys.Contains(k)) SetParagraphProp(entryPara, k, v);
+            result.Add(entryPara);
+        }
+
+        // Field end paragraph
+        result.Add(new XElement(HwpxNs.Hp + "p",
+            new XAttribute("id", NewId()),
+            new XAttribute("styleIDRef", "0"),
+            new XAttribute("paraPrIDRef", "0"),
+            new XElement(HwpxNs.Hp + "run", new XAttribute("charPrIDRef", "0"),
+                new XElement(HwpxNs.Hp + "ctrl",
+                    new XElement(HwpxNs.Hp + "fieldEnd",
+                        new XAttribute("beginIDRef", instId),
+                        new XAttribute("fieldid", fieldId))),
+                new XElement(HwpxNs.Hp + "t"))));
+
+        return result;
+    }
+
     private List<XElement> CreateStaticToc(Dictionary<string, string>? props)
     {
         var maxLevel = int.TryParse(props?.GetValueOrDefault("maxlevel"), out var ml) ? ml : 3;
@@ -1806,7 +2423,7 @@ public partial class HwpxHandler
         var titleProps = new Dictionary<string, string>
         {
             ["text"] = title,
-            ["fontsize"] = "1400",
+            ["fontsize"] = "14",
             ["bold"] = "true"
         };
         var titlePara = CreateParagraph(titleProps);
@@ -1824,7 +2441,7 @@ public partial class HwpxHandler
             };
             // Sub-headings slightly smaller
             if (level >= 2)
-                entryProps["fontsize"] = "900";
+                entryProps["fontsize"] = "9";
             var entryPara = CreateParagraph(entryProps);
             foreach (var (k, v) in entryProps)
                 if (!structuralKeys.Contains(k)) SetParagraphProp(entryPara, k, v);
@@ -2037,6 +2654,71 @@ public partial class HwpxHandler
         xmlStr = "<?xml version='1.0' encoding='UTF-8'?>" + xmlStr;
         var bytes = System.Text.Encoding.UTF8.GetBytes(xmlStr);
         stream.Write(bytes, 0, bytes.Length);
+    }
+
+    // ==================== Metadata ====================
+
+    /// <summary>Set a metadata value in content.hpf. Matches Hancom's OPF meta structure.</summary>
+    private bool SetMetadata(string name, string value)
+    {
+        var opfDoc = _doc.ManifestDoc;
+        if (opfDoc?.Root == null) return false;
+        var ns = opfDoc.Root.Name.Namespace;
+        var metadata = opfDoc.Root.Element(ns + "metadata");
+        if (metadata == null)
+        {
+            metadata = new XElement(ns + "metadata");
+            opfDoc.Root.AddFirst(metadata);
+        }
+
+        // title and language are direct elements; others use <opf:meta name="...">
+        if (name is "title" or "language")
+        {
+            var el = metadata.Element(ns + name);
+            if (el == null) { el = new XElement(ns + name); metadata.Add(el); }
+            el.Value = value;
+        }
+        else
+        {
+            var el = metadata.Elements(ns + "meta")
+                .FirstOrDefault(e => e.Attribute("name")?.Value == name);
+            if (el == null)
+            {
+                el = new XElement(ns + "meta",
+                    new XAttribute("name", name), new XAttribute("content", "text"));
+                metadata.Add(el);
+            }
+            el.Value = value;
+        }
+
+        SaveManifest();
+        _dirty = true;
+        return true;
+    }
+
+    /// <summary>Read all metadata from content.hpf.</summary>
+    public Dictionary<string, string> GetMetadata()
+    {
+        var opfDoc = _doc.ManifestDoc;
+        if (opfDoc?.Root == null) return new();
+        var ns = opfDoc.Root.Name.Namespace;
+        var metadata = opfDoc.Root.Element(ns + "metadata");
+        if (metadata == null) return new();
+
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // Direct elements
+        var title = metadata.Element(ns + "title")?.Value;
+        if (!string.IsNullOrEmpty(title)) result["title"] = title;
+        var lang = metadata.Element(ns + "language")?.Value;
+        if (!string.IsNullOrEmpty(lang)) result["language"] = lang;
+        // Meta elements
+        foreach (var meta in metadata.Elements(ns + "meta"))
+        {
+            var n = meta.Attribute("name")?.Value;
+            var v = meta.Value;
+            if (n != null && !string.IsNullOrEmpty(v)) result[n] = v;
+        }
+        return result;
     }
 
     /// <summary>Remove a section by path (e.g. /section[2]).</summary>

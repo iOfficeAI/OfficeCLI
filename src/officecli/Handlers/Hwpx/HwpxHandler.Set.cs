@@ -16,19 +16,51 @@ public partial class HwpxHandler
     {
         var unsupported = new List<string>();
 
-        // Document-level properties (including find/replace)
+        // Batch Set: @selector path → Query + Set each result
+        if (path.StartsWith("@"))
+        {
+            var matches = Query(path);
+            foreach (var match in matches)
+            {
+                if (!string.IsNullOrEmpty(match.Path))
+                    Set(match.Path, new Dictionary<string, string>(properties));
+            }
+            return unsupported;
+        }
+
+        // Find/replace: supports any scope path, regex, format filter
+        if (properties.ContainsKey("find"))
+        {
+            var findText = properties["find"];
+            var replaceText = properties.GetValueOrDefault("replace") ?? "";
+
+            XElement? scope = null;
+            if (path is not ("/" or "" or "/body"))
+            {
+                try { scope = ResolvePath(path); } catch { /* fall through to full doc */ }
+            }
+
+            var formatFilter = new Dictionary<string, string>();
+            foreach (var fk in new[] { "bold", "italic", "color", "fontsize" })
+            {
+                if (properties.TryGetValue(fk, out var fv))
+                    formatFilter[fk] = fv;
+            }
+
+            FindAndReplace(findText, replaceText, scope,
+                formatFilter.Count > 0 ? formatFilter : null);
+
+            var remaining = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
+            foreach (var k in new[] { "find", "replace", "bold", "italic", "color", "fontsize" })
+                remaining.Remove(k);
+            if (remaining.Count > 0)
+                unsupported.AddRange(remaining.Keys);
+            return unsupported;
+        }
+
+        // Document-level properties
         if (path is "/" or "" or "/body")
         {
-            if (properties.TryGetValue("find", out var findText) && properties.TryGetValue("replace", out var replaceText))
-            {
-                var count = FindAndReplace(findText, replaceText);
-                var remaining = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
-                remaining.Remove("find");
-                remaining.Remove("replace");
-                if (remaining.Count > 0)
-                    unsupported.AddRange(remaining.Keys);
-                return unsupported;
-            }
 
             // Document-level properties (default font, default font size)
             var docHandled = false;
@@ -44,6 +76,18 @@ public partial class HwpxHandler
                         var charPrSize = FindCharPr("0");
                         if (charPrSize != null) { ApplyCharPrProperty(charPrSize, "fontsize", value); docHandled = true; }
                         break;
+                    case "title" or "doctitle":
+                        SetMetadata("title", value); docHandled = true; break;
+                    case "creator" or "author":
+                        SetMetadata("creator", value); docHandled = true; break;
+                    case "subject":
+                        SetMetadata("subject", value); docHandled = true; break;
+                    case "description":
+                        SetMetadata("description", value); docHandled = true; break;
+                    case "language":
+                        SetMetadata("language", value); docHandled = true; break;
+                    case "keyword" or "keywords":
+                        SetMetadata("keyword", value); docHandled = true; break;
                     default:
                         unsupported.Add(key);
                         break;
@@ -51,6 +95,14 @@ public partial class HwpxHandler
             }
             if (docHandled) { _dirty = true; SaveHeader(); }
             return unsupported;
+        }
+
+        // Form field editing: /formfield[id] or /clickhere[id]
+        if (path.StartsWith("/formfield[", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/clickhere[", StringComparison.OrdinalIgnoreCase))
+        {
+            var fieldId = path[(path.IndexOf('[') + 1)..].TrimEnd(']');
+            return SetFormFieldValue(fieldId, properties);
         }
 
         // Style editing: /header/style[N] path — handle before generic resolution
@@ -92,6 +144,39 @@ public partial class HwpxHandler
                             var sCharPr3 = FindCharPr(sCharPrIdRef3);
                             if (sCharPr3 != null)
                                 ApplyCharPrProperty(sCharPr3, "fontsize", value);
+                        }
+                        break;
+                    case "bold" or "italic":
+                        var sCharPrId4 = style.Attribute("charPrIDRef")?.Value;
+                        if (sCharPrId4 != null)
+                        {
+                            var sCharPr4 = FindCharPr(sCharPrId4);
+                            if (sCharPr4 != null)
+                                ApplyCharPrProperty(sCharPr4, key.ToLowerInvariant(), value);
+                        }
+                        break;
+                    case "color":
+                        var sCharPrId5 = style.Attribute("charPrIDRef")?.Value;
+                        if (sCharPrId5 != null)
+                        {
+                            var sCharPr5 = FindCharPr(sCharPrId5);
+                            if (sCharPr5 != null)
+                                ApplyCharPrProperty(sCharPr5, "textcolor", value);
+                        }
+                        break;
+                    case "alignment" or "align":
+                        var sParaPrId = style.Attribute("paraPrIDRef")?.Value;
+                        if (sParaPrId != null)
+                        {
+                            var sParaPr = _doc.Header!.Root!.Descendants(HwpxNs.Hh + "paraPr")
+                                .FirstOrDefault(p => p.Attribute("id")?.Value == sParaPrId);
+                            var alignEl = sParaPr?.Element(HwpxNs.Hh + "align");
+                            if (alignEl == null && sParaPr != null)
+                            {
+                                alignEl = new XElement(HwpxNs.Hh + "align");
+                                sParaPr.Add(alignEl);
+                            }
+                            alignEl?.SetAttributeValue("horizontal", value.ToUpperInvariant());
                         }
                         break;
                     default:
@@ -138,6 +223,10 @@ public partial class HwpxHandler
                     break;
                 case "sec":
                     if (!SetSectionProp(element, key, value))
+                        unsupported.Add(key);
+                    break;
+                case "line" or "rect" or "ellipse" or "polygon" or "pic" or "connectLine":
+                    if (!SetShapeProp(element, key, value))
                         unsupported.Add(key);
                     break;
                 default:
@@ -240,6 +329,7 @@ public partial class HwpxHandler
             "rowspan" => SetCellSpan(tc, "rowSpan", value),
             "borderfillid" or "borderfillidref" => SetAttribute(tc, "borderFillIDRef", value),
             "valign" or "verticalalign" or "vertical-align" => SetCellVertAlign(tc, value),
+            "align" or "halign" or "textalign" => SetCellHorzAlign(tc, value),
             "shading" or "bgcolor" or "fillcolor" => SetCellShading(tc, value),
             "bordercolor" => SetCellBorder(tc, color: value),
             "borderwidth" => SetCellBorder(tc, width: value),
@@ -257,6 +347,15 @@ public partial class HwpxHandler
         if (subList == null) return false;
         subList.SetAttributeValue("vertAlign", value.ToUpperInvariant());
         return true;
+    }
+
+    /// <summary>Set horizontal text alignment inside a cell by modifying the cell's paragraph paraPr.</summary>
+    private bool SetCellHorzAlign(XElement tc, string value)
+    {
+        var subList = tc.Element(HwpxNs.Hp + "subList");
+        var para = subList?.Element(HwpxNs.Hp + "p") ?? tc.Element(HwpxNs.Hp + "p");
+        if (para == null) return false;
+        return SetParagraphProp(para, "align", value) == true;
     }
 
     private bool SetCellText(XElement tc, string text)
@@ -410,6 +509,7 @@ public partial class HwpxHandler
             "pagebreakbefore" => SetBreakSetting(p, "pageBreakBefore", value),
             "widowcontrol" or "widoworphan" => SetBreakSetting(p, "widowOrphan", value),
             "hangingindent" or "hanging" => SetParagraphHangingIndent(p, value),
+            "style" or "stylename" => SetStyleByName(p, value),
             _ => (bool?)null // not a paragraph-level prop
         };
         if (result.HasValue) return result.Value;
@@ -760,6 +860,92 @@ public partial class HwpxHandler
         }
 
         SaveHeader();
+        return true;
+    }
+
+    // ==================== Form Field ====================
+
+    private List<string> SetFormFieldValue(string idOrIndex, Dictionary<string, string> props)
+    {
+        var unsupported = new List<string>();
+        var value = props.GetValueOrDefault("value") ?? props.GetValueOrDefault("text") ?? "";
+
+        foreach (var sec in _doc.Sections)
+        {
+            foreach (var run in sec.Root.Descendants(HwpxNs.Hp + "run").ToList())
+            {
+                var ctrl = run.Element(HwpxNs.Hp + "ctrl");
+                var fieldBegin = ctrl?.Element(HwpxNs.Hp + "fieldBegin");
+                if (fieldBegin?.Attribute("type")?.Value != "CLICK_HERE") continue;
+                var instId = fieldBegin.Attribute("id")?.Value;
+                if (instId != idOrIndex) continue;
+
+                // Update display text in the next run's <hp:t>
+                var nextRun = run.ElementsAfterSelf(HwpxNs.Hp + "run").FirstOrDefault();
+                var t = nextRun?.Element(HwpxNs.Hp + "t");
+                if (t != null)
+                {
+                    t.Value = value;
+                    fieldBegin.SetAttributeValue("dirty", "1");
+                    _dirty = true;
+                    SaveSection(sec.Root);
+                }
+                return unsupported;
+            }
+        }
+        unsupported.Add($"formfield [{idOrIndex}] not found");
+        return unsupported;
+    }
+
+    // ==================== Shape Properties ====================
+
+    private static bool SetShapeProp(XElement shape, string property, string value)
+    {
+        return property.ToLowerInvariant() switch
+        {
+            "wrap" or "textwrap" => SetShapeWrap(shape, value),
+            "width" => SetShapeDimension(shape, "width", value),
+            "height" => SetShapeDimension(shape, "height", value),
+            _ => false
+        };
+    }
+
+    /// <summary>Set text wrap mode. "char"/"inline" = 글자처럼 취급 (treatAsChar=1).</summary>
+    private static bool SetShapeWrap(XElement shape, string value)
+    {
+        var isInline = value.Equals("char", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("inline", StringComparison.OrdinalIgnoreCase);
+        var wrapValue = value.ToUpperInvariant() switch
+        {
+            "CHAR" or "INLINE" => "TOP_AND_BOTTOM",
+            "SQUARE" => "SQUARE",
+            "BEHIND" => "BEHIND_TEXT",
+            "FRONT" => "IN_FRONT_OF_TEXT",
+            "TIGHT" or "WRAP" => "TOP_AND_BOTTOM",
+            _ => value.ToUpperInvariant()
+        };
+        shape.SetAttributeValue("textWrap", wrapValue);
+        var pos = shape.Element(HwpxNs.Hp + "pos");
+        pos?.SetAttributeValue("treatAsChar", isInline ? "1" : "0");
+        return true;
+    }
+
+    private static bool SetShapeDimension(XElement shape, string attr, string value)
+    {
+        var sz = shape.Element(HwpxNs.Hp + "sz");
+        sz?.SetAttributeValue(attr, value);
+        return sz != null;
+    }
+
+    // ==================== Style by Name ====================
+
+    private bool SetStyleByName(XElement p, string styleName)
+    {
+        var style = _doc.Header?.Root?.Descendants(HwpxNs.Hh + "style")
+            .FirstOrDefault(s => s.Attribute("name")?.Value == styleName
+                || s.Attribute("engName")?.Value?.Equals(styleName, StringComparison.OrdinalIgnoreCase) == true);
+        if (style == null) return false;
+        p.SetAttributeValue("styleIDRef", style.Attribute("id")?.Value);
         return true;
     }
 
@@ -1422,28 +1608,85 @@ public partial class HwpxHandler
     /// across all sections' &lt;hp:t&gt; elements. Returns the number of replacements made.
     /// Known limitation: text split across multiple runs will not be matched.
     /// </summary>
-    private int FindAndReplace(string find, string replace)
+    private int FindAndReplace(string find, string replace,
+        XElement? scope = null, Dictionary<string, string>? formatFilter = null)
     {
         if (string.IsNullOrEmpty(find)) return 0;
-        int totalCount = 0;
 
-        foreach (var section in _doc.Sections)
+        IEnumerable<XElement> searchRoots = scope != null
+            ? new[] { scope }
+            : _doc.Sections.Select(s => s.Root);
+
+        int count = 0;
+        var isRegex = find.StartsWith("regex:", StringComparison.OrdinalIgnoreCase);
+        var regex = isRegex
+            ? new System.Text.RegularExpressions.Regex(find[6..])
+            : null;
+
+        foreach (var root in searchRoots)
         {
-            foreach (var t in section.Document.Descendants(HwpxNs.Hp + "t"))
+            foreach (var run in root.Descendants(HwpxNs.Hp + "run").ToList())
             {
-                var text = t.Value;
-                if (text.Contains(find, StringComparison.Ordinal))
+                if (formatFilter != null && !MatchesCharPrFormat(run, formatFilter))
+                    continue;
+
+                foreach (var t in run.Elements(HwpxNs.Hp + "t").ToList())
                 {
-                    t.Value = text.Replace(find, replace, StringComparison.Ordinal);
-                    totalCount++;
+                    var text = t.Value;
+                    if (isRegex)
+                    {
+                        if (regex!.IsMatch(text))
+                        {
+                            t.Value = regex.Replace(text, replace);
+                            count++;
+                        }
+                    }
+                    else if (text.Contains(find, StringComparison.Ordinal))
+                    {
+                        t.Value = text.Replace(find, replace, StringComparison.Ordinal);
+                        count++;
+                    }
                 }
             }
-            if (totalCount > 0)
-                SaveSection(section.Document.Root!);
         }
 
-        _dirty = true;
-        return totalCount;
+        if (count > 0)
+        {
+            foreach (var sec in _doc.Sections)
+                SaveSection(sec.Root);
+            _dirty = true;
+        }
+        return count;
+    }
+
+    /// <summary>Check if a run's charPr matches the format filter.</summary>
+    private bool MatchesCharPrFormat(XElement run, Dictionary<string, string> filter)
+    {
+        var charPrId = run.Attribute("charPrIDRef")?.Value ?? "0";
+        var charPr = FindCharPr(charPrId);
+        if (charPr == null) return false;
+
+        foreach (var (key, expected) in filter)
+        {
+            switch (key.ToLowerInvariant())
+            {
+                case "bold":
+                    var hasBold = charPr.Element(HwpxNs.Hh + "bold") != null;
+                    if (hasBold != (expected == "true" || expected == "1")) return false;
+                    break;
+                case "italic":
+                    var hasItalic = charPr.Element(HwpxNs.Hh + "italic") != null;
+                    if (hasItalic != (expected == "true" || expected == "1")) return false;
+                    break;
+                case "color":
+                    if (charPr.Attribute("textColor")?.Value != expected) return false;
+                    break;
+                case "fontsize":
+                    if (charPr.Attribute("height")?.Value != expected) return false;
+                    break;
+            }
+        }
+        return true;
     }
 
     // ==================== Save Helpers ====================
