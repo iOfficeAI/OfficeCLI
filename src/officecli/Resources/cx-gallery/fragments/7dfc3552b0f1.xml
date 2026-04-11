@@ -1,0 +1,1 @@
+<cs:valueAxis><cs:lnRef idx="1"><a:schemeClr val="tx1"><a:tint val="75000"/></a:schemeClr></cs:lnRef><cs:fillRef idx="0"/><cs:effectRef idx="0"/><cs:fontRef idx="minor"><a:schemeClr val="tx1"/></cs:fontRef><cs:spPr><a:ln><a:round/></a:ln></cs:spPr><cs:defRPr sz="1000" kern="1200"/></cs:valueAxis>

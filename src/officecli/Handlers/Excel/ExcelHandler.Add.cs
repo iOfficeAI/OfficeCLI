@@ -1627,13 +1627,14 @@ public partial class ExcelHandler
                     // is independently schema-valid; it's only the absence
                     // of the sidecar relationship that Excel trips on.
                     //
-                    // We ship canonical default-style content as embedded
-                    // resources copied verbatim from an Excel-generated
-                    // reference treemap; the content is style/palette only,
-                    // it has no dependency on the specific chart layout or
-                    // data and can be reused across all chartEx types.
+                    // chartStyle is built by ChartExStyleBuilder; an
+                    // optional chartStyle=N prop on the caller picks a
+                    // numbered style variant, default = 0.
+                    var styleVariant = properties.GetValueOrDefault("chartStyle")
+                                    ?? properties.GetValueOrDefault("chartstyle")
+                                    ?? "default";
                     var stylePart = extChartPart.AddNewPart<ChartStylePart>();
-                    using (var styleStream = LoadChartExResource("chartex-style.xml"))
+                    using (var styleStream = ChartExStyleBuilder.BuildChartStyleXml(chartType, styleVariant))
                         stylePart.FeedData(styleStream);
                     var colorStylePart = extChartPart.AddNewPart<ChartColorStylePart>();
                     using (var colorStream = LoadChartExResource("chartex-colors.xml"))
