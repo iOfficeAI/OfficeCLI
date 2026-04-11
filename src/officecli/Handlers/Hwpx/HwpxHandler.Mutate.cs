@@ -590,8 +590,7 @@ public partial class HwpxHandler
         }
 
         // None found — create a new one with SOLID black borders
-        var existingCount = borderFills.Elements(HwpxNs.Hh + "borderFill").Count();
-        var newId = (existingCount + 1).ToString();
+        var newId = NextBorderFillId();
 
         var newBorderFill = new XElement(HwpxNs.Hh + "borderFill",
             new XAttribute("id", newId),
@@ -601,15 +600,16 @@ public partial class HwpxHandler
             new XAttribute("breakCellSeparateLine", "0"),
             new XElement(HwpxNs.Hh + "slash", new XAttribute("type", "NONE"), new XAttribute("Crooked", "0"), new XAttribute("isCounter", "0")),
             new XElement(HwpxNs.Hh + "backSlash", new XAttribute("type", "NONE"), new XAttribute("Crooked", "0"), new XAttribute("isCounter", "0")),
-            new XElement(HwpxNs.Hh + "leftBorder", new XAttribute("type", "SOLID"), new XAttribute("width", "0.12 mm"), new XAttribute("color", "#000000")),
-            new XElement(HwpxNs.Hh + "rightBorder", new XAttribute("type", "SOLID"), new XAttribute("width", "0.12 mm"), new XAttribute("color", "#000000")),
-            new XElement(HwpxNs.Hh + "topBorder", new XAttribute("type", "SOLID"), new XAttribute("width", "0.12 mm"), new XAttribute("color", "#000000")),
-            new XElement(HwpxNs.Hh + "bottomBorder", new XAttribute("type", "SOLID"), new XAttribute("width", "0.12 mm"), new XAttribute("color", "#000000")),
-            new XElement(HwpxNs.Hh + "diagonal", new XAttribute("type", "SOLID"), new XAttribute("width", "0.12 mm"), new XAttribute("color", "#000000"))
+            MakeBorder("leftBorder", "SOLID", "0.12 mm", "#000000"),
+            MakeBorder("rightBorder", "SOLID", "0.12 mm", "#000000"),
+            MakeBorder("topBorder", "SOLID", "0.12 mm", "#000000"),
+            MakeBorder("bottomBorder", "SOLID", "0.12 mm", "#000000"),
+            MakeBorder("diagonal", "SOLID", "0.12 mm", "#000000")
         );
 
         borderFills.Add(newBorderFill);
-        borderFills.SetAttributeValue("itemCnt", (existingCount + 1).ToString());
+        var existingCount = borderFills.Elements(HwpxNs.Hh + "borderFill").Count();
+        borderFills.SetAttributeValue("itemCnt", existingCount.ToString());
 
         // Save the modified header
         SaveHeader();
@@ -664,24 +664,7 @@ public partial class HwpxHandler
             new XAttribute("editable", "0"),
             new XAttribute("dirty", "0"),
             new XAttribute("borderFillIDRef", borderFillIDRef),
-            new XElement(HwpxNs.Hp + "subList",
-                new XAttribute("id", ""),
-                new XAttribute("textDirection", "HORIZONTAL"),
-                new XAttribute("lineWrap", "BREAK"),
-                new XAttribute("vertAlign", vertAlign),
-                new XAttribute("linkListIDRef", "0"),
-                new XAttribute("linkListNextIDRef", "0"),
-                new XAttribute("textWidth", "0"),
-                new XAttribute("textHeight", "0"),
-                new XAttribute("hasTextRef", "0"),
-                new XAttribute("hasNumRef", "0"),
-                new XElement(HwpxNs.Hp + "p",
-                    new XAttribute("id", NewId()),
-                    new XAttribute("styleIDRef", "0"),
-                    new XAttribute("paraPrIDRef", "0"),
-                    new XElement(HwpxNs.Hp + "run",
-                        new XAttribute("charPrIDRef", "0"),
-                        new XElement(HwpxNs.Hp + "t", text)))),
+            CreateSubList(text, vertAlign),
             new XElement(HwpxNs.Hp + "cellAddr",
                 new XAttribute("colAddr", colAddr.ToString()),
                 new XAttribute("rowAddr", rowAddr.ToString())),
@@ -901,29 +884,11 @@ public partial class HwpxHandler
             new XAttribute("pageBreak", "0"),
             new XAttribute("columnBreak", "0"),
             new XAttribute("merged", "0"),
-            new XElement(HwpxNs.Hp + "run",
-                new XAttribute("charPrIDRef", "0"),
+            WrapInRun(
                 new XElement(HwpxNs.Hp + "ctrl",
                     new XElement(HwpxNs.Hp + "footNote",
                         new XAttribute("number", number),
-                        new XElement(HwpxNs.Hp + "subList",
-                            new XAttribute("id", ""),
-                            new XAttribute("textDirection", "HORIZONTAL"),
-                            new XAttribute("lineWrap", "BREAK"),
-                            new XAttribute("vertAlign", "TOP"),
-                            new XAttribute("linkListIDRef", "0"),
-                            new XAttribute("linkListNextIDRef", "0"),
-                            new XAttribute("textWidth", "0"),
-                            new XAttribute("textHeight", "0"),
-                            new XAttribute("hasTextRef", "0"),
-                            new XAttribute("hasNumRef", "0"),
-                            new XElement(HwpxNs.Hp + "p",
-                                new XAttribute("id", NewId()),
-                                new XAttribute("styleIDRef", "0"),
-                                new XAttribute("paraPrIDRef", "0"),
-                                new XElement(HwpxNs.Hp + "run",
-                                    new XAttribute("charPrIDRef", "0"),
-                                    new XElement(HwpxNs.Hp + "t", text))))))));
+                        CreateSubList(text, "TOP")))));
     }
 
     // ==================== Header / Footer ====================
@@ -957,18 +922,7 @@ public partial class HwpxHandler
         var hfElement = new XElement(HwpxNs.Hp + tagName,
             new XAttribute("id", hfId),
             new XAttribute("applyPageType", applyPageType),
-            new XElement(HwpxNs.Hp + "subList",
-                new XAttribute("id", ""),
-                new XAttribute("textDirection", "HORIZONTAL"),
-                new XAttribute("lineWrap", "BREAK"),
-                new XAttribute("vertAlign", vertAlign),
-                new XAttribute("linkListIDRef", "0"),
-                new XAttribute("linkListNextIDRef", "0"),
-                new XAttribute("textWidth", "0"),
-                new XAttribute("textHeight", "0"),
-                new XAttribute("hasTextRef", "0"),
-                new XAttribute("hasNumRef", "0"),
-                CreateParagraph(new Dictionary<string, string> { ["text"] = text })));
+            CreateSubList(text, vertAlign));
 
         // Create apply element (required sibling)
         var applyElement = new XElement(HwpxNs.Hp + applyTagName,

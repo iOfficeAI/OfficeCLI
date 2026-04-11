@@ -245,28 +245,9 @@ public partial class HwpxHandler
             _ => alignment.ToUpperInvariant()
         };
 
-        var paraPrIdRef = para.Attribute("paraPrIDRef")?.Value;
-        if (paraPrIdRef == null)
-            return false;
-
-        // Find the paraPr in header.xml
-        var paraPr = _doc.Header.Root.Descendants(HwpxNs.Hh + "paraPr")
-            .FirstOrDefault(e => e.Attribute("id")?.Value == paraPrIdRef);
+        var paraPr = CloneParaPrIfShared(para);
         if (paraPr == null)
             return false;
-
-        // Check if this paraPr is referenced by other paragraphs
-        var isShared = IsParaPrShared(paraPrIdRef, para);
-        if (isShared)
-        {
-            // Clone the paraPr with a new ID
-            var newId = NextParaPrId();
-            var cloned = new XElement(paraPr);
-            cloned.SetAttributeValue("id", newId.ToString());
-            paraPr.AddAfterSelf(cloned);
-            para.SetAttributeValue("paraPrIDRef", newId.ToString());
-            paraPr = cloned;
-        }
 
         // Alignment is a child element <hh:align horizontal="..." vertical="..."/>
         var alignEl = paraPr.Element(HwpxNs.Hh + "align");
@@ -309,25 +290,9 @@ public partial class HwpxHandler
             _ => side
         };
 
-        var paraPrIdRef = para.Attribute("paraPrIDRef")?.Value;
-        if (paraPrIdRef == null)
-            return false;
-
-        var paraPr = _doc.Header.Root.Descendants(HwpxNs.Hh + "paraPr")
-            .FirstOrDefault(e => e.Attribute("id")?.Value == paraPrIdRef);
+        var paraPr = CloneParaPrIfShared(para);
         if (paraPr == null)
             return false;
-
-        var isShared = IsParaPrShared(paraPrIdRef, para);
-        if (isShared)
-        {
-            var newId = NextParaPrId();
-            var cloned = new XElement(paraPr);
-            cloned.SetAttributeValue("id", newId.ToString());
-            paraPr.AddAfterSelf(cloned);
-            para.SetAttributeValue("paraPrIDRef", newId.ToString());
-            paraPr = cloned;
-        }
 
         // Find <hh:margin>. If inside <hp:switch>/<hp:default>, target the default.
         var margin = paraPr.Element(HwpxNs.Hh + "margin")
