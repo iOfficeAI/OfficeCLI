@@ -32,6 +32,16 @@ public partial class HwpxHandler
             return $"/{(isHeader ? "header" : "footer")}[1]";
         }
 
+        // Memo: special handling — adds to <hp:memogroup> at section level, not inline
+        if (type.Equals("comment", StringComparison.OrdinalIgnoreCase) || type.Equals("memo", StringComparison.OrdinalIgnoreCase))
+        {
+            var memoElement = AddMemoToGroup(parent, properties);
+            _dirty = true;
+            SaveSection(memoElement);
+            var memoCount = memoElement.Parent?.Elements(HwpxNs.Hp + "memo").Count() ?? 1;
+            return $"/memo[{memoCount}]";
+        }
+
         var newElement = type.ToLowerInvariant() switch
         {
             "paragraph" or "p" => CreateParagraph(properties),
@@ -44,7 +54,6 @@ public partial class HwpxHandler
             "pagebreak" or "page-break"   => CreatePageBreak(),
             "footnote"                    => CreateFootnote(properties),
             "endnote"                     => CreateFootnote(properties, isEndnote: true),
-            "comment" or "memo"           => CreateMemo(properties),
             "pagenum" or "pagenumber"     => CreatePageNum(properties),
             "bookmark"                    => CreateBookmark(properties),
             _ => throw new CliException($"Unsupported element type: {type}")
@@ -1017,25 +1026,87 @@ public partial class HwpxHandler
     // ==================== Comment / Memo ====================
 
     /// <summary>
-    /// Create a comment/memo element. HWPX memos use hp:ctrl > hp:memo > hp:subList structure.
+    /// Add a memo to the section-level memogroup container.
+    /// HWPX memos live in: section > hp:memogroup > hp:memo > hp:paraList > hp:p
+    /// NOT inside hp:ctrl inline (that causes Hancom to crash).
     /// Props: text (required).
     /// </summary>
-    private XElement CreateMemo(Dictionary<string, string>? props)
+    private XElement AddMemoToGroup(XElement sectionParent, Dictionary<string, string>? props)
     {
         var text = props?.GetValueOrDefault("text")
             ?? throw new CliException("comment/memo requires 'text' property");
 
-        return new XElement(HwpxNs.Hp + "p",
-            new XAttribute("id", NewId()),
-            new XAttribute("styleIDRef", "0"),
-            new XAttribute("paraPrIDRef", "0"),
-            new XAttribute("pageBreak", "0"),
-            new XAttribute("columnBreak", "0"),
-            new XAttribute("merged", "0"),
-            WrapInRun(
-                new XElement(HwpxNs.Hp + "ctrl",
-                    new XElement(HwpxNs.Hp + "memo",
-                        CreateSubList(text)))));
+        // Ensure memoPr exists in header
+        var memoShapeId = EnsureMemoPr();
+
+        // Find or create the section root (hs:sec)
+        var section = sectionParent;
+        if (section.Name != HwpxNs.Hs + "sec")
+            section = sectionParent.AncestorsAndSelf(HwpxNs.Hs + "sec").FirstOrDefault() ?? sectionParent;
+
+        // Find or create <hp:memogroup>
+        var memoGroup = section.Element(HwpxNs.Hp + "memogroup");
+        if (memoGroup == null)
+        {
+            memoGroup = new XElement(HwpxNs.Hp + "memogroup");
+            section.Add(memoGroup);
+        }
+
+        // Create memo with paraList structure (NOT subList)
+        var memoId = $"memo{memoGroup.Elements(HwpxNs.Hp + "memo").Count()}";
+        var memo = new XElement(HwpxNs.Hp + "memo",
+            new XAttribute("id", memoId),
+            new XAttribute("memoShapeIDRef", memoShapeId),
+            new XElement(HwpxNs.Hp + "paraList",
+                new XElement(HwpxNs.Hp + "p",
+                    new XAttribute("id", NewId()),
+                    new XAttribute("paraPrIDRef", "0"),
+                    new XAttribute("styleIDRef", "0"),
+                    new XElement(HwpxNs.Hp + "run",
+                        new XAttribute("charPrIDRef", "0"),
+                        new XElement(HwpxNs.Hp + "t", text)))));
+
+        memoGroup.Add(memo);
+        return memo;
+    }
+
+    /// <summary>
+    /// Ensure a memoProperties/memoPr definition exists in header.xml.
+    /// Returns the memoPr ID to use as memoShapeIDRef.
+    /// </summary>
+    private string EnsureMemoPr()
+    {
+        var refList = _doc.Header!.Root!.Element(HwpxNs.Hh + "refList");
+        if (refList == null)
+        {
+            refList = new XElement(HwpxNs.Hh + "refList");
+            _doc.Header.Root.Add(refList);
+        }
+
+        var memoProps = refList.Element(HwpxNs.Hh + "memoProperties");
+        if (memoProps != null)
+        {
+            var existing = memoProps.Elements(HwpxNs.Hh + "memoPr").FirstOrDefault();
+            if (existing != null)
+                return existing.Attribute("id")?.Value ?? "0";
+        }
+
+        // Create memoProperties with default memoPr
+        memoProps = new XElement(HwpxNs.Hh + "memoProperties",
+            new XAttribute("itemCnt", "1"),
+            new XElement(HwpxNs.Hh + "memoPr",
+                new XAttribute("id", "0"),
+                new XAttribute("width", "15591"),
+                new XAttribute("lineWidth", "0.6mm"),
+                new XAttribute("lineType", "SOLID"),
+                new XAttribute("lineColor", "#B6D7AE"),
+                new XAttribute("fillColor", "#F0FFE9"),
+                new XAttribute("activeColor", "#CFF1C7"),
+                new XAttribute("memoType", "NORMAL")));
+        refList.Add(memoProps);
+        SaveHeader();
+
+        return "0";
     }
 
     // ==================== Page Numbering ====================
