@@ -141,6 +141,13 @@ public partial class HwpxHandler
             }
         }
 
+        // Metadata
+        var meta = GetMetadata();
+        if (meta.TryGetValue("title", out var mTitle) && !string.IsNullOrEmpty(mTitle))
+            sb.AppendLine($"Title:      {mTitle}");
+        if (meta.TryGetValue("creator", out var mCreator) && !string.IsNullOrEmpty(mCreator))
+            sb.AppendLine($"Creator:    {mCreator}");
+
         return sb.ToString().TrimEnd();
     }
 
@@ -313,6 +320,59 @@ public partial class HwpxHandler
             issues = issues.Take(limit.Value).ToList();
 
         return issues;
+    }
+
+    // ==================== Forms ====================
+
+    public string ViewAsForms()
+    {
+        var sb = new StringBuilder();
+        int count = 0;
+        foreach (var sec in _doc.Sections)
+        {
+            foreach (var run in sec.Root.Descendants(HwpxNs.Hp + "run"))
+            {
+                var ctrl = run.Element(HwpxNs.Hp + "ctrl");
+                var fieldBegin = ctrl?.Element(HwpxNs.Hp + "fieldBegin");
+                if (fieldBegin?.Attribute("type")?.Value != "CLICK_HERE") continue;
+
+                count++;
+                var instId = fieldBegin.Attribute("id")?.Value ?? "?";
+                // Direction = help text for the field
+                var direction = fieldBegin.Descendants(HwpxNs.Hp + "stringParam")
+                    .FirstOrDefault(p => p.Attribute("name")?.Value == "Direction")?.Value ?? "";
+                // Find display text in the next run
+                var nextRun = run.ElementsAfterSelf(HwpxNs.Hp + "run").FirstOrDefault();
+                var text = nextRun?.Elements(HwpxNs.Hp + "t").FirstOrDefault()?.Value ?? "";
+                var isDefault = text == direction;
+
+                sb.AppendLine($"  [{instId}] \"{text}\"{(isDefault ? " (default)" : "")}");
+            }
+        }
+        sb.Insert(0, $"Form fields (CLICK_HERE): {count}\n");
+        return sb.ToString().TrimEnd();
+    }
+
+    // ==================== Styles ====================
+
+    public string ViewAsStyles()
+    {
+        if (_doc.Header?.Root == null) return "(no header.xml)";
+        var sb = new StringBuilder();
+        var styles = _doc.Header.Root.Descendants(HwpxNs.Hh + "style").ToList();
+        sb.AppendLine($"Styles: {styles.Count}");
+        foreach (var style in styles)
+        {
+            var id = style.Attribute("id")?.Value ?? "?";
+            var name = style.Attribute("name")?.Value ?? "(unnamed)";
+            var engName = style.Attribute("engName")?.Value ?? "";
+            var type = style.Attribute("type")?.Value ?? "PARA";
+            var charPrId = style.Attribute("charPrIDRef")?.Value ?? "0";
+            var paraPrId = style.Attribute("paraPrIDRef")?.Value ?? "0";
+            var eng = !string.IsNullOrEmpty(engName) ? $" ({engName})" : "";
+            sb.AppendLine($"  [{id}] {name}{eng} [{type}] charPr={charPrId} paraPr={paraPrId}");
+        }
+        return sb.ToString().TrimEnd();
     }
 
     // ==================== HTML Preview ====================

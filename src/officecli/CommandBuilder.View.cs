@@ -205,12 +205,22 @@ static partial class CommandBuilder
                     "outline" or "o" => handler.ViewAsOutline(),
                     "stats" or "s" => handler.ViewAsStats(),
                     "issues" or "i" => OutputFormatter.FormatIssues(handler.ViewAsIssues(issueType, limit), OutputFormat.Text),
-                    "forms" or "f" => handler is OfficeCli.Handlers.WordHandler wfh
-                        ? wfh.ViewAsForms()
-                        : throw new OfficeCli.Core.CliException("Forms view is only supported for .docx files.")
+                    "styles" => handler is OfficeCli.Handlers.HwpxHandler hsh
+                        ? hsh.ViewAsStyles()
+                        : throw new OfficeCli.Core.CliException("Styles view is only supported for .hwpx files.")
                         {
                             Code = "unsupported_type",
-                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "forms"]
+                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "styles"]
+                        },
+                    "forms" or "f" => handler switch
+                        {
+                            OfficeCli.Handlers.WordHandler wfh => wfh.ViewAsForms(),
+                            OfficeCli.Handlers.HwpxHandler hfh => hfh.ViewAsForms(),
+                            _ => throw new OfficeCli.Core.CliException("Forms view is only supported for .docx and .hwpx files.")
+                            {
+                                Code = "unsupported_type",
+                                ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "forms"]
+                            }
                         },
                     _ => throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, forms")
                     {
