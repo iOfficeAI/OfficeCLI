@@ -43,6 +43,10 @@ public partial class HwpxHandler
             "hyperlink" or "link"         => CreateHyperlink(properties),
             "pagebreak" or "page-break"   => CreatePageBreak(),
             "footnote"                    => CreateFootnote(properties),
+            "endnote"                     => CreateFootnote(properties, isEndnote: true),
+            "comment" or "memo"           => CreateMemo(properties),
+            "pagenum" or "pagenumber"     => CreatePageNum(properties),
+            "bookmark"                    => CreateBookmark(properties),
             _ => throw new CliException($"Unsupported element type: {type}")
         };
 
@@ -985,19 +989,17 @@ public partial class HwpxHandler
     // ==================== Footnote ====================
 
     /// <summary>
-    /// Create a footnote. HWPX footnotes use hp:ctrl > hp:footNote > hp:subList structure.
-    /// The footnote marker appears at the insertion point, and the footnote text appears at page bottom.
+    /// Create a footnote or endnote. Uses hp:ctrl > hp:footNote/endNote > hp:subList structure.
+    /// The marker appears at the insertion point; footnote text at page bottom, endnote at document end.
     /// Props: text (required), number (auto if omitted).
     /// </summary>
-    private XElement CreateFootnote(Dictionary<string, string>? props)
+    private XElement CreateFootnote(Dictionary<string, string>? props, bool isEndnote = false)
     {
         var text = props?.GetValueOrDefault("text")
-            ?? throw new CliException("footnote requires 'text' property");
+            ?? throw new CliException($"{(isEndnote ? "endnote" : "footnote")} requires 'text' property");
         var number = props?.GetValueOrDefault("number") ?? "0"; // 0 = auto-number
+        var tagName = isEndnote ? "endNote" : "footNote";
 
-        var fnId = NewId();
-
-        // Footnote is a paragraph containing a ctrl with footNote
         return new XElement(HwpxNs.Hp + "p",
             new XAttribute("id", NewId()),
             new XAttribute("styleIDRef", "0"),
@@ -1007,9 +1009,88 @@ public partial class HwpxHandler
             new XAttribute("merged", "0"),
             WrapInRun(
                 new XElement(HwpxNs.Hp + "ctrl",
-                    new XElement(HwpxNs.Hp + "footNote",
+                    new XElement(HwpxNs.Hp + tagName,
                         new XAttribute("number", number),
                         CreateSubList(text, "TOP")))));
+    }
+
+    // ==================== Comment / Memo ====================
+
+    /// <summary>
+    /// Create a comment/memo element. HWPX memos use hp:ctrl > hp:memo > hp:subList structure.
+    /// Props: text (required).
+    /// </summary>
+    private XElement CreateMemo(Dictionary<string, string>? props)
+    {
+        var text = props?.GetValueOrDefault("text")
+            ?? throw new CliException("comment/memo requires 'text' property");
+
+        return new XElement(HwpxNs.Hp + "p",
+            new XAttribute("id", NewId()),
+            new XAttribute("styleIDRef", "0"),
+            new XAttribute("paraPrIDRef", "0"),
+            new XAttribute("pageBreak", "0"),
+            new XAttribute("columnBreak", "0"),
+            new XAttribute("merged", "0"),
+            WrapInRun(
+                new XElement(HwpxNs.Hp + "ctrl",
+                    new XElement(HwpxNs.Hp + "memo",
+                        CreateSubList(text)))));
+    }
+
+    // ==================== Page Numbering ====================
+
+    /// <summary>
+    /// Create a page number element. HWPX uses hp:ctrl > hp:pageNum structure.
+    /// Props: pos (default BOTTOM_CENTER), format (default DIGIT).
+    /// formatType: DIGIT, CIRCLED_DIGIT, ROMAN_CAPITAL, ROMAN_SMALL, HANGUL, HANJA.
+    /// pos: TOP_LEFT, TOP_CENTER, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_CENTER, BOTTOM_RIGHT,
+    ///      OUTSIDE_TOP, OUTSIDE_BOTTOM, INSIDE_TOP, INSIDE_BOTTOM.
+    /// </summary>
+    private XElement CreatePageNum(Dictionary<string, string>? props)
+    {
+        var pos = props?.GetValueOrDefault("pos") ?? "BOTTOM_CENTER";
+        var format = props?.GetValueOrDefault("format") ?? "DIGIT";
+
+        return new XElement(HwpxNs.Hp + "p",
+            new XAttribute("id", NewId()),
+            new XAttribute("styleIDRef", "0"),
+            new XAttribute("paraPrIDRef", "0"),
+            new XAttribute("pageBreak", "0"),
+            new XAttribute("columnBreak", "0"),
+            new XAttribute("merged", "0"),
+            WrapInRun(
+                new XElement(HwpxNs.Hp + "ctrl",
+                    new XElement(HwpxNs.Hp + "pageNum",
+                        new XAttribute("pos", pos),
+                        new XAttribute("formatType", format),
+                        new XAttribute("sideChar", "")))));
+    }
+
+    // ==================== Bookmark ====================
+
+    /// <summary>
+    /// Create a point bookmark element. HWPX uses hp:ctrl > hp:bookmark structure.
+    /// Props: name (required).
+    /// Note: Range bookmarks (fieldBegin/fieldEnd) require start/end at different positions
+    /// and are not supported in this version.
+    /// </summary>
+    private XElement CreateBookmark(Dictionary<string, string>? props)
+    {
+        var name = props?.GetValueOrDefault("name")
+            ?? throw new CliException("bookmark requires 'name' property");
+
+        return new XElement(HwpxNs.Hp + "p",
+            new XAttribute("id", NewId()),
+            new XAttribute("styleIDRef", "0"),
+            new XAttribute("paraPrIDRef", "0"),
+            new XAttribute("pageBreak", "0"),
+            new XAttribute("columnBreak", "0"),
+            new XAttribute("merged", "0"),
+            WrapInRun(
+                new XElement(HwpxNs.Hp + "ctrl",
+                    new XElement(HwpxNs.Hp + "bookmark",
+                        new XAttribute("name", name)))));
     }
 
     // ==================== Header / Footer ====================

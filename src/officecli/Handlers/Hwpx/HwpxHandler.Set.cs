@@ -31,6 +31,57 @@ public partial class HwpxHandler
             }
         }
 
+        // Style editing: /header/style[N] path — handle before generic resolution
+        if (path.StartsWith("/header/style", StringComparison.OrdinalIgnoreCase))
+        {
+            var style = ResolvePath(path);
+            foreach (var (key, value) in properties)
+            {
+                switch (key.ToLowerInvariant())
+                {
+                    case "name":
+                        style.SetAttributeValue("name", value);
+                        break;
+                    case "engname":
+                        style.SetAttributeValue("engName", value);
+                        break;
+                    case "font" or "fontfamily" or "fonthangul":
+                        var sCharPrIdRef = style.Attribute("charPrIDRef")?.Value;
+                        if (sCharPrIdRef != null)
+                        {
+                            var sCharPr = FindCharPr(sCharPrIdRef);
+                            if (sCharPr != null)
+                                ApplyCharPrProperty(sCharPr, "fonthangul", value);
+                        }
+                        break;
+                    case "fontlatin":
+                        var sCharPrIdRef2 = style.Attribute("charPrIDRef")?.Value;
+                        if (sCharPrIdRef2 != null)
+                        {
+                            var sCharPr2 = FindCharPr(sCharPrIdRef2);
+                            if (sCharPr2 != null)
+                                ApplyCharPrProperty(sCharPr2, "fontlatin", value);
+                        }
+                        break;
+                    case "size" or "fontsize":
+                        var sCharPrIdRef3 = style.Attribute("charPrIDRef")?.Value;
+                        if (sCharPrIdRef3 != null)
+                        {
+                            var sCharPr3 = FindCharPr(sCharPrIdRef3);
+                            if (sCharPr3 != null)
+                                ApplyCharPrProperty(sCharPr3, "fontsize", value);
+                        }
+                        break;
+                    default:
+                        unsupported.Add(key);
+                        break;
+                }
+            }
+            _dirty = true;
+            SaveHeader();
+            return unsupported;
+        }
+
         var element = ResolvePath(path);
 
         foreach (var (key, value) in properties)
@@ -113,6 +164,10 @@ public partial class HwpxHandler
             "colspan" => SetCellSpan(tc, "colSpan", value),
             "rowspan" => SetCellSpan(tc, "rowSpan", value),
             "borderfillid" or "borderfillidref" => SetAttribute(tc, "borderFillIDRef", value),
+            "shading" or "bgcolor" or "fillcolor" => SetCellShading(tc, value),
+            "bordercolor" => SetCellBorder(tc, color: value),
+            "borderwidth" => SetCellBorder(tc, width: value),
+            "bordertype" or "borderstyle" => SetCellBorder(tc, type: value),
             _ => false
         };
     }
@@ -183,6 +238,12 @@ public partial class HwpxHandler
             "indent" or "leftindent" => SetParagraphIndent(p, value, "left"),
             "rightindent" => SetParagraphIndent(p, value, "right"),
             "parapridref" => SetAttribute(p, "paraPrIDRef", value),
+            "spacebefore" or "spacingbefore" => SetParaPrSpacing(p, "before", value),
+            "spaceafter" or "spacingafter" => SetParaPrSpacing(p, "after", value),
+            "linespacing" or "lineheight" => SetParaPrSpacing(p, "lineSpacing", value),
+            "linespacingtype" => SetParaPrSpacing(p, "lineSpacingType", value),
+            "outlinelevel" or "heading" => SetParaPrHeadingLevel(p, value),
+            "liststyle" or "list" or "bullet" => SetListStyle(p, value),
             _ => false
         };
     }
@@ -337,7 +398,9 @@ public partial class HwpxHandler
             "bold" or "italic" or "underline" or "strikeout"
                 or "fontsize" or "textcolor" or "color"
                 or "fonthangul" or "fontlatin"
+                or "superscript" or "subscript"
                 => EnsureCharPrProp(run, property.ToLowerInvariant(), value),
+            "highlight" or "markpen" => SetHighlight(run, value),
             _ => false
         };
     }
@@ -360,6 +423,366 @@ public partial class HwpxHandler
                 extra.Remove();
         }
         return true;
+    }
+
+    // ==================== Paragraph Spacing ====================
+
+    /// <summary>
+    /// Set a spacing attribute on the paragraph's paraPr in header.xml.
+    /// Spacing is stored as attributes on &lt;hh:spacing&gt; element (not child elements).
+    /// attrName: "before", "after", "lineSpacing", "lineSpacingType".
+    /// lineSpacingType: PERCENT, FIXED, BETWEEN_LINES.
+    /// </summary>
+    private bool SetParaPrSpacing(XElement para, string attrName, string value)
+    {
+        if (_doc.Header?.Root == null)
+            return false;
+
+        var paraPr = CloneParaPrIfShared(para);
+        if (paraPr == null)
+            return false;
+
+        var spacing = paraPr.Element(HwpxNs.Hh + "spacing");
+        if (spacing == null)
+        {
+            spacing = new XElement(HwpxNs.Hh + "spacing");
+            paraPr.Add(spacing);
+        }
+
+        spacing.SetAttributeValue(attrName, value);
+        SaveHeader();
+        return true;
+    }
+
+    // ==================== Paragraph Heading / Outline Level ====================
+
+    /// <summary>
+    /// Set the outline/heading level on a paragraph's paraPr.
+    /// Value "0" or "none" removes the heading. Values 1-9 set the heading level.
+    /// </summary>
+    private bool SetParaPrHeadingLevel(XElement para, string value)
+    {
+        if (_doc.Header?.Root == null)
+            return false;
+
+        var paraPr = CloneParaPrIfShared(para);
+        if (paraPr == null)
+            return false;
+
+        var heading = paraPr.Element(HwpxNs.Hh + "heading");
+
+        if (value == "0" || value.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            heading?.Remove();
+        }
+        else
+        {
+            if (heading == null)
+            {
+                heading = new XElement(HwpxNs.Hh + "heading",
+                    new XAttribute("type", "OUTLINE"),
+                    new XAttribute("idRef", "0"),
+                    new XAttribute("level", value));
+                paraPr.Add(heading);
+            }
+            else
+            {
+                heading.SetAttributeValue("level", value);
+                heading.SetAttributeValue("type", "OUTLINE");
+            }
+        }
+
+        SaveHeader();
+        return true;
+    }
+
+    // ==================== Numbering / List ====================
+
+    /// <summary>
+    /// Set list style on a paragraph. Creates a numbering definition in header.xml if needed,
+    /// then links the paragraph's paraPr to it via heading element.
+    /// Values: "bullet" (●), "number" or "decimal" (1. 2. 3.), "circle" (○),
+    ///         "dash" (–), "none" (remove list).
+    /// </summary>
+    private bool SetListStyle(XElement para, string style)
+    {
+        if (_doc.Header?.Root == null) return false;
+
+        var lower = style.ToLowerInvariant();
+        if (lower == "none" || lower == "false" || lower == "0")
+        {
+            // Remove list: clear heading from paraPr
+            return SetParaPrHeadingLevel(para, "0");
+        }
+
+        // Determine numbering format and text pattern
+        var (format, textPattern) = lower switch
+        {
+            "bullet" or "disc" => ("BULLET", "●"),
+            "circle" => ("BULLET", "○"),
+            "dash" => ("BULLET", "–"),
+            "number" or "decimal" or "numbered" => ("DIGIT", "%d."),
+            "roman" => ("ROMAN_CAPITAL", "%d."),
+            "romanlower" or "roman_small" => ("ROMAN_SMALL", "%d."),
+            "hangul" => ("HANGUL", "%d."),
+            "hanja" => ("HANJA", "%d."),
+            _ => ("BULLET", "●")
+        };
+
+        // Find or create numbering definition in header.xml
+        var numId = EnsureNumberingDef(format, textPattern);
+
+        // Set paraPr heading to reference the numbering
+        var paraPr = CloneParaPrIfShared(para);
+        if (paraPr == null) return false;
+
+        var heading = paraPr.Element(HwpxNs.Hh + "heading");
+        if (heading == null)
+        {
+            heading = new XElement(HwpxNs.Hh + "heading",
+                new XAttribute("type", "NUMBER"),
+                new XAttribute("idRef", numId),
+                new XAttribute("level", "1"));
+            paraPr.Add(heading);
+        }
+        else
+        {
+            heading.SetAttributeValue("type", "NUMBER");
+            heading.SetAttributeValue("idRef", numId);
+            heading.SetAttributeValue("level", "1");
+        }
+
+        // Set left indent for list items (standard 800 HWPUNIT indent)
+        var margin = paraPr.Element(HwpxNs.Hh + "margin");
+        if (margin == null)
+        {
+            margin = new XElement(HwpxNs.Hh + "margin");
+            paraPr.Add(margin);
+        }
+        var leftChild = margin.Element(HwpxNs.Hc + "left");
+        if (leftChild == null)
+        {
+            margin.Add(new XElement(HwpxNs.Hc + "left",
+                new XAttribute("value", "800"),
+                new XAttribute("unit", "HWPUNIT")));
+        }
+
+        SaveHeader();
+        return true;
+    }
+
+    /// <summary>
+    /// Find or create a numbering definition in header.xml.
+    /// Returns the numbering id string.
+    /// </summary>
+    private string EnsureNumberingDef(string format, string textPattern)
+    {
+        var header = _doc.Header!.Root!;
+        var refList = header.Element(HwpxNs.Hh + "refList");
+
+        // Find numberings container
+        var numberings = refList?.Element(HwpxNs.Hh + "numberings");
+        if (numberings == null)
+        {
+            // Create numberings container
+            numberings = new XElement(HwpxNs.Hh + "numberings", new XAttribute("itemCnt", "0"));
+            if (refList == null)
+            {
+                refList = new XElement(HwpxNs.Hh + "refList");
+                header.Add(refList);
+            }
+            refList.Add(numberings);
+        }
+
+        // Check for existing matching numbering
+        foreach (var num in numberings.Elements(HwpxNs.Hh + "numbering"))
+        {
+            var paraHead = num.Element(HwpxNs.Hh + "paraHead");
+            if (paraHead != null)
+            {
+                var existingFormat = paraHead.Attribute("format")?.Value;
+                var existingText = paraHead.Element(HwpxNs.Hh + "text")?.Value;
+                if (existingFormat == format && existingText == textPattern)
+                    return num.Attribute("id")?.Value ?? "1";
+            }
+        }
+
+        // Create new numbering definition
+        var maxId = numberings.Elements(HwpxNs.Hh + "numbering")
+            .Select(n => int.TryParse(n.Attribute("id")?.Value, out var id) ? id : 0)
+            .DefaultIfEmpty(0).Max();
+        var newId = (maxId + 1).ToString();
+
+        var newNumbering = new XElement(HwpxNs.Hh + "numbering",
+            new XAttribute("id", newId),
+            new XAttribute("start", "1"),
+            new XElement(HwpxNs.Hh + "paraHead",
+                new XAttribute("start", "1"),
+                new XAttribute("level", "1"),
+                new XAttribute("format", format),
+                new XAttribute("alignment", "LEFT"),
+                new XAttribute("useInstWidth", "1"),
+                new XAttribute("autoIndent", "1"),
+                new XAttribute("textOffset", "0"),
+                new XAttribute("numFormat", "1"),
+                new XElement(HwpxNs.Hh + "text", textPattern)));
+
+        numberings.Add(newNumbering);
+        var count = numberings.Elements(HwpxNs.Hh + "numbering").Count();
+        numberings.SetAttributeValue("itemCnt", count.ToString());
+
+        SaveHeader();
+        return newId;
+    }
+
+    // ==================== Highlight (Markpen) ====================
+
+    /// <summary>
+    /// Set highlight (markpen) on a run by inserting markpenBegin/markpenEnd markers
+    /// around the text content. This is NOT a charPr property — it's inline markers.
+    /// Value: color hex (e.g. "#FFFF00" for yellow), "none"/"false" to remove.
+    /// </summary>
+    private bool SetHighlight(XElement run, string color)
+    {
+        var textElem = run.Element(HwpxNs.Hp + "t");
+        if (textElem == null) return false;
+
+        // Remove existing markpen markers
+        run.Elements(HwpxNs.Hp + "markpenBegin").ToList().ForEach(e => e.Remove());
+        run.Elements(HwpxNs.Hp + "markpenEnd").ToList().ForEach(e => e.Remove());
+
+        var lower = color.ToLowerInvariant();
+        if (lower != "none" && lower != "false" && lower != "0")
+        {
+            // Map common color names to hex
+            var hexColor = lower switch
+            {
+                "yellow" => "#FFFF00",
+                "green" => "#00FF00",
+                "cyan" => "#00FFFF",
+                "magenta" or "pink" => "#FF00FF",
+                "red" => "#FF0000",
+                "blue" => "#0000FF",
+                _ => color // assume hex
+            };
+
+            textElem.AddBeforeSelf(
+                new XElement(HwpxNs.Hp + "markpenBegin",
+                    new XAttribute("beginColor", hexColor)));
+            textElem.AddAfterSelf(
+                new XElement(HwpxNs.Hp + "markpenEnd"));
+        }
+
+        _dirty = true;
+        SaveSection(run);
+        return true;
+    }
+
+    // ==================== Cell Shading & Border ====================
+
+    /// <summary>
+    /// Set cell background color by creating a new borderFill with the fill color
+    /// and assigning it to the cell's borderFillIDRef.
+    /// </summary>
+    private bool SetCellShading(XElement tc, string fillColor)
+    {
+        if (_doc.Header?.Root == null) return false;
+
+        // Get current borderFill to preserve border settings
+        var currentBfId = tc.Attribute("borderFillIDRef")?.Value ?? "1";
+        var currentBf = _doc.Header.Root.Descendants(HwpxNs.Hh + "borderFill")
+            .FirstOrDefault(e => e.Attribute("id")?.Value == currentBfId);
+
+        // Clone existing border settings
+        var borderType = currentBf?.Element(HwpxNs.Hh + "leftBorder")?.Attribute("type")?.Value ?? "SOLID";
+        var borderWidth = currentBf?.Element(HwpxNs.Hh + "leftBorder")?.Attribute("width")?.Value ?? "0.12mm";
+        var borderColor = currentBf?.Element(HwpxNs.Hh + "leftBorder")?.Attribute("color")?.Value ?? "#000000";
+
+        var newBfId = CreateCustomBorderFill(borderColor, borderWidth, borderType, fillColor);
+        tc.SetAttributeValue("borderFillIDRef", newBfId);
+        return true;
+    }
+
+    /// <summary>
+    /// Set cell border properties by creating a new borderFill and assigning it.
+    /// Only the specified parameters are changed; others are preserved from the current borderFill.
+    /// </summary>
+    private bool SetCellBorder(XElement tc, string? color = null, string? width = null, string? type = null)
+    {
+        if (_doc.Header?.Root == null) return false;
+
+        var currentBfId = tc.Attribute("borderFillIDRef")?.Value ?? "1";
+        var currentBf = _doc.Header.Root.Descendants(HwpxNs.Hh + "borderFill")
+            .FirstOrDefault(e => e.Attribute("id")?.Value == currentBfId);
+
+        var borderType = type ?? currentBf?.Element(HwpxNs.Hh + "leftBorder")?.Attribute("type")?.Value ?? "SOLID";
+        var borderWidth = width ?? currentBf?.Element(HwpxNs.Hh + "leftBorder")?.Attribute("width")?.Value ?? "0.12mm";
+        var borderColor = color ?? currentBf?.Element(HwpxNs.Hh + "leftBorder")?.Attribute("color")?.Value ?? "#000000";
+
+        // Check for existing fill color to preserve
+        string? fillColor = null;
+        var existingFill = currentBf?.Element(HwpxNs.Hc + "fillBrush")?.Element(HwpxNs.Hc + "winBrush");
+        if (existingFill != null)
+            fillColor = existingFill.Attribute("faceColor")?.Value;
+
+        var newBfId = CreateCustomBorderFill(borderColor, borderWidth, borderType, fillColor);
+        tc.SetAttributeValue("borderFillIDRef", newBfId);
+        return true;
+    }
+
+    /// <summary>
+    /// Create a custom borderFill in header.xml with specified border and optional fill settings.
+    /// Returns the new borderFill ID.
+    /// </summary>
+    private string CreateCustomBorderFill(
+        string borderColor = "#000000",
+        string borderWidth = "0.12mm",
+        string borderType = "SOLID",
+        string? fillColor = null)
+    {
+        var borderFills = _doc.Header!.Root!.Descendants(HwpxNs.Hh + "borderFill");
+        var newId = NextBorderFillId();
+
+        var bf = new XElement(HwpxNs.Hh + "borderFill",
+            new XAttribute("id", newId),
+            new XAttribute("threeD", "0"),
+            new XAttribute("shadow", "0"),
+            new XAttribute("centerLine", "NONE"),
+            new XAttribute("breakCellSeparateLine", "0"),
+            new XElement(HwpxNs.Hh + "slash",
+                new XAttribute("type", "NONE"), new XAttribute("crooked", "0"), new XAttribute("isCounter", "0")),
+            new XElement(HwpxNs.Hh + "backSlash",
+                new XAttribute("type", "NONE"), new XAttribute("crooked", "0"), new XAttribute("isCounter", "0")),
+            MakeBorder("leftBorder", borderType, borderWidth, borderColor),
+            MakeBorder("rightBorder", borderType, borderWidth, borderColor),
+            MakeBorder("topBorder", borderType, borderWidth, borderColor),
+            MakeBorder("bottomBorder", borderType, borderWidth, borderColor),
+            MakeBorder("diagonal", "NONE", "0.00mm", "#000000"));
+
+        if (fillColor != null)
+        {
+            bf.Add(new XElement(HwpxNs.Hc + "fillBrush",
+                new XElement(HwpxNs.Hc + "winBrush",
+                    new XAttribute("faceColor", fillColor),
+                    new XAttribute("hatchColor", "#FFFFFF"),
+                    new XAttribute("alpha", "0"))));
+        }
+
+        // Add to borderFills container
+        var container = _doc.Header!.Root!.Descendants(HwpxNs.Hh + "borderFills").FirstOrDefault();
+        if (container != null)
+        {
+            container.Add(bf);
+            var count = container.Elements(HwpxNs.Hh + "borderFill").Count();
+            container.SetAttributeValue("itemCnt", count.ToString());
+        }
+        else if (borderFills.Any())
+        {
+            borderFills.Last().AddAfterSelf(bf);
+        }
+
+        SaveHeader();
+        return newId;
     }
 
     // ==================== CharPr Clone-or-Modify ====================
@@ -441,6 +864,20 @@ public partial class HwpxHandler
 
             case "strikeout":
                 ToggleCharPrFlag(charPr, HwpxNs.Hh + "strikeout", value);
+                break;
+
+            case "superscript":
+                ToggleCharPrFlag(charPr, HwpxNs.Hh + "supscript", value);
+                // Remove subscript if enabling superscript
+                if (value.Equals("true", StringComparison.OrdinalIgnoreCase) || value == "1")
+                    charPr.Element(HwpxNs.Hh + "subscript")?.Remove();
+                break;
+
+            case "subscript":
+                ToggleCharPrFlag(charPr, HwpxNs.Hh + "subscript", value);
+                // Remove superscript if enabling subscript
+                if (value.Equals("true", StringComparison.OrdinalIgnoreCase) || value == "1")
+                    charPr.Element(HwpxNs.Hh + "supscript")?.Remove();
                 break;
 
             case "fontsize":
