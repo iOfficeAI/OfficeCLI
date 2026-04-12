@@ -322,7 +322,7 @@ public partial class HwpxHandler
         foreach (var entry in _doc.Archive.Entries)
         {
             if (entry.FullName.Contains("BinData/", StringComparison.OrdinalIgnoreCase))
-                actualBinData.Add(System.IO.Path.GetFileName(entry.FullName));
+                actualBinData.Add(System.IO.Path.GetFileNameWithoutExtension(entry.FullName));
         }
         foreach (var missing in referencedBinData.Except(actualBinData))
         {

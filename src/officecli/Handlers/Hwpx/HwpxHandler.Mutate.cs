@@ -510,6 +510,11 @@ public partial class HwpxHandler
             return RemovePageBackground();
         if (path.Equals("/toc", StringComparison.OrdinalIgnoreCase))
             return RemoveToc();
+        // Header/Footer removal: /header[N] or /footer[N]
+        var hfMatch = System.Text.RegularExpressions.Regex.Match(
+            path, @"^/(header|footer)\[(\d+)\]$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (hfMatch.Success)
+            return RemoveHeaderFooter(hfMatch.Groups[1].Value.Equals("header", StringComparison.OrdinalIgnoreCase), int.Parse(hfMatch.Groups[2].Value));
         // Section removal: /section[N] with no further path segments
         if (System.Text.RegularExpressions.Regex.IsMatch(path, @"^/section\[\d+\]$", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
             return RemoveSection(path);
@@ -593,6 +598,34 @@ public partial class HwpxHandler
     }
 
     /// <summary>
+    /// Remove header or footer ctrl element from section XML by 1-based index.
+    /// </summary>
+    private string? RemoveHeaderFooter(bool isHeader, int index)
+    {
+        var tagName = isHeader ? "header" : "footer";
+        int found = 0;
+        foreach (var section in _doc.Sections)
+        {
+            foreach (var hf in section.Root.Descendants(HwpxNs.Hp + tagName).ToList())
+            {
+                found++;
+                if (found == index)
+                {
+                    var ctrl = hf.Parent;
+                    if (ctrl?.Name == HwpxNs.Hp + "ctrl")
+                        ctrl.Remove();
+                    else
+                        hf.Remove();
+                    _dirty = true;
+                    SaveSection(section.Root);
+                    return null;
+                }
+            }
+        }
+        throw new CliException($"Cannot find {tagName}[{index}] in HWPX document");
+    }
+
+    /// <summary>
     /// Clean up BinData ZIP entry when an image is removed.
     /// </summary>
     private void CleanupBinData(XElement picElement)
@@ -603,9 +636,14 @@ public partial class HwpxHandler
             ?? imgEl?.Attribute("src")?.Value;
         if (binRef == null) return;
 
-        // Delete BinData entry directly from ZIP archive
-        var entryPath = binRef.StartsWith("BinData/") ? $"Contents/{binRef}" : $"Contents/BinData/{binRef}";
-        var entry = _doc.Archive.GetEntry(entryPath);
+        // Delete BinData entry — try Contents/ prefixed paths first, then root BinData/ (legacy)
+        var entryPath = binRef.StartsWith("Contents/")
+            ? binRef
+            : binRef.StartsWith("BinData/")
+                ? $"Contents/{binRef}"
+                : $"Contents/BinData/{binRef}";
+        var entry = _doc.Archive.GetEntry(entryPath)
+            ?? _doc.Archive.GetEntry($"BinData/{binRef}");
         entry?.Delete();
     }
 
@@ -1016,8 +1054,8 @@ public partial class HwpxHandler
         var imageId = GetNextImageId();
         var binFileName = $"image{imageId}.{ext}";
 
-        // 3. Add image to ZIP at BinData/ (root level, NOT Contents/BinData/)
-        var binEntry = _doc.Archive.CreateEntry($"BinData/{binFileName}", System.IO.Compression.CompressionLevel.Optimal);
+        // 3. Add image to ZIP at Contents/BinData/
+        var binEntry = _doc.Archive.CreateEntry($"Contents/BinData/{binFileName}", System.IO.Compression.CompressionLevel.Optimal);
         using (var binStream = binEntry.Open())
             binStream.Write(imageBytes, 0, imageBytes.Length);
 
@@ -1990,8 +2028,8 @@ public partial class HwpxHandler
             new XAttribute("type", type),
             new XAttribute("name", name),
             new XAttribute("engName", engName),
-            new XAttribute("paraPrIDRef", "0"),
-            new XAttribute("charPrIDRef", "0"),
+            new XAttribute("paraPrIDRef", CloneParaPrForNewStyle().ToString()),
+            new XAttribute("charPrIDRef", CloneCharPrForNewStyle().ToString()),
             new XAttribute("nextStyleIDRef", newId));
 
         var container = _doc.Header.Root.Descendants(HwpxNs.Hh + "styles").FirstOrDefault();

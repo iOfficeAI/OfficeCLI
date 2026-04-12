@@ -33,6 +33,12 @@ public partial class HwpxHandler
         // Level 6: Namespace declarations
         ValidateNamespaceDeclarations(errors);
 
+        // Level 7: BinData integrity (Plan 94 — merged from ViewAsIssues)
+        ValidateBinDataIntegrity(errors);
+
+        // Level 8: Field pair consistency (Plan 94)
+        ValidateFieldPairs(errors);
+
         return errors;
     }
 
@@ -535,6 +541,47 @@ public partial class HwpxHandler
                         _doc.HeaderEntryPath ?? "Contents/header.xml"));
                 }
             }
+        }
+    }
+
+    // Plan 94: BinData integrity (merged from ViewAsIssues Level 7)
+    private void ValidateBinDataIntegrity(List<ValidationError> errors)
+    {
+        var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var sec in _doc.Sections)
+            foreach (var el in sec.Root.Descendants())
+            {
+                var binRef = el.Attribute("binaryItemIDRef")?.Value;
+                if (binRef != null) referenced.Add(binRef);
+            }
+
+        var actual = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in _doc.Archive.Entries)
+            if (entry.FullName.Contains("BinData/", StringComparison.OrdinalIgnoreCase))
+                actual.Add(System.IO.Path.GetFileName(entry.FullName));
+
+        foreach (var missing in referenced.Except(actual))
+            errors.Add(new ValidationError("bindata_missing",
+                $"Referenced binary '{missing}' not found in archive",
+                "/BinData", null));
+
+        foreach (var orphan in actual.Except(referenced))
+            errors.Add(new ValidationError("bindata_orphan",
+                $"Orphan binary '{orphan}' not referenced by any element",
+                "/BinData", null));
+    }
+
+    // Plan 94: Field pair consistency (merged from ViewAsIssues Level 8)
+    private void ValidateFieldPairs(List<ValidationError> errors)
+    {
+        foreach (var sec in _doc.Sections)
+        {
+            var begins = sec.Root.Descendants(HwpxNs.Hp + "fieldBegin").Count();
+            var ends = sec.Root.Descendants(HwpxNs.Hp + "fieldEnd").Count();
+            if (begins != ends)
+                errors.Add(new ValidationError("field_pair_mismatch",
+                    $"Section {sec.Index + 1}: {begins} fieldBegin vs {ends} fieldEnd",
+                    $"/section[{sec.Index + 1}]", null));
         }
     }
 }

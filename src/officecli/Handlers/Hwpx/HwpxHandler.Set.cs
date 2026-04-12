@@ -1558,6 +1558,50 @@ public partial class HwpxHandler
         }
     }
 
+    // ==================== Style Clone Helpers ====================
+
+    /// <summary>
+    /// Clone charPr 0 to a new independent ID for use in new style definitions.
+    /// Prevents global default contamination when editing style properties.
+    /// </summary>
+    private int CloneCharPrForNewStyle()
+    {
+        var charPr0 = _doc.Header?.Root?
+            .Descendants(HwpxNs.Hh + "charPr")
+            .FirstOrDefault(e => e.Attribute("id")?.Value == "0");
+        if (charPr0 == null) return 0;
+
+        var newId = NextCharPrId();
+        var cloned = new XElement(charPr0);
+        cloned.SetAttributeValue("id", newId.ToString());
+        var container = charPr0.Parent!;
+        container.Add(cloned);
+        var count = container.Elements(HwpxNs.Hh + "charPr").Count();
+        container.SetAttributeValue("itemCnt", count.ToString());
+        return newId;
+    }
+
+    /// <summary>
+    /// Clone paraPr 0 to a new independent ID for use in new style definitions.
+    /// Prevents global default contamination when editing style properties.
+    /// </summary>
+    private int CloneParaPrForNewStyle()
+    {
+        var paraPr0 = _doc.Header?.Root?
+            .Descendants(HwpxNs.Hh + "paraPr")
+            .FirstOrDefault(e => e.Attribute("id")?.Value == "0");
+        if (paraPr0 == null) return 0;
+
+        var newId = NextParaPrId();
+        var cloned = new XElement(paraPr0);
+        cloned.SetAttributeValue("id", newId.ToString());
+        var container = paraPr0.Parent!;
+        container.Add(cloned);
+        var count = container.Elements(HwpxNs.Hh + "paraPr").Count();
+        container.SetAttributeValue("itemCnt", count.ToString());
+        return newId;
+    }
+
     // ==================== ID Generators ====================
 
     /// <summary>
@@ -1629,6 +1673,15 @@ public partial class HwpxHandler
             {
                 if (p == excludeParagraph) continue;
                 if (p.Attribute("paraPrIDRef")?.Value == paraPrIdRef)
+                    return true;
+            }
+        }
+        // Also check if any style references this paraPr
+        if (_doc.Header?.Root != null)
+        {
+            foreach (var style in _doc.Header.Root.Descendants(HwpxNs.Hh + "style"))
+            {
+                if (style.Attribute("paraPrIDRef")?.Value == paraPrIdRef)
                     return true;
             }
         }
