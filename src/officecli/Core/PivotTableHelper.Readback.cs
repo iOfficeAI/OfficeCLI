@@ -147,12 +147,10 @@ internal static partial class PivotTableHelper
             node.Format["layout"] = layout;
         }
 
-        // grandTotalCaption readback — suppress both locale defaults so a
-        // fresh pivot written by this library (default "总计") and one written
-        // by Excel-English ("Grand Total") both come through as "no override".
+        // grandTotalCaption readback
         {
             var caption = pivotDef.GrandTotalCaption?.Value;
-            if (!string.IsNullOrEmpty(caption) && caption != "总计" && caption != "Grand Total")
+            if (!string.IsNullOrEmpty(caption) && caption != "Grand Total")
                 node.Format["grandTotalCaption"] = caption;
         }
 
@@ -221,8 +219,7 @@ internal static partial class PivotTableHelper
         // R11-3: Grand totals readback. Both attributes default to true in
         // OOXML, so emit "true" when absent (default) and reflect explicit
         // false. Canonical key matches Add/Set input ('rowGrandTotals' /
-        // 'colGrandTotals') per CLAUDE.md canonical Format rules (defaults
-        // surfaced explicitly so consumers never have to know OOXML defaults).
+        // 'colGrandTotals') per CLAUDE.md canonical Format rules.
         node.Format["rowGrandTotals"] = (pivotDef.RowGrandTotals?.Value ?? true) ? "true" : "false";
         node.Format["colGrandTotals"] = (pivotDef.ColumnGrandTotals?.Value ?? true) ? "true" : "false";
 

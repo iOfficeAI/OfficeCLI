@@ -614,13 +614,10 @@ internal static partial class PivotTableHelper
     }
 
     // CONSISTENCY(thread-static-pivot-opts): grandTotalCaption — user-specified
-    // label for the grand total row/column. Defaults to the hardcoded zh-CN
-    // "总计" regardless of process locale (matches Excel CN shipping default
-    // and the project's primary user base). English-locale users can override
-    // via properties["grandTotalCaption"]="Grand Total" at Add time.
+    // label for the grand total row/column. Defaults to "Grand Total".
     [ThreadStatic] private static string? _grandTotalCaption;
 
-    private static string ActiveGrandTotalCaption => _grandTotalCaption ?? "总计";
+    private static string ActiveGrandTotalCaption => _grandTotalCaption ?? "Grand Total";
 
     private static IDisposable PushGrandTotalCaption(Dictionary<string, string> properties)
     {
