@@ -20,6 +20,10 @@ description: "Use this skill any time a .hwpx file is involved -- as input, outp
 | Object finder | ✅ Yes | `view objects` (picture/field/bookmark/equation) |
 | Query (expanded) | ✅ Yes | `query 'tc[text~=홍길동]'`, `:has()`, `>` combinator |
 | Template merge | ✅ Yes | `merge template.hwpx out.hwpx --data '{"key":"val"}'` |
+| Swap elements | ✅ Yes | `swap file.hwpx '/p[1]' '/p[2]'` |
+| Column break | ✅ Yes | `add --type columnbreak --prop cols=2` |
+| Watermark (image) | ⏸ 999 | XML 구조 맞지만 한컴 렌더링 미동작 — 보류 |
+| Field types | ✅ Yes | `add --type author\|title\|lastsaveby\|filename` |
 | Compare documents | ✅ Yes | `compare a.hwpx b.hwpx --mode text\|outline\|table` |
 | HTML preview | ✅ Yes | `view html --browser` |
 | Watch live preview | ✅ Yes | `watch file.hwpx` |

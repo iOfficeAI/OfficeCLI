@@ -323,6 +323,7 @@ static partial class CommandBuilder
                 OfficeCli.Handlers.PowerPointHandler ppt => ppt.Swap(path1, path2),
                 OfficeCli.Handlers.WordHandler word => word.Swap(path1, path2),
                 OfficeCli.Handlers.ExcelHandler excel => excel.Swap(path1, path2),
+                OfficeCli.Handlers.HwpxHandler hwpx => hwpx.Swap(path1, path2),
                 _ => throw new InvalidOperationException("swap not supported for this document type")
             };
             var message = $"Swapped {p1} <-> {p2}";
