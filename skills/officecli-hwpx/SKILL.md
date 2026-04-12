@@ -22,7 +22,7 @@ description: "Use this skill any time a .hwpx file is involved -- as input, outp
 | Template merge | ✅ Yes | `merge template.hwpx out.hwpx --data '{"key":"val"}'` |
 | Swap elements | ✅ Yes | `swap file.hwpx '/p[1]' '/p[2]'` |
 | Column break | ✅ Yes | `add --type columnbreak --prop cols=2` |
-| Watermark (image) | ⏸ 999 | XML 구조 맞지만 한컴 렌더링 미동작 — 보류 |
+| Watermark (image) | 🟡 Plan 98 active | `build-local/officecli` 1.0.42 기준 동작 확인. Opaque RGB 권장, 밝은 자산은 `bright=0`, `contrast=0` 권장 |
 | Field types | ✅ Yes | `add --type author\|title\|lastsaveby\|filename` |
 | Compare documents | ✅ Yes | `compare a.hwpx b.hwpx --mode text\|outline\|table` |
 | HTML preview | ✅ Yes | `view html --browser` |
@@ -81,6 +81,23 @@ officecli set doc.hwpx '/section[1]/p[1]' --prop bold=true --prop align=CENTER
 officecli set doc.hwpx / --prop find="old" --prop replace="new"
 officecli remove doc.hwpx /section[1]/p[3]
 ```
+
+### Image watermark
+
+```bash
+700_projects/cli-jaw/build-local/officecli add doc.hwpx /section[1] \
+  --type watermark \
+  --prop src=/path/to/watermark.png \
+  --prop bright=0 \
+  --prop contrast=0
+```
+
+Validation notes:
+- Hancom에서 `v5`, `v5.1`, `v5.2` 세 변형 모두 표시 확인
+- 실패 원인은 XML 불일치가 아니라 **raster 특성 + watermark filter 조합**이었다
+- 투명 PNG는 피하고, **opaque RGB PNG**를 우선 사용
+- 매우 밝은/단순한 자산은 기본 `bright=70`, `contrast=-50`에서 희미해질 수 있음
+- 설치된 `~/.local/bin/officecli`가 `Unsupported element type: watermark`를 반환하면 최신 `build-local/officecli` 사용 또는 재설치
 
 ### Label Fill (테이블 자동 채우기)
 

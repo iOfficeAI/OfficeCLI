@@ -132,6 +132,14 @@ public partial class HwpxHandler : IDocumentHandler
         return XDocument.Parse(raw);
     }
 
+    public bool TryExtractBinary(string path, string destPath, out string? contentType, out long byteCount)
+    {
+        contentType = null;
+        byteCount = 0;
+        // HWPX binary extraction not yet implemented
+        return false;
+    }
+
     public void Dispose()
     {
         _doc.Archive.Dispose();

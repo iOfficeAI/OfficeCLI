@@ -14,11 +14,12 @@ public partial class HwpxHandler
     /// </summary>
     /// <param name="parentPath">Path to the parent element.</param>
     /// <param name="type">Element type: "paragraph", "table", "run" (lowercase).</param>
-    /// <param name="index">Optional 1-based insertion index. null = append.</param>
+    /// <param name="position">Optional insertion position. null = append.</param>
     /// <param name="properties">Optional properties for the new element.</param>
-    public string Add(string parentPath, string type, int? index,
+    public string Add(string parentPath, string type, InsertPosition? position,
                       Dictionary<string, string> properties)
     {
+        var index = position?.Index;
         // Section: special handling — creates new section file + manifest entry (no parent needed)
         if (type.Equals("section", StringComparison.OrdinalIgnoreCase))
         {
@@ -890,8 +891,9 @@ public partial class HwpxHandler
     /// 4. Insert at the specified index under the target parent.
     /// </summary>
     /// <returns>New path of the moved element.</returns>
-    public string Move(string sourcePath, string? targetParentPath, int? index)
+    public string Move(string sourcePath, string? targetParentPath, InsertPosition? position)
     {
+        var index = position?.Index;
         if (string.IsNullOrEmpty(targetParentPath))
             throw new CliException("Target parent path is required for move");
 
@@ -950,8 +952,9 @@ public partial class HwpxHandler
     /// Assigns a new id attribute to the clone to avoid duplicate IDs.
     /// </summary>
     /// <returns>Path of the newly created copy.</returns>
-    public string CopyFrom(string sourcePath, string targetParentPath, int? index)
+    public string CopyFrom(string sourcePath, string targetParentPath, InsertPosition? position)
     {
+        var index = position?.Index;
         var source = ResolvePath(sourcePath);
         var target = ResolvePath(targetParentPath);
 
