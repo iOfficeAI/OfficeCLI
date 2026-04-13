@@ -399,7 +399,7 @@ public partial class HwpxHandler
 
     // ==================== Forms ====================
 
-    public string ViewAsForms(bool auto = false)
+    public string ViewAsForms(bool auto = true)
     {
         var sb = new StringBuilder();
         var fields = EnumerateInteractiveFormFields().ToList();
@@ -415,10 +415,39 @@ public partial class HwpxHandler
             var recognized = RecognizeFormFields();
             if (recognized.Count > 0)
             {
+                var adjacentCount = recognized.Count(f => f.Strategy == "adjacent");
+                var headerDataCount = recognized.Count(f => f.Strategy == "header-data");
+                var strategySummary = new List<string>();
+                if (adjacentCount > 0) strategySummary.Add($"{adjacentCount} adjacent");
+                if (headerDataCount > 0) strategySummary.Add($"{headerDataCount} header-data");
+                var otherCount = recognized.Count - adjacentCount - headerDataCount;
+                if (otherCount > 0) strategySummary.Add($"{otherCount} other");
+
                 sb.AppendLine();
-                sb.AppendLine($"Auto-recognized fields: {recognized.Count}");
+                sb.AppendLine($"Forms: {recognized.Count} fields recognized ({string.Join(", ", strategySummary)})");
+                sb.AppendLine();
+
+                // Compute column widths
+                int labelW = Math.Max(5, recognized.Max(f => f.Label.Length));
+                int valueW = Math.Max(5, recognized.Max(f => f.Value.Length));
+                int pathW = Math.Max(4, recognized.Max(f => f.Path.Length));
+                int stratW = Math.Max(8, recognized.Max(f => f.Strategy.Length));
+
+                // Cap widths to keep output readable
+                labelW = Math.Min(labelW, 20);
+                valueW = Math.Min(valueW, 24);
+                pathW = Math.Min(pathW, 44);
+
+                sb.AppendLine($"  {"Label".PadRight(labelW)}  {"Value".PadRight(valueW)}  {"Path".PadRight(pathW)}  Strategy");
+                sb.AppendLine($"  {new string('\u2500', labelW + 2 + valueW + 2 + pathW + 2 + stratW)}");
+
                 foreach (var f in recognized)
-                    sb.AppendLine($"  [auto:{f.Strategy}] {f.Label}: {f.Value} ({f.Path})");
+                {
+                    var label = f.Label.Length > labelW ? f.Label[..(labelW - 1)] + "\u2026" : f.Label.PadRight(labelW);
+                    var value = f.Value.Length > valueW ? f.Value[..(valueW - 1)] + "\u2026" : f.Value.PadRight(valueW);
+                    var path = f.Path.Length > pathW ? f.Path[..(pathW - 1)] + "\u2026" : f.Path.PadRight(pathW);
+                    sb.AppendLine($"  {label}  {value}  {path}  {f.Strategy}");
+                }
             }
         }
 
@@ -426,7 +455,7 @@ public partial class HwpxHandler
     }
 
     /// <summary>JSON output for forms view. Supports CLICK_HERE + auto-recognized fields.</summary>
-    public JsonNode ViewAsFormsJson(bool auto = false)
+    public JsonNode ViewAsFormsJson(bool auto = true)
     {
         var result = new JsonObject();
 
@@ -465,7 +494,7 @@ public partial class HwpxHandler
                     ["strategy"] = f.Strategy
                 });
             }
-            result["autoRecognized"] = autoFields;
+            result["forms"] = autoFields;
         }
 
         return result;

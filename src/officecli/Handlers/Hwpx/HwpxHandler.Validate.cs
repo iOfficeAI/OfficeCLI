@@ -561,7 +561,7 @@ public partial class HwpxHandler
         var actual = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in _doc.Archive.Entries)
             if (entry.FullName.Contains("BinData/", StringComparison.OrdinalIgnoreCase))
-                actual.Add(System.IO.Path.GetFileName(entry.FullName));
+                actual.Add(System.IO.Path.GetFileNameWithoutExtension(entry.FullName));
 
         foreach (var missing in referenced.Except(actual))
             errors.Add(new ValidationError("bindata_missing",
