@@ -491,8 +491,11 @@ cli(f'add "{FILE}" "/4-Waterfall Advanced" --type chart'
     f' --prop dataLabels=true'
     f' --prop axisfont=8:333333:Calibri')
 
+# Remove blank default Sheet1 (all data is inline)
+cli(f'remove "{FILE}" /Sheet1')
+
 print(f"\nDone! Generated: {FILE}")
-print("  4 sheets + default Sheet1 (16 charts total)")
+print("  4 sheets (16 charts total)")
 print("  Sheet 1: Waterfall Fundamentals (4 charts)")
 print("  Sheet 2: Waterfall Styling (4 charts)")
 print("  Sheet 3: Waterfall Labels & Axis (4 charts)")

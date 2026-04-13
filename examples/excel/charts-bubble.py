@@ -370,5 +370,8 @@ cli(f'add "{FILE}" "/3-Bubble Advanced" --type chart'
     f' --prop trendline=linear'
     f' --prop legend=bottom')
 
+# Remove blank default Sheet1 (all data is inline)
+cli(f'remove "{FILE}" /Sheet1')
+
 print(f"\nDone! Generated: {FILE}")
-print("  4 sheets (Sheet1 default + 3 chart sheets, 12 charts total)")
+print("  4 sheets (3 chart sheets, 12 charts total)")
