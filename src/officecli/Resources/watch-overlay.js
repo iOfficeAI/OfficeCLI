@@ -492,6 +492,7 @@
             if (!e.shiftKey && !e.ctrlKey && !e.metaKey && _selection.length > 0) {
                 _selection = [];
                 _anchor = null;
+                applySelectionToDom();
                 postSelection([]);
             }
             return;
@@ -518,6 +519,7 @@
             _selection = [path];
             if (cell) _anchor = cell;
         }
+        applySelectionToDom(); // immediate visual feedback
         postSelection(_selection);
         e.preventDefault();
         e.stopPropagation();
@@ -715,6 +717,7 @@
                 _anchor = cell;
             }
             _suppressNextClick = true;
+            applySelectionToDom(); // immediate visual feedback
             postSelection(_selection);
             return;
         }
