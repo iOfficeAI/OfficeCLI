@@ -14,6 +14,7 @@ description: "Use this skill any time a .hwpx file is involved -- as input, outp
 | Read / analyze .hwpx | ✅ Yes | `view text`, `annotated`, `outline`, `stats`, `html`, `markdown`, `tables`, `forms`, `objects` |
 | Edit existing .hwpx | ✅ Yes | `set`, `add`, `remove`, `move`, `swap` |
 | Label-based fill | ✅ Yes | `set /table/fill --prop '라벨=값'` or `--prop 'fill:라벨=값'` |
+| New form field creation (`text/checkbox/dropdown`) | 🟡 Blocked | source prototype exists, but Hancom golden/manual verification and published binary parity are not closed yet |
 | Form recognize | ✅ Yes | `view forms --auto` (label-value auto-detect) |
 | Table map | ✅ Yes | `view tables` (2D grid + labels) |
 | Markdown export | ✅ Yes | `view markdown` |
@@ -251,6 +252,7 @@ officecli compare before.hwpx after.hwpx --json > diff.json
 | `.hwp` (binary) 열기 | `.hwpx`로 변환 필수 |
 | Unquoted `[N]` in shell | `"/section[1]/p[1]"` — 반드시 따옴표 |
 | fontsize 미지정 | `--prop fontsize=11` 항상 명시 — charPr 오염 방지 |
+| `--type formfield`를 build-local이 못 알아봄 | source tree prototype이 있어도 release acceptance 전까지는 blocked로 취급 |
 | 테이블 수동 매핑 | `view tables` 한 줄로 대체 가능 |
 
 ---

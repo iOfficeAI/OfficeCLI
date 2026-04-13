@@ -88,7 +88,7 @@ if (args.Length >= 1 && args[0] == "skills")
     Console.Error.WriteLine("  officecli skills install                Install base SKILL.md to all detected agents");
     Console.Error.WriteLine("  officecli skills install <skill-name>   Install a specific skill to all detected agents");
     Console.Error.WriteLine("  officecli skills <agent>                Install base SKILL.md to a specific agent");
-    Console.Error.WriteLine($"Skills: {string.Join(", ", new[] { "pptx", "word", "excel", "morph-ppt", "pitch-deck", "academic-paper", "data-dashboard", "financial-model" })}");
+    Console.Error.WriteLine($"Skills: {string.Join(", ", new[] { "hwpx", "pptx", "word", "excel", "morph-ppt", "pitch-deck", "academic-paper", "data-dashboard", "financial-model" })}");
     Console.Error.WriteLine("Agents: claude, copilot, codex, cursor, windsurf, minimax, openclaw, nanobot, zeroclaw, all");
     return 1;
 }

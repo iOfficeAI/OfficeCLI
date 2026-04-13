@@ -444,6 +444,7 @@ For complex scenarios, load the dedicated skill from `skills/<skill-name>/SKILL.
 
 | Skill | Scope |
 |-------|-------|
+| `officecli-hwpx` | HWPX / Hancom — Korean government/OWPML documents |
 | `officecli-docx` | Word documents — reports, letters, memos |
 | `officecli-academic-paper` | Academic papers with TOC, equations, footnotes, bibliography |
 | `officecli-pptx` | Presentations — general slide decks |

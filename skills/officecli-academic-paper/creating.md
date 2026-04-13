@@ -2,7 +2,7 @@
 
 # Creating an Academic Paper
 
-Complete guide for building a formally structured Word document with TOC, equations, footnotes, and scholarly formatting. Follow this step by step. For general building blocks (paragraphs, runs, tables, images, lists, charts), see [docx creating.md](../docx/creating.md).
+Complete guide for building a formally structured Word document with TOC, equations, footnotes, and scholarly formatting. Follow this step by step. For general building blocks (paragraphs, runs, tables, images, lists, charts), see [docx creating.md](../officecli-docx/creating.md).
 
 ---
 
@@ -438,7 +438,7 @@ officecli add paper.docx /body/p[8] --type footnote --prop text="Third footnote.
 
 > **Figure embedding note:** Experimental/empirical papers (lab science, engineering, data-driven research) SHOULD include at least 1 embedded figure — an architecture diagram, results chart, or methodology flowchart. Placeholder captions without embedded images reduce deliverability. If actual image assets are unavailable, generate a representative data chart using `officecli chart` commands and embed it as a figure with caption. Papers that list "Figure 1" in a caption but contain 0 embedded images will be flagged by evaluators.
 
-For table building blocks (header rows, cell styling, merging), see [docx creating.md](../docx/creating.md#tables----creation--basic-styling). Academic table recipe:
+For table building blocks (header rows, cell styling, merging), see [docx creating.md](../officecli-docx/creating.md#tables----creation--basic-styling). Academic table recipe:
 
 > **Caption placement rule (APA / academic standard):**
 > - **Table captions appear ABOVE the table** — add the caption paragraph BEFORE adding the table.
@@ -558,7 +558,7 @@ Academic convention requires the cover page to NOT display a page number (or use
 
 If you want to document this limitation inline in your delivery notes, use this note pattern.
 
-**"Page X of Y" pattern:** Currently there is no single-command way to produce "Page X of Y" on one line. The `fieldType=page` and `fieldType=numpages` each create their own paragraph. For a simple page number, use the pattern above. For "Page X of Y", see [docx creating.md](../docx/creating.md#headers--footers) for raw-set workarounds, or accept the limitation and use a simple page number field.
+**"Page X of Y" pattern:** Currently there is no single-command way to produce "Page X of Y" on one line. The `fieldType=page` and `fieldType=numpages` each create their own paragraph. For a simple page number, use the pattern above. For "Page X of Y", see [docx creating.md](../officecli-docx/creating.md#headers--footers) for raw-set workarounds, or accept the limitation and use a simple page number field.
 
 **Verification after footer setup:**
 ```bash
@@ -587,7 +587,7 @@ officecli add paper.docx '/body/p[M]' --type field --prop instruction=" REF thm_
 
 > **WARNING: `--prop text="..."` on a bookmark creates a visible text run appended to the paragraph.** If the paragraph already contains the target text (e.g., "Theorem 1"), omit the `text` property to avoid duplicate visible text. Use `--prop text=` only when the paragraph is empty or you want to insert new visible text at the bookmark location.
 
-REF field text is static until the user updates fields in Word (Ctrl+A, F9). Internal hyperlinks (`#anchor`) are not supported -- use REF field + bookmark instead. For other field types (page numbers, dates), see [docx creating.md](../docx/creating.md#fields).
+REF field text is static until the user updates fields in Word (Ctrl+A, F9). Internal hyperlinks (`#anchor`) are not supported -- use REF field + bookmark instead. For other field types (page numbers, dates), see [docx creating.md](../officecli-docx/creating.md#fields).
 
 ---
 
