@@ -77,10 +77,29 @@
     (function() {
         var style = document.createElement('style');
         style.textContent =
-            '.officecli-selected{outline:2px solid #2196f3 !important;' +
-            'outline-offset:2px;' +
-            'box-shadow:0 0 12px rgba(33,150,243,0.6) !important;' +
-            'z-index:1000;}' +
+            // Excel-style cell selection: green border + fill handle
+            'td.officecli-selected{' +
+                'outline:2px solid #217346 !important;' +
+                'outline-offset:-2px;' +
+                'position:relative;' +
+                'z-index:1000;' +
+            '}' +
+            'td.officecli-selected::after{' +
+                'content:"";position:absolute;right:-3px;bottom:-3px;' +
+                'width:6px;height:6px;background:#217346;' +
+                'border:1px solid #fff;z-index:1001;' +
+            '}' +
+            // Excel-style header highlight: dark background when crosshair
+            'th.officecli-selected{' +
+                'background:#217346 !important;color:#fff !important;' +
+            '}' +
+            // Non-cell, non-th fallback (pptx/docx shapes etc.)
+            ':not(td):not(th).officecli-selected{' +
+                'outline:2px solid #2196f3 !important;' +
+                'outline-offset:2px;' +
+                'box-shadow:0 0 12px rgba(33,150,243,0.6) !important;' +
+                'z-index:1000;' +
+            '}' +
             '.officecli-mark{background:#ffeb3b;border-radius:2px;padding:0 1px;}' +
             '.officecli-mark-block{outline:2px dashed #ffc107;outline-offset:2px;}' +
             '.officecli-mark-stale{background:#e0e0e0 !important;opacity:0.55;text-decoration:line-through;}';
