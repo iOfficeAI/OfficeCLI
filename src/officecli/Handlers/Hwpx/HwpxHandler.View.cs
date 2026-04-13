@@ -7,6 +7,8 @@ namespace OfficeCli.Handlers;
 
 public partial class HwpxHandler
 {
+    private sealed record FormFieldInfo(string Type, string Id, string Name, string Text, string? HelpText, bool IsDefault);
+
     // ==================== View Layer ====================
 
     public string ViewAsText(int? startLine = null, int? endLine = null,
@@ -400,27 +402,13 @@ public partial class HwpxHandler
     public string ViewAsForms(bool auto = false)
     {
         var sb = new StringBuilder();
-        int count = 0;
-        foreach (var sec in _doc.Sections)
+        var fields = EnumerateInteractiveFormFields().ToList();
+        foreach (var field in fields)
         {
-            foreach (var run in sec.Root.Descendants(HwpxNs.Hp + "run"))
-            {
-                var ctrl = run.Element(HwpxNs.Hp + "ctrl");
-                var fieldBegin = ctrl?.Element(HwpxNs.Hp + "fieldBegin");
-                if (fieldBegin?.Attribute("type")?.Value != "CLICK_HERE") continue;
-
-                count++;
-                var instId = fieldBegin.Attribute("id")?.Value ?? "?";
-                var direction = fieldBegin.Descendants(HwpxNs.Hp + "stringParam")
-                    .FirstOrDefault(p => p.Attribute("name")?.Value == "Direction")?.Value ?? "";
-                var nextRun = run.ElementsAfterSelf(HwpxNs.Hp + "run").FirstOrDefault();
-                var text = nextRun?.Elements(HwpxNs.Hp + "t").FirstOrDefault()?.Value ?? "";
-                var isDefault = text == direction;
-
-                sb.AppendLine($"  [{instId}] \"{text}\"{(isDefault ? " (default)" : "")}");
-            }
+            var nameSuffix = string.IsNullOrEmpty(field.Name) ? "" : $" {field.Name}";
+            sb.AppendLine($"  [{field.Id}] {field.Type}{nameSuffix}: \"{field.Text}\"{(field.IsDefault ? " (default)" : "")}");
         }
-        sb.Insert(0, $"Form fields (CLICK_HERE): {count}\n");
+        sb.Insert(0, $"Form fields: {fields.Count}\n");
 
         if (auto)
         {
@@ -443,27 +431,28 @@ public partial class HwpxHandler
         var result = new JsonObject();
 
         var clickFields = new JsonArray();
-        foreach (var sec in _doc.Sections)
+        var formFields = new JsonArray();
+        foreach (var field in EnumerateInteractiveFormFields())
         {
-            foreach (var run in sec.Root.Descendants(HwpxNs.Hp + "run"))
+            if (field.Type == "CLICK_HERE")
             {
-                var ctrl = run.Element(HwpxNs.Hp + "ctrl");
-                var fieldBegin = ctrl?.Element(HwpxNs.Hp + "fieldBegin");
-                if (fieldBegin?.Attribute("type")?.Value != "CLICK_HERE") continue;
-
-                var instId = fieldBegin.Attribute("id")?.Value ?? "?";
-                var direction = fieldBegin.Descendants(HwpxNs.Hp + "stringParam")
-                    .FirstOrDefault(p => p.Attribute("name")?.Value == "Direction")?.Value ?? "";
-                var nextRun = run.ElementsAfterSelf(HwpxNs.Hp + "run").FirstOrDefault();
-                var text = nextRun?.Elements(HwpxNs.Hp + "t").FirstOrDefault()?.Value ?? "";
-
                 clickFields.Add(new JsonObject {
-                    ["id"] = instId, ["text"] = text,
-                    ["helpText"] = direction, ["isDefault"] = text == direction
+                    ["id"] = field.Id, ["text"] = field.Text,
+                    ["helpText"] = field.HelpText, ["isDefault"] = field.IsDefault
                 });
             }
+
+            formFields.Add(new JsonObject {
+                ["id"] = field.Id,
+                ["type"] = field.Type,
+                ["name"] = field.Name,
+                ["text"] = field.Text,
+                ["helpText"] = field.HelpText,
+                ["isDefault"] = field.IsDefault
+            });
         }
         result["clickHere"] = clickFields;
+        result["formFields"] = formFields;
 
         if (auto)
         {
@@ -480,6 +469,32 @@ public partial class HwpxHandler
         }
 
         return result;
+    }
+
+    private IEnumerable<FormFieldInfo> EnumerateInteractiveFormFields()
+    {
+        foreach (var sec in _doc.Sections)
+        {
+            foreach (var run in sec.Root.Descendants(HwpxNs.Hp + "run"))
+            {
+                var ctrl = run.Element(HwpxNs.Hp + "ctrl");
+                var fieldBegin = ctrl?.Element(HwpxNs.Hp + "fieldBegin");
+                var fieldType = fieldBegin?.Attribute("type")?.Value;
+                if (fieldType is not ("CLICK_HERE" or "CHECKBOX" or "DROPDOWN")) continue;
+
+                var field = fieldBegin!;
+                var id = field.Attribute("id")?.Value ?? "?";
+                var name = field.Attribute("name")?.Value ?? "";
+                var helpText = field.Descendants()
+                    .FirstOrDefault(p => p.Attribute("name")?.Value is "Direction" or "Label")
+                    ?.Value;
+                var nextRun = run.ElementsAfterSelf(HwpxNs.Hp + "run").FirstOrDefault();
+                var text = nextRun?.Elements(HwpxNs.Hp + "t").FirstOrDefault()?.Value ?? "";
+                var isDefault = !string.IsNullOrEmpty(helpText) && text == helpText;
+
+                yield return new FormFieldInfo(fieldType, id, name, text, helpText, isDefault);
+            }
+        }
     }
 
     // ==================== Object Finder (Plan 82) ====================
@@ -499,9 +514,9 @@ public partial class HwpxHandler
             try { elements = ExecuteSelector(type); }
             catch { continue; }
 
-            // formfield: filter to CLICK_HERE only
+            // formfield: list interactive form fields only
             if (type == "formfield")
-                elements = elements.Where(e => e.Attribute("type")?.Value == "CLICK_HERE").ToList();
+                elements = elements.Where(e => e.Attribute("type")?.Value is "CLICK_HERE" or "CHECKBOX" or "DROPDOWN").ToList();
 
             if (elements.Count == 0) continue;
             total += elements.Count;
@@ -546,7 +561,7 @@ public partial class HwpxHandler
             catch { continue; }
 
             if (type == "formfield")
-                elements = elements.Where(e => e.Attribute("type")?.Value == "CLICK_HERE").ToList();
+                elements = elements.Where(e => e.Attribute("type")?.Value is "CLICK_HERE" or "CHECKBOX" or "DROPDOWN").ToList();
 
             if (elements.Count == 0) continue;
 

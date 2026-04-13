@@ -917,7 +917,6 @@ public partial class HwpxHandler
     private List<string> SetFormFieldValue(string idOrIndex, Dictionary<string, string> props)
     {
         var unsupported = new List<string>();
-        var value = props.GetValueOrDefault("value") ?? props.GetValueOrDefault("text") ?? "";
 
         foreach (var sec in _doc.Sections)
         {
@@ -925,17 +924,18 @@ public partial class HwpxHandler
             {
                 var ctrl = run.Element(HwpxNs.Hp + "ctrl");
                 var fieldBegin = ctrl?.Element(HwpxNs.Hp + "fieldBegin");
-                if (fieldBegin?.Attribute("type")?.Value != "CLICK_HERE") continue;
+                if (fieldBegin == null) continue;
                 var instId = fieldBegin.Attribute("id")?.Value;
-                if (instId != idOrIndex) continue;
+                var fieldId = fieldBegin.Attribute("fieldid")?.Value;
+                var fieldName = fieldBegin.Attribute("name")?.Value;
+                if (instId != idOrIndex && fieldId != idOrIndex && fieldName != idOrIndex) continue;
 
                 // Update display text in the next run's <hp:t>
                 var nextRun = run.ElementsAfterSelf(HwpxNs.Hp + "run").FirstOrDefault();
                 var t = nextRun?.Element(HwpxNs.Hp + "t");
                 if (t != null)
                 {
-                    InvalidateLinesegarray(t);
-                    t.Value = value;
+                    ApplyFormFieldValue(fieldBegin, t, props);
                     fieldBegin.SetAttributeValue("dirty", "1");
                     _dirty = true;
                     SaveSection(sec.Root);
@@ -945,6 +945,84 @@ public partial class HwpxHandler
         }
         unsupported.Add($"formfield [{idOrIndex}] not found");
         return unsupported;
+    }
+
+    private static void ApplyFormFieldValue(XElement fieldBegin, XElement textElement, Dictionary<string, string> props)
+    {
+        var fieldType = fieldBegin.Attribute("type")?.Value ?? "CLICK_HERE";
+        var value = props.GetValueOrDefault("value") ?? props.GetValueOrDefault("text") ?? "";
+
+        InvalidateLinesegarray(textElement);
+
+        switch (fieldType)
+        {
+            case "CHECKBOX":
+            {
+                var isChecked = props.TryGetValue("checked", out var checkedValue)
+                    ? ParseHelpers.IsTruthy(checkedValue)
+                    : ParseHelpers.IsTruthy(value);
+                SetFieldParamValue(fieldBegin, "Checked", isChecked ? "1" : "0");
+                textElement.Value = isChecked
+                    ? (props.GetValueOrDefault("checkedtext") ?? "☑")
+                    : (props.GetValueOrDefault("uncheckedtext") ?? "☐");
+                break;
+            }
+            case "DROPDOWN":
+            {
+                var options = GetFieldParamValue(fieldBegin, "Items")
+                    ?.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    ?? [];
+
+                var selectedIndex = ResolveDropdownSetIndex(props, options);
+                if (options.Length > 0)
+                {
+                    SetFieldParamValue(fieldBegin, "SelectedIndex", selectedIndex.ToString());
+                    textElement.Value = options[selectedIndex];
+                }
+                else
+                {
+                    textElement.Value = value;
+                }
+                break;
+            }
+            default:
+                textElement.Value = value;
+                break;
+        }
+    }
+
+    private static int ResolveDropdownSetIndex(Dictionary<string, string> props, string[] options)
+    {
+        if (options.Length == 0) return 0;
+
+        if (int.TryParse(props.GetValueOrDefault("selectedindex"), out var parsedIndex))
+            return Math.Clamp(parsedIndex, 0, options.Length - 1);
+
+        var desired = props.GetValueOrDefault("value") ?? props.GetValueOrDefault("text");
+        if (!string.IsNullOrEmpty(desired))
+        {
+            var matchedIndex = Array.FindIndex(options, option =>
+                string.Equals(option, desired, StringComparison.Ordinal));
+            if (matchedIndex >= 0) return matchedIndex;
+        }
+
+        return 0;
+    }
+
+    private static string? GetFieldParamValue(XElement fieldBegin, string name)
+    {
+        return fieldBegin.Descendants()
+            .FirstOrDefault(e => e.Attribute("name")?.Value == name)
+            ?.Value;
+    }
+
+    private static void SetFieldParamValue(XElement fieldBegin, string name, string value)
+    {
+        var param = fieldBegin.Descendants()
+            .FirstOrDefault(e => e.Attribute("name")?.Value == name);
+        if (param == null) return;
+
+        param.Value = value;
     }
 
     // ==================== Shape Properties ====================

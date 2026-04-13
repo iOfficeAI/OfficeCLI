@@ -743,6 +743,111 @@ public class HwpxHandlerTests : IDisposable
         Assert.NotEmpty(resultPath);
     }
 
+    [Fact]
+    public void Plan100_Add_FormField_Text_UsesClickHereStructure()
+    {
+        var path = CreateTemp("Form field text");
+        using var handler = new HwpxHandler(path, editable: true);
+
+        handler.Add("/section[1]", "formfield", null,
+            new Dictionary<string, string>
+            {
+                ["type"] = "text",
+                ["name"] = "성명",
+                ["defaultValue"] = "이름을 입력하세요",
+                ["maxLength"] = "20"
+            });
+
+        var xml = XDocument.Parse(handler.Raw("Contents/section0.xml"));
+        var fieldBegin = xml.Descendants().First(e => e.Name.LocalName == "fieldBegin");
+        Assert.Equal("CLICK_HERE", fieldBegin.Attribute("type")?.Value);
+        Assert.Equal("성명", fieldBegin.Attribute("name")?.Value);
+
+        var direction = fieldBegin.Descendants()
+            .First(e => e.Name.LocalName == "stringParam" && e.Attribute("name")?.Value == "Direction");
+        Assert.Equal("이름을 입력하세요", direction.Value);
+
+        var maxLength = fieldBegin.Descendants()
+            .First(e => e.Name.LocalName == "integerParam" && e.Attribute("name")?.Value == "MaxLength");
+        Assert.Equal("20", maxLength.Value);
+    }
+
+    [Fact]
+    public void Plan100_Add_FormField_Checkbox_CreatesRawXmlAndCanToggle()
+    {
+        var path = CreateTemp("Form field checkbox");
+        using (var handler = new HwpxHandler(path, editable: true))
+        {
+            handler.Add("/section[1]", "formfield", null,
+                new Dictionary<string, string>
+                {
+                    ["type"] = "checkbox",
+                    ["name"] = "동의",
+                    ["checked"] = "true"
+                });
+
+            var xml = XDocument.Parse(handler.Raw("Contents/section0.xml"));
+            var fieldBegin = xml.Descendants().First(e =>
+                e.Name.LocalName == "fieldBegin" && e.Attribute("type")?.Value == "CHECKBOX");
+            Assert.Equal("동의", fieldBegin.Attribute("name")?.Value);
+
+            var checkedParam = fieldBegin.Descendants()
+                .First(e => e.Name.LocalName == "stringParam" && e.Attribute("name")?.Value == "Checked");
+            Assert.Equal("1", checkedParam.Value);
+
+            var textRun = xml.Descendants().First(e => e.Name.LocalName == "t" && e.Value is "☑" or "☐");
+            Assert.Equal("☑", textRun.Value);
+
+            var fieldId = fieldBegin.Attribute("id")?.Value!;
+            handler.Set($"/formfield[{fieldId}]", new Dictionary<string, string> { ["checked"] = "false" });
+        }
+
+        using var reader = new HwpxHandler(path, editable: false);
+        var view = reader.ViewAsForms();
+        Assert.Contains("CHECKBOX 동의: \"☐\"", view);
+    }
+
+    [Fact]
+    public void Plan100_Add_FormField_Dropdown_CreatesRawXmlAndCanSelectValue()
+    {
+        var path = CreateTemp("Form field dropdown");
+        using (var handler = new HwpxHandler(path, editable: true))
+        {
+            handler.Add("/section[1]", "formfield", null,
+                new Dictionary<string, string>
+                {
+                    ["type"] = "dropdown",
+                    ["name"] = "상태",
+                    ["options"] = "대기,진행,완료",
+                    ["selectedIndex"] = "1"
+                });
+
+            var xml = XDocument.Parse(handler.Raw("Contents/section0.xml"));
+            var fieldBegin = xml.Descendants().First(e =>
+                e.Name.LocalName == "fieldBegin" && e.Attribute("type")?.Value == "DROPDOWN");
+            Assert.Equal("상태", fieldBegin.Attribute("name")?.Value);
+
+            var items = fieldBegin.Descendants()
+                .First(e => e.Name.LocalName == "stringParam" && e.Attribute("name")?.Value == "Items");
+            Assert.Equal("대기|진행|완료", items.Value);
+
+            var selectedIndex = fieldBegin.Descendants()
+                .First(e => e.Name.LocalName == "integerParam" && e.Attribute("name")?.Value == "SelectedIndex");
+            Assert.Equal("1", selectedIndex.Value);
+
+            var fieldId = fieldBegin.Attribute("id")?.Value!;
+            handler.Set($"/formfield[{fieldId}]", new Dictionary<string, string> { ["value"] = "완료" });
+        }
+
+        using var reader = new HwpxHandler(path, editable: false);
+        var json = reader.ViewAsFormsJson();
+        var formFields = json["formFields"]!.AsArray();
+        var dropdown = formFields
+            .Select(node => node!.AsObject())
+            .First(obj => obj["type"]!.GetValue<string>() == "DROPDOWN");
+        Assert.Equal("완료", dropdown["text"]!.GetValue<string>());
+    }
+
     // ============================================================
     // 20. Style CRUD
     // ============================================================

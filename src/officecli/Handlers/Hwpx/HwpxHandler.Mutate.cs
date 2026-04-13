@@ -96,10 +96,13 @@ public partial class HwpxHandler
             "triangle"                    => CreatePolygon(MergeProps(properties, "sides", "3")),
             "pentagon"                    => CreatePolygon(MergeProps(properties, "sides", "5")),
             "arrow"                       => CreateArrow(properties),
+            "formfield" or "form"        => CreateFormField(properties),
             "field"                       => CreateField(properties),
             "date"                        => CreateField(MergeProps(properties, "type", "DATE")),
             "filepath" or "path"          => CreateField(MergeProps(properties, "type", "PATH")),
             "clickhere"                   => CreateField(MergeProps(properties, "type", "CLICK_HERE")),
+            "checkbox" or "check"        => CreateField(MergeProps(properties, "type", "CHECKBOX")),
+            "dropdown" or "drop"         => CreateField(MergeProps(properties, "type", "DROPDOWN")),
             "summary" or "summery"        => CreateField(MergeProps(properties, "type", "SUMMERY")),
             "author"                      => CreateField(MergeProps(properties, "type", "SUMMERY", "command", "$author")),
             "title"                       => CreateField(MergeProps(properties, "type", "SUMMERY", "command", "$title")),
@@ -2182,6 +2185,25 @@ public partial class HwpxHandler
 
     // ==================== Fields (golden 기반: CLICK_HERE, SUMMERY, PATH) ====================
 
+    private XElement CreateFormField(Dictionary<string, string>? props)
+    {
+        var formFieldType = props?.GetValueOrDefault("formfieldtype")
+            ?? props?.GetValueOrDefault("type")
+            ?? "text";
+
+        return formFieldType.ToLowerInvariant() switch
+        {
+            "text" or "clickhere" or "click_here" => CreateField(MergeProps(props, "type", "CLICK_HERE")),
+            "checkbox" or "check" => CreateField(MergeProps(props, "type", "CHECKBOX")),
+            "dropdown" or "drop" => CreateField(MergeProps(props, "type", "DROPDOWN")),
+            _ => throw new CliException($"Unsupported HWPX form field type: {formFieldType}")
+            {
+                Code = "invalid_prop",
+                Suggestion = "Use type=text, type=checkbox, or type=dropdown."
+            }
+        };
+    }
+
     /// <summary>
     /// Create a field (fieldBegin + display text + fieldEnd).
     /// Props: "type" (required), "text" (display), "command", "direction"
@@ -2194,20 +2216,24 @@ public partial class HwpxHandler
         var displayText = props?.GetValueOrDefault("text") ?? GetDefaultFieldText(fieldType, props);
         var fieldId = NewId();
         var instId = NewId();
+        var fieldName = props?.GetValueOrDefault("name") ?? "";
+        var metaTag = props?.GetValueOrDefault("metatag") ?? props?.GetValueOrDefault("metaTag") ?? "";
 
         // Build fieldBegin with golden-accurate attributes
-        var editable = fieldType == "CLICK_HERE" ? "1" : (props?.GetValueOrDefault("editable") ?? "0");
-        var dirty = "0"; // golden: always 0 for fresh fields
+        var editable = fieldType is "CLICK_HERE" or "CHECKBOX" or "DROPDOWN"
+            ? "1"
+            : (props?.GetValueOrDefault("editable") ?? "0");
+        var dirty = fieldType is "CLICK_HERE" or "CHECKBOX" or "DROPDOWN" ? "1" : "0";
 
         var fieldBeginEl = new XElement(HwpxNs.Hp + "fieldBegin",
             new XAttribute("id", instId),
             new XAttribute("type", fieldType),
-            new XAttribute("name", ""),
+            new XAttribute("name", fieldName),
             new XAttribute("editable", editable),
             new XAttribute("dirty", dirty),
             new XAttribute("zorder", "-1"),
             new XAttribute("fieldid", fieldId),
-            new XAttribute("metaTag", ""));
+            new XAttribute("metaTag", metaTag));
 
         // Add parameters based on field type (golden structure)
         var parameters = BuildFieldParameters(fieldType, props);
@@ -2242,13 +2268,36 @@ public partial class HwpxHandler
         return fieldType switch
         {
             "CLICK_HERE" => new XElement(HwpxNs.Hp + "parameters",
-                new XAttribute("cnt", "3"), new XAttribute("name", ""),
+                new XAttribute("cnt", props != null && props.ContainsKey("maxlength") ? "4" : "3"), new XAttribute("name", ""),
                 new XElement(HwpxNs.Hp + "integerParam", new XAttribute("name", "Prop"), "9"),
                 new XElement(HwpxNs.Hp + "stringParam", new XAttribute("name", "Command"),
                     new XAttribute(XNamespace.Xml + "space", "preserve"),
-                    $"Clickhere:set:66:Direction:wstring:{(props?.GetValueOrDefault("direction") ?? "이곳을 클릭하세요").Length}:{props?.GetValueOrDefault("direction") ?? "이곳을 클릭하세요"} HelpState:wstring:0:  "),
+                    $"Clickhere:set:66:Direction:wstring:{GetClickHereDirection(props).Length}:{GetClickHereDirection(props)} HelpState:wstring:0:  "),
                 new XElement(HwpxNs.Hp + "stringParam", new XAttribute("name", "Direction"),
-                    props?.GetValueOrDefault("direction") ?? "이곳을 클릭하세요")),
+                    GetClickHereDirection(props)),
+                CreateOptionalIntegerParam("MaxLength", props?.GetValueOrDefault("maxlength"))),
+
+            "CHECKBOX" => new XElement(HwpxNs.Hp + "parameters",
+                new XAttribute("cnt", "4"), new XAttribute("name", ""),
+                new XElement(HwpxNs.Hp + "integerParam", new XAttribute("name", "Prop"), "9"),
+                new XElement(HwpxNs.Hp + "stringParam", new XAttribute("name", "Command"),
+                    new XAttribute(XNamespace.Xml + "space", "preserve"),
+                    $"CheckBox:set:7:Checked:int:{(IsChecked(props) ? "1" : "0")} Label:wstring:{GetCheckboxLabel(props).Length}:{GetCheckboxLabel(props)}"),
+                new XElement(HwpxNs.Hp + "stringParam", new XAttribute("name", "Checked"),
+                    IsChecked(props) ? "1" : "0"),
+                new XElement(HwpxNs.Hp + "stringParam", new XAttribute("name", "Label"),
+                    GetCheckboxLabel(props))),
+
+            "DROPDOWN" => new XElement(HwpxNs.Hp + "parameters",
+                new XAttribute("cnt", "4"), new XAttribute("name", ""),
+                new XElement(HwpxNs.Hp + "integerParam", new XAttribute("name", "Prop"), "9"),
+                new XElement(HwpxNs.Hp + "stringParam", new XAttribute("name", "Command"),
+                    new XAttribute(XNamespace.Xml + "space", "preserve"),
+                    $"Dropdown:set:12:Items:wstring:{GetDropdownItemsValue(props).Length}:{GetDropdownItemsValue(props)} SelectedIndex:int:{ResolveDropdownSelectedIndex(props)}"),
+                new XElement(HwpxNs.Hp + "stringParam", new XAttribute("name", "Items"),
+                    GetDropdownItemsValue(props)),
+                new XElement(HwpxNs.Hp + "integerParam", new XAttribute("name", "SelectedIndex"),
+                    ResolveDropdownSelectedIndex(props).ToString())),
 
             "SUMMERY" => new XElement(HwpxNs.Hp + "parameters",
                 new XAttribute("cnt", "3"), new XAttribute("name", ""),
@@ -2274,7 +2323,12 @@ public partial class HwpxHandler
     {
         "DATE" => DateTime.Now.ToString("yyyy-MM-dd"),
         "PATH" => "(filepath)",
+        "CHECKBOX" => IsChecked(props)
+            ? (props?.GetValueOrDefault("checkedtext") ?? "☑")
+            : (props?.GetValueOrDefault("uncheckedtext") ?? "☐"),
+        "DROPDOWN" => ResolveDropdownValue(props),
         "CLICK_HERE" => props?.GetValueOrDefault("text")
+            ?? props?.GetValueOrDefault("defaultvalue")
             ?? props?.GetValueOrDefault("direction")
             ?? "이곳을 마우스로 누르고 내용을 입력하세요.",
         "SUMMERY" => props?.GetValueOrDefault("command") switch
@@ -2313,6 +2367,80 @@ public partial class HwpxHandler
         container.SetAttributeValue("itemCnt", container.Elements(HwpxNs.Hh + "charPr").Count().ToString());
         SaveHeader();
         return newId;
+    }
+
+    private static string GetClickHereDirection(Dictionary<string, string>? props)
+    {
+        return props?.GetValueOrDefault("direction")
+            ?? props?.GetValueOrDefault("defaultvalue")
+            ?? props?.GetValueOrDefault("text")
+            ?? "이곳을 마우스로 누르고 내용을 입력하세요.";
+    }
+
+    private static bool IsChecked(Dictionary<string, string>? props)
+    {
+        var raw = props?.GetValueOrDefault("checked")
+            ?? props?.GetValueOrDefault("value")
+            ?? props?.GetValueOrDefault("text");
+        return raw != null && ParseHelpers.IsTruthy(raw);
+    }
+
+    private static string GetCheckboxLabel(Dictionary<string, string>? props)
+    {
+        return props?.GetValueOrDefault("label")
+            ?? props?.GetValueOrDefault("name")
+            ?? "";
+    }
+
+    private static string[] ParseDropdownOptions(Dictionary<string, string>? props)
+    {
+        var raw = props?.GetValueOrDefault("options")
+            ?? props?.GetValueOrDefault("items")
+            ?? "";
+        return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+
+    private static string GetDropdownItemsValue(Dictionary<string, string>? props)
+    {
+        return string.Join("|", ParseDropdownOptions(props));
+    }
+
+    private static int ResolveDropdownSelectedIndex(Dictionary<string, string>? props)
+    {
+        var options = ParseDropdownOptions(props);
+        if (options.Length == 0) return 0;
+
+        if (int.TryParse(props?.GetValueOrDefault("selectedindex"), out var parsedIndex))
+            return Math.Clamp(parsedIndex, 0, options.Length - 1);
+
+        var selectedValue = props?.GetValueOrDefault("value") ?? props?.GetValueOrDefault("text");
+        if (!string.IsNullOrEmpty(selectedValue))
+        {
+            var matchedIndex = Array.FindIndex(options, option =>
+                string.Equals(option, selectedValue, StringComparison.Ordinal));
+            if (matchedIndex >= 0) return matchedIndex;
+        }
+
+        return 0;
+    }
+
+    private static string ResolveDropdownValue(Dictionary<string, string>? props)
+    {
+        var explicitValue = props?.GetValueOrDefault("text") ?? props?.GetValueOrDefault("value");
+        if (!string.IsNullOrEmpty(explicitValue))
+            return explicitValue;
+
+        var options = ParseDropdownOptions(props);
+        if (options.Length == 0) return "(dropdown)";
+
+        return options[ResolveDropdownSelectedIndex(props)];
+    }
+
+    private static XElement? CreateOptionalIntegerParam(string name, string? value)
+    {
+        return int.TryParse(value, out var parsed) && parsed > 0
+            ? new XElement(HwpxNs.Hp + "integerParam", new XAttribute("name", name), parsed.ToString())
+            : null;
     }
 
     private static Dictionary<string, string> MergeProps(Dictionary<string, string>? props, string key, string value)
