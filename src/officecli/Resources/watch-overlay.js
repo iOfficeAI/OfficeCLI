@@ -18,17 +18,80 @@
     // that we can re-apply highlights after every DOM swap.
     var _selection = [];
 
+    // Detect if selected cell paths form a contiguous rectangle.
+    // Returns {sheet, minC, maxC, minR, maxR, cells} or null.
+    function _detectRect(paths) {
+        if (paths.length === 0) return null;
+        var sheet = null, minC = Infinity, maxC = -Infinity, minR = Infinity, maxR = -Infinity;
+        var cells = [];
+        for (var i = 0; i < paths.length; i++) {
+            var c = _parseCellPath(paths[i]);
+            if (!c) return null;
+            if (!sheet) sheet = c.sheet; else if (c.sheet !== sheet) return null;
+            var cn = _colToNum(c.col);
+            if (cn < minC) minC = cn; if (cn > maxC) maxC = cn;
+            if (c.row < minR) minR = c.row; if (c.row > maxR) maxR = c.row;
+            cells.push({ col: cn, row: c.row, path: paths[i] });
+        }
+        if (cells.length !== (maxC - minC + 1) * (maxR - minR + 1)) return null;
+        if (cells.length < 2) return null; // single cell uses individual styling
+        return { sheet: sheet, minC: minC, maxC: maxC, minR: minR, maxR: maxR, cells: cells };
+    }
+
+    var _SEL_CLASSES = ['officecli-selected', 'officecli-sel-range',
+        'officecli-sel-t', 'officecli-sel-b', 'officecli-sel-l', 'officecli-sel-r',
+        'officecli-sel-handle'];
+
     function applySelectionToDom() {
-        document.querySelectorAll('.officecli-selected, .officecli-sel-range').forEach(function(el) {
-            el.classList.remove('officecli-selected');
-            el.classList.remove('officecli-sel-range');
+        // Clear all selection classes
+        var allSel = _SEL_CLASSES.map(function(c) { return '.' + c; }).join(',');
+        document.querySelectorAll(allSel).forEach(function(el) {
+            _SEL_CLASSES.forEach(function(c) { el.classList.remove(c); });
         });
+        if (_selection.length === 0) return;
+
+        // Try rectangular range styling (Excel-native look)
+        var rect = _detectRect(_selection);
+        if (rect) {
+            // Highlight row/col headers (crosshair for entire range)
+            for (var r = rect.minR; r <= rect.maxR; r++) {
+                try {
+                    var rs = '[data-path="' + (rect.sheet + '/row[' + r + ']').replace(/"/g, '\\"') + '"]';
+                    document.querySelectorAll(rs).forEach(function(th) { th.classList.add('officecli-selected'); });
+                } catch(e) {}
+            }
+            for (var c = rect.minC; c <= rect.maxC; c++) {
+                try {
+                    var cs = '[data-path="' + (rect.sheet + '/col[' + _numToCol(c) + ']').replace(/"/g, '\\"') + '"]';
+                    document.querySelectorAll(cs).forEach(function(th) { th.classList.add('officecli-selected'); });
+                } catch(e) {}
+            }
+            // Apply range fill + edge borders to cells
+            for (var i = 0; i < rect.cells.length; i++) {
+                var cell = rect.cells[i];
+                try {
+                    var sel = '[data-path="' + cell.path.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]';
+                    document.querySelectorAll(sel).forEach(function(el) {
+                        el.classList.add('officecli-sel-range');
+                        if (cell.row === rect.minR) el.classList.add('officecli-sel-t');
+                        if (cell.row === rect.maxR) el.classList.add('officecli-sel-b');
+                        if (cell.col === rect.minC) el.classList.add('officecli-sel-l');
+                        if (cell.col === rect.maxC) el.classList.add('officecli-sel-r');
+                        if (cell.row === rect.maxR && cell.col === rect.maxC)
+                            el.classList.add('officecli-sel-handle');
+                    });
+                } catch(e) {}
+            }
+            return;
+        }
+
+        // Fallback: individual cell styling (non-contiguous / mixed paths)
         _selection.forEach(function(path) {
             try {
                 var sel = '[data-path="' + path.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]';
                 document.querySelectorAll(sel).forEach(function(el) {
                     el.classList.add('officecli-selected');
-                    // Excel row header: highlight all data cells in the row as range
+                    // Row header: highlight row cells
                     var rowMatch = path.match(/^(\/[^/]+)\/row\[(\d+)\]$/);
                     if (rowMatch && el.tagName === 'TH') {
                         var tr = el.closest('tr');
@@ -36,29 +99,25 @@
                             td.classList.add('officecli-sel-range');
                         });
                     }
-                    // Excel column header: highlight all cells in column as range
+                    // Col header: highlight column cells
                     var colMatch = path.match(/^(\/[^/]+)\/col\[([A-Za-z]+)\]$/);
                     if (colMatch && el.tagName === 'TH') {
                         var sheet = colMatch[1], col = colMatch[2];
                         var re = new RegExp('^' + sheet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\/' + col + '\\d+$', 'i');
                         document.querySelectorAll('td[data-path]').forEach(function(td) {
-                            if (re.test(td.getAttribute('data-path'))) {
+                            if (re.test(td.getAttribute('data-path')))
                                 td.classList.add('officecli-sel-range');
-                            }
                         });
                     }
-                    // Excel cell: crosshair row/col headers
-                    var cellMatch = path.match(/^(\/[^/]+)\/([A-Za-z]+)(\d+)$/);
+                    // Cell: crosshair headers
+                    var cellMatch = _parseCellPath(path);
                     if (cellMatch && el.tagName === 'TD') {
-                        var sheet = cellMatch[1], col = cellMatch[2], row = cellMatch[3];
-                        var rowSel = '[data-path="' + (sheet + '/row[' + row + ']').replace(/"/g, '\\"') + '"]';
-                        document.querySelectorAll(rowSel).forEach(function(th) {
-                            th.classList.add('officecli-selected');
-                        });
-                        var colSel = '[data-path="' + (sheet + '/col[' + col + ']').replace(/"/g, '\\"') + '"]';
-                        document.querySelectorAll(colSel).forEach(function(th) {
-                            th.classList.add('officecli-selected');
-                        });
+                        try {
+                            var rSel = '[data-path="' + (cellMatch.sheet + '/row[' + cellMatch.row + ']').replace(/"/g, '\\"') + '"]';
+                            document.querySelectorAll(rSel).forEach(function(th) { th.classList.add('officecli-selected'); });
+                            var cSel = '[data-path="' + (cellMatch.sheet + '/col[' + cellMatch.col + ']').replace(/"/g, '\\"') + '"]';
+                            document.querySelectorAll(cSel).forEach(function(th) { th.classList.add('officecli-selected'); });
+                        } catch(e2) {}
                     }
                 });
             } catch (e) {}
@@ -76,6 +135,7 @@
     // ===== Excel cell range helpers =====
     var _anchor = null; // {sheet, col, row} — anchor for shift-range and drag
     var _cellDrag = null; // active cell-to-cell drag state
+    var _headerDrag = null; // active row/col header drag state
 
     function _parseCellPath(path) {
         var m = path.match(/^(\/[^/]+)\/([A-Za-z]+)(\d+)$/);
@@ -117,7 +177,23 @@
     (function() {
         var style = document.createElement('style');
         style.textContent =
-            // Excel-style cell selection: green border + fill handle
+            // Range fill: light gray/blue like real Excel
+            'td.officecli-sel-range{' +
+                'background:rgba(33,115,70,0.10) !important;' +
+                'position:relative;' +
+            '}' +
+            // Range perimeter borders (only on edges)
+            'td.officecli-sel-t{border-top:2px solid #217346 !important;}' +
+            'td.officecli-sel-b{border-bottom:2px solid #217346 !important;}' +
+            'td.officecli-sel-l{border-left:2px solid #217346 !important;}' +
+            'td.officecli-sel-r{border-right:2px solid #217346 !important;}' +
+            // Fill handle: small square at bottom-right corner of range
+            'td.officecli-sel-handle::after{' +
+                'content:"";position:absolute;right:-4px;bottom:-4px;' +
+                'width:7px;height:7px;background:#217346;' +
+                'border:1px solid #fff;z-index:1001;' +
+            '}' +
+            // Individual cell selection (non-contiguous / Ctrl+click fallback)
             'td.officecli-selected{' +
                 'outline:2px solid #217346 !important;' +
                 'outline-offset:-2px;' +
@@ -125,19 +201,15 @@
                 'z-index:1000;' +
             '}' +
             'td.officecli-selected::after{' +
-                'content:"";position:absolute;right:-3px;bottom:-3px;' +
-                'width:6px;height:6px;background:#217346;' +
+                'content:"";position:absolute;right:-4px;bottom:-4px;' +
+                'width:7px;height:7px;background:#217346;' +
                 'border:1px solid #fff;z-index:1001;' +
             '}' +
-            // Row/column range highlight: light fill, no individual borders
-            'td.officecli-sel-range{' +
-                'background:rgba(33,115,70,0.12) !important;' +
-            '}' +
-            // Excel-style header highlight: dark background
+            // Header crosshair: dark green background like real Excel
             'th.officecli-selected{' +
                 'background:#217346 !important;color:#fff !important;' +
             '}' +
-            // Non-cell, non-th fallback (pptx/docx shapes etc.)
+            // Non-cell fallback (pptx/docx shapes)
             ':not(td):not(th).officecli-selected{' +
                 'outline:2px solid #2196f3 !important;' +
                 'outline-offset:2px;' +
@@ -415,6 +487,8 @@
         if (_suppressNextClick) { _suppressNextClick = false; return; }
         var target = e.target.closest('[data-path]');
         if (!target) {
+            // Don't clear selection when clicking UI chrome (sheet tabs, sidebar, etc.)
+            if (e.target.closest('.sheet-tab, .sheet-tabs, .sidebar, .sidebar-toggle, .file-title, .page-counter, button, input, a')) return;
             if (!e.shiftKey && !e.ctrlKey && !e.metaKey && _selection.length > 0) {
                 _selection = [];
                 _anchor = null;
@@ -464,6 +538,26 @@
     document.addEventListener('mousedown', function(e) {
         if (e.button !== 0) return;
 
+        // Excel header drag: drag on row/col headers to select multiple rows/columns
+        var headerTh = e.target.closest('th.row-header[data-path], th.col-header[data-path]');
+        if (headerTh) {
+            var hpath = headerTh.getAttribute('data-path');
+            var rowHdr = hpath.match(/^(\/[^/]+)\/row\[(\d+)\]$/);
+            var colHdr = hpath.match(/^(\/[^/]+)\/col\[([A-Za-z]+)\]$/);
+            if (rowHdr || colHdr) {
+                _headerDrag = {
+                    startX: e.clientX, startY: e.clientY,
+                    type: rowHdr ? 'row' : 'col',
+                    sheet: rowHdr ? rowHdr[1] : colHdr[1],
+                    start: rowHdr ? parseInt(rowHdr[2], 10) : colHdr[2],
+                    snapshot: _selection.slice(),
+                    active: false
+                };
+                e.preventDefault();
+                return;
+            }
+        }
+
         // Excel cell drag: start tracking on mousedown over a cell <td>
         var cellTd = e.target.closest('td[data-path]');
         if (cellTd) {
@@ -475,10 +569,10 @@
                     startX: e.clientX, startY: e.clientY,
                     anchor: cell,
                     base: additive ? _selection.slice() : [],
-                    snapshot: _selection.slice(), // full pre-drag state for Esc restore
-                    active: false // becomes true after threshold
+                    snapshot: _selection.slice(),
+                    active: false
                 };
-                e.preventDefault(); // prevent text selection during drag
+                e.preventDefault();
                 return;
             }
         }
@@ -490,6 +584,45 @@
     }, true);
 
     document.addEventListener('mousemove', function(e) {
+        // Header drag (row/col)
+        if (_headerDrag) {
+            var dx = e.clientX - _headerDrag.startX;
+            var dy = e.clientY - _headerDrag.startY;
+            if (!_headerDrag.active) {
+                if (Math.abs(dx) < _RUBBER_THRESHOLD && Math.abs(dy) < _RUBBER_THRESHOLD) return;
+                _headerDrag.active = true;
+            }
+            var el = document.elementFromPoint(e.clientX, e.clientY);
+            if (el) {
+                var th = el.closest('th[data-path]');
+                if (th) {
+                    var hp = th.getAttribute('data-path');
+                    if (_headerDrag.type === 'row') {
+                        var rm = hp.match(/^(\/[^/]+)\/row\[(\d+)\]$/);
+                        if (rm && rm[1] === _headerDrag.sheet) {
+                            var r1 = _headerDrag.start, r2 = parseInt(rm[2], 10);
+                            var paths = [];
+                            for (var r = Math.min(r1,r2); r <= Math.max(r1,r2); r++)
+                                paths.push(_headerDrag.sheet + '/row[' + r + ']');
+                            _selection = paths;
+                            applySelectionToDom();
+                        }
+                    } else {
+                        var cm = hp.match(/^(\/[^/]+)\/col\[([A-Za-z]+)\]$/);
+                        if (cm && cm[1] === _headerDrag.sheet) {
+                            var c1 = _colToNum(_headerDrag.start), c2 = _colToNum(cm[2]);
+                            var paths = [];
+                            for (var c = Math.min(c1,c2); c <= Math.max(c1,c2); c++)
+                                paths.push(_headerDrag.sheet + '/col[' + _numToCol(c) + ']');
+                            _selection = paths;
+                            applySelectionToDom();
+                        }
+                    }
+                }
+            }
+            return;
+        }
+
         // Cell drag
         if (_cellDrag) {
             var dx = e.clientX - _cellDrag.startX;
@@ -539,6 +672,21 @@
     }, true);
 
     document.addEventListener('mouseup', function(e) {
+        // Header drag commit
+        if (_headerDrag) {
+            var hd = _headerDrag;
+            _headerDrag = null;
+            if (hd.active) {
+                postSelection(_selection);
+                _suppressNextClick = true;
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            // Didn't drag — fall through to click handler
+            return;
+        }
+
         // Cell drag commit
         if (_cellDrag) {
             var cd = _cellDrag;
@@ -615,6 +763,12 @@
             _selection = _cellDrag.snapshot.slice();
             applySelectionToDom();
             _cellDrag = null;
+            _suppressNextClick = true;
+        }
+        if (_headerDrag) {
+            _selection = _headerDrag.snapshot.slice();
+            applySelectionToDom();
+            _headerDrag = null;
             _suppressNextClick = true;
         }
     }
