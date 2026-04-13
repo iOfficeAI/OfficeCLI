@@ -38,7 +38,7 @@
         return { sheet: sheet, minC: minC, maxC: maxC, minR: minR, maxR: maxR, cells: cells };
     }
 
-    var _SEL_CLASSES = ['officecli-selected', 'officecli-sel-range', 'officecli-sel-handle'];
+    var _SEL_CLASSES = ['officecli-selected', 'officecli-sel-range', 'officecli-sel-rowcol', 'officecli-sel-handle'];
 
     function applySelectionToDom() {
         // Clear all selection classes + inline box-shadow from previous range
@@ -94,22 +94,22 @@
                 var sel = '[data-path="' + path.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]';
                 document.querySelectorAll(sel).forEach(function(el) {
                     el.classList.add('officecli-selected');
-                    // Row header: highlight row cells
+                    // Row header: highlight row cells with stronger fill
                     var rowMatch = path.match(/^(\/[^/]+)\/row\[(\d+)\]$/);
                     if (rowMatch && el.tagName === 'TH') {
                         var tr = el.closest('tr');
                         if (tr) tr.querySelectorAll('td[data-path]').forEach(function(td) {
-                            td.classList.add('officecli-sel-range');
+                            td.classList.add('officecli-sel-rowcol');
                         });
                     }
-                    // Col header: highlight column cells
+                    // Col header: highlight column cells with stronger fill
                     var colMatch = path.match(/^(\/[^/]+)\/col\[([A-Za-z]+)\]$/);
                     if (colMatch && el.tagName === 'TH') {
                         var sheet = colMatch[1], col = colMatch[2];
                         var re = new RegExp('^' + sheet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\/' + col + '\\d+$', 'i');
                         document.querySelectorAll('td[data-path]').forEach(function(td) {
                             if (re.test(td.getAttribute('data-path')))
-                                td.classList.add('officecli-sel-range');
+                                td.classList.add('officecli-sel-rowcol');
                         });
                     }
                     // Cell: crosshair headers
@@ -182,8 +182,12 @@
         style.textContent =
             // Range fill: light gray like real Excel (box-shadow for borders, no layout shift)
             'td.officecli-sel-range{' +
-                'background:rgba(33,115,70,0.10) !important;' +
+                'background:rgba(33,115,70,0.12) !important;' +
                 'position:relative;' +
+            '}' +
+            // Row/col header selection: stronger fill for entire row/column
+            'td.officecli-sel-rowcol{' +
+                'background:rgba(33,115,70,0.20) !important;' +
             '}' +
             // Fill handle: small square at bottom-right corner of range
             'td.officecli-sel-handle::after{' +
@@ -567,6 +571,7 @@
             _chartDrag.el.style.cursor = 'grabbing';
             _chartDrag.el.style.pointerEvents = 'none';
             _chartDrag.el.style.boxShadow = '0 4px 20px rgba(0,0,0,0.15)';
+            _chartDrag.el.style.willChange = 'left, top';
         }
         _chartDrag.el.style.left = (_chartDrag.origFixedLeft + dx) + 'px';
         _chartDrag.el.style.top = (_chartDrag.origFixedTop + dy) + 'px';
@@ -587,6 +592,7 @@
         cd.el.style.top = '';
         cd.el.style.width = '';
         cd.el.style.boxShadow = '';
+        cd.el.style.willChange = '';
         var dx = e.clientX - cd.startX;
         var dy = e.clientY - cd.startY;
         if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
