@@ -449,6 +449,7 @@ For complex scenarios, load the dedicated skill from `skills/<skill-name>/SKILL.
 | `officecli-pptx` | Presentations — general slide decks |
 | `officecli-pitch-deck` | Investor/product/sales decks with charts and callouts |
 | `morph-ppt` | Morph-animated cinematic presentations |
+| `morph-ppt-3d` | GLB 3D model presentations with cinematographic camera and Morph transitions |
 | `officecli-xlsx` | Excel — financial models, trackers, formulas |
 | `officecli-data-dashboard` | CSV/tabular data → Excel dashboards with charts, sparklines |
 
