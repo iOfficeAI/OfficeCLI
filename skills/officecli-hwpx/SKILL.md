@@ -383,6 +383,9 @@ KICE template at `/private/tmp/kice-full-edit-v2.hwpx` (836 equations, verified 
 | fontsize 미지정 | `--prop fontsize=11` 항상 명시 — charPr 오염 방지 |
 | `--type formfield`를 build-local이 못 알아봄 | source tree prototype이 있어도 release acceptance 전까지는 blocked로 취급 |
 | 테이블 수동 매핑 | `view tables` 한 줄로 대체 가능 |
+| HWP→HWPX 변환 파일 텍스트 교체 | 문단 통째 `<t>` → raw string replace 또는 paragraph-level 교체. p[0] 제목에 페이지번호 조각 `<t>20</t>` 포함 주의 |
+
+> Updated 2026-04-14: HWP→HWPX conversion editing limitations documented
 
 ---
 
