@@ -12,11 +12,12 @@ namespace OfficeCli.Core;
 /// </summary>
 internal static class Installer
 {
-    private static readonly string BinDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        ".local", "bin");
+    private static readonly string BinDir = OperatingSystem.IsWindows()
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OfficeCli")
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin");
 
-    private static readonly string TargetPath = Path.Combine(BinDir, "officecli");
+    private static readonly string TargetPath = Path.Combine(BinDir,
+        OperatingSystem.IsWindows() ? "officecli.exe" : "officecli");
 
     /// <summary>
     /// MCP targets and the skill aliases that overlap with them.
@@ -71,7 +72,8 @@ internal static class Installer
             return false;
 
         // Already at target location — record version and skip the copy
-        if (string.Equals(Path.GetFullPath(src), Path.GetFullPath(TargetPath), StringComparison.Ordinal))
+        var pathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (string.Equals(Path.GetFullPath(src), Path.GetFullPath(TargetPath), pathComparison))
         {
             RecordInstalledVersion();
             return false;
@@ -165,7 +167,8 @@ internal static class Installer
             if (string.IsNullOrEmpty(src)) return;
 
             // Already running from target — nothing to do (RecordInstalledVersion is handled by explicit `install`)
-            if (string.Equals(Path.GetFullPath(src), Path.GetFullPath(TargetPath), StringComparison.Ordinal))
+            var pathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            if (string.Equals(Path.GetFullPath(src), Path.GetFullPath(TargetPath), pathComparison))
                 return;
 
             // Dev-build filter: framework-dependent / dotnet run binaries are <5MB
