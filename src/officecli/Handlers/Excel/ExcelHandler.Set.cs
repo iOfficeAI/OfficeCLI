@@ -2100,6 +2100,7 @@ public partial class ExcelHandler
             }
         }
 
+        DeleteCalcChainIfPresent();
         SaveWorksheet(worksheet);
         return unsupported;
     }
