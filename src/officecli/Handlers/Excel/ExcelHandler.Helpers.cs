@@ -380,6 +380,20 @@ public partial class ExcelHandler
             return "=" + cell.CellFormula.Text;
         }
 
+        // Apply number format to numeric cells (dates, percentages, etc.)
+        // Mirrors POI DataFormatter: raw double + format code → display string
+        if (cell.DataType == null && double.TryParse(value,
+                System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var numVal))
+        {
+            var (numFmtId, formatCode) = ExcelDataFormatter.GetCellFormat(cell, _doc.WorkbookPart);
+            if (numFmtId > 0)
+            {
+                var formatted = ExcelDataFormatter.TryFormat(numVal, numFmtId, formatCode);
+                if (formatted != null) return formatted;
+            }
+        }
+
         return value;
     }
 
