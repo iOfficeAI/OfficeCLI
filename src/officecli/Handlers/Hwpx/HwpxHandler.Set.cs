@@ -67,7 +67,9 @@ public partial class HwpxHandler
                 k => k["fill:".Length..],
                 k => properties[k],
                 StringComparer.OrdinalIgnoreCase);
-            FillByLabel(fillProps);
+            var fillResult = FillByLabel(fillProps);
+            if (fillResult.Unmatched.Count > 0)
+                unsupported.AddRange(fillResult.Unmatched.Select(u => $"fill:{u}"));
             // If only fill: props were provided, return (don't mark as unsupported)
             if (fillKeys.Count == properties.Count) return unsupported;
         }
@@ -75,7 +77,8 @@ public partial class HwpxHandler
         // /table/fill pseudo-path: all props are label=value
         if (path.Equals("/table/fill", StringComparison.OrdinalIgnoreCase))
         {
-            FillByLabel(properties);
+            var tableFillResult = FillByLabel(properties);
+            unsupported.AddRange(tableFillResult.Unmatched);
             return unsupported;
         }
 
@@ -1809,13 +1812,17 @@ public partial class HwpxHandler
     /// <summary>
     // ==================== Label-Based Table Fill (Plan 70) ====================
 
+    // Plan 99.9.I1: FillResult for unmatched label feedback
+    internal record FillResult(List<string> Filled, List<string> Unmatched);
+
     /// <summary>
     /// Fill table cells by label matching using a 3-phase pipeline:
     /// Phase 1: In-cell patterns (checkbox, paren-blank, annotation)
     /// Phase 2: Table label-value cell replacement (existing behavior)
     /// Phase 3: Inline paragraph pattern replacement (outside tables)
+    /// Returns FillResult with filled and unmatched label lists.
     /// </summary>
-    private void FillByLabel(Dictionary<string, string> mappings)
+    private FillResult FillByLabel(Dictionary<string, string> mappings)
     {
         // Plan 99.9.E4: Input size guard
         const int MaxFillEntries = 200;
@@ -1897,6 +1904,12 @@ public partial class HwpxHandler
                 SaveSection(sec);
             _dirty = true;
         }
+
+        // Plan 99.9.I1: Report unmatched labels
+        var unmatched = mappings.Keys
+            .Where(k => !filledLabels.Contains(k))
+            .ToList();
+        return new FillResult(filledLabels.ToList(), unmatched);
     }
 
     /// <summary>
@@ -1922,29 +1935,10 @@ public partial class HwpxHandler
                         var match = rx.Match(cellText);
                         if (!match.Success) continue;
 
-                        // Replace blank with value in XML
-                        var subList = tc.Element(HwpxNs.Hp + "subList");
-                        var paragraphs = subList?.Elements(HwpxNs.Hp + "p")
-                                      ?? tc.Elements(HwpxNs.Hp + "p");
-                        foreach (var p in paragraphs)
-                        {
-                            foreach (var run in p.Elements(HwpxNs.Hp + "run"))
-                            {
-                                foreach (var t in run.Elements(HwpxNs.Hp + "t"))
-                                {
-                                    if (rx.IsMatch(t.Value))
-                                    {
-                                        t.Value = rx.Replace(t.Value,
-                                            m => $"{m.Groups[1].Value}({value}){m.Groups[2].Value}", 1);
-                                        var sectionRoot = tc.AncestorsAndSelf()
-                                            .FirstOrDefault(e => e.Name.LocalName == "sec");
-                                        if (sectionRoot != null) SaveSection(sectionRoot);
-                                        _dirty = true;
-                                        return true;
-                                    }
-                                }
-                            }
-                        }
+                        // Plan 99.9.I5: Use multi-<hp:t> aware replacement
+                        if (ReplaceTextInCell(tc, rx,
+                            m => $"{m.Groups[1].Value}({value}){m.Groups[2].Value}"))
+                            return true;
                     }
                 }
             }
@@ -1972,31 +1966,64 @@ public partial class HwpxHandler
                         var cellText = ExtractCellText(tc);
                         if (!rx.IsMatch(cellText)) continue;
 
-                        var subList = tc.Element(HwpxNs.Hp + "subList");
-                        var paragraphs = subList?.Elements(HwpxNs.Hp + "p")
-                                      ?? tc.Elements(HwpxNs.Hp + "p");
-                        foreach (var p in paragraphs)
-                        {
-                            foreach (var run in p.Elements(HwpxNs.Hp + "run"))
-                            {
-                                foreach (var t in run.Elements(HwpxNs.Hp + "t"))
-                                {
-                                    if (rx.IsMatch(t.Value))
-                                    {
-                                        t.Value = rx.Replace(t.Value,
-                                            $"({label}：{value})", 1);
-                                        var sectionRoot = tc.AncestorsAndSelf()
-                                            .FirstOrDefault(e => e.Name.LocalName == "sec");
-                                        if (sectionRoot != null) SaveSection(sectionRoot);
-                                        _dirty = true;
-                                        return true;
-                                    }
-                                }
-                            }
-                        }
+                        // Plan 99.9.I5: Use multi-<hp:t> aware replacement
+                        if (ReplaceTextInCell(tc, rx, _ => $"({label}：{value})"))
+                            return true;
                     }
                 }
             }
+        }
+        return false;
+    }
+
+    // Plan 99.9.I5: Multi-<hp:t> text replacement for in-cell patterns
+    /// <summary>
+    /// Replace text that may span across multiple &lt;hp:t&gt; nodes within a cell.
+    /// Concatenates all &lt;hp:t&gt; text, applies regex, then distributes the replacement
+    /// back across the original nodes (preserving charPrIDRef styling on the first node).
+    /// </summary>
+    private bool ReplaceTextInCell(XElement tc, System.Text.RegularExpressions.Regex rx,
+        Func<System.Text.RegularExpressions.Match, string> replacer)
+    {
+        var subList = tc.Element(HwpxNs.Hp + "subList");
+        var paragraphs = (subList?.Elements(HwpxNs.Hp + "p") ?? tc.Elements(HwpxNs.Hp + "p")).ToList();
+
+        foreach (var p in paragraphs)
+        {
+            // Collect all <t> nodes with cumulative offsets
+            var tNodes = new List<(XElement T, int Start, int End)>();
+            int offset = 0;
+            foreach (var run in p.Elements(HwpxNs.Hp + "run"))
+            {
+                foreach (var t in run.Elements(HwpxNs.Hp + "t"))
+                {
+                    var text = t.Value ?? "";
+                    tNodes.Add((t, offset, offset + text.Length));
+                    offset += text.Length;
+                }
+            }
+
+            if (tNodes.Count == 0) continue;
+
+            // Concatenate full text and try match
+            var fullText = string.Concat(tNodes.Select(n => n.T.Value ?? ""));
+            var match = rx.Match(fullText);
+            if (!match.Success) continue;
+
+            // Apply replacement
+            var newText = replacer(match);
+            var result = fullText[..match.Index] + newText + fullText[(match.Index + match.Length)..];
+
+            // Distribute result back: first <t> gets all text, rest get emptied
+            tNodes[0].T.Value = result;
+            for (int i = 1; i < tNodes.Count; i++)
+                tNodes[i].T.Value = "";
+
+            var sectionRoot = tc.AncestorsAndSelf()
+                .FirstOrDefault(e => e.Name.LocalName == "sec");
+            if (sectionRoot != null) SaveSection(sectionRoot);
+            _dirty = true;
+            return true;
         }
         return false;
     }

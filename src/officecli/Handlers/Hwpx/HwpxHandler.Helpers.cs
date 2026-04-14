@@ -211,6 +211,12 @@ public partial class HwpxHandler
             }
         }
 
+        // Plan 99.9.E5: Table size limits — prevent OOM on malformed cellAddr values
+        const int MaxTableRows = 10000;
+        const int MaxTableCols = 200;
+        if (maxRow > MaxTableRows || maxCol > MaxTableCols)
+            return (new XElement?[0, 0], new());
+
         var grid = new XElement?[maxRow, maxCol];
         foreach (var (tc, row, col, rowSpan, colSpan) in cellList)
         {

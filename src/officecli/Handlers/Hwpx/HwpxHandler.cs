@@ -11,6 +11,7 @@ namespace OfficeCli.Handlers;
 public partial class HwpxHandler : IDocumentHandler
 {
     private readonly HwpxDocument _doc;
+    private double? _baseFontSizePt; // Plan 99.9.I3: cached base font size for heading ratio
     private readonly string _filePath;
     private readonly bool _editable;
     private readonly Stream _stream;
@@ -32,6 +33,24 @@ public partial class HwpxHandler : IDocumentHandler
                 editable ? ZipArchiveMode.Update : ZipArchiveMode.Read);
             _doc = LoadDocument(archive);
             _stream = stream;
+        }
+        catch (InvalidDataException)
+        {
+            archive?.Dispose();
+            stream?.Dispose();
+
+            // Plan 99.9.I2: Broken ZIP recovery — scan for Local File Headers
+            stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            try
+            {
+                _doc = TryRecoverBrokenZip(stream);
+                _stream = stream;
+            }
+            catch
+            {
+                stream.Dispose();
+                throw;
+            }
         }
         catch
         {
@@ -202,6 +221,85 @@ public partial class HwpxHandler : IDocumentHandler
         byteCount = 0;
         // HWPX binary extraction not yet implemented
         return false;
+    }
+
+    // Plan 99.9.I2: Broken ZIP recovery — scan Local File Headers
+    private static HwpxDocument TryRecoverBrokenZip(Stream stream)
+    {
+        stream.Position = 0;
+        var data = new byte[stream.Length];
+        stream.ReadExactly(data);
+
+        const uint LocalFileHeader = 0x04034b50;
+        var recovered = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+
+        int pos = 0;
+        while (pos + 30 < data.Length)
+        {
+            uint sig = BitConverter.ToUInt32(data, pos);
+            if (sig != LocalFileHeader) { pos++; continue; }
+
+            ushort compMethod = BitConverter.ToUInt16(data, pos + 8);
+            uint compSize = BitConverter.ToUInt32(data, pos + 18);
+            uint uncompSize = BitConverter.ToUInt32(data, pos + 22);
+            ushort nameLen = BitConverter.ToUInt16(data, pos + 26);
+            ushort extraLen = BitConverter.ToUInt16(data, pos + 28);
+
+            int headerEnd = pos + 30 + nameLen + extraLen;
+            if (headerEnd + compSize > data.Length) break;
+
+            var entryName = System.Text.Encoding.UTF8.GetString(data, pos + 30, nameLen);
+            var compData = data.AsSpan(headerEnd, (int)compSize);
+
+            try
+            {
+                byte[] entryData;
+                if (compMethod == 0) // STORED
+                {
+                    entryData = compData.ToArray();
+                }
+                else if (compMethod == 8) // DEFLATE
+                {
+                    using var compStream = new System.IO.Compression.DeflateStream(
+                        new MemoryStream(compData.ToArray()),
+                        System.IO.Compression.CompressionMode.Decompress);
+                    using var outStream = new MemoryStream();
+                    compStream.CopyTo(outStream);
+                    entryData = outStream.ToArray();
+                }
+                else
+                {
+                    pos = headerEnd + (int)compSize;
+                    continue;
+                }
+
+                if (!recovered.ContainsKey(entryName))
+                    recovered[entryName] = entryData;
+            }
+            catch { /* skip unreadable entry */ }
+
+            pos = headerEnd + (int)compSize;
+        }
+
+        if (!recovered.Keys.Any(k => k.Contains("section", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidDataException(
+                "Broken ZIP recovery failed: no section XML found in recovered entries.");
+
+        // Rebuild as in-memory ZIP for the standard loader
+        var memStream = new MemoryStream();
+        using (var newZip = new ZipArchive(memStream, ZipArchiveMode.Create, true))
+        {
+            foreach (var (name, bytes) in recovered)
+            {
+                var entry = newZip.CreateEntry(name);
+                using var s = entry.Open();
+                s.Write(bytes);
+            }
+        }
+
+        memStream.Position = 0;
+        var archive = new ZipArchive(memStream, ZipArchiveMode.Read);
+        return LoadDocument(archive);
     }
 
     public void Dispose()

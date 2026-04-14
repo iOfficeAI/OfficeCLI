@@ -1369,7 +1369,52 @@ public partial class HwpxHandler
             }
         }
 
+        // Plan 99.9.I3: Font-size ratio heading detection (fallback when outline level not set)
+        if (headingLevel == null && _doc.Header != null)
+        {
+            var charPrIdRef = para.Elements(HwpxNs.Hp + "run")
+                .FirstOrDefault()?.Attribute("charPrIDRef")?.Value;
+            if (charPrIdRef != null)
+            {
+                var charPr = FindCharPr(charPrIdRef);
+                if (charPr != null)
+                {
+                    double fontSize = GetFontSizePt(charPr);
+                    double baseFontSize = _baseFontSizePt ??= ComputeBaseFontSize();
+                    if (baseFontSize > 0)
+                    {
+                        double ratio = fontSize / baseFontSize;
+                        if (ratio >= 1.5) headingLevel = "1";       // H1: 150%+
+                        else if (ratio >= 1.3) headingLevel = "2";  // H2: 130%+
+                        else if (ratio >= 1.15) headingLevel = "3"; // H3: 115%+
+                    }
+                }
+            }
+        }
+
         return (headingLevel, alignment);
+    }
+
+    /// <summary>
+    /// Plan 99.9.I3: Compute base (body) font size by finding the most frequent font size across all paragraphs.
+    /// Used as denominator for heading ratio detection.
+    /// </summary>
+    private double ComputeBaseFontSize()
+    {
+        var sizeCounts = new Dictionary<double, int>();
+        foreach (var (_, para, _) in _doc.AllParagraphs())
+        {
+            var charPrIdRef = para.Elements(HwpxNs.Hp + "run")
+                .FirstOrDefault()?.Attribute("charPrIDRef")?.Value;
+            if (charPrIdRef == null) continue;
+            var charPr = FindCharPr(charPrIdRef);
+            if (charPr == null) continue;
+            double size = GetFontSizePt(charPr);
+            sizeCounts[size] = sizeCounts.GetValueOrDefault(size) + 1;
+        }
+        return sizeCounts.Count > 0
+            ? sizeCounts.MaxBy(kv => kv.Value).Key
+            : 10.0; // default 10pt
     }
 
     private int CountRemainingParagraphs(int currentLine)

@@ -49,8 +49,83 @@ public partial class HwpxHandler
         };
     }
 
-    /// <summary>Core line diff algorithm with lookahead for insertions/deletions.</summary>
+    /// <summary>
+    /// Plan 99.9.I4: LCS-based line diff with fallback to linear scan for large inputs.
+    /// Uses proper LCS DP alignment for accurate diff of insertions/deletions.
+    /// </summary>
     internal JsonArray ComputeLineDiff(string[] linesA, string[] linesB)
+    {
+        long matrixCells = (long)(linesA.Length + 1) * (linesB.Length + 1);
+        if (matrixCells > MaxDiffMatrixCells)
+            return ComputeLineDiffLinear(linesA, linesB); // fallback for huge docs
+
+        return ComputeLineDiffLcs(linesA, linesB);
+    }
+
+    /// <summary>LCS DP-based diff — accurate alignment for moderate-size documents.</summary>
+    private JsonArray ComputeLineDiffLcs(string[] a, string[] b)
+    {
+        int n = a.Length, m = b.Length;
+
+        // Build LCS table
+        var dp = new int[n + 1, m + 1];
+        for (int i = 1; i <= n; i++)
+            for (int j = 1; j <= m; j++)
+                dp[i, j] = a[i - 1] == b[j - 1]
+                    ? dp[i - 1, j - 1] + 1
+                    : Math.Max(dp[i - 1, j], dp[i, j - 1]);
+
+        // Backtrack to produce diff
+        var result = new List<(string type, int? la, int? lb, string? ta, string? tb)>();
+        int ia = n, ib = m;
+        while (ia > 0 && ib > 0)
+        {
+            if (a[ia - 1] == b[ib - 1])
+            {
+                result.Add(("unchanged", ia, ib, a[ia - 1], null));
+                ia--; ib--;
+            }
+            else if (dp[ia - 1, ib] >= dp[ia, ib - 1])
+            {
+                result.Add(("removed", ia, null, a[ia - 1], null));
+                ia--;
+            }
+            else
+            {
+                result.Add(("added", null, ib, null, b[ib - 1]));
+                ib--;
+            }
+        }
+        while (ia > 0) { result.Add(("removed", ia, null, a[ia - 1], null)); ia--; }
+        while (ib > 0) { result.Add(("added", null, ib, null, b[ib - 1])); ib--; }
+
+        result.Reverse();
+
+        // Post-process: detect "modified" (adjacent removed+added with similar content)
+        var output = new JsonArray();
+        int idx = 0;
+        while (idx < result.Count)
+        {
+            var (type, la, lb, ta, tb) = result[idx];
+            if (type == "removed" && idx + 1 < result.Count && result[idx + 1].type == "added")
+            {
+                var next = result[idx + 1];
+                var sim = ComputeBlockSimilarity(ta!, next.tb!);
+                if (sim >= BlockSimilarityThreshold)
+                {
+                    output.Add(MakeDiffEntry("modified", la, next.lb, ta, next.tb));
+                    idx += 2;
+                    continue;
+                }
+            }
+            output.Add(MakeDiffEntry(type, la, lb, ta, tb));
+            idx++;
+        }
+        return output;
+    }
+
+    /// <summary>Linear scan fallback for very large documents (exceeds LCS matrix limit).</summary>
+    private JsonArray ComputeLineDiffLinear(string[] linesA, string[] linesB)
     {
         var result = new JsonArray();
         int ia = 0, ib = 0;
@@ -101,15 +176,9 @@ public partial class HwpxHandler
         }
 
         while (ia < linesA.Length)
-        {
-            result.Add(MakeDiffEntry("removed", ia + 1, null, linesA[ia], null));
-            ia++;
-        }
+        { result.Add(MakeDiffEntry("removed", ia + 1, null, linesA[ia], null)); ia++; }
         while (ib < linesB.Length)
-        {
-            result.Add(MakeDiffEntry("added", null, ib + 1, null, linesB[ib]));
-            ib++;
-        }
+        { result.Add(MakeDiffEntry("added", null, ib + 1, null, linesB[ib])); ib++; }
 
         return result;
     }
