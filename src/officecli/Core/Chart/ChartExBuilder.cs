@@ -56,7 +56,17 @@ internal static partial class ChartExBuilder
         var chartData = new CX.ChartData();
         for (int si = 0; si < seriesData.Count; si++)
         {
-            var data = BuildDataBlock((uint)si, normalized, categories, seriesData[si].values);
+            // boxWhisker: each data block is ONE box on the X axis — it must
+            // carry exactly one strDim entry (its own label). Passing the full
+            // categories array to every block causes Excel to lump all series
+            // at the same X position ("1"). When no explicit categories are
+            // given, fall back to the series name so the axis is still labelled.
+            string[]? catForBlock = normalized == "boxwhisker"
+                ? new[] { categories != null && si < categories.Length
+                    ? categories[si]
+                    : seriesData[si].name }
+                : categories;
+            var data = BuildDataBlock((uint)si, normalized, catForBlock, seriesData[si].values);
             chartData.AppendChild(data);
         }
         chartSpace.AppendChild(chartData);

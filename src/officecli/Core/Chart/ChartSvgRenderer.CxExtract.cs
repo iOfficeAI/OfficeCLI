@@ -657,10 +657,9 @@ internal partial class ChartSvgRenderer
     }
 
     /// <summary>
-    /// Render a box-whisker chart. For each series we show a single box from
-    /// Q1..Q3 with a median line and whiskers at min/max. Computes quartiles
-    /// client-side from the raw values (inclusive method — same default as
-    /// NumPy's percentile linear interpolation).
+    /// Render a box-whisker chart. For each series: box (Q1–Q3), median line,
+    /// whiskers extending to the last non-outlier value within 1.5×IQR of the
+    /// fence, outlier data points drawn as open circles, and a mean marker (×).
     /// </summary>
     public void RenderCxBoxWhiskerSvg(StringBuilder sb, ChartInfo info,
         int marginLeft, int marginTop, int plotW, int plotH)
@@ -671,10 +670,14 @@ internal partial class ChartSvgRenderer
         var stats = info.Series.Select(s => ComputeBoxStats(s.values)).ToList();
         if (stats.All(s => s == null)) return;
 
-        // Global min/max across all series for Y scale
-        var globalMin = stats.Where(s => s != null).Min(s => s!.Value.min);
-        var globalMax = stats.Where(s => s != null).Max(s => s!.Value.max);
+        // Global scale includes outliers
+        var globalMin = stats.Where(s => s != null).Min(s => s!.Value.allMin);
+        var globalMax = stats.Where(s => s != null).Max(s => s!.Value.allMax);
         if (Math.Abs(globalMax - globalMin) < 1e-9) globalMax = globalMin + 1;
+        // Add 5% padding so top/bottom outliers aren't clipped at the edge
+        var pad = (globalMax - globalMin) * 0.05;
+        globalMin -= pad;
+        globalMax += pad;
 
         var bw = (double)plotW / info.Series.Count;
         var boxW = bw * 0.5;
@@ -684,7 +687,7 @@ internal partial class ChartSvgRenderer
         // Y axis: a few tick labels for context
         for (int t = 0; t <= 4; t++)
         {
-            var v = globalMin + (globalMax - globalMin) * t / 4;
+            var v = globalMin + pad + (globalMax - globalMin - 2 * pad) * t / 4;
             var y = yCoord(v);
             sb.AppendLine($"    <line x1=\"{marginLeft}\" y1=\"{y:F1}\" x2=\"{marginLeft + plotW}\" y2=\"{y:F1}\" stroke=\"{GridColor}\" stroke-dasharray=\"2,2\"/>");
             sb.AppendLine($"    <text x=\"{marginLeft - 3}\" y=\"{y:F1}\" fill=\"{AxisColor}\" font-size=\"{ValFontPx}\" text-anchor=\"end\" dominant-baseline=\"middle\">{FormatNumber(v)}</text>");
@@ -697,28 +700,47 @@ internal partial class ChartSvgRenderer
             var cxCenter = marginLeft + bw * (si + 0.5);
             var boxX = cxCenter - boxW / 2;
 
-            var yMin = yCoord(s.min);
-            var yMax = yCoord(s.max);
-            var yQ1 = yCoord(s.q1);
-            var yQ3 = yCoord(s.q3);
-            var yMed = yCoord(s.median);
+            var yWLow  = yCoord(s.whiskerLow);
+            var yWHigh = yCoord(s.whiskerHigh);
+            var yQ1    = yCoord(s.q1);
+            var yQ3    = yCoord(s.q3);
+            var yMed   = yCoord(s.median);
+            var yMean  = yCoord(s.mean);
 
-            // Whisker vertical line min→max
-            sb.AppendLine($"    <line x1=\"{cxCenter:F1}\" y1=\"{yMin:F1}\" x2=\"{cxCenter:F1}\" y2=\"{yMax:F1}\" stroke=\"{color}\" stroke-width=\"1.5\"/>");
-            // Whisker caps
-            sb.AppendLine($"    <line x1=\"{boxX:F1}\" y1=\"{yMin:F1}\" x2=\"{boxX + boxW:F1}\" y2=\"{yMin:F1}\" stroke=\"{color}\" stroke-width=\"1.5\"/>");
-            sb.AppendLine($"    <line x1=\"{boxX:F1}\" y1=\"{yMax:F1}\" x2=\"{boxX + boxW:F1}\" y2=\"{yMax:F1}\" stroke=\"{color}\" stroke-width=\"1.5\"/>");
+            // Whisker vertical line: Q1→whiskerLow and Q3→whiskerHigh
+            sb.AppendLine($"    <line x1=\"{cxCenter:F1}\" y1=\"{yWLow:F1}\" x2=\"{cxCenter:F1}\" y2=\"{yQ1:F1}\" stroke=\"{color}\" stroke-width=\"1.5\"/>");
+            sb.AppendLine($"    <line x1=\"{cxCenter:F1}\" y1=\"{yQ3:F1}\" x2=\"{cxCenter:F1}\" y2=\"{yWHigh:F1}\" stroke=\"{color}\" stroke-width=\"1.5\"/>");
+            // Whisker caps (horizontal ticks at fence endpoints)
+            var capHalf = boxW * 0.3;
+            sb.AppendLine($"    <line x1=\"{cxCenter - capHalf:F1}\" y1=\"{yWLow:F1}\" x2=\"{cxCenter + capHalf:F1}\" y2=\"{yWLow:F1}\" stroke=\"{color}\" stroke-width=\"1.5\"/>");
+            sb.AppendLine($"    <line x1=\"{cxCenter - capHalf:F1}\" y1=\"{yWHigh:F1}\" x2=\"{cxCenter + capHalf:F1}\" y2=\"{yWHigh:F1}\" stroke=\"{color}\" stroke-width=\"1.5\"/>");
             // Box Q1..Q3
-            sb.AppendLine($"    <rect x=\"{boxX:F1}\" y=\"{yQ3:F1}\" width=\"{boxW:F1}\" height=\"{yQ1 - yQ3:F1}\" fill=\"{color}\" fill-opacity=\"0.5\" stroke=\"{color}\" stroke-width=\"1.5\"/>");
-            // Median
-            sb.AppendLine($"    <line x1=\"{boxX:F1}\" y1=\"{yMed:F1}\" x2=\"{boxX + boxW:F1}\" y2=\"{yMed:F1}\" stroke=\"{color}\" stroke-width=\"2\"/>");
+            sb.AppendLine($"    <rect x=\"{boxX:F1}\" y=\"{yWHigh:F1}\" width=\"{boxW:F1}\" height=\"{yWLow - yWHigh:F1}\" fill=\"{color}\" fill-opacity=\"0.25\" stroke=\"{color}\" stroke-width=\"1.5\"/>");
+            // Median line
+            sb.AppendLine($"    <line x1=\"{boxX:F1}\" y1=\"{yMed:F1}\" x2=\"{boxX + boxW:F1}\" y2=\"{yMed:F1}\" stroke=\"{color}\" stroke-width=\"2.5\"/>");
+            // Mean marker: × symbol
+            var mx = 4.0;
+            sb.AppendLine($"    <line x1=\"{cxCenter - mx:F1}\" y1=\"{yMean - mx:F1}\" x2=\"{cxCenter + mx:F1}\" y2=\"{yMean + mx:F1}\" stroke=\"{color}\" stroke-width=\"1.5\"/>");
+            sb.AppendLine($"    <line x1=\"{cxCenter + mx:F1}\" y1=\"{yMean - mx:F1}\" x2=\"{cxCenter - mx:F1}\" y2=\"{yMean + mx:F1}\" stroke=\"{color}\" stroke-width=\"1.5\"/>");
+
+            // Outlier circles
+            const double r = 3.5;
+            foreach (var ov in s.outliers)
+            {
+                var yo = yCoord(ov);
+                sb.AppendLine($"    <circle cx=\"{cxCenter:F1}\" cy=\"{yo:F1}\" r=\"{r}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"1.2\"/>");
+            }
 
             // Series label
             sb.AppendLine($"    <text x=\"{cxCenter:F1}\" y=\"{marginTop + plotH + 14}\" fill=\"{AxisColor}\" font-size=\"{CatFontPx}\" text-anchor=\"middle\">{HtmlEncode(info.Series[si].name)}</text>");
         }
     }
 
-    private static (double min, double q1, double median, double q3, double max)? ComputeBoxStats(double[] values)
+    private record struct BoxStats(
+        double whiskerLow, double q1, double median, double q3, double whiskerHigh,
+        double mean, double allMin, double allMax, double[] outliers);
+
+    private static BoxStats? ComputeBoxStats(double[] values)
     {
         if (values.Length == 0) return null;
         var sorted = values.OrderBy(v => v).ToArray();
@@ -731,7 +753,21 @@ internal partial class ChartSvgRenderer
             var frac = idx - lo;
             return sorted[lo] * (1 - frac) + sorted[hi] * frac;
         }
-        return (sorted[0], Percentile(0.25), Percentile(0.5), Percentile(0.75), sorted[^1]);
+        var q1 = Percentile(0.25);
+        var q3 = Percentile(0.75);
+        var iqr = q3 - q1;
+        var fenceLow  = q1 - 1.5 * iqr;
+        var fenceHigh = q3 + 1.5 * iqr;
+
+        // Whiskers extend to the last data point within the fence
+        var whiskerLow  = sorted.Where(v => v >= fenceLow).DefaultIfEmpty(q1).Min();
+        var whiskerHigh = sorted.Where(v => v <= fenceHigh).DefaultIfEmpty(q3).Max();
+        var outliers    = sorted.Where(v => v < fenceLow || v > fenceHigh).ToArray();
+        var mean        = sorted.Average();
+
+        return new BoxStats(
+            whiskerLow, q1, Percentile(0.5), q3, whiskerHigh,
+            mean, sorted[0], sorted[^1], outliers);
     }
 
     /// <summary>
