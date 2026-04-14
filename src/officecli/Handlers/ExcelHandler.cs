@@ -17,6 +17,7 @@ public partial class ExcelHandler : IDocumentHandler
     private readonly HashSet<string> _initialSheetNames;
     private readonly HashSet<WorksheetPart> _dirtyWorksheets = new();
     private bool _dirtyStylesheet;
+    private bool _disposed;
     // Row index cache: SheetData → sorted map of rowIndex → Row.
     // Turns the O(n) linear scan in FindOrCreateCell into O(1) lookup + O(log n) insert.
     // Invalidated by InvalidateRowIndex() whenever rows are structurally modified (shift, remove).
@@ -269,6 +270,8 @@ public partial class ExcelHandler : IDocumentHandler
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         try { FlushDirtyParts(); }
         finally { _doc.Dispose(); }
     }
