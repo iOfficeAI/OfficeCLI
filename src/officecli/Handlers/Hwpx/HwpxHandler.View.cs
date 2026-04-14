@@ -449,6 +449,20 @@ public partial class HwpxHandler
                     sb.AppendLine($"  {label}  {value}  {path}  {f.Strategy}");
                 }
             }
+
+            // F8: Form confidence score
+            int totalTables = _doc.Sections.Sum(s => s.Tables.Count);
+            if (totalTables > 0)
+            {
+                var formTablePaths = recognized
+                    .Select(f => System.Text.RegularExpressions.Regex.Match(f.Path, @"^/section\[\d+\]/tbl\[\d+\]").Value)
+                    .Where(p => !string.IsNullOrEmpty(p))
+                    .Distinct()
+                    .Count();
+                double confidence = (double)formTablePaths / totalTables;
+                sb.AppendLine();
+                sb.AppendLine($"Form confidence: {confidence:P0} ({formTablePaths}/{totalTables} tables are form-like)");
+            }
         }
 
         return sb.ToString().TrimEnd();
@@ -758,6 +772,58 @@ public partial class HwpxHandler
             if (cellList.Count == 0) continue;
             int maxRow = grid.GetLength(0), maxCol = grid.GetLength(1);
 
+            // F5: Single-cell tables → emit as structured text instead of table
+            if (maxRow == 1 && maxCol == 1 && cellList.Count == 1)
+            {
+                var cellText = ExtractCellText(cellList[0].Tc).Trim();
+                if (!string.IsNullOrEmpty(cellText))
+                {
+                    var lines = cellText.Split('\n');
+                    foreach (var line in lines)
+                    {
+                        var trimmed = line.Trim();
+                        if (string.IsNullOrEmpty(trimmed)) { sb.AppendLine(); continue; }
+                        var m = System.Text.RegularExpressions.Regex.Match(trimmed, @"^(\d+[.)]|[가-하][.]|[a-z][.)]) (.+)$");
+                        if (m.Success)
+                            sb.AppendLine($"**{m.Groups[1].Value}** {m.Groups[2].Value}");
+                        else
+                            sb.AppendLine(trimmed);
+                    }
+                    sb.AppendLine();
+                }
+                continue;
+            }
+
+            // F6: Pseudo-table demotion — skip tables with <=3 rows and >=30% empty cells
+            if (maxRow <= 3)
+            {
+                int totalCells = maxRow * maxCol;
+                int emptyCells = 0;
+                for (int r = 0; r < maxRow; r++)
+                    for (int c = 0; c < maxCol; c++)
+                    {
+                        var cell = grid[r, c];
+                        if (cell == null || string.IsNullOrWhiteSpace(ExtractCellText(cell)))
+                            emptyCells++;
+                    }
+                if (totalCells > 0 && (double)emptyCells / totalCells >= 0.3)
+                {
+                    for (int r = 0; r < maxRow; r++)
+                        for (int c = 0; c < maxCol; c++)
+                        {
+                            var cell = grid[r, c];
+                            if (cell == null) continue;
+                            var (cr, cc, _, _) = GetCellAddr(cell);
+                            if (cr != r || cc != c) continue;
+                            var text = ExtractCellText(cell).Trim();
+                            if (!string.IsNullOrEmpty(text))
+                                sb.AppendLine(text);
+                        }
+                    sb.AppendLine();
+                    continue;
+                }
+            }
+
             for (int r = 0; r < maxRow; r++)
             {
                 sb.Append("| ");
@@ -833,6 +899,11 @@ public partial class HwpxHandler
 
         var text = textParts.ToString();
         if (string.IsNullOrEmpty(text)) return "";
+
+        // F4: GFM tilde escape — prevent false strikethrough from literal tildes
+        // Must happen BEFORE strikethrough wrapping
+        if (!hasStrikeout)
+            text = text.Replace("~", @"\~");
 
         if (hasStrikeout) text = $"~~{text}~~";
         if (hasBold && hasItalic) text = $"***{text}***";
@@ -1276,6 +1347,25 @@ public partial class HwpxHandler
                         && int.TryParse(heading.Attribute("level")?.Value, out var hl) && hl >= 1)
                         headingLevel = hl.ToString();
                 }
+            }
+        }
+
+        // F3: Legal appendix heading detection (별표/별지/별첨, 제N조 관련)
+        if (headingLevel == null)
+        {
+            var text = ExtractParagraphText(para);
+            if (System.Text.RegularExpressions.Regex.IsMatch(text, @"^\s*\[?별[표지첨]\s*(?:\d+\s*)?(?:의\s*\d+\s*)?(?:\]|$)"))
+                headingLevel = "2";
+            else if (System.Text.RegularExpressions.Regex.IsMatch(text, @"^\s*\(제\s*\d+\s*조\s*관련\)"))
+                headingLevel = "3";
+            // G3: Space-tolerant legal heading detection
+            else
+            {
+                var compacted = System.Text.RegularExpressions.Regex.Replace(text.TrimStart(), @"\s+", "");
+                if (System.Text.RegularExpressions.Regex.IsMatch(compacted, @"^제\d+[장편](?![에의은을로서와가는도])"))
+                    headingLevel = "1";
+                else if (System.Text.RegularExpressions.Regex.IsMatch(compacted, @"^제\d+[절관](?![에의은을로서와가는도])"))
+                    headingLevel = "2";
             }
         }
 

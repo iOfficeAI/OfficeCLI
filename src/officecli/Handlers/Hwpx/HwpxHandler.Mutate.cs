@@ -1430,6 +1430,40 @@ public partial class HwpxHandler
 
     // ==================== Hyperlink ====================
 
+    private static readonly HashSet<string> SafeUrlSchemes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "http", "https", "mailto", "ftp", "ftps", "tel"
+    };
+
+    private static void ValidateUrlScheme(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            throw new ArgumentException("Hyperlink URL must not be empty.");
+
+        // Reject obvious local/UNC paths
+        if (url.StartsWith('\\') || url.StartsWith("//") ||
+            (url.Length >= 2 && url[1] == ':'))
+            throw new ArgumentException(
+                $"Local or UNC path not allowed as hyperlink target: '{url}'.");
+
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            if (!SafeUrlSchemes.Contains(uri.Scheme))
+                throw new ArgumentException(
+                    $"Unsafe URL scheme '{uri.Scheme}' in '{url}'. " +
+                    $"Allowed schemes: {string.Join(", ", SafeUrlSchemes)}.");
+        }
+        else
+        {
+            // Non-parseable as absolute URI — reject unless it looks like
+            // a fragment (#anchor) or same-document reference
+            if (!url.StartsWith('#'))
+                throw new ArgumentException(
+                    $"Hyperlink target must be an absolute URL with allowed scheme " +
+                    $"({string.Join(", ", SafeUrlSchemes)}) or a fragment reference: '{url}'.");
+        }
+    }
+
     /// <summary>
     /// Create a hyperlink using the OWPML fieldBegin/fieldEnd pattern (3-run structure).
     /// Golden template based on OWPML schema + python-hwpx implementation.
@@ -1439,6 +1473,10 @@ public partial class HwpxHandler
     {
         var url = props?.GetValueOrDefault("url") ?? props?.GetValueOrDefault("href")
             ?? throw new CliException("hyperlink requires 'url' property");
+
+        // Plan 99.9.E3: Safe URL scheme whitelist
+        ValidateUrlScheme(url);
+
         var text = props?.GetValueOrDefault("text") ?? url;
         var fieldId = NewId();
         var fieldIdNum = NewId();
@@ -3124,6 +3162,42 @@ public partial class HwpxHandler
         SaveManifest();
     }
 
+    // G6: Korean government standard margins (행정문서 양식)
+    private static class GovStandardMargins
+    {
+        public const int PageWidth = 59528;   // A4: 210mm
+        public const int PageHeight = 84186;  // A4: 297mm
+        public const int Top = 5668;          // 20mm
+        public const int Bottom = 4252;       // 15mm
+        public const int Left = 5668;         // 20mm
+        public const int Right = 5668;        // 20mm
+        public const int Header = 4252;       // 15mm
+        public const int Footer = 4252;       // 15mm
+        public const int Gutter = 0;
+    }
+
+    /// <summary>Apply Korean government standard margins to section 1.</summary>
+    private bool ApplyGovStandardMargins()
+    {
+        var sec = _doc.Sections.FirstOrDefault();
+        if (sec == null) return false;
+        var secPr = sec.Root.Descendants(HwpxNs.Hp + "secPr").FirstOrDefault();
+        var pagePr = secPr?.Element(HwpxNs.Hp + "pagePr");
+        var margin = pagePr?.Element(HwpxNs.Hp + "margin");
+        if (margin == null) return false;
+
+        margin.SetAttributeValue("top", GovStandardMargins.Top.ToString());
+        margin.SetAttributeValue("bottom", GovStandardMargins.Bottom.ToString());
+        margin.SetAttributeValue("left", GovStandardMargins.Left.ToString());
+        margin.SetAttributeValue("right", GovStandardMargins.Right.ToString());
+        margin.SetAttributeValue("header", GovStandardMargins.Header.ToString());
+        margin.SetAttributeValue("footer", GovStandardMargins.Footer.ToString());
+        margin.SetAttributeValue("gutter", GovStandardMargins.Gutter.ToString());
+
+        _dirty = true;
+        return true;
+    }
+
     /// <summary>Save content.hpf manifest to ZIP archive.</summary>
     private void SaveManifest()
     {
@@ -3198,6 +3272,20 @@ public partial class HwpxHandler
         if (!string.IsNullOrEmpty(title)) result["title"] = title;
         var lang = metadata.Element(ns + "language")?.Value;
         if (!string.IsNullOrEmpty(lang)) result["language"] = lang;
+
+        // G4: Dublin Core elements (dc:title, dc:creator, dc:subject, etc.)
+        var dcFields = new[] { "title", "creator", "subject", "description",
+                               "publisher", "contributor", "date", "type",
+                               "format", "identifier", "source", "language",
+                               "relation", "coverage", "rights" };
+        foreach (var field in dcFields)
+        {
+            if (result.ContainsKey(field)) continue;
+            var dcEl = metadata.Element(HwpxNs.Dc + field);
+            if (dcEl != null && !string.IsNullOrEmpty(dcEl.Value))
+                result[field] = dcEl.Value;
+        }
+
         // Meta elements
         foreach (var meta in metadata.Elements(ns + "meta"))
         {

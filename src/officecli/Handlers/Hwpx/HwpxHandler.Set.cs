@@ -1810,27 +1810,85 @@ public partial class HwpxHandler
     // ==================== Label-Based Table Fill (Plan 70) ====================
 
     /// <summary>
-    /// Fill table cells by label matching. For each mapping, find a cell whose text
-    /// matches the label, then set the adjacent cell's text to the value.
+    /// Fill table cells by label matching using a 3-phase pipeline:
+    /// Phase 1: In-cell patterns (checkbox, paren-blank, annotation)
+    /// Phase 2: Table label-value cell replacement (existing behavior)
+    /// Phase 3: Inline paragraph pattern replacement (outside tables)
     /// </summary>
     private void FillByLabel(Dictionary<string, string> mappings)
     {
+        // Plan 99.9.E4: Input size guard
+        const int MaxFillEntries = 200;
+        if (mappings.Count > MaxFillEntries)
+            throw new ArgumentException(
+                $"FillByLabel input has {mappings.Count} entries, exceeding limit of {MaxFillEntries}.");
+
         var anyFilled = false;
         var filledSections = new HashSet<XElement>();
+        var filledLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // === Phase 1: In-cell patterns (checkbox, paren-blank, annotation) ===
         foreach (var (key, value) in mappings)
         {
+            var (label, _) = ParseLabelSpec(key);
+
+            // Checkbox: □label → ☑label
+            if (TryFillCheckbox(label, value))
+            {
+                filledLabels.Add(key);
+                anyFilled = true;
+                continue;
+            }
+
+            // Paren-blank: "일반(  )통" → fill in parens
+            if (TryFillParenBlank(label, value))
+            {
+                filledLabels.Add(key);
+                anyFilled = true;
+                continue;
+            }
+
+            // Annotation blank: "(한자：    )" → fill in annotation
+            if (TryFillAnnotation(label, value))
+            {
+                filledLabels.Add(key);
+                anyFilled = true;
+                continue;
+            }
+        }
+
+        // === Phase 2: Table label-value cell replacement (existing logic) ===
+        foreach (var (key, value) in mappings)
+        {
+            if (filledLabels.Contains(key)) continue; // Already filled in Phase 1
+
             var (label, direction) = ParseLabelSpec(key);
             var tc = FindCellByLabel(label, direction);
             if (tc == null) continue;
 
             SetCellText(tc, value);
             anyFilled = true;
+            filledLabels.Add(key);
 
-            // Track which sections need saving
             var sectionRoot = tc.AncestorsAndSelf()
                 .FirstOrDefault(e => e.Name.LocalName == "sec");
             if (sectionRoot != null) filledSections.Add(sectionRoot);
+        }
+
+        // === Phase 3: Inline paragraph pattern (outside tables) ===
+        foreach (var (key, value) in mappings)
+        {
+            if (filledLabels.Contains(key)) continue; // Already filled
+
+            var (label, _) = ParseLabelSpec(key);
+            // Try find-and-replace for "label: ..." or "label : ..." patterns
+            var pattern = $"regex:(?<={System.Text.RegularExpressions.Regex.Escape(label)}\\s*[:：]\\s*)\\S.*";
+            var count = FindAndReplace(pattern, value);
+            if (count > 0)
+            {
+                filledLabels.Add(key);
+                anyFilled = true;
+            }
         }
 
         if (anyFilled)
@@ -1839,6 +1897,108 @@ public partial class HwpxHandler
                 SaveSection(sec);
             _dirty = true;
         }
+    }
+
+    /// <summary>
+    /// Try to fill a parenthesized blank pattern in table cells.
+    /// Pattern: "일반(  )통" — fills the blank inside parens.
+    /// </summary>
+    private bool TryFillParenBlank(string label, string value)
+    {
+        // Search for cells containing label text with paren blanks
+        foreach (var sec in _doc.Sections)
+        {
+            foreach (var tbl in sec.Tables)
+            {
+                foreach (var tr in tbl.Elements(HwpxNs.Hp + "tr"))
+                {
+                    foreach (var tc in tr.Elements(HwpxNs.Hp + "tc"))
+                    {
+                        var cellText = ExtractCellText(tc);
+                        // Match pattern where label chars surround parens
+                        var rx = new System.Text.RegularExpressions.Regex(
+                            @"(" + System.Text.RegularExpressions.Regex.Escape(label[..Math.Min(2, label.Length)])
+                            + @"[가-힣A-Za-z]*)\(\s*\)([가-힣A-Za-z]*)");
+                        var match = rx.Match(cellText);
+                        if (!match.Success) continue;
+
+                        // Replace blank with value in XML
+                        var subList = tc.Element(HwpxNs.Hp + "subList");
+                        var paragraphs = subList?.Elements(HwpxNs.Hp + "p")
+                                      ?? tc.Elements(HwpxNs.Hp + "p");
+                        foreach (var p in paragraphs)
+                        {
+                            foreach (var run in p.Elements(HwpxNs.Hp + "run"))
+                            {
+                                foreach (var t in run.Elements(HwpxNs.Hp + "t"))
+                                {
+                                    if (rx.IsMatch(t.Value))
+                                    {
+                                        t.Value = rx.Replace(t.Value,
+                                            m => $"{m.Groups[1].Value}({value}){m.Groups[2].Value}", 1);
+                                        var sectionRoot = tc.AncestorsAndSelf()
+                                            .FirstOrDefault(e => e.Name.LocalName == "sec");
+                                        if (sectionRoot != null) SaveSection(sectionRoot);
+                                        _dirty = true;
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Try to fill an annotation blank pattern in table cells.
+    /// Pattern: "(한자：    )" — fills the blank after colon.
+    /// </summary>
+    private bool TryFillAnnotation(string label, string value)
+    {
+        var rx = new System.Text.RegularExpressions.Regex(
+            @"\(" + System.Text.RegularExpressions.Regex.Escape(label) + @"[:：]\s*\)");
+
+        foreach (var sec in _doc.Sections)
+        {
+            foreach (var tbl in sec.Tables)
+            {
+                foreach (var tr in tbl.Elements(HwpxNs.Hp + "tr"))
+                {
+                    foreach (var tc in tr.Elements(HwpxNs.Hp + "tc"))
+                    {
+                        var cellText = ExtractCellText(tc);
+                        if (!rx.IsMatch(cellText)) continue;
+
+                        var subList = tc.Element(HwpxNs.Hp + "subList");
+                        var paragraphs = subList?.Elements(HwpxNs.Hp + "p")
+                                      ?? tc.Elements(HwpxNs.Hp + "p");
+                        foreach (var p in paragraphs)
+                        {
+                            foreach (var run in p.Elements(HwpxNs.Hp + "run"))
+                            {
+                                foreach (var t in run.Elements(HwpxNs.Hp + "t"))
+                                {
+                                    if (rx.IsMatch(t.Value))
+                                    {
+                                        t.Value = rx.Replace(t.Value,
+                                            $"({label}：{value})", 1);
+                                        var sectionRoot = tc.AncestorsAndSelf()
+                                            .FirstOrDefault(e => e.Name.LocalName == "sec");
+                                        if (sectionRoot != null) SaveSection(sectionRoot);
+                                        _dirty = true;
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     // ==================== Find & Replace ====================
