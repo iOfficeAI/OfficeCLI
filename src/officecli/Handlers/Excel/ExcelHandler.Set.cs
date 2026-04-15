@@ -2045,7 +2045,13 @@ public partial class ExcelHandler
     private void SortRangeRows(WorksheetPart worksheet, int col1, int row1, int col2, int row2,
         string sortSpec, bool sortHeader)
     {
-        if (string.IsNullOrWhiteSpace(sortSpec) || sortSpec.Equals("none", StringComparison.OrdinalIgnoreCase))
+        // Reject empty sort value at the range-level entry. Sheet-level "clear-sort"
+        // semantics (sort="" or "none") are handled by the sheet-level dispatcher before
+        // reaching here; any empty value that gets here came from a range path and is a
+        // user error we should surface loudly.
+        if (sortSpec == null || sortSpec.Length == 0 || string.IsNullOrWhiteSpace(sortSpec))
+            throw new ArgumentException("sort value cannot be empty");
+        if (sortSpec.Equals("none", StringComparison.OrdinalIgnoreCase))
         {
             GetSheet(worksheet).GetFirstChild<SortState>()?.Remove();
             return;
