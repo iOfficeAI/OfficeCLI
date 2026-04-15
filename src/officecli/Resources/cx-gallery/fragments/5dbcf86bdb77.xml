@@ -1,0 +1,1 @@
+<cs:upBar><cs:lnRef idx="1"><a:schemeClr val="tx1"/></cs:lnRef><cs:fillRef idx="1"><a:schemeClr val="dk1"><a:tint val="5000"/></a:schemeClr></cs:fillRef><cs:effectRef idx="1"><a:schemeClr val="dk1"/></cs:effectRef><cs:fontRef idx="minor"><a:schemeClr val="tx1"/></cs:fontRef><cs:spPr><a:ln><a:round/></a:ln></cs:spPr></cs:upBar>

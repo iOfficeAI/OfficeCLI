@@ -118,11 +118,11 @@ officecli close deck.pptx
 ### More Element Types (when needed, check syntax with `officecli pptx add`)
 
 ```bash
-officecli add deck.pptx '/slide[1]' --type picture --prop path=photo.jpg --prop width=12cm
+officecli add deck.pptx '/slide[1]' --type picture --prop src=photo.jpg --prop width=12cm
 officecli add deck.pptx '/slide[1]' --type chart --prop chartType=column --prop categories="Q1,Q2" --prop data="Sales:100,200"
 officecli add deck.pptx '/slide[1]' --type table --prop rows=3 --prop cols=4
 officecli add deck.pptx '/slide[1]' --type connector --prop preset=straight --prop line=FF0000
-officecli add deck.pptx '/slide[1]' --type video --prop path=demo.mp4 --prop autoplay=true
+officecli add deck.pptx '/slide[1]' --type video --prop src=demo.mp4 --prop autoplay=true
 ```
 
 ---

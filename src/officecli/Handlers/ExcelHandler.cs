@@ -104,7 +104,47 @@ public partial class ExcelHandler : IDocumentHandler
             return GetSheet(worksheet).OuterXml;
         }
 
-        throw new ArgumentException($"Unknown part: {partPath}. Available: /workbook, /styles, /sharedstrings, /<SheetName>, /<SheetName>/drawing, /<SheetName>/chart[N], /chart[N]");
+        // /SheetName/<relId> fallback — resolve a worksheet relationship by id
+        // (covers OLE embed parts, image parts, etc. that have no named path).
+        // Open XML SDK generates relIds like "rId12" or "Rff3244f593f8481a";
+        // accept both forms (any non-slash token starting with R/r).
+        var relIdMatch = Regex.Match(partPath, @"^/([^/]+)/([Rr][A-Za-z0-9]+)$");
+        if (relIdMatch.Success)
+        {
+            var relSheetName = relIdMatch.Groups[1].Value;
+            var relId = relIdMatch.Groups[2].Value;
+            var relWs = FindWorksheet(relSheetName)
+                ?? throw SheetNotFoundException(relSheetName);
+            try
+            {
+                var part = relWs.GetPartById(relId);
+                if (part != null)
+                {
+                    var ct = part.ContentType ?? "";
+                    bool isText = ct.Contains("xml", StringComparison.OrdinalIgnoreCase)
+                        || ct.StartsWith("text/", StringComparison.OrdinalIgnoreCase);
+                    using var partStream = part.GetStream();
+                    if (isText)
+                    {
+                        using var reader = new StreamReader(partStream);
+                        return reader.ReadToEnd();
+                    }
+                    long size = 0;
+                    try { size = partStream.Length; } catch { /* non-seekable */ }
+                    return $"(binary part: {ct}, {size} bytes)";
+                }
+            }
+            catch (KeyNotFoundException)
+            {
+                // fall through to the unknown-part error
+            }
+            catch (ArgumentException)
+            {
+                // fall through to the unknown-part error
+            }
+        }
+
+        throw new ArgumentException($"Unknown part: {partPath}. Available: /workbook, /styles, /sharedstrings, /<SheetName>, /<SheetName>/drawing, /<SheetName>/chart[N], /chart[N], /<SheetName>/<relId>");
     }
 
     private static string RawSheetWithFilter(WorksheetPart worksheetPart, int? startRow, int? endRow, HashSet<string>? cols)

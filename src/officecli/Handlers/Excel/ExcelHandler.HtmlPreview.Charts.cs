@@ -30,7 +30,7 @@ public partial class ExcelHandler
     /// Pre-render all charts and return them with their anchor row/col positions.
     /// Charts with overlapping row ranges are grouped into flex rows.
     /// </summary>
-    private List<(int fromRow, int toRow, int fromCol, int toCol, string html)> CollectSheetCharts(WorksheetPart worksheetPart)
+    private List<(int fromRow, int toRow, int fromCol, int toCol, string html)> CollectSheetCharts(WorksheetPart worksheetPart, string sheetName = "")
     {
         var result = new List<(int fromRow, int toRow, int fromCol, int toCol, string html)>();
         var drawingsPart = worksheetPart.DrawingsPart;
@@ -38,10 +38,14 @@ public partial class ExcelHandler
 
         var chartFrames = drawingsPart.WorksheetDrawing
             .Descendants<XDR.GraphicFrame>()
-            .Where(gf => gf.Descendants<C.ChartReference>().Any())
+            .Where(gf => gf.Descendants<C.ChartReference>().Any() || IsExtendedChartFrame(gf))
             .ToList();
 
         if (chartFrames.Count == 0) return result;
+
+        // Build GF → 1-based chart index map (document order, same as GetExcelCharts)
+        var gfIndexMap = new Dictionary<XDR.GraphicFrame, int>();
+        for (int i = 0; i < chartFrames.Count; i++) gfIndexMap[chartFrames[i]] = i + 1;
 
         var chartAnchors = chartFrames.Select(gf =>
         {
@@ -57,54 +61,29 @@ public partial class ExcelHandler
             return (gf, fromRow, toRow, fromCol, toCol);
         }).OrderBy(x => x.fromRow).ThenBy(x => x.fromCol).ToList();
 
-        // Group into rows: charts whose row ranges overlap go in the same flex row
-        var groups = new List<(int fromRow, int toRow, int minFromCol, int maxToCol, List<XDR.GraphicFrame> frames)>();
-        int currentRowEnd = -1;
-        List<XDR.GraphicFrame>? currentGroup = null;
-        int currentMinFromCol = 0, currentMaxToCol = 0;
+        // Each chart gets its own overlay (no flex grouping) so drag-to-move works independently
         foreach (var (gf, fromRow, toRow, fromCol, toCol) in chartAnchors)
         {
-            if (currentGroup == null || fromRow >= currentRowEnd)
-            {
-                currentGroup = new List<XDR.GraphicFrame>();
-                currentMinFromCol = fromCol;
-                currentMaxToCol = toCol;
-                currentRowEnd = toRow;
-                groups.Add((fromRow, toRow, fromCol, toCol, currentGroup));
-            }
-            else
-            {
-                currentRowEnd = Math.Max(currentRowEnd, toRow);
-                currentMinFromCol = Math.Min(currentMinFromCol, fromCol);
-                currentMaxToCol = Math.Max(currentMaxToCol, toCol);
-                groups[^1] = (groups[^1].fromRow, currentRowEnd, currentMinFromCol, currentMaxToCol, currentGroup);
-            }
-            currentGroup.Add(gf);
-        }
-
-        foreach (var (fromRow, toRow, minFromCol, maxToCol, frames) in groups)
-        {
             var chartSb = new StringBuilder();
-            if (frames.Count > 1)
-            {
-                chartSb.AppendLine("<div style=\"display:flex;gap:16px;flex-wrap:wrap\">");
-                foreach (var gf in frames)
-                    RenderExcelChart(chartSb, gf, drawingsPart, worksheetPart);
-                chartSb.AppendLine("</div>");
-            }
-            else
-            {
-                RenderExcelChart(chartSb, frames[0], drawingsPart, worksheetPart);
-            }
-            result.Add((fromRow, toRow, minFromCol, maxToCol, chartSb.ToString()));
+            RenderExcelChart(chartSb, gf, drawingsPart, worksheetPart, sheetName, gfIndexMap.GetValueOrDefault(gf));
+            result.Add((fromRow, toRow, fromCol, toCol, chartSb.ToString()));
         }
 
         return result;
     }
 
     private void RenderExcelChart(StringBuilder sb, XDR.GraphicFrame gf,
-        DrawingsPart drawingsPart, WorksheetPart worksheetPart)
+        DrawingsPart drawingsPart, WorksheetPart worksheetPart,
+        string sheetName = "", int chartIdx = 0)
     {
+        // cx:chart (extended) path — histogram / funnel / treemap / sunburst /
+        // boxWhisker. Delegate to the cx-aware extractor and shared renderer.
+        if (IsExtendedChartFrame(gf))
+        {
+            RenderExcelCxChart(sb, gf, drawingsPart, worksheetPart, sheetName, chartIdx);
+            return;
+        }
+
         // 1. Get chart reference and load ChartPart
         var chartRef = gf.Descendants<C.ChartReference>().FirstOrDefault();
         if (chartRef?.Id?.Value == null) return;
@@ -159,10 +138,13 @@ public partial class ExcelHandler
 
         // 3. Extract all chart metadata via shared helper
         var info = ChartSvgRenderer.ExtractChartInfo(plotArea, chart);
-        // Override with locally-resolved data (Excel cell resolution may have updated categories/series)
+        // Override with locally-resolved data (Excel cell resolution may have updated categories/series).
+        // NOTE: seriesList here comes from Excel-specific extraction that may still include
+        // reference-line overlay series — re-apply the shared filter so they are not drawn
+        // as an extra bar/column segment on top of the real data.
         info.ChartType = chartType;
         info.Categories = categories;
-        info.Series = seriesList;
+        info.Series = ChartSvgRenderer.FilterReferenceLineSeries(plotArea, seriesList);
         if (info.Series.Count == 0) return;
         // Ensure colors match series count (ExtractChartInfo may have extracted for a different count)
         while (info.Colors.Count < info.Series.Count)
@@ -204,7 +186,8 @@ public partial class ExcelHandler
 
         var bgStyle = info.ChartFillColor != null ? $"background:#{info.ChartFillColor};" : "";
         // Use estimated width as max-width, but allow stretching to fill parent (e.g. colspan td)
-        sb.AppendLine($"<div class=\"chart-container\" style=\"max-width:max({svgW}pt,100%);flex:1;min-width:200pt;{bgStyle}\">");
+        var chartDataPath = chartIdx > 0 && !string.IsNullOrEmpty(sheetName) ? $" data-path=\"/{HtmlEncode(sheetName)}/chart[{chartIdx}]\"" : "";
+        sb.AppendLine($"<div class=\"chart-container\"{chartDataPath} style=\"max-width:max({svgW}pt,100%);flex:1;min-width:200pt;{bgStyle}\">");
 
         var titleColor = info.TitleFontColor ?? "#333";
         if (!string.IsNullOrEmpty(info.Title))
@@ -218,6 +201,8 @@ public partial class ExcelHandler
 
         var legendColor = info.LegendFontColor ?? "#555";
         renderer.RenderLegendHtml(sb, info, legendColor);
+
+        renderer.RenderDataTableHtml(sb, info);
 
         sb.AppendLine("</div>");
     }
@@ -423,5 +408,69 @@ public partial class ExcelHandler
             colIndex /= 26;
         }
         return result;
+    }
+
+    /// <summary>
+    /// Render a cx:chart (Office 2016 extended chart) inside a GraphicFrame.
+    /// Mirrors the regular <see cref="RenderExcelChart"/> flow: extract
+    /// ChartInfo from the cx:chart element, instantiate the shared renderer
+    /// with theme colors, and emit the SVG + legend inside a chart-container div.
+    /// </summary>
+    private void RenderExcelCxChart(StringBuilder sb, XDR.GraphicFrame gf,
+        DrawingsPart drawingsPart, WorksheetPart worksheetPart,
+        string sheetName = "", int chartIdx = 0)
+    {
+        var relId = GetExtendedChartRelId(gf);
+        if (relId == null) return;
+
+        DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing.Chart? chart;
+        try
+        {
+            var extPart = (ExtendedChartPart)drawingsPart.GetPartById(relId);
+            chart = extPart.ChartSpace?
+                .GetFirstChild<DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing.Chart>();
+            if (chart == null) return;
+        }
+        catch { return; }
+
+        var info = ChartSvgRenderer.ExtractCxChartInfo(chart);
+        if (info.Series.Count == 0) return;
+
+        // Dimensions from the TwoCellAnchor, same as regular charts.
+        var colWidths = GetColumnWidths(GetSheet(worksheetPart));
+        var (widthPt, heightPt) = EstimateChartSize(gf, colWidths);
+
+        var renderer = new ChartSvgRenderer
+        {
+            ThemeAccentColors = ChartSvgRenderer.BuildThemeAccentColors(GetExcelThemeColors()),
+            ValueColor = info.ValFontColor ?? "#333",
+            CatColor = info.CatFontColor ?? "#555",
+            AxisColor = info.ValFontColor ?? "#666",
+            GridColor = info.GridlineColor ?? "#ddd",
+            AxisLineColor = info.AxisLineColor ?? "#999",
+            ValFontPx = info.ValFontPx,
+            CatFontPx = info.CatFontPx,
+        };
+
+        var svgW = Math.Max(widthPt, 225);
+        var svgH = Math.Max(heightPt, 150);
+        var titleFontPt = 10.0;
+        if (!string.IsNullOrEmpty(info.TitleFontSize) && double.TryParse(info.TitleFontSize.Replace("pt", ""), out var tfp))
+            titleFontPt = tfp;
+        var titleH = string.IsNullOrEmpty(info.Title) ? 0 : (int)(titleFontPt * 1.6 + 8);
+        var chartSvgH = svgH - titleH;
+        if (chartSvgH < 80) return;
+
+        var cxChartDataPath = chartIdx > 0 && !string.IsNullOrEmpty(sheetName) ? $" data-path=\"/{HtmlEncode(sheetName)}/chart[{chartIdx}]\"" : "";
+        sb.AppendLine($"<div class=\"chart-container\"{cxChartDataPath} style=\"max-width:max({svgW}pt,100%);flex:1;min-width:200pt\">");
+
+        var titleColor = info.TitleFontColor ?? "#333";
+        if (!string.IsNullOrEmpty(info.Title))
+            sb.AppendLine($"  <div style=\"text-align:center;font-size:{info.TitleFontSize};font-weight:bold;padding:6px 0;color:{titleColor}\">{HtmlEncode(info.Title)}</div>");
+
+        sb.AppendLine($"  <svg viewBox=\"0 0 {svgW} {chartSvgH}\" style=\"width:100%;height:auto\" preserveAspectRatio=\"xMidYMin meet\">");
+        renderer.RenderChartSvgContent(sb, info, svgW, chartSvgH);
+        sb.AppendLine("  </svg>");
+        sb.AppendLine("</div>");
     }
 }

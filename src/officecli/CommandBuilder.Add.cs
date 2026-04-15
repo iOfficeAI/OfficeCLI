@@ -13,12 +13,12 @@ static partial class CommandBuilder
     {
         var addFileArg = new Argument<FileInfo>("file") { Description = "Office document path (required even with open/close mode)" };
         var addParentPathArg = new Argument<string>("parent") { Description = "Parent DOM path (e.g. /body, /Sheet1, /slide[1])" };
-        var addTypeOpt = new Option<string>("--type") { Description = "Element type to add (e.g. paragraph, run, table, sheet, row, cell, slide, shape)" };
+        var addTypeOpt = new Option<string>("--type") { Description = "Element type to add (e.g. paragraph, run, table, sheet, row, cell, slide, shape, picture, ole, video)" };
         var addFromOpt = new Option<string?>("--from") { Description = "Copy from an existing element path (e.g. /slide[1]/shape[2])" };
         var addIndexOpt = new Option<int?>("--index") { Description = "Insert position (0-based). If omitted, appends to end" };
         var addAfterOpt = new Option<string?>("--after") { Description = "Insert after the element at this path (e.g. p[@paraId=1A2B3C4D])" };
         var addBeforeOpt = new Option<string?>("--before") { Description = "Insert before the element at this path" };
-        var addPropsOpt = new Option<string[]>("--prop") { Description = "Property to set (key=value)", AllowMultipleArgumentsPerToken = true };
+        var addPropsOpt = new Option<string[]>("--prop") { Description = "Property to set (key=value, e.g. --prop src=image.png --prop width=6in)", AllowMultipleArgumentsPerToken = true };
         var forceOption = new Option<bool>("--force") { Description = "Force write even if document is protected" };
 
         var addCommand = new Command("add", "Add a new element to the document") { TreatUnmatchedTokensAsErrors = false };
@@ -86,7 +86,7 @@ static partial class CommandBuilder
                 {
                     foreach (var kv in unmatchedKvWarnings)
                         Console.Error.WriteLine($"WARNING: Bare property '{kv}' ignored. Did you mean: --prop {kv}");
-                    Console.Error.WriteLine("Hint: Properties must be passed with --prop flag, e.g. officecli add <file> <parent> --type <type> --prop key=value");
+                    Console.Error.WriteLine("Hint: Properties must be passed with --prop flag, e.g. officecli add <file> <parent> --type picture --prop src=image.png");
                 }
             }
 
@@ -96,7 +96,7 @@ static partial class CommandBuilder
                 {
                     Code = "missing_argument",
                     Suggestion = "Use --type to specify element type, or --from to copy an existing element.",
-                    Help = "officecli add <file> <parent> --type <type> --prop key=value"
+                    Help = "officecli add <file> <parent> --type <type> --prop src=<file>"
                 };
             }
 
@@ -135,20 +135,16 @@ static partial class CommandBuilder
                     req.Props = ParsePropsArray(props);
                 }, json) is {} rc) return rc != 0 ? rc : (hadWarnings ? 2 : 0);
 
-                var properties = new Dictionary<string, string>();
-                foreach (var prop in props ?? Array.Empty<string>())
-                {
-                    var eqIdx = prop.IndexOf('=');
-                    if (eqIdx > 0)
-                    {
-                        properties[prop[..eqIdx]] = prop[(eqIdx + 1)..];
-                    }
-                }
+                // CONSISTENCY(prop-key-case): --prop keys are case-insensitive
+                // so "SRC=x" and "src=x" both resolve to the same handler key.
+                // Reuse ParsePropsArray so the inline and resident-server paths
+                // stay in sync.
+                var properties = ParsePropsArray(props);
 
                 using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
                 var oldCount = (handler as OfficeCli.Handlers.PowerPointHandler)?.GetSlideCount() ?? 0;
                 var resultPath = handler.Add(parentPath, type!, position, properties);
-                var message = $"Added {type} at {resultPath}";
+                var message = $"Added {type!.ToLowerInvariant()} at {resultPath}";
                 var spatialLine = GetPptSpatialLine(handler, resultPath);
                 var overlapNames = spatialLine != null ? CheckPositionOverlap(handler, resultPath) : new();
                 var addWarnings = new List<OfficeCli.Core.CliWarning>();

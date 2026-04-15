@@ -5,7 +5,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>OfficeCli</RootNamespace>
     <AssemblyName>officecli</AssemblyName>
-    <Version>1.0.42</Version>
+    <Version>1.0.46</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
@@ -28,10 +28,18 @@
     <EmbeddedResource Include="Resources/preview.js" />
     <EmbeddedResource Include="Resources/watch-sse-core.js" />
     <EmbeddedResource Include="Resources/watch-overlay.js" />
+    <EmbeddedResource Include="Resources/cx-gallery/index.json">
+      <LogicalName>OfficeCli.Resources.cx-gallery.index.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources/cx-gallery/fragments/*.xml">
+      <LogicalName>OfficeCli.Resources.cx-gallery.fragments.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources/chartex-colors.xml" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="../../skills/**/*" LogicalName="skills/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Remove="../../skills/**/*.glb" />
   </ItemGroup>
 
   <ItemGroup>

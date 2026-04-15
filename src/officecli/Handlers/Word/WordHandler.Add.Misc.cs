@@ -717,7 +717,7 @@ public partial class WordHandler
         var created = GenericXmlQuery.TryCreateTypedElement(parent, type, properties, index);
         if (created == null)
             throw new ArgumentException($"Unknown element type '{type}' for {parentPath}. " +
-                "Valid types: paragraph (p), run (r), table (tbl), row, cell, picture, chart, equation, comment, section, footnote, endnote, toc, style, watermark, bookmark, hyperlink, field, break, sdt, header, footer. " +
+                "Valid types: paragraph (p), run (r), table (tbl), row, cell, picture, chart, ole (object, embed), equation, comment, section, footnote, endnote, toc, style, watermark, bookmark, hyperlink, field, break, sdt, header, footer. " +
                 "Use 'officecli docx add' for details.");
 
         var siblings = parent.ChildElements.Where(e => e.LocalName == created.LocalName).ToList();

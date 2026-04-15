@@ -15,6 +15,22 @@ public partial class WordHandler
     // ==================== View Helpers ====================
 
     /// <summary>
+    /// CONSISTENCY(ole-stats): OLE objects can live in the body, headers,
+    /// or footers. Stats counters previously only walked the body and
+    /// undercounted documents that embed OLEs in header/footer regions.
+    /// Centralize the cross-part walk so all stats counters stay aligned.
+    /// </summary>
+    private int CountAllOleObjects()
+    {
+        var mainPart = _doc.MainDocumentPart;
+        if (mainPart == null) return 0;
+        int total = mainPart.Document?.Body?.Descendants<EmbeddedObject>().Count() ?? 0;
+        total += mainPart.HeaderParts.Sum(h => h.Header?.Descendants<EmbeddedObject>().Count() ?? 0);
+        total += mainPart.FooterParts.Sum(f => f.Footer?.Descendants<EmbeddedObject>().Count() ?? 0);
+        return total;
+    }
+
+    /// <summary>
     /// Represents a body element with optional SDT context.
     /// When a paragraph/table is inside an SdtBlock, SdtBlock is set.
     /// </summary>
@@ -262,6 +278,25 @@ public partial class WordHandler
                     var mathText = FormulaParser.ToReadableText(oMathParaChild);
                     sb.AppendLine($"[{path}] {sdtLabel}[Equation] {mathText}");
                 }
+                else if (para.Descendants<EmbeddedObject>().Any())
+                {
+                    // CONSISTENCY(word-text-ole): OLE paragraphs emit a
+                    // visible placeholder per OLE object so they are
+                    // distinguishable from empty paragraphs. Iterate all
+                    // EmbeddedObjects in the paragraph — a single paragraph
+                    // may contain more than one OLE run. Mirrors
+                    // ViewAsAnnotated's word-annotated-ole handling.
+                    var listPrefix = GetListPrefix(para);
+                    foreach (var embObj in para.Descendants<EmbeddedObject>())
+                    {
+                        var oleEl = embObj.Descendants()
+                            .FirstOrDefault(e => e.LocalName == "OLEObject");
+                        var progId = oleEl?.GetAttributes()
+                            .FirstOrDefault(a => a.LocalName == "ProgID").Value;
+                        if (string.IsNullOrEmpty(progId)) progId = "Object";
+                        sb.AppendLine($"[{path}] {sdtLabel}{listPrefix}[OLE: {progId}]");
+                    }
+                }
                 else
                 {
                     // Check for formfields first
@@ -414,6 +449,26 @@ public partial class WordHandler
                 // Build a set of runs that are part of formfield sequences for annotation
                 var formFieldRunMap = BuildFormFieldRunMap(para);
 
+                // OLE paragraphs: emit one annotated line per OLE object in the
+                // paragraph. A single paragraph may contain multiple OLE runs —
+                // iterating all EmbeddedObject descendants ensures none are
+                // silently dropped. CONSISTENCY(word-annotated-ole): mirrors
+                // the paragraph-level emission fix in ViewAsText above.
+                var oleRuns = runs.Where(r => r.GetFirstChild<EmbeddedObject>() != null).ToList();
+                if (oleRuns.Count > 0)
+                {
+                    foreach (var oleRun in oleRuns)
+                    {
+                        var oleEl = oleRun.GetFirstChild<EmbeddedObject>()!
+                            .Descendants().FirstOrDefault(e => e.LocalName == "OLEObject");
+                        var progId = oleEl?.GetAttributes()
+                            .FirstOrDefault(a => a.LocalName == "ProgID").Value ?? "";
+                        sb.AppendLine($"[{path}] {listPrefix}[OLE: {progId}] ← {styleName}");
+                        emitted++;
+                    }
+                    continue;
+                }
+
                 foreach (var run in runs)
                 {
                     // Check if run contains an image
@@ -529,7 +584,7 @@ public partial class WordHandler
         var paragraphs = GetBodyElements(body).OfType<Paragraph>().ToList();
         var tables = GetBodyElements(body).OfType<Table>().ToList();
         var imageCount = body.Descendants<Drawing>().Count();
-        var oleCount = body.Descendants<EmbeddedObject>().Count();
+        var oleCount = CountAllOleObjects();
         var equationCount = body.Descendants().Count(e => e.LocalName == "oMathPara" || e is M.Paragraph);
         var formFieldCount = FindFormFields().Count;
         var contentControlCount = body.Descendants<SdtBlock>().Count() + body.Descendants<SdtRun>().Count();
@@ -653,6 +708,12 @@ public partial class WordHandler
         sb.AppendLine($"Empty Paragraphs: {emptyParagraphs}");
         sb.AppendLine($"Consecutive Spaces: {doubleSpaces}");
 
+        // CONSISTENCY(ole-stats): Excel/PPT ViewAsStats report OLE object
+        // counts with this exact line format ("OLE Objects: N"). Word must
+        // match so users get a uniform cross-handler stats view.
+        var oleCount = CountAllOleObjects();
+        if (oleCount > 0) sb.AppendLine($"OLE Objects: {oleCount}");
+
         return sb.ToString().TrimEnd();
     }
 
@@ -660,6 +721,11 @@ public partial class WordHandler
     {
         var body = _doc.MainDocumentPart?.Document?.Body;
         if (body == null) return new JsonObject();
+
+        // CONSISTENCY(ole-stats-json): Excel/PPT ViewAsStatsJson always expose
+        // the oleObjects field. Word must too. Count via EmbeddedObject — same
+        // source the text-version ViewAsStats() uses.
+        var oleObjectsCount = CountAllOleObjects();
 
         var paragraphs = GetBodyElements(body).OfType<Paragraph>().ToList();
         var styleCounts = new Dictionary<string, int>();
@@ -707,7 +773,8 @@ public partial class WordHandler
             ["words"] = totalWords,
             ["totalCharacters"] = totalChars,
             ["emptyParagraphs"] = emptyParagraphs,
-            ["consecutiveSpaces"] = doubleSpaces
+            ["consecutiveSpaces"] = doubleSpaces,
+            ["oleObjects"] = oleObjectsCount
         };
 
         var styles = new JsonObject();
@@ -736,7 +803,7 @@ public partial class WordHandler
         var paragraphs = GetBodyElements(body).OfType<Paragraph>().ToList();
         var tables = GetBodyElements(body).OfType<Table>().ToList();
         var imageCount = body.Descendants<Drawing>().Count();
-        var oleCount = body.Descendants<EmbeddedObject>().Count();
+        var oleCount = CountAllOleObjects();
         var equationCount = body.Descendants().Count(e => e.LocalName == "oMathPara" || e is M.Paragraph);
 
         var formFieldCount = FindFormFields().Count;

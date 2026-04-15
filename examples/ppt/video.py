@@ -124,7 +124,7 @@ def main():
         run(f'set "{out_pptx}" /slide[2] --prop background=0D1B2A')
         run(f'set "{out_pptx}" /slide[2]/shape[1] --prop color=FFFFFF')
         run(f'add "{out_pptx}" /slide[2] --type video '
-            f'--prop path="{video_path}" '
+            f'--prop src="{video_path}" '
             f'--prop poster="{cover_path}" '
             f'--prop x=2cm --prop y=4cm --prop width=22cm --prop height=12.5cm '
             f'--prop volume=80 --prop autoplay=true')

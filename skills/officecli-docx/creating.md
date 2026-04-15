@@ -620,22 +620,22 @@ officecli set doc.docx "/body/tbl[1]/tr[1]/tc[1]" --prop "border.bottom=single;6
 
 ```bash
 # Inline image in body
-officecli add doc.docx /body --type picture --prop path=photo.jpg --prop width=15cm --prop height=10cm --prop alt="Team photo"
+officecli add doc.docx /body --type picture --prop src=photo.jpg --prop width=15cm --prop height=10cm --prop alt="Team photo"
 
 # Image in paragraph (inline with text)
-officecli add doc.docx "/body/p[3]" --type picture --prop path=icon.png --prop width=1cm --prop height=1cm --prop alt="Check icon"
+officecli add doc.docx "/body/p[3]" --type picture --prop src=icon.png --prop width=1cm --prop height=1cm --prop alt="Check icon"
 
 # Image from URL
-officecli add doc.docx /body --type picture --prop path=https://example.com/logo.png --prop width=5cm --prop height=3cm --prop alt="Company logo"
+officecli add doc.docx /body --type picture --prop src=https://example.com/logo.png --prop width=5cm --prop height=3cm --prop alt="Company logo"
 
 # Floating/anchored image
-officecli add doc.docx /body --type picture --prop path=sidebar.png --prop width=5cm --prop height=8cm --prop anchor=true --prop wrap=square --prop alt="Sidebar graphic"
+officecli add doc.docx /body --type picture --prop src=sidebar.png --prop width=5cm --prop height=8cm --prop anchor=true --prop wrap=square --prop alt="Sidebar graphic"
 
 # Image in table cell
-officecli add doc.docx "/body/tbl[1]/tr[1]/tc[1]" --type picture --prop path=avatar.jpg --prop width=2cm --prop height=2cm --prop alt="User avatar"
+officecli add doc.docx "/body/tbl[1]/tr[1]/tc[1]" --type picture --prop src=avatar.jpg --prop width=2cm --prop height=2cm --prop alt="User avatar"
 
 # Replace existing image
-officecli set doc.docx "/body/p[5]/r[1]" --prop path=new-photo.jpg
+officecli set doc.docx "/body/p[5]/r[1]" --prop src=new-photo.jpg
 ```
 
 ### Charts

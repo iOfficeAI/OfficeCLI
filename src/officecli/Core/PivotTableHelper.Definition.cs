@@ -144,7 +144,13 @@ internal static partial class PivotTableHelper
             DataCaption = "Values",
             CreatedVersion = 3,
             MinRefreshableVersion = 3,
-            UpdatedVersion = 3,
+            // UpdatedVersion=4 marks this pivot as "last saved by Excel 2010"
+            // — the minimum required for Excel to attach slicers. With =3
+            // (Excel 2007), Excel silently refuses to bind slicers to the
+            // pivot table and the slicer drawing renders blank. See
+            // slicer repro: only the <pivotTableDefinition updatedVersion>
+            // needed to change for the slicer to appear.
+            UpdatedVersion = 4,
             ApplyNumberFormats = false,
             ApplyBorderFormats = false,
             ApplyFontFormats = false,

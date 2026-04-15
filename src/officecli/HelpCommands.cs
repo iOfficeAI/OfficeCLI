@@ -511,6 +511,14 @@ Types and properties:
     series1..N ("Revenue:100,200"), colors ("FF0000,00FF00"), legend (top|bottom|left|right|none)
     width, height (cm/in/pt/EMU, default: 15cm x 10cm)
 
+  ole (object, embed)  -- parent: /body or /body/p[N]
+    src (required, path to file to embed — .docx/.xlsx/.pptx/.pdf/...),
+    progId (auto-detected from extension — e.g. Excel.Sheet.12),
+    width, height (cm/in/pt/EMU, default: 2in x 0.75in icon frame),
+    display (icon|content, default: icon),
+    icon (custom preview image path; defaults to placeholder PNG),
+    name (friendly name)
+
   equation (formula, math)  -- parent: /body/p[N] or /body
     formula (required, LaTeX subset), mode (display|inline)
     Supported: \frac{}{}, \sqrt{}, ^{}, _{}, \sum, \int, Greek letters
@@ -823,7 +831,7 @@ Excel (.xlsx) — query
 
 Cell selectors:
   cell                          All cells
-  Sheet1!cell                   Cells in specific sheet
+  Sheet1!cell                   Cells in specific sheet (or /Sheet1/cell)
   A                             All cells in column A
   cell[value='text']            Exact value match
   cell[value!='text']           Value not equal
@@ -1119,6 +1127,12 @@ Types and properties:
     title, categories (comma-separated), legend (top|bottom|left|right|none)
     data ("Series1:1,2,3;Series2:4,5,6") or series1/series2/... ("Name:1,2,3")
     x, y (col/row offset), width, height (col/row span)
+
+  ole (object, embed)  -- parent: /SheetName
+    src (required, path to file to embed — .docx/.xlsx/.pptx/.pdf/...),
+    progId (auto-detected from extension — e.g. Word.Document.12),
+    anchor (cell range, e.g. "B2:E6") OR x,y,width,height (column/row units),
+    icon (custom preview image path; defaults to placeholder PNG)
 
   pivottable (pivot)  -- parent: /SheetName
     source (required): "Sheet1!A1:D100" or "A1:D100" (same sheet)
@@ -1747,6 +1761,13 @@ Types and properties:
 
   equation (formula, math)  -- parent: /slide[N]
     formula (required, LaTeX subset), name
+
+  ole (object, embed)  -- parent: /slide[N]
+    src (required, path to file to embed — .docx/.xlsx/.pptx/.pdf/...),
+    progId (auto-detected from extension — e.g. Excel.Sheet.12),
+    x, y, width, height (EMU or cm/in/pt/px),
+    display (icon|content, default: icon),
+    icon (custom preview image path; defaults to placeholder PNG), name
 
   paragraph (para)  -- parent: /slide[N]/shape[M]
     text, font, size, bold, italic, color, spacing,

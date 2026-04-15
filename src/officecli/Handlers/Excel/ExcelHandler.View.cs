@@ -155,10 +155,31 @@ public partial class ExcelHandler
             int pivotCount = worksheetPart.PivotTableParts.Count();
             var pivotInfo = pivotCount > 0 ? $", {pivotCount} pivot table(s)" : "";
 
-            sb.AppendLine($"\u251c\u2500\u2500 \"{name}\" ({rowCount} rows \u00d7 {colCount} cols{formulaInfo}{pivotInfo})");
+            int oleCount = CountSheetOleObjects(worksheetPart);
+            var oleInfo = oleCount > 0 ? $", {oleCount} ole object(s)" : "";
+
+            sb.AppendLine($"\u251c\u2500\u2500 \"{name}\" ({rowCount} rows \u00d7 {colCount} cols{formulaInfo}{pivotInfo}{oleInfo})");
         }
 
         return sb.ToString().TrimEnd();
+    }
+
+    // CONSISTENCY(ole-stats): per-sheet OLE counter shared by outline and
+    // outlineJson. Same dedup rule as ViewAsStats — referenced oleObject
+    // elements count once, orphan embedded/package parts add extras.
+    private int CountSheetOleObjects(WorksheetPart worksheetPart)
+    {
+        int count = 0;
+        var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var oleEl in GetSheet(worksheetPart).Descendants<OleObject>())
+        {
+            count++;
+            if (oleEl.Id?.Value is string rid && !string.IsNullOrEmpty(rid))
+                referenced.Add(rid);
+        }
+        count += worksheetPart.EmbeddedObjectParts.Count(p => !referenced.Contains(worksheetPart.GetIdOfPart(p)));
+        count += worksheetPart.EmbeddedPackageParts.Count(p => !referenced.Contains(worksheetPart.GetIdOfPart(p)));
+        return count;
     }
 
     public string ViewAsStats()
@@ -192,11 +213,29 @@ public partial class ExcelHandler
             }
         }
 
+        // OLE object count across all sheets. Same dedup rule as
+        // CollectOleNodesForSheet: referenced parts count as one entry
+        // (via their oleObject element), orphan parts add extras.
+        int oleCount = 0;
+        foreach (var (_, worksheetPart) in sheets)
+        {
+            var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var oleEl in GetSheet(worksheetPart).Descendants<OleObject>())
+            {
+                oleCount++;
+                if (oleEl.Id?.Value is string rid && !string.IsNullOrEmpty(rid))
+                    referenced.Add(rid);
+            }
+            oleCount += worksheetPart.EmbeddedObjectParts.Count(p => !referenced.Contains(worksheetPart.GetIdOfPart(p)));
+            oleCount += worksheetPart.EmbeddedPackageParts.Count(p => !referenced.Contains(worksheetPart.GetIdOfPart(p)));
+        }
+
         sb.AppendLine($"Sheets: {sheets.Count}");
         sb.AppendLine($"Total Cells: {totalCells}");
         sb.AppendLine($"Empty Cells: {emptyCells}");
         sb.AppendLine($"Formula Cells: {formulaCells}");
         sb.AppendLine($"Error Cells: {errorCells}");
+        if (oleCount > 0) sb.AppendLine($"OLE Objects: {oleCount}");
         sb.AppendLine();
         sb.AppendLine("Data Type Distribution:");
         foreach (var (type, count) in typeCounts.OrderByDescending(kv => kv.Value))
@@ -229,13 +268,28 @@ public partial class ExcelHandler
                 }
         }
 
+        int oleCountJson = 0;
+        foreach (var (_, worksheetPart) in sheets)
+        {
+            var refSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var oleEl in GetSheet(worksheetPart).Descendants<OleObject>())
+            {
+                oleCountJson++;
+                if (oleEl.Id?.Value is string rid && !string.IsNullOrEmpty(rid))
+                    refSet.Add(rid);
+            }
+            oleCountJson += worksheetPart.EmbeddedObjectParts.Count(p => !refSet.Contains(worksheetPart.GetIdOfPart(p)));
+            oleCountJson += worksheetPart.EmbeddedPackageParts.Count(p => !refSet.Contains(worksheetPart.GetIdOfPart(p)));
+        }
+
         var result = new JsonObject
         {
             ["sheets"] = sheets.Count,
             ["totalCells"] = totalCells,
             ["emptyCells"] = emptyCells,
             ["formulaCells"] = formulaCells,
-            ["errorCells"] = errorCells
+            ["errorCells"] = errorCells,
+            ["oleObjects"] = oleCountJson,
         };
 
         var types = new JsonObject();
@@ -268,12 +322,14 @@ public partial class ExcelHandler
             int colCount = GetSheetColumnCount(worksheet, sheetData);
             int formulaCount = sheetData?.Descendants<CellFormula>().Count() ?? 0;
 
+            int oleCount = CountSheetOleObjects(worksheetPart);
             var sheetObj = new JsonObject
             {
                 ["name"] = name,
                 ["rows"] = rowCount,
                 ["cols"] = colCount,
-                ["formulas"] = formulaCount
+                ["formulas"] = formulaCount,
+                ["oleObjects"] = oleCount
             };
             sheetsArray.Add((JsonNode)sheetObj);
         }

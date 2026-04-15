@@ -88,22 +88,29 @@ public partial class ExcelHandler
         var wbStylesPart = _doc.WorkbookPart?.WorkbookStylesPart;
         var stylesheet = wbStylesPart?.Stylesheet;
 
-        // If any sheet has a pivot table, open an editable in-memory copy so we
-        // can re-materialize cells from the pivot cache. The copy's WorksheetParts
-        // replace the originals for rendering; styles/theme come from _doc (identical).
+        // If any sheet has a pivot table, build an editable in-memory copy so
+        // we can re-materialize cells from the pivot cache without mutating
+        // the live _doc. The copy's WorksheetParts replace the originals for
+        // rendering; styles/theme come from _doc (identical).
+        //
+        // CONSISTENCY(pivot-clone-in-memory): we clone _doc directly instead of
+        // re-opening _filePath from disk. The earlier "read the file back via
+        // FileStream(FileShare.ReadWrite)" approach races the handler's still-
+        // held editable handle on macOS and throws IOException despite the
+        // share-mode hint — the error surfaces as a trailing "process cannot
+        // access" stderr after every add pivot/slicer command, and worse, on
+        // every SUBSEQUENT command once the file has a pivot part at all (the
+        // `sheets.Any(...PivotTableParts...)` branch fires on every ViewAsHtml
+        // from the NotifyWatch path). SpreadsheetDocument.Clone(Stream, bool)
+        // serialises the already-loaded package into the MemoryStream without
+        // touching disk, so there is no second file handle to race.
         MemoryStream? pivotMs = null;
         SpreadsheetDocument? pivotDoc = null;
         List<(string Name, WorksheetPart Part)>? pivotSheets = null;
         if (sheets.Any(s => s.Part.PivotTableParts.Any()))
         {
             pivotMs = new MemoryStream();
-            // Use FileShare.ReadWrite to avoid conflicting with the handler's
-            // open editable handle on the same file. File.OpenRead() uses
-            // FileShare.Read which fails when another handle has write access.
-            using (var fs = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                fs.CopyTo(pivotMs);
-            pivotMs.Position = 0;
-            pivotDoc = SpreadsheetDocument.Open(pivotMs, isEditable: true);
+            pivotDoc = (SpreadsheetDocument)_doc.Clone(pivotMs, isEditable: true);
             pivotSheets = GetWorksheets(pivotDoc);
 
             foreach (var (_, wsPart) in pivotSheets)
@@ -146,7 +153,7 @@ public partial class ExcelHandler
             var isRtl = sheetView?.RightToLeft?.Value == true;
             var dirAttr = isRtl ? " dir=\"rtl\"" : "";
             sb.AppendLine($"<div class=\"sheet-content{activeClass}\" data-sheet=\"{sheetIdx}\"{dirAttr}>");
-            var charts = CollectSheetCharts(worksheetPart);
+            var charts = CollectSheetCharts(worksheetPart, sheetName);
             RenderSheetTable(sb, sheetName, renderPart, stylesheet, charts, sheetIdx);
             sb.AppendLine("</div>");
         }
@@ -206,9 +213,8 @@ public partial class ExcelHandler
     {
         var ws = GetSheet(worksheetPart);
         var sheetData = ws.GetFirstChild<SheetData>();
-        if (sheetData == null)
+        if (sheetData == null && (charts == null || charts.Count == 0))
         {
-            // Don't show "Empty sheet" if there are charts
             if (worksheetPart.DrawingsPart?.WorksheetDrawing == null)
                 sb.AppendLine("<div class=\"empty-sheet\">Empty sheet</div>");
             return;
@@ -231,15 +237,15 @@ public partial class ExcelHandler
         }
 
         // Create formula evaluator for this sheet to compute uncached formula values
-        var evaluator = new Core.FormulaEvaluator(sheetData, _doc.WorkbookPart);
+        var evaluator = sheetData != null ? new Core.FormulaEvaluator(sheetData, _doc.WorkbookPart) : null;
 
         // Collect merge info
         var mergeMap = BuildMergeMap(ws);
 
-        // Build conditional formatting CSS overrides
-        var cfMap = BuildConditionalFormatMap(ws, stylesheet, sheetData, _doc.WorkbookPart);
-        var dataBarMap = BuildDataBarMap(ws, sheetData);
-        var iconSetMap = BuildIconSetMap(ws, sheetData);
+        // Build conditional formatting CSS overrides (skip if no cell data)
+        var cfMap = sheetData != null ? BuildConditionalFormatMap(ws, stylesheet, sheetData, _doc.WorkbookPart) : new Dictionary<string, string>();
+        var dataBarMap = sheetData != null ? BuildDataBarMap(ws, sheetData) : new Dictionary<string, string>();
+        var iconSetMap = sheetData != null ? BuildIconSetMap(ws, sheetData) : new Dictionary<string, string>();
 
         // Collect column widths
         var colWidths = GetColumnWidths(ws);
@@ -260,43 +266,45 @@ public partial class ExcelHandler
             }
         }
 
-        // Determine grid dimensions — only count cells with actual content (value or formula),
-        // not styled-but-empty cells. Mirrors LibreOffice's GetPrintArea / TrimDataArea behavior.
-        var rows = sheetData.Elements<Row>().ToList();
+        // Determine grid dimensions. Count all cells that exist in SheetData —
+        // every Cell element with a CellReference contributes to maxRow/maxCol,
+        // even if the cell is empty (no value, no formula). Empty cells are
+        // explicitly created by the user or by Excel; either way they should
+        // render so the grid matches the actual data range.
+        var rows = sheetData?.Elements<Row>().ToList() ?? new List<Row>();
         int maxCol = 0;
         int maxRow = 0;
         foreach (var row in rows)
         {
             var rowIdx = (int)(row.RowIndex?.Value ?? 0);
-            bool rowHasContent = false;
+            bool rowHasCells = false;
             foreach (var cell in row.Elements<Cell>())
             {
                 var cellRef = cell.CellReference?.Value;
                 if (cellRef == null) continue;
-                // Skip empty cells (no value, no formula) — they bloat maxCol with styled blanks
-                var hasValue = cell.CellValue != null && !string.IsNullOrEmpty(cell.CellValue.Text);
-                var hasFormula = cell.CellFormula != null;
-                if (!hasValue && !hasFormula) continue;
                 var (colName, _) = ParseCellReference(cellRef);
                 var colIdx = ColumnNameToIndex(colName);
                 if (colIdx > maxCol) maxCol = colIdx;
-                rowHasContent = true;
+                rowHasCells = true;
             }
-            if (rowHasContent && rowIdx > maxRow) maxRow = rowIdx;
+            if (rowHasCells && rowIdx > maxRow) maxRow = rowIdx;
         }
 
-        // Empty sheet (SheetData exists but no rows/cells)
+        // Extend maxRow/maxCol from chart anchors even when no cell data
+        if (charts != null)
+        {
+            foreach (var (fromRow, toRow, fromCol, toCol, _) in charts)
+            {
+                if (toRow > maxRow) maxRow = toRow;
+                if (toCol > maxCol) maxCol = toCol;
+            }
+        }
+
+        // Empty sheet (no cells and no charts)
         if (maxRow == 0 || maxCol == 0)
         {
-            if (charts == null || charts.Count == 0)
-            {
-                if (worksheetPart.DrawingsPart?.WorksheetDrawing == null)
-                    sb.AppendLine("<div class=\"empty-sheet\">Empty sheet</div>");
-                return;
-            }
-            // Charts exist but no cell data — just render charts
-            foreach (var (_, _, _, _, html) in charts)
-                sb.Append(html);
+            if (worksheetPart.DrawingsPart?.WorksheetDrawing == null)
+                sb.AppendLine("<div class=\"empty-sheet\">Empty sheet</div>");
             return;
         }
 
@@ -430,8 +438,8 @@ public partial class ExcelHandler
             totalTableWidthPt += colWidths.TryGetValue(c, out var cw) ? cw : defaultColWidthPt;
         }
 
-        // Start table
-        sb.AppendLine("<div class=\"table-wrapper\">");
+        // Start table (position:relative for chart overlays)
+        sb.AppendLine("<div class=\"table-wrapper\" style=\"position:relative\">");
         sb.AppendLine($"<table style=\"width:{totalTableWidthPt:0.##}pt\">");
         sb.AppendLine($"<caption class=\"sr-only\">{HtmlEncode(sheetName)}</caption>");
 
@@ -469,7 +477,7 @@ public partial class ExcelHandler
             }
             else
                 stickyStyle = "";
-            sb.Append($"<th class=\"col-header\"{stickyStyle}>{colName}</th>");
+            sb.Append($"<th class=\"col-header\" data-path=\"/{HtmlEncode(sheetName)}/col[{colName}]\"{stickyStyle}>{colName}</th>");
         }
         sb.AppendLine("</tr></thead>");
 
@@ -482,65 +490,6 @@ public partial class ExcelHandler
         sb.AppendLine("<tbody>");
         for (int r = 1; r <= maxRow; r++)
         {
-            // Insert chart at its anchor row position
-            if (chartAtRow.TryGetValue(r, out var chartEntry))
-            {
-                // Chart fromCol is 0-based; columns in table are 1-based
-                var chartFromCol1 = chartEntry.fromCol + 1; // convert to 1-based
-                var chartToCol1 = chartEntry.toCol; // toCol is exclusive in anchor
-                // Count visible columns before and within chart range
-                var colsBefore = Enumerable.Range(1, Math.Min(chartFromCol1 - 1, maxCol))
-                    .Count(c => !hiddenCols.Contains(c));
-                var chartColSpan = Enumerable.Range(chartFromCol1, Math.Min(chartToCol1, maxCol) - chartFromCol1 + 1)
-                    .Count(c => !hiddenCols.Contains(c));
-                var rowSpan = chartEntry.toRow - r;
-
-                sb.Append($"<tr data-row=\"{sheetIdx}-{r}\">");
-                sb.Append($"<th class=\"row-header\">{r}</th>");
-                // Empty cells before the chart
-                for (int c = 1; c < chartFromCol1 && c <= maxCol; c++)
-                {
-                    if (hiddenCols.Contains(c)) continue;
-                    var cellRef = $"{IndexToColumnName(c)}{r}";
-                    var cell = cellMap.TryGetValue((r, c), out var mc) ? mc : null;
-                    var style = GetCellStyleCss(cell, stylesheet, frozenRows, frozenCols, r, c, frozenLeftOffsets, frozenTopOffsets, cfMap, dataBarMap, iconSetMap);
-                    var value = cell != null ? GetFormattedCellValue(cell, stylesheet, evaluator) : "";
-                    sb.Append($"<td{style}>{BuildCellContent(cellRef, value, dataBarMap, iconSetMap)}</td>");
-                }
-                // Chart cell spanning multiple rows and columns
-                if (chartColSpan > 0)
-                    sb.Append($"<td colspan=\"{chartColSpan}\" rowspan=\"{rowSpan}\" style=\"padding:0;border:none;vertical-align:top\">{chartEntry.html}</td>");
-                // Empty cells after the chart
-                for (int c = chartToCol1 + 1; c <= maxCol; c++)
-                {
-                    if (hiddenCols.Contains(c)) continue;
-                    sb.Append("<td></td>");
-                }
-                sb.AppendLine("</tr>");
-                continue;
-            }
-            // Skip rows that are within a chart's rowspan (but still render non-chart columns)
-            if (charts != null && charts.Any(ch => r > ch.fromRow && r < ch.toRow))
-            {
-                sb.Append($"<tr data-row=\"{sheetIdx}-{r}\">");
-                sb.Append($"<th class=\"row-header\">{r}</th>");
-                var activeChart = charts.First(ch => r > ch.fromRow && r < ch.toRow);
-                var acFromCol1 = activeChart.fromCol + 1;
-                var acToCol1 = activeChart.toCol;
-                for (int c = 1; c <= maxCol; c++)
-                {
-                    if (hiddenCols.Contains(c)) continue;
-                    if (c >= acFromCol1 && c <= acToCol1) continue; // spanned by chart rowspan
-                    var cellRef = $"{IndexToColumnName(c)}{r}";
-                    var cell = cellMap.TryGetValue((r, c), out var mc) ? mc : null;
-                    var style = GetCellStyleCss(cell, stylesheet, frozenRows, frozenCols, r, c, frozenLeftOffsets, frozenTopOffsets, cfMap, dataBarMap, iconSetMap);
-                    var value = cell != null ? GetFormattedCellValue(cell, stylesheet, evaluator) : "";
-                    sb.Append($"<td{style}>{BuildCellContent(cellRef, value, dataBarMap, iconSetMap)}</td>");
-                }
-                sb.AppendLine("</tr>");
-                continue;
-            }
-
             if (hiddenRows.Contains(r)) { sb.AppendLine($"<tr data-row=\"{sheetIdx}-{r}\" style=\"display:none\"></tr>"); continue; }
             bool isRowFrozen = frozenRows > 0 && r <= frozenRows;
             var rowStyles = new List<string>();
@@ -558,7 +507,7 @@ public partial class ExcelHandler
                 rowHeaderStyle = " style=\"position:sticky;left:0;z-index:2\"";
             else
                 rowHeaderStyle = "";
-            sb.Append($"<th class=\"row-header\"{rowHeaderStyle}>{r}</th>");
+            sb.Append($"<th class=\"row-header\" data-path=\"/{HtmlEncode(sheetName)}/row[{r}]\"{rowHeaderStyle}>{r}</th>");
 
             for (int c = 1; c <= maxCol; c++)
             {
@@ -583,20 +532,64 @@ public partial class ExcelHandler
                     if (adjColSpan > 1) spanAttrs += $" colspan=\"{adjColSpan}\"";
                     if (mergeInfo.RowSpan > 1) spanAttrs += $" rowspan=\"{mergeInfo.RowSpan}\"";
 
-                    sb.Append($"<td{spanAttrs}{style}>{BuildCellContent(cellRef, value, dataBarMap, iconSetMap)}</td>");
+                    sb.Append($"<td data-path=\"/{HtmlEncode(sheetName)}/{cellRef}\"{GetFormulaAttr(cell)}{spanAttrs}{style}>{BuildCellContent(cellRef, value, dataBarMap, iconSetMap)}</td>");
                 }
                 else
                 {
                     var cell = cellMap.TryGetValue((r, c), out var nc) ? nc : null;
                     var style = GetCellStyleCss(cell, stylesheet, frozenRows, frozenCols, r, c, frozenLeftOffsets, frozenTopOffsets, cfMap, dataBarMap, iconSetMap);
                     var value = cell != null ? GetFormattedCellValue(cell, stylesheet, evaluator) : "";
-                    sb.Append($"<td{style}>{BuildCellContent(cellRef, value, dataBarMap, iconSetMap)}</td>");
+                    sb.Append($"<td data-path=\"/{HtmlEncode(sheetName)}/{cellRef}\"{GetFormulaAttr(cell)}{style}>{BuildCellContent(cellRef, value, dataBarMap, iconSetMap)}</td>");
                 }
             }
             sb.AppendLine("</tr>");
         }
         sb.AppendLine("</tbody>");
         sb.AppendLine("</table>");
+
+        // Render charts as absolute-positioned overlays on top of the table grid.
+        // Position is computed from anchor row/col using column widths and row heights.
+        if (charts != null)
+        {
+            var rowHeaderWidthPt = 30.0; // matches .row-header-col CSS
+            foreach (var (fromRow, toRow, fromCol, toCol, html) in charts)
+            {
+                // Compute left position: sum of column widths from col 1 to fromCol + row header
+                double leftPt = rowHeaderWidthPt;
+                for (int c = 1; c <= fromCol && c <= maxCol; c++)
+                {
+                    if (hiddenCols.Contains(c)) continue;
+                    leftPt += colWidths.TryGetValue(c, out var cw) ? cw : defaultColWidthPt;
+                }
+                // Compute top position: sum of row heights from row 1 to fromRow + header row (~24px)
+                double topPt = 24.0 * 0.75; // header row height in pt
+                for (int r = 1; r <= fromRow && r <= maxRow; r++)
+                {
+                    if (hiddenRows.Contains(r)) continue;
+                    topPt += rowHeights.TryGetValue(r, out var rh) ? rh : defaultRowHeightPt;
+                }
+                // Compute width/height from anchor span
+                double widthPt = 0;
+                for (int c = fromCol + 1; c <= toCol && c <= maxCol; c++)
+                {
+                    if (hiddenCols.Contains(c)) continue;
+                    widthPt += colWidths.TryGetValue(c, out var cw2) ? cw2 : defaultColWidthPt;
+                }
+                double heightPt = 0;
+                for (int r = fromRow + 1; r <= toRow && r <= maxRow; r++)
+                {
+                    if (hiddenRows.Contains(r)) continue;
+                    heightPt += rowHeights.TryGetValue(r, out var rh2) ? rh2 : defaultRowHeightPt;
+                }
+                if (widthPt < 100) widthPt = 400; // fallback min size
+                if (heightPt < 50) heightPt = 250;
+
+                sb.AppendLine($"<div style=\"position:absolute;left:{leftPt:0.##}pt;top:{topPt:0.##}pt;width:{widthPt:0.##}pt;height:{heightPt:0.##}pt;z-index:10;pointer-events:auto\" data-from-col=\"{fromCol}\" data-from-row=\"{fromRow}\">");
+                sb.Append(html);
+                sb.AppendLine("</div>");
+            }
+        }
+
         // Truncation warning
         if (truncated)
             sb.AppendLine($"<div class=\"truncation-warning\">Showing {maxRow} of {actualRow} rows, {maxCol} of {actualCol} columns</div>");
@@ -1539,6 +1532,12 @@ public partial class ExcelHandler
 
         var fmt = fmtCode.ToLowerInvariant();
 
+        // Date/time formats may contain quoted literals (e.g. "D"d"D").
+        // Skip prefix/suffix extraction for these — the date handler in
+        // ApplyNumberFormatCore processes quotes via NormalizeDateFormatCase.
+        if (ContainsDateTokenOutsideQuotes(fmtCode))
+            return ApplyNumberFormatCore(value, fmtCode);
+
         // Extract currency/text prefix and suffix (e.g. "$", "€", "¥", or quoted strings like "USD ")
         var prefix = "";
         var suffix = "";
@@ -1572,6 +1571,10 @@ public partial class ExcelHandler
         { prefix += "+"; cleanFmt = cleanFmt[1..]; }
         else if (cleanFmt.StartsWith('-'))
         { prefix += "-"; cleanFmt = cleanFmt[1..]; }
+
+        // Pure text format (only quoted prefix/suffix, no numeric pattern)
+        if (string.IsNullOrEmpty(cleanFmt.Trim()))
+            return prefix + suffix;
 
         var formatted = ApplyNumberFormatCore(value, cleanFmt.Trim());
         // For single-section formats with currency prefix, negative sign goes before the prefix
@@ -1613,8 +1616,7 @@ public partial class ExcelHandler
                 var dt = DateTime.FromOADate(value);
                 // Context-sensitive m/mm: after h → minute, otherwise → month
                 // Strategy: mark minute 'm' as '\x01' placeholder, then convert remaining m→M
-                var dotnetFmt = fmtCode
-                    .Replace("AM/PM", "tt").Replace("am/pm", "tt");
+                var dotnetFmt = NormalizeDateFormatCase(fmtCode);
                 // Step 1: Replace h:mm and h:m patterns → mark minutes as placeholder
                 dotnetFmt = System.Text.RegularExpressions.Regex.Replace(dotnetFmt, @"([hH]+)([:.])(mm?)", m =>
                     m.Groups[1].Value + m.Groups[2].Value + new string('\x01', m.Groups[3].Value.Length));
@@ -1627,8 +1629,8 @@ public partial class ExcelHandler
                 // Step 3: Restore minute placeholders
                 dotnetFmt = dotnetFmt.Replace("\x01\x01", "mm").Replace("\x01", "m");
                 // Step 4: Other conversions
-                // If AM/PM format (has 'tt'), use h (12h); otherwise use H (24h)
-                if (!dotnetFmt.Contains("tt"))
+                // If AM/PM format (has 't' outside quotes), use h (12h); otherwise use H (24h)
+                if (!ContainsCharOutsideQuotes(dotnetFmt, 't'))
                     dotnetFmt = dotnetFmt.Replace("hh", "HH").Replace("h", "H");
                 dotnetFmt = dotnetFmt.Replace("dddd", "dddd").Replace("ddd", "ddd").Replace("dd", "dd");
                 return dt.ToString(dotnetFmt, System.Globalization.CultureInfo.InvariantCulture);
@@ -1690,6 +1692,73 @@ public partial class ExcelHandler
             else break;
         }
         return count;
+    }
+
+    /// <summary>
+    /// Returns true if fmtCode contains date/time tokens (y, m, d, h, s) outside
+    /// double-quoted strings. Used to route date formats past prefix/suffix extraction.
+    /// </summary>
+    private static bool ContainsDateTokenOutsideQuotes(string fmtCode)
+    {
+        bool inQuote = false;
+        foreach (var ch in fmtCode)
+        {
+            if (ch == '"') { inQuote = !inQuote; continue; }
+            if (!inQuote)
+            {
+                var lower = char.ToLowerInvariant(ch);
+                if (lower is 'y' or 'm' or 'd' or 'h' or 's') return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Returns true if ch appears outside double-quoted strings in fmtCode.
+    /// </summary>
+    private static bool ContainsCharOutsideQuotes(string fmtCode, char target)
+    {
+        bool inQuote = false;
+        foreach (var ch in fmtCode)
+        {
+            if (ch == '"') { inQuote = !inQuote; continue; }
+            if (!inQuote && ch == target) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Normalize Excel date/time format specifiers to .NET-compatible case
+    /// and replace AM/PM → tt, A/P → t outside quoted strings.
+    /// </summary>
+    private static string NormalizeDateFormatCase(string fmtCode)
+    {
+        var sb = new StringBuilder(fmtCode.Length);
+        bool inQuote = false;
+        for (int i = 0; i < fmtCode.Length; i++)
+        {
+            var ch = fmtCode[i];
+            if (ch == '"') { inQuote = !inQuote; sb.Append(ch); continue; }
+            if (inQuote) { sb.Append(ch); continue; }
+            // AM/PM → tt (check before single-char A/P)
+            if ((ch == 'A' || ch == 'a') && i + 4 < fmtCode.Length
+                && (fmtCode[i + 1] == 'M' || fmtCode[i + 1] == 'm')
+                && fmtCode[i + 2] == '/'
+                && (fmtCode[i + 3] == 'P' || fmtCode[i + 3] == 'p')
+                && (fmtCode[i + 4] == 'M' || fmtCode[i + 4] == 'm'))
+            {
+                sb.Append("tt"); i += 4; continue;
+            }
+            // A/P → t
+            if ((ch == 'A' || ch == 'a') && i + 2 < fmtCode.Length
+                && fmtCode[i + 1] == '/'
+                && (fmtCode[i + 2] == 'P' || fmtCode[i + 2] == 'p'))
+            {
+                sb.Append('t'); i += 2; continue;
+            }
+            sb.Append(ch switch { 'Y' => 'y', 'D' => 'd', 'S' => 's', 'M' => 'm', 'H' => 'h', _ => ch });
+        }
+        return sb.ToString();
     }
 
     // ==================== CSS ====================
@@ -1794,6 +1863,7 @@ public partial class ExcelHandler
             z-index: 3;
             background: #f8f8f8;
             min-width: 50px;
+            cursor: s-resize;
         }
         .row-header {
             position: sticky;
@@ -1801,6 +1871,7 @@ public partial class ExcelHandler
             z-index: 2;
             background: #f8f8f8;
             min-width: 40px;
+            cursor: e-resize;
             /* Drop right border so the data cell's own (often darker) left border shows through.
                Otherwise, with border-collapse, the row-header's light grey right border can win
                the collapse contest and erase the merged-cell left border (rowspan cells especially). */
@@ -1905,6 +1976,14 @@ public partial class ExcelHandler
     {
         var encoded = HtmlEncode(text);
         return encoded.Contains('\n') ? encoded.Replace("\n", "<br>") : encoded;
+    }
+
+    /// <summary>Get data-formula attribute for cells with formulas (for inline editing).</summary>
+    private static string GetFormulaAttr(Cell? cell)
+    {
+        var formula = cell?.CellFormula?.Text;
+        if (string.IsNullOrEmpty(formula)) return "";
+        return $" data-formula=\"={HtmlEncode(formula)}\"";
     }
 
     private static string BuildCellContent(string cellRef, string value,

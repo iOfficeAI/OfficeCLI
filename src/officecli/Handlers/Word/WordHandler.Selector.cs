@@ -68,6 +68,9 @@ public partial class WordHandler
         if (colonIdx >= 0 && colonIdx < firstMod) firstMod = colonIdx;
 
         element = selector[..firstMod].Trim();
+        // CONSISTENCY(selector-case): element names are case-insensitive
+        // ("OLE" == "ole" == "Ole"). Attribute values stay case-sensitive.
+        element = element.ToLowerInvariant();
         if (string.IsNullOrEmpty(element)) element = null;
 
         // Parse [attr=value] attributes

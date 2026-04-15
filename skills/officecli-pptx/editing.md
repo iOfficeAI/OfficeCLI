@@ -248,13 +248,13 @@ officecli set template.pptx /slide[3]/shape[2] --prop "text=Point one\\nPoint tw
 
 ```bash
 # Replace image source
-officecli set template.pptx /slide[1]/picture[1] --prop path=new-photo.jpg
+officecli set template.pptx /slide[1]/picture[1] --prop src=new-photo.jpg
 
 # Update alt text
 officecli set template.pptx /slide[1]/picture[1] --prop alt="Updated product photo"
 
 # Resize and reposition
-officecli set template.pptx /slide[2]/picture[1] --prop path=chart-screenshot.png --prop width=14cm --prop height=10cm --prop x=2cm --prop y=5cm
+officecli set template.pptx /slide[2]/picture[1] --prop src=chart-screenshot.png --prop width=14cm --prop height=10cm --prop x=2cm --prop y=5cm
 ```
 
 ### Update Charts
@@ -329,7 +329,7 @@ officecli set template.pptx /slide[1] --prop notes="Opening remarks: welcome the
 officecli add template.pptx /slide[2] --type shape --prop text="Additional Note" --prop x=2cm --prop y=15cm --prop width=20cm --prop height=2cm --prop font=Calibri --prop size=12 --prop color=888888
 
 # Add picture to slide
-officecli add template.pptx /slide[3] --type picture --prop path=infographic.png --prop x=18cm --prop y=4cm --prop width=13cm --prop height=12cm --prop alt="Q4 infographic"
+officecli add template.pptx /slide[3] --type picture --prop src=infographic.png --prop x=18cm --prop y=4cm --prop width=13cm --prop height=12cm --prop alt="Q4 infographic"
 
 # Add chart to slide
 officecli add template.pptx /slide[5] --type chart --prop chartType=pie --prop categories="A,B,C" --prop data="Share:40,35,25" --prop x=18cm --prop y=4cm --prop width=12cm --prop height=10cm

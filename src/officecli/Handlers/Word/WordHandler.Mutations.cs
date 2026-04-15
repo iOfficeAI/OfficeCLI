@@ -26,6 +26,38 @@ public partial class WordHandler
             return null;
         }
 
+        // BUG-R10-03: support /header[N]/ole[M] and /footer[N]/ole[M] shorthand
+        // in Remove, mirroring the Get shorthand added in Round 9. Users
+        // cannot easily discover the underlying run path, so without this
+        // intercept the shorthand path crashed with "Path not found" on
+        // Remove even though Get accepted it.
+        // CONSISTENCY(ole-shorthand-remove): also handle /body/ole[N] — the body
+        // OLE actual path is /body/p[N]/r[M], not /body/ole[N], so the normal
+        // path parser hits "No ole found at /body" just like header/footer.
+        // The root-level /ole[N] shorthand (added in BUG-R11-03 for Get) is
+        // handled by the regex below which allows an absent <parent> group.
+        var wordOleShortMatch = Regex.Match(
+            path,
+            @"^(?<parent>/body|/header\[\d+\]|/footer\[\d+\])?/(?:ole|object|embed)\[(?<idx>\d+)\]$",
+            RegexOptions.IgnoreCase);
+        if (wordOleShortMatch.Success)
+        {
+            var wOleIdx = int.Parse(wordOleShortMatch.Groups["idx"].Value);
+            var wOleParent = wordOleShortMatch.Groups["parent"].Success && wordOleShortMatch.Groups["parent"].Value.Length > 0
+                ? wordOleShortMatch.Groups["parent"].Value
+                : "/body";
+            var allOles = Query("ole")
+                .Where(n => n.Path.StartsWith(wOleParent + "/", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (wOleIdx < 1 || wOleIdx > allOles.Count)
+                throw new ArgumentException(
+                    $"OLE object {wOleIdx} not found at {wOleParent} (available: {allOles.Count}).");
+            // Recurse into Remove with the resolved run path (e.g.
+            // /body/p[1]/r[1] or /header[1]/p[1]/r[1]) so the normal
+            // run/OLE cleanup runs on the correct part.
+            return Remove(allOles[wOleIdx - 1].Path);
+        }
+
         var parts = ParsePath(path);
 
         // Handle header/footer removal by deleting the part itself
@@ -183,6 +215,45 @@ public partial class WordHandler
                     }
                 }
             }
+
+            // Clean up embedded-object and VML imagedata parts referenced by an
+            // EmbeddedObject inside the element being removed. Mirrors the blip
+            // cleanup above. Without this, removing a Word OLE leaves both
+            // the backing payload part (o:OLEObject r:id) and the custom icon
+            // part (v:imagedata r:id) as orphans.
+            // BUG-R10-03: OLE inside a HeaderPart/FooterPart stores its rel
+            // on the header/footer part itself, so resolve the hosting part
+            // from the element's ancestor chain and delete from there.
+            foreach (var embObj in element.Descendants<EmbeddedObject>())
+            {
+                OpenXmlPart hostPart = mainPart2;
+                if (embObj.Ancestors<DocumentFormat.OpenXml.Wordprocessing.Header>().FirstOrDefault() is { } hdr)
+                    hostPart = (OpenXmlPart?)mainPart2.HeaderParts.FirstOrDefault(p => p.Header == hdr) ?? mainPart2;
+                else if (embObj.Ancestors<DocumentFormat.OpenXml.Wordprocessing.Footer>().FirstOrDefault() is { } ftr)
+                    hostPart = (OpenXmlPart?)mainPart2.FooterParts.FirstOrDefault(p => p.Footer == ftr) ?? mainPart2;
+
+                // v:imagedata r:id → icon ImagePart
+                foreach (var vimg in embObj.Descendants().Where(e => e.LocalName == "imagedata"))
+                {
+                    var imgRid = vimg.GetAttributes().FirstOrDefault(a => a.LocalName == "id"
+                        && a.NamespaceUri == "http://schemas.openxmlformats.org/officeDocument/2006/relationships").Value;
+                    if (!string.IsNullOrEmpty(imgRid))
+                    {
+                        try { hostPart.DeletePart(imgRid); } catch { }
+                    }
+                }
+
+                // o:OLEObject r:id → backing embedded payload part
+                foreach (var oleEl in embObj.Descendants().Where(e => e.LocalName == "OLEObject"))
+                {
+                    var oleRid = oleEl.GetAttributes().FirstOrDefault(a => a.LocalName == "id"
+                        && a.NamespaceUri == "http://schemas.openxmlformats.org/officeDocument/2006/relationships").Value;
+                    if (!string.IsNullOrEmpty(oleRid))
+                    {
+                        try { hostPart.DeletePart(oleRid); } catch { }
+                    }
+                }
+            }
         }
 
         // If removing a Comment, also clean up dangling references in the body
@@ -221,6 +292,16 @@ public partial class WordHandler
 
         _doc.MainDocumentPart?.WordprocessingCommentsPart?.Comments?.Save();
         _doc.MainDocumentPart?.Document?.Save();
+        // BUG-R10-03: if we removed a run inside a header/footer, the
+        // Save() above only persists the main document part. Also save
+        // every header/footer part so the removal actually lands on disk.
+        if (_doc.MainDocumentPart != null)
+        {
+            foreach (var hp in _doc.MainDocumentPart.HeaderParts)
+                hp.Header?.Save();
+            foreach (var fp in _doc.MainDocumentPart.FooterParts)
+                fp.Footer?.Save();
+        }
         return null;
     }
 
@@ -307,6 +388,13 @@ public partial class WordHandler
                     ?? throw new ArgumentException($"Target parent not found: {targetParentPath}");
             }
         }
+
+        // CONSISTENCY(word-schema): w:r cannot be a direct child of w:body.
+        // Reject obviously invalid parent/child combinations rather than
+        // produce malformed XML that breaks downstream queries.
+        if (element.LocalName == "r" && targetParent.LocalName == "body")
+            throw new ArgumentException(
+                "Cannot move a run (w:r) directly to /body. Runs must live inside a paragraph.");
 
         element.Remove();
 

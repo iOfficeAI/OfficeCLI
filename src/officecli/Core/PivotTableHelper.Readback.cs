@@ -174,8 +174,16 @@ internal static partial class PivotTableHelper
                 {
                     foreach (var child in ext.ChildElements)
                     {
-                        if (child.LocalName == "pivotTableDefinition"
-                            && child.GetAttribute("fillDownLabelsDefault", "").Value == "1")
+                        if (child.LocalName != "pivotTableDefinition") continue;
+                        // Open XML SDK v3's GetAttribute(local, ns) throws
+                        // KeyNotFoundException when the attribute is absent —
+                        // which is the common case here since Excel only
+                        // emits fillDownLabelsDefault when the user enables
+                        // "Repeat Item Labels". Enumerate attributes and
+                        // tolerate absence instead.
+                        var attr = child.GetAttributes()
+                            .FirstOrDefault(a => a.LocalName == "fillDownLabelsDefault");
+                        if (attr.Value == "1")
                         {
                             repeatLabels = true;
                             break;

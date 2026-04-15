@@ -181,6 +181,22 @@ public partial class PowerPointHandler
             return layoutNode;
         }
 
+        // Try OLE path: /slide[N]/ole[M]
+        // CONSISTENCY(ole-alias): "oleobject" mirrors Add's case switch
+        var oleGetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/(?:ole|oleobject|object|embed)\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (oleGetMatch.Success)
+        {
+            var oleSlideIdx = int.Parse(oleGetMatch.Groups[1].Value);
+            var oleNodeIdx = int.Parse(oleGetMatch.Groups[2].Value);
+            var slidePartsO = GetSlideParts().ToList();
+            if (oleSlideIdx < 1 || oleSlideIdx > slidePartsO.Count)
+                throw new ArgumentException($"Slide {oleSlideIdx} not found (total: {slidePartsO.Count})");
+            var oleNodes = CollectOleNodesForSlide(oleSlideIdx, slidePartsO[oleSlideIdx - 1]);
+            if (oleNodeIdx < 1 || oleNodeIdx > oleNodes.Count)
+                throw new ArgumentException($"OLE object {oleNodeIdx} not found at /slide[{oleSlideIdx}] (available: {oleNodes.Count}).");
+            return oleNodes[oleNodeIdx - 1];
+        }
+
         // Try notes path: /slide[N]/notes
         var notesGetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/notes$");
         if (notesGetMatch.Success)
@@ -602,7 +618,7 @@ public partial class PowerPointHandler
             var csChartIdx = int.Parse(chartSeriesGetMatch.Groups[2].Value);
             var csSeriesIdx = int.Parse(chartSeriesGetMatch.Groups[3].Value);
 
-            var (csSlidePart, csChartGf, csChartPart) = ResolveChart(csSlideIdx, csChartIdx);
+            var (csSlidePart, csChartGf, csChartPart, _) = ResolveChart(csSlideIdx, csChartIdx);
             // Get the chart node with depth=1 to populate series children
             var chartNode = ChartToNode(csChartGf, csSlidePart, csSlideIdx, csChartIdx, 1);
             var seriesChildren = chartNode.Children.Where(c => c.Type == "series").ToList();
@@ -825,7 +841,20 @@ public partial class PowerPointHandler
         var selectorForType = Regex.Replace(selector, @":(contains\([^)]*\)|empty|no-alt)", "");
         // Also strip shorthand ":text" syntax so "shape:Find me" → "shape"
         selectorForType = Regex.Replace(selectorForType, @":(?![\[\(]).*$", "");
-        var typeMatch = Regex.Match(selectorForType.Contains(']') ? selectorForType.Split(']').Last() : selectorForType, @"^(?:slide\[\d+\]\s*>?\s*)?([\w]+)");
+        // Extract raw element type. If the selector starts with a slide
+        // prefix ("slide[1]>shape"), strip it first; otherwise parse from
+        // the beginning. Using Split(']').Last() on a selector that ENDS
+        // with ']' (e.g. "ole[progId=Excel.Sheet.12]") yields an empty
+        // string and the regex fails to capture — breaking the ole branch
+        // dispatch and silently returning empty results.
+        var typeSource = selectorForType;
+        // CONSISTENCY(query-slide-prefix): strip the optional leading '/'
+        // and the slide[N] prefix (with either '>' or '/' separator) so that
+        // both "slide[1]>ole" and "/slide[1]/ole" resolve rawType correctly.
+        var slidePrefixMatch = Regex.Match(typeSource, @"^\s*/?slide\[\d+\]\s*[>/]?\s*");
+        if (slidePrefixMatch.Success)
+            typeSource = typeSource.Substring(slidePrefixMatch.Length);
+        var typeMatch = Regex.Match(typeSource, @"^([\w]+)");
         var rawType = typeMatch.Success ? typeMatch.Groups[1].Value.ToLowerInvariant() : "";
         bool isKnownType = string.IsNullOrEmpty(rawType)
             || rawType is "shape" or "textbox" or "title" or "picture" or "pic"
@@ -836,6 +865,8 @@ public partial class PowerPointHandler
                 or "group" or "zoom"
                 or "slidemaster" or "slidelayout"
                 or "media" or "image"
+                // CONSISTENCY(ole-alias): "oleobject" mirrors Add's case switch
+                or "ole" or "oleobject" or "object" or "embed"
                 or "tc" or "cell" or "tr" or "row";
         if (!isKnownType)
         {
@@ -928,6 +959,37 @@ public partial class PowerPointHandler
                         }
                     }
                     results.Add(picNode);
+                }
+            }
+            return results;
+        }
+
+        // OLE object query. In PPTX, embedded OLE lives inside a
+        // <p:graphicFrame> whose <a:graphicData uri="...ole"> contains a
+        // <p:oleObj> element naming the progId + backing rel id. We also
+        // surface any orphan embedded parts the slide may have — same
+        // rationale as the Excel reader: forensics + zero silent loss.
+        // CONSISTENCY(ole-alias): "oleobject" mirrors Add's case switch
+        if (rawType is "ole" or "oleobject" or "object" or "embed")
+        {
+            int oleSlideNum = 0;
+            foreach (var slidePart in GetSlideParts())
+            {
+                oleSlideNum++;
+                // CONSISTENCY(query-slide-scope): match the shape/picture/table
+                // branch below — apply parsed.SlideNum so that `slide[2]>ole`
+                // returns only slide 2's OLE objects instead of leaking all
+                // slides' results.
+                if (parsed.SlideNum.HasValue && parsed.SlideNum.Value != oleSlideNum)
+                    continue;
+                var nodes = CollectOleNodesForSlide(oleSlideNum, slidePart);
+                foreach (var n in nodes)
+                {
+                    // CONSISTENCY(query-attr-filter): match Word/Excel OLE query
+                    // and the non-OLE PPT shape branch — apply generic attribute
+                    // filter (e.g. progId=...) so users can narrow OLE results.
+                    if (MatchesGenericAttributes(n, parsed.Attributes))
+                        results.Add(n);
                 }
             }
             return results;

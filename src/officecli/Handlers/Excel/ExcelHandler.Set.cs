@@ -315,6 +315,189 @@ public partial class ExcelHandler
             return dvUnsupported;
         }
 
+        // Handle /SheetName/ole[N]
+        // Replace backing embedded part + refresh ProgID. Cleans up the
+        // old payload part (CLAUDE.md Known API Quirks rule: always delete
+        // the old part on src replacement).
+        var oleSetMatch = Regex.Match(cellRef, @"^(?:ole|object|embed)\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (oleSetMatch.Success)
+        {
+            var oleIdxSet = int.Parse(oleSetMatch.Groups[1].Value);
+            var oleWs = GetSheet(worksheet);
+            var oleElements = oleWs.Descendants<OleObject>().ToList();
+            if (oleIdxSet < 1 || oleIdxSet > oleElements.Count)
+                throw new ArgumentException($"OLE object index {oleIdxSet} out of range (1..{oleElements.Count})");
+            var oleObjSet = oleElements[oleIdxSet - 1];
+            var oleUnsupportedSet = new List<string>();
+            foreach (var (key, value) in properties)
+            {
+                switch (key.ToLowerInvariant())
+                {
+                    case "path" or "src":
+                    {
+                        if (oleObjSet.Id?.Value is string oldRel && !string.IsNullOrEmpty(oldRel))
+                        {
+                            try { worksheet.DeletePart(oldRel); } catch { }
+                        }
+                        var (newRel, _) = OfficeCli.Core.OleHelper.AddEmbeddedPart(worksheet, value, _filePath);
+                        oleObjSet.Id = newRel;
+                        if (!properties.ContainsKey("progId") && !properties.ContainsKey("progid"))
+                        {
+                            var autoProgId = OfficeCli.Core.OleHelper.DetectProgId(value);
+                            OfficeCli.Core.OleHelper.ValidateProgId(autoProgId);
+                            oleObjSet.ProgId = autoProgId;
+                        }
+                        break;
+                    }
+                    case "progid":
+                        OfficeCli.Core.OleHelper.ValidateProgId(value);
+                        oleObjSet.ProgId = value;
+                        break;
+                    case "display":
+                        // CONSISTENCY(excel-ole-display): Excel Add rejects
+                        // any 'display' key with ArgumentException (exit 1);
+                        // Set must do the same instead of falling into the
+                        // default "unsupported" branch (exit 2). Excel has
+                        // no DrawAspect concept — worksheet objects are
+                        // always shown as icons via objectPr/anchor, so
+                        // 'display' would be a no-op. Re-use the exact
+                        // string Add throws so both error paths are
+                        // indistinguishable from the caller's perspective.
+                        throw new ArgumentException(
+                            "'display' property is not supported for Excel OLE "
+                            + "(Excel always shows objects as icon). Remove --prop display.");
+                    case "width":
+                    case "height":
+                    {
+                        // CONSISTENCY(ole-width-units): accept either a bare
+                        // integer cell-span count or a unit-qualified size
+                        // ("10cm", "3in", "72pt"). Symmetric with Add-side
+                        // ParseAnchorDimensionEmu, so Get→Set round-trip of
+                        // the unit-qualified string Get emits works.
+                        long emuTotal;
+                        try
+                        {
+                            emuTotal = ParseAnchorDimensionEmu(value, key.ToLowerInvariant());
+                        }
+                        catch
+                        {
+                            oleUnsupportedSet.Add(key);
+                            break;
+                        }
+                        if (emuTotal < 0)
+                        {
+                            oleUnsupportedSet.Add(key);
+                            break;
+                        }
+                        var objectPrSet = oleObjSet.GetFirstChild<EmbeddedObjectProperties>();
+                        var objAnchorSet = objectPrSet?.GetFirstChild<ObjectAnchor>();
+                        var fromMSet = objAnchorSet?.GetFirstChild<FromMarker>();
+                        var toMSet = objAnchorSet?.GetFirstChild<ToMarker>();
+                        if (fromMSet == null || toMSet == null)
+                        {
+                            oleUnsupportedSet.Add(key);
+                            break;
+                        }
+                        if (key.Equals("width", StringComparison.OrdinalIgnoreCase))
+                        {
+                            int.TryParse(fromMSet.GetFirstChild<XDR.ColumnId>()?.Text ?? "0", out var fromCol);
+                            long.TryParse(fromMSet.GetFirstChild<XDR.ColumnOffset>()?.Text ?? "0", out var fromColOff);
+                            // Rebuild ToMarker col + offset from the parsed EMU
+                            // extent so Get→Set preserves sub-cell precision.
+                            long wholeCols = emuTotal / EmuPerColApprox;
+                            long remCols = emuTotal % EmuPerColApprox;
+                            var toColChild = toMSet.GetFirstChild<XDR.ColumnId>();
+                            if (toColChild != null) toColChild.Text = (fromCol + (int)wholeCols).ToString();
+                            var toColOffChild = toMSet.GetFirstChild<XDR.ColumnOffset>();
+                            if (toColOffChild != null) toColOffChild.Text = (fromColOff + remCols).ToString();
+                            else toMSet.InsertAfter(new XDR.ColumnOffset((fromColOff + remCols).ToString()), toColChild);
+                        }
+                        else
+                        {
+                            int.TryParse(fromMSet.GetFirstChild<XDR.RowId>()?.Text ?? "0", out var fromRow);
+                            long.TryParse(fromMSet.GetFirstChild<XDR.RowOffset>()?.Text ?? "0", out var fromRowOff);
+                            long wholeRows = emuTotal / EmuPerRowApprox;
+                            long remRows = emuTotal % EmuPerRowApprox;
+                            var toRowChild = toMSet.GetFirstChild<XDR.RowId>();
+                            if (toRowChild != null) toRowChild.Text = (fromRow + (int)wholeRows).ToString();
+                            var toRowOffChild = toMSet.GetFirstChild<XDR.RowOffset>();
+                            if (toRowOffChild != null) toRowOffChild.Text = (fromRowOff + remRows).ToString();
+                            else toMSet.InsertAfter(new XDR.RowOffset((fromRowOff + remRows).ToString()), toRowChild);
+                        }
+                        break;
+                    }
+                    case "anchor":
+                    {
+                        // CONSISTENCY(ole-width-units): mirror Add-side warn
+                        // (ExcelHandler.Add.cs ~L977). anchor= defines the
+                        // full rectangle, so width/height on the same Set
+                        // call would be ambiguous and are silently dropped.
+                        // Warn loudly rather than fail so existing scripts
+                        // keep working but users notice the dropped value.
+                        if (properties.ContainsKey("width") || properties.ContainsKey("height"))
+                            Console.Error.WriteLine(
+                                "Warning: 'width'/'height' are ignored when 'anchor' is provided (anchor defines the full rectangle).");
+                        // CONSISTENCY(ole-anchor-roundtrip): mirror Add-side
+                        // regex so `get ... format.anchor` → `set anchor=...`
+                        // round-trips. Whole-cell rectangle; sub-cell
+                        // ColumnOffset/RowOffset are zeroed on both markers
+                        // (same as Add when anchor= is provided).
+                        var anchorM = Regex.Match(value ?? "", @"^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$", RegexOptions.IgnoreCase);
+                        if (!anchorM.Success)
+                        {
+                            oleUnsupportedSet.Add(key);
+                            break;
+                        }
+                        var objectPrAnc = oleObjSet.GetFirstChild<EmbeddedObjectProperties>();
+                        var objAnchorAnc = objectPrAnc?.GetFirstChild<ObjectAnchor>();
+                        var fromMAnc = objAnchorAnc?.GetFirstChild<FromMarker>();
+                        var toMAnc = objAnchorAnc?.GetFirstChild<ToMarker>();
+                        if (fromMAnc == null || toMAnc == null)
+                        {
+                            oleUnsupportedSet.Add(key);
+                            break;
+                        }
+                        // XDR ColumnId/RowId are 0-based; A1-style is 1-based.
+                        int newFromCol = ColumnNameToIndex(anchorM.Groups[1].Value) - 1;
+                        int newFromRow = int.Parse(anchorM.Groups[2].Value) - 1;
+                        int newToCol, newToRow;
+                        if (anchorM.Groups[3].Success)
+                        {
+                            newToCol = ColumnNameToIndex(anchorM.Groups[3].Value) - 1;
+                            newToRow = int.Parse(anchorM.Groups[4].Value) - 1;
+                        }
+                        else
+                        {
+                            newToCol = newFromCol + 2;
+                            newToRow = newFromRow + 3;
+                        }
+                        var fromColChild = fromMAnc.GetFirstChild<XDR.ColumnId>();
+                        if (fromColChild != null) fromColChild.Text = newFromCol.ToString();
+                        var fromRowChild = fromMAnc.GetFirstChild<XDR.RowId>();
+                        if (fromRowChild != null) fromRowChild.Text = newFromRow.ToString();
+                        var fromColOffChild = fromMAnc.GetFirstChild<XDR.ColumnOffset>();
+                        if (fromColOffChild != null) fromColOffChild.Text = "0";
+                        var fromRowOffChild = fromMAnc.GetFirstChild<XDR.RowOffset>();
+                        if (fromRowOffChild != null) fromRowOffChild.Text = "0";
+                        var toColChildAnc = toMAnc.GetFirstChild<XDR.ColumnId>();
+                        if (toColChildAnc != null) toColChildAnc.Text = newToCol.ToString();
+                        var toRowChildAnc = toMAnc.GetFirstChild<XDR.RowId>();
+                        if (toRowChildAnc != null) toRowChildAnc.Text = newToRow.ToString();
+                        var toColOffChildAnc = toMAnc.GetFirstChild<XDR.ColumnOffset>();
+                        if (toColOffChildAnc != null) toColOffChildAnc.Text = "0";
+                        var toRowOffChildAnc = toMAnc.GetFirstChild<XDR.RowOffset>();
+                        if (toRowOffChildAnc != null) toRowOffChildAnc.Text = "0";
+                        break;
+                    }
+                    default:
+                        oleUnsupportedSet.Add(key);
+                        break;
+                }
+            }
+            SaveWorksheet(worksheet);
+            return oleUnsupportedSet;
+        }
+
         // Handle /SheetName/picture[N]
         var picSetMatch = Regex.Match(cellRef, @"^picture\[(\d+)\]$", RegexOptions.IgnoreCase);
         if (picSetMatch.Success)
@@ -789,12 +972,39 @@ public partial class ExcelHandler
 
             // If series sub-path, prefix all properties with series{N}. for ChartSetter
             var chartProps = properties;
-            if (chartMatch.Groups[2].Success)
+            var isSeriesPath = chartMatch.Groups[2].Success;
+            if (isSeriesPath)
             {
                 var seriesIdx = int.Parse(chartMatch.Groups[2].Value);
                 chartProps = new Dictionary<string, string>();
                 foreach (var (key, value) in properties)
                     chartProps[$"series{seriesIdx}.{key}"] = value;
+            }
+
+            // Chart-level position/size Set — TwoCellAnchor mutation. Skip
+            // for series sub-paths (series don't have their own position).
+            // Accepts `x`/`y`/`width`/`height` in the same units as the OLE
+            // object Set path and as chart Add.
+            //
+            // CONSISTENCY(chart-position-set): mirrors the PPTX path
+            // (PowerPointHandler.Set.cs chart case) — same prop keys, same
+            // value grammar — so users learn one vocabulary for all three
+            // document types. Excel differs only in that we mutate a
+            // TwoCellAnchor (row/col markers) instead of a GraphicFrame
+            // Transform, because xlsx charts are cell-anchored by design.
+            if (!isSeriesPath)
+            {
+                var positionUnsupported = ApplyChartPositionSet(
+                    drawingsPart, chartIdx, chartProps);
+                // Drop handled keys from chartProps so the downstream setter
+                // doesn't flag them as unsupported.
+                foreach (var k in new[] { "x", "y", "width", "height" })
+                {
+                    var matched = chartProps.Keys
+                        .FirstOrDefault(key => key.Equals(k, StringComparison.OrdinalIgnoreCase));
+                    if (matched != null && !positionUnsupported.Contains(matched))
+                        chartProps.Remove(matched);
+                }
             }
 
             if (chartInfo.StandardPart != null)
@@ -803,9 +1013,15 @@ public partial class ExcelHandler
                 chartInfo.StandardPart.ChartSpace?.Save();
                 return unsup;
             }
+            else if (chartInfo.ExtendedPart != null)
+            {
+                // cx:chart — delegates to ChartExBuilder.SetChartProperties,
+                // which covers title/axis/gridline styling, series fill,
+                // histogram binning, etc. Returns unsupported keys (if any).
+                return ChartExBuilder.SetChartProperties(chartInfo.ExtendedPart, chartProps);
+            }
             else
             {
-                // cx:chart — all chart-internal properties are unsupported
                 return chartProps.Keys.ToList();
             }
         }
@@ -970,10 +1186,28 @@ public partial class ExcelHandler
     private List<string> SetCellProperties(Cell cell, string cellRef, WorksheetPart worksheet, Dictionary<string, string> properties)
     {
         var unsupported = ApplyCellProperties(cell, cellRef, worksheet, properties);
+        // Remove completely empty cells (no value, no formula, no custom style) so that
+        // rows with no remaining cells are pruned from XML. This keeps maxRow correct
+        // and produces "remove" watch patches instead of "replace" for cleared rows.
+        PruneEmptyCell(cell);
         // Any mutation to a cell (value, formula, clear) can invalidate the calc chain
         DeleteCalcChainIfPresent();
         SaveWorksheet(worksheet);
         return unsupported;
+    }
+
+    private static void PruneEmptyCell(Cell cell)
+    {
+        var hasValue = cell.CellValue != null && !string.IsNullOrEmpty(cell.CellValue.Text);
+        var hasFormula = cell.CellFormula != null;
+        var hasStyle = cell.StyleIndex != null && cell.StyleIndex.Value != 0;
+        if (!hasValue && !hasFormula && !hasStyle)
+        {
+            var row = cell.Parent as Row;
+            cell.Remove();
+            if (row != null && !row.Elements<Cell>().Any())
+                row.Remove();
+        }
     }
 
     /// <summary>Apply cell properties without saving — caller is responsible for SaveWorksheet.</summary>
@@ -998,6 +1232,9 @@ public partial class ExcelHandler
             switch (key.ToLowerInvariant())
             {
                 case "value" or "text":
+                    // Auto-detect formula: value starting with '=' is treated as formula
+                    if (value.StartsWith('=') && value.Length > 1)
+                        goto case "formula";
                     var cellValue = value.Replace("\\n", "\n"); // Support escaped newlines
                     cell.CellFormula = null; // Clear formula when explicit value is set
                     // If cell is already boolean type, convert true/false to 1/0

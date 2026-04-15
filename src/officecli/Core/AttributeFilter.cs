@@ -77,6 +77,19 @@ internal static class AttributeFilter
                 _ => FilterOp.Equal
             };
 
+            // BUG-R10-01: wildcard '*' in attribute value silently returned 0
+            // matches. Users tried e.g. `ole[progId=Excel*]` expecting a
+            // contains-like match. Fail fast with a clear error pointing to
+            // the right operator rather than quietly mis-filtering.
+            if (val.Contains('*'))
+                throw new CliException(
+                    $"Wildcards (*) are not supported in attribute filters. " +
+                    $"Use ~= for contains, e.g. {key}~={val.Trim('*')}.")
+                {
+                    Code = "invalid_selector",
+                    Suggestion = $"Did you mean [{key}~={val.Trim('*')}]?"
+                };
+
             conditions.Add(new Condition(key, op, val));
             matchedSpans.Add((m.Index, m.Index + m.Length));
         }

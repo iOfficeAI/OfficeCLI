@@ -21,39 +21,95 @@ public static class McpServer
         using var reader = new StreamReader(Console.OpenStandardInput());
         using var writer = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
 
-        while (true)
-        {
-            var line = await reader.ReadLineAsync();
-            if (line == null) break;
-            if (string.IsNullOrWhiteSpace(line)) continue;
+        // MCP server is a long-lived stdio process. The normal
+        // per-invocation auto-upgrade path (Program.cs:112) is
+        // short-circuited for `officecli mcp` because CheckInBackground
+        // is called AFTER the mcp branch in Program.cs — so without
+        // this hook, an MCP instance started once and left running for
+        // days/weeks would never see a new release.
+        //
+        // Run the upgrade path in the background: fire once at startup
+        // (applies any pending .update from a previous run and kicks a
+        // fresh check if >24h stale), then every hour. The hourly wake
+        // is cheap because CheckInBackground is debounced by the same
+        // 24h timestamp in ~/.officecli/config.json as the normal CLI
+        // path, so 23 of 24 wakes no-op. The actual download / verify /
+        // File.Move happens in a spawned subprocess whose stdio is
+        // redirected (see UpdateChecker.SpawnRefreshProcess), so
+        // nothing it does can corrupt our stdout JSON-RPC stream.
+        using var upgradeCts = new CancellationTokenSource();
+        var upgradeTask = RunPeriodicUpgradeCheckAsync(upgradeCts.Token);
 
+        try
+        {
+            while (true)
+            {
+                var line = await reader.ReadLineAsync();
+                if (line == null) break;
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                try
+                {
+                    using var doc = JsonDocument.Parse(line);
+                    var root = doc.RootElement;
+                    var method = root.TryGetProperty("method", out var m) ? m.GetString() : null;
+                    var id = root.TryGetProperty("id", out var idEl) ? idEl.Clone() : (JsonElement?)null;
+
+                    var response = method switch
+                    {
+                        "initialize" => HandleInitialize(id),
+                        "notifications/initialized" => null,
+                        "tools/list" => HandleToolsList(id),
+                        "tools/call" => HandleToolsCall(id, root),
+                        "ping" => WriteJson(w => { w.WriteStartObject(); Rpc(w, id); w.WriteStartObject("result"); w.WriteEndObject(); w.WriteEndObject(); }),
+                        _ => id.HasValue ? ErrorJson(id, -32601, $"Method not found: {method}") : null,
+                    };
+
+                    if (response != null)
+                        await writer.WriteLineAsync(response);
+                }
+                catch (JsonException)
+                {
+                    await writer.WriteLineAsync(ErrorJson(null, -32700, "Parse error"));
+                }
+                catch (Exception ex)
+                {
+                    await writer.WriteLineAsync(ErrorJson(null, -32603, $"Internal error: {ex.Message}"));
+                }
+            }
+        }
+        finally
+        {
+            upgradeCts.Cancel();
+            try { await upgradeTask; } catch { }
+        }
+    }
+
+    private static async Task RunPeriodicUpgradeCheckAsync(CancellationToken token)
+    {
+        // Fire once at startup — no matter what state the config is in,
+        // this applies any pending .update from a previous run and
+        // (if stale) spawns a fresh download. Does not block the main
+        // loop: this method runs on a background task.
+        try { UpdateChecker.CheckInBackground(); } catch { }
+
+        while (!token.IsCancellationRequested)
+        {
             try
             {
-                using var doc = JsonDocument.Parse(line);
-                var root = doc.RootElement;
-                var method = root.TryGetProperty("method", out var m) ? m.GetString() : null;
-                var id = root.TryGetProperty("id", out var idEl) ? idEl.Clone() : (JsonElement?)null;
-
-                var response = method switch
-                {
-                    "initialize" => HandleInitialize(id),
-                    "notifications/initialized" => null,
-                    "tools/list" => HandleToolsList(id),
-                    "tools/call" => HandleToolsCall(id, root),
-                    "ping" => WriteJson(w => { w.WriteStartObject(); Rpc(w, id); w.WriteStartObject("result"); w.WriteEndObject(); w.WriteEndObject(); }),
-                    _ => id.HasValue ? ErrorJson(id, -32601, $"Method not found: {method}") : null,
-                };
-
-                if (response != null)
-                    await writer.WriteLineAsync(response);
+                await Task.Delay(TimeSpan.FromHours(1), token);
+                UpdateChecker.CheckInBackground();
             }
-            catch (JsonException)
+            catch (OperationCanceledException)
             {
-                await writer.WriteLineAsync(ErrorJson(null, -32700, "Parse error"));
+                break;
             }
-            catch (Exception ex)
+            catch
             {
-                await writer.WriteLineAsync(ErrorJson(null, -32603, $"Internal error: {ex.Message}"));
+                // Never crash the MCP server over an update-check failure.
+                // UpdateChecker already swallows exceptions internally, so
+                // this is belt-and-braces for any future change that might
+                // leak one through.
             }
         }
     }

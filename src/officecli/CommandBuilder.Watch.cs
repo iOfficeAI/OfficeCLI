@@ -24,21 +24,42 @@ static partial class CommandBuilder
             var file = result.GetValue(watchFileArg)!;
             var port = result.GetValue(watchPortOpt);
 
-            // Render initial HTML from existing file content
+            // Render initial HTML: ask the resident process if one is running,
+            // otherwise open the file directly as a fallback.
             string? initialHtml = null;
             if (file.Exists)
             {
-                try
+                // Try resident first — avoids file lock conflict.
+                // Json=true makes resident return raw HTML via Console.Write;
+                // the resident then wraps it in a JSON envelope { "success":true, "message":"<html>..." }.
+                var resp = ResidentClient.TrySend(file.FullName,
+                    new ResidentRequest { Command = "view", Args = new() { ["mode"] = "html" }, Json = true },
+                    connectTimeoutMs: 2000);
+                if (resp is { ExitCode: 0 } && !string.IsNullOrEmpty(resp.Stdout))
                 {
-                    using var handler = DocumentHandlerFactory.Open(file.FullName, editable: false);
-                    if (handler is OfficeCli.Handlers.PowerPointHandler ppt)
-                        initialHtml = ppt.ViewAsHtml();
-                    else if (handler is OfficeCli.Handlers.ExcelHandler excel)
-                        initialHtml = excel.ViewAsHtml();
-                    else if (handler is OfficeCli.Handlers.WordHandler word)
-                        initialHtml = word.ViewAsHtml();
+                    try
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(resp.Stdout);
+                        if (doc.RootElement.TryGetProperty("message", out var msg))
+                            initialHtml = msg.GetString();
+                    }
+                    catch { /* parse failed — fall through to direct open */ }
                 }
-                catch { /* ignore — will show waiting page */ }
+                else
+                {
+                    // No resident — open directly
+                    try
+                    {
+                        using var handler = DocumentHandlerFactory.Open(file.FullName, editable: false);
+                        if (handler is OfficeCli.Handlers.PowerPointHandler ppt)
+                            initialHtml = ppt.ViewAsHtml();
+                        else if (handler is OfficeCli.Handlers.ExcelHandler excel)
+                            initialHtml = excel.ViewAsHtml();
+                        else if (handler is OfficeCli.Handlers.WordHandler word)
+                            initialHtml = word.ViewAsHtml();
+                    }
+                    catch { /* ignore — will show waiting page */ }
+                }
             }
 
             using var cts = new CancellationTokenSource();

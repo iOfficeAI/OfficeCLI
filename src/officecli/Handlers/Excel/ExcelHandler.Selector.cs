@@ -28,6 +28,22 @@ public partial class ExcelHandler
         string? typeEquals = null;
         string? typeNotEquals = null;
 
+        // Normalize path-style selectors: "/Sheet1/cell[...]" → "Sheet1!cell[...]"
+        if (selector.StartsWith('/'))
+        {
+            var slashIdx = selector.IndexOf('/', 1);
+            if (slashIdx > 0)
+            {
+                sheet = selector[1..slashIdx];
+                selector = selector[(slashIdx + 1)..];
+            }
+            else
+            {
+                // Just "/cell" — strip leading slash
+                selector = selector[1..];
+            }
+        }
+
         // Check for sheet prefix: Sheet1!cell[...]
         // Only treat '!' as sheet separator if NOT part of '!=' operator
         var exclMatch = Regex.Match(selector, @"^(.+?)!(?!=)");

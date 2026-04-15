@@ -21,7 +21,7 @@ public partial class PowerPointHandler
     {
         if (!properties.TryGetValue("path", out var modelPath) &&
             !properties.TryGetValue("src", out modelPath))
-            throw new ArgumentException("'path' or 'src' property is required for 3dmodel type");
+            throw new ArgumentException("'src' property is required for 3dmodel type");
 
         var slideMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]$");
         if (!slideMatch.Success)
@@ -32,12 +32,9 @@ public partial class PowerPointHandler
         if (slideIdx < 1 || slideIdx > slideParts.Count)
             throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
 
-        // Resolve file path
-        var fullPath = Path.GetFullPath(modelPath);
-        if (!File.Exists(fullPath))
-            throw new FileNotFoundException($"3D model file not found: {modelPath}");
-
-        var fileExt = Path.GetExtension(fullPath).ToLowerInvariant();
+        // Resolve source (local path, HTTP URL, or data URI)
+        var (modelStream, fileExt) = OfficeCli.Core.FileSource.Resolve(modelPath);
+        using var modelStreamDispose = modelStream;
         if (fileExt != ".glb")
             throw new ArgumentException($"Unsupported 3D model format: {fileExt}. Only .glb (glTF-Binary) is supported.");
 
@@ -46,12 +43,12 @@ public partial class PowerPointHandler
             ?? throw new InvalidOperationException("Slide has no shape tree");
 
         // Parse GLB bounding box for centering
-        var glbBounds = ParseGlbBoundingBox(fullPath);
+        var glbBounds = ParseGlbBoundingBox(modelStream);
 
         // Embed .glb file as an extended part
+        modelStream.Position = 0;
         var modelPart = slidePart.AddExtendedPart(Model3dRelType, GlbContentType, ".glb");
-        using (var fs = File.OpenRead(fullPath))
-            modelPart.FeedData(fs);
+        modelPart.FeedData(modelStream);
         var modelRelId = slidePart.GetIdOfPart(modelPart);
 
         // Create fallback placeholder image
@@ -450,12 +447,12 @@ public partial class PowerPointHandler
     /// Parse a GLB file and compute world-space AABB by traversing the scene graph,
     /// matching OSpectre's bounding box calculation.
     /// </summary>
-    private static GlbBoundingBox ParseGlbBoundingBox(string glbPath)
+    private static GlbBoundingBox ParseGlbBoundingBox(Stream glbStream)
     {
         try
         {
-            using var fs = File.OpenRead(glbPath);
-            using var reader = new BinaryReader(fs);
+            glbStream.Position = 0;
+            using var reader = new BinaryReader(glbStream, System.Text.Encoding.UTF8, leaveOpen: true);
 
             var magic = reader.ReadUInt32();
             var version = reader.ReadUInt32();

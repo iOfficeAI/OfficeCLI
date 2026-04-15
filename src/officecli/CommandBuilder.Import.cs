@@ -151,13 +151,30 @@ static partial class CommandBuilder
 
             OfficeCli.BlankDocCreator.Create(file);
             var fullCreatedPath = Path.GetFullPath(file);
+
+            // Best-effort: auto-start a short-lived resident process so
+            // follow-up commands on this freshly-created file hit the
+            // in-memory handler instead of re-opening from disk each time.
+            // Uses a 60s idle timeout (much shorter than `open`'s default
+            // 12min) so a stray `create` with no follow-up exits quickly.
+            // Failure here does NOT fail the command — the file is already
+            // on disk and all other commands still work via direct open.
+            var residentStarted = TryStartResidentProcess(fullCreatedPath, idleSeconds: 60, out var residentErr);
+            var residentSuffix = residentStarted
+                ? " (resident started, auto-close in 60s idle)"
+                : "";
+
             if (json)
             {
-                Console.WriteLine(OutputFormatter.WrapEnvelopeText($"Created: {fullCreatedPath}"));
+                Console.WriteLine(OutputFormatter.WrapEnvelopeText($"Created: {fullCreatedPath}{residentSuffix}"));
             }
             else
             {
-                Console.WriteLine($"Created: {file}");
+                Console.WriteLine($"Created: {file}{residentSuffix}");
+                if (!residentStarted && !string.IsNullOrEmpty(residentErr))
+                {
+                    Console.Error.WriteLine($"Note: resident auto-start failed ({residentErr}); falling back to direct file access.");
+                }
                 if (Path.GetExtension(file).Equals(".pptx", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine($"  totalSlides: 0");

@@ -11,7 +11,7 @@ namespace OfficeCli;
 public static class McpInstaller
 {
     private static string OfficecliPath =>
-        Environment.ProcessPath ?? "officecli";
+        Environment.ProcessPath ?? (OperatingSystem.IsWindows() ? "officecli.exe" : "officecli");
 
     public static void Install(string target)
     {

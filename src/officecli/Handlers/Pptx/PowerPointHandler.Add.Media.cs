@@ -18,7 +18,7 @@ public partial class PowerPointHandler
     {
                 if (!properties.TryGetValue("path", out var imgPath)
                     && !properties.TryGetValue("src", out imgPath))
-                    throw new ArgumentException("'path' or 'src' property is required for picture type");
+                    throw new ArgumentException("'src' property is required for picture type");
 
                 var imgSlideMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]$");
                 if (!imgSlideMatch.Success)
@@ -33,22 +33,43 @@ public partial class PowerPointHandler
                 var imgShapeTree = GetSlide(imgSlidePart).CommonSlideData?.ShapeTree
                     ?? throw new InvalidOperationException("Slide has no shape tree");
 
-                // Resolve image from file/base64/URL
-                var (imgStream, imgPartType) = OfficeCli.Core.ImageSource.Resolve(imgPath);
-                using var imgStreamDispose = imgStream;
+                // Resolve image from file/base64/URL and buffer for
+                // both embedding and dimension sniffing (aspect ratio).
+                var (rawImgStream, imgPartType) = OfficeCli.Core.ImageSource.Resolve(imgPath);
+                using var rawImgDispose = rawImgStream;
+                using var imgStream = new MemoryStream();
+                rawImgStream.CopyTo(imgStream);
+                imgStream.Position = 0;
 
                 // Embed image into slide part
                 var imagePart = imgSlidePart.AddImagePart(imgPartType);
                 imagePart.FeedData(imgStream);
+                imgStream.Position = 0;
                 var imgRelId = imgSlidePart.GetIdOfPart(imagePart);
 
-                // Dimensions (default: 6in x 4in)
-                long cxEmu = 5486400; // 6 inches in EMUs
-                long cyEmu = 3657600; // 4 inches in EMUs
-                if (properties.TryGetValue("width", out var widthStr))
-                    cxEmu = ParseEmu(widthStr);
-                if (properties.TryGetValue("height", out var heightStr))
-                    cyEmu = ParseEmu(heightStr);
+                // Dimensions (default: 6in x 4in, with auto aspect-ratio)
+                // CONSISTENCY(picture-aspect): when only one dimension is
+                // supplied, compute the other from native pixel ratio — same
+                // behavior as WordHandler.AddPicture.
+                bool hasWidth = properties.TryGetValue("width", out var widthStr);
+                bool hasHeight = properties.TryGetValue("height", out var heightStr);
+                long cxEmu = hasWidth ? ParseEmu(widthStr!) : 5486400;  // 6 inches fallback
+                long cyEmu = hasHeight ? ParseEmu(heightStr!) : 3657600; // 4 inches fallback
+
+                if (!hasWidth || !hasHeight)
+                {
+                    var dims = OfficeCli.Core.ImageSource.TryGetDimensions(imgStream);
+                    if (dims is { Width: > 0, Height: > 0 } d)
+                    {
+                        double ratio = (double)d.Height / d.Width;
+                        if (hasWidth && !hasHeight)
+                            cyEmu = (long)(cxEmu * ratio);
+                        else if (!hasWidth && hasHeight)
+                            cxEmu = (long)(cyEmu / ratio);
+                        else // neither supplied — default width, compute height
+                            cyEmu = (long)(cxEmu * ratio);
+                    }
+                }
 
                 // Position (default: centered on slide)
                 var (slideW, slideH) = GetSlideSize();
@@ -160,7 +181,7 @@ public partial class PowerPointHandler
 
                 // Apply deferred properties (axisTitle, dataLabels, etc.) via SetChartProperties
                 var deferredProps = properties
-                    .Where(kv => ChartHelper.DeferredAddKeys.Contains(kv.Key))
+                    .Where(kv => ChartHelper.IsDeferredKey(kv.Key))
                     .ToDictionary(kv => kv.Key, kv => kv.Value);
                 if (deferredProps.Count > 0)
                     ChartHelper.SetChartProperties(chartPart, deferredProps);
@@ -182,10 +203,12 @@ public partial class PowerPointHandler
                 if (!mediaSlideMatch.Success)
                     throw new ArgumentException("Media must be added to a slide: /slide[N]");
 
-                if (!properties.TryGetValue("path", out var mediaPath))
-                    throw new ArgumentException("'path' property required for media type");
-                if (!File.Exists(mediaPath))
-                    throw new FileNotFoundException($"Media file not found: {mediaPath}");
+                if (!properties.TryGetValue("path", out var mediaPath)
+                    && !properties.TryGetValue("src", out mediaPath))
+                    throw new ArgumentException("'src' property is required for media type");
+
+                var (mediaStream, ext) = OfficeCli.Core.FileSource.Resolve(mediaPath);
+                using var mediaStreamDispose = mediaStream;
 
                 var mediaSlideIdx = int.Parse(mediaSlideMatch.Groups[1].Value);
                 var mediaSlideParts = GetSlideParts().ToList();
@@ -196,7 +219,6 @@ public partial class PowerPointHandler
                 var mediaShapeTree = GetSlide(mediaSlidePart).CommonSlideData?.ShapeTree
                     ?? throw new InvalidOperationException("Slide has no shape tree");
 
-                var ext = Path.GetExtension(mediaPath).ToLowerInvariant();
                 var isVideo = type.ToLowerInvariant() == "video" ||
                     (type.ToLowerInvariant() == "media" && ext is ".mp4" or ".avi" or ".wmv" or ".mpg" or ".mov");
 
@@ -210,8 +232,7 @@ public partial class PowerPointHandler
 
                 // 1. Create MediaDataPart and feed binary data
                 var mediaDataPart = _doc.CreateMediaDataPart(contentType, ext);
-                using (var mediaStream = File.OpenRead(mediaPath))
-                    mediaDataPart.FeedData(mediaStream);
+                mediaDataPart.FeedData(mediaStream);
 
                 // 2. Create relationships: Video/Audio + Media
                 string videoRelId, mediaRelId;
@@ -346,5 +367,135 @@ public partial class PowerPointHandler
                 return $"/slide[{mediaSlideIdx}]/{(isVideo ? "video" : "audio")}[{sameTypeCount}]";
     }
 
+    // ==================== OLE Object Insertion ====================
+    //
+    // Inserts an embedded OLE object into a slide. The structure follows
+    // the PresentationML spec: a GraphicFrame hosting
+    //   <a:graphicData uri="…/ole"><p:oleObj ... /></a:graphicData>
+    // where p:oleObj carries progId + r:id (the payload relationship) and
+    // an inner p:pic element rendering the icon preview.
+    //
+    // Caller props:
+    //   src (required)  path to the file to embed
+    //   progId          defaults to OleHelper.DetectProgId(src)
+    //   width / height  EMU-parsed; defaults to 2in × 0.75in
+    //   x / y           position in EMU; defaults to top-left (457200,457200)
+    //   icon            path to a custom icon (png/jpg/emf); defaults to tiny PNG
+    //   display         "icon" (default, sets showAsIcon) or "content"
+    private string AddOle(string parentPath, int? index, Dictionary<string, string> properties)
+    {
+        properties ??= new Dictionary<string, string>();
+        var srcPath = OfficeCli.Core.OleHelper.RequireSource(properties);
+        OfficeCli.Core.OleHelper.WarnOnUnknownOleProps(properties);
+
+        var oleSlideMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]$");
+        if (!oleSlideMatch.Success)
+            throw new ArgumentException("OLE objects must be added to a slide: /slide[N]");
+
+        var oleSlideIdx = int.Parse(oleSlideMatch.Groups[1].Value);
+        var oleSlideParts = GetSlideParts().ToList();
+        if (oleSlideIdx < 1 || oleSlideIdx > oleSlideParts.Count)
+            throw new ArgumentException($"Slide {oleSlideIdx} not found (total: {oleSlideParts.Count})");
+
+        var oleSlidePart = oleSlideParts[oleSlideIdx - 1];
+        var oleShapeTree = GetSlide(oleSlidePart).CommonSlideData?.ShapeTree
+            ?? throw new InvalidOperationException("Slide has no shape tree");
+
+        // 1. Create the embedded payload part.
+        var (embedRelId, _) = OfficeCli.Core.OleHelper.AddEmbeddedPart(oleSlidePart, srcPath, _filePath);
+
+        // 2. ProgID (explicit or auto-detected).
+        var progId = OfficeCli.Core.OleHelper.ResolveProgId(properties, srcPath);
+
+        // 3. Icon image part (placeholder PNG or user-supplied).
+        var (_, oleIconRelId) = OfficeCli.Core.OleHelper.CreateIconPart(oleSlidePart, properties);
+
+        // 4. Dimensions.
+        long oleCx = properties.TryGetValue("width", out var wv)
+            ? ParseEmu(wv) : OfficeCli.Core.OleHelper.DefaultOleWidthEmu;
+        long oleCy = properties.TryGetValue("height", out var hv)
+            ? ParseEmu(hv) : OfficeCli.Core.OleHelper.DefaultOleHeightEmu;
+        long oleX = properties.TryGetValue("x", out var xv) ? ParseEmu(xv) : 457200;
+        long oleY = properties.TryGetValue("y", out var yv) ? ParseEmu(yv) : 457200;
+
+        // 5. Display mode: icon (default) or content. Strict validation —
+        // unknown values throw (see OleHelper.NormalizeOleDisplay).
+        var oleDisplay = OfficeCli.Core.OleHelper.NormalizeOleDisplay(
+            properties.GetValueOrDefault("display", "icon"));
+        bool showAsIcon = oleDisplay != "content";
+
+        // 6. Build the GraphicFrame + OleObject subtree. We lean on
+        //    strong-typed p:oleObj / p:embed / p:pic from the SDK so
+        //    attributes get schema-checked; only the outer GraphicFrame
+        //    wrapper uses hand-built OuterXml because GraphicData.Uri is
+        //    a string attribute, not a type particle.
+        var oleShapeId = GenerateUniqueShapeId(oleShapeTree);
+        var oleName = properties.GetValueOrDefault("name", $"Object {oleShapeId}");
+
+        var oleObj = new DocumentFormat.OpenXml.Presentation.OleObject
+        {
+            ShapeId = "",
+            Name = oleName,
+            ShowAsIcon = showAsIcon,
+            Id = embedRelId,
+            ImageWidth = (int)oleCx,
+            ImageHeight = (int)oleCy,
+            ProgId = progId,
+        };
+        // p:embed followColorScheme="full" — lets PowerPoint paint the
+        // icon using the current slide theme accent, matching PPT's own
+        // default for embed-mode OLE.
+        oleObj.AppendChild(new DocumentFormat.OpenXml.Presentation.OleObjectEmbed
+        {
+            FollowColorScheme = DocumentFormat.OpenXml.Presentation.OleObjectFollowColorSchemeValues.Full,
+        });
+
+        // Inner p:pic holding the icon preview (bound to the image part we
+        // just created). Structure mirrors a minimal non-animated picture.
+        var olePic = new DocumentFormat.OpenXml.Presentation.Picture();
+        olePic.NonVisualPictureProperties = new NonVisualPictureProperties(
+            new NonVisualDrawingProperties { Id = 0U, Name = "" },
+            new NonVisualPictureDrawingProperties(),
+            new ApplicationNonVisualDrawingProperties()
+        );
+        olePic.BlipFill = new BlipFill(
+            new Drawing.Blip { Embed = oleIconRelId },
+            new Drawing.Stretch(new Drawing.FillRectangle())
+        );
+        olePic.ShapeProperties = new ShapeProperties(
+            new Drawing.Transform2D(
+                new Drawing.Offset { X = oleX, Y = oleY },
+                new Drawing.Extents { Cx = oleCx, Cy = oleCy }
+            ),
+            new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = Drawing.ShapeTypeValues.Rectangle }
+        );
+        oleObj.AppendChild(olePic);
+
+        // 7. Wrap the OleObject in a GraphicFrame with the ole URI.
+        var oleGraphicData = new Drawing.GraphicData(oleObj)
+        {
+            Uri = "http://schemas.openxmlformats.org/presentationml/2006/ole",
+        };
+        var oleFrame = new GraphicFrame(
+            new NonVisualGraphicFrameProperties(
+                new NonVisualDrawingProperties { Id = oleShapeId, Name = oleName },
+                new NonVisualGraphicFrameDrawingProperties(),
+                new ApplicationNonVisualDrawingProperties()
+            ),
+            new Transform(
+                new Drawing.Offset { X = oleX, Y = oleY },
+                new Drawing.Extents { Cx = oleCx, Cy = oleCy }
+            ),
+            new Drawing.Graphic(oleGraphicData)
+        );
+
+        InsertAtPosition(oleShapeTree, oleFrame, index);
+        GetSlide(oleSlidePart).Save();
+
+        // Count OLE frames on this slide for the return path.
+        var oleFrames = oleShapeTree.Elements<GraphicFrame>()
+            .Count(gf => gf.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>().Any());
+        return $"/slide[{oleSlideIdx}]/ole[{oleFrames}]";
+    }
 
 }

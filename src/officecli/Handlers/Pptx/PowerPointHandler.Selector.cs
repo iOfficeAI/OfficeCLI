@@ -29,7 +29,9 @@ public partial class PowerPointHandler
         if (slideMatch.Success)
         {
             slideNum = int.Parse(slideMatch.Groups[1].Value);
-            selector = slideMatch.Groups[2].Value.TrimStart('>', ' ');
+            // CONSISTENCY(query-slide-prefix): strip '>', '/', or ' ' separators
+            // so both "slide[1]>ole" and "/slide[1]/ole" resolve the element type.
+            selector = slideMatch.Groups[2].Value.TrimStart('>', '/', ' ');
         }
 
         // Element type

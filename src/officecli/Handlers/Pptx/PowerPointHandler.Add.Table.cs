@@ -29,14 +29,14 @@ public partial class PowerPointHandler
                 var tblShapeTree = GetSlide(tblSlidePart).CommonSlideData?.ShapeTree
                     ?? throw new InvalidOperationException("Slide has no shape tree");
 
-                // Parse data if provided: "H1,H2;R1C1,R1C2;R2C1,R2C2" or CSV file path
+                // Parse data if provided: "H1,H2;R1C1,R1C2;R2C1,R2C2" or CSV file/URL/data-URI
                 string[][]? tableData = null;
                 if (properties.TryGetValue("data", out var dataStr))
                 {
-                    if (File.Exists(dataStr))
+                    if (OfficeCli.Core.FileSource.IsResolvable(dataStr))
                     {
-                        // CSV file
-                        tableData = File.ReadAllLines(dataStr)
+                        // CSV file/URL/data-URI
+                        tableData = OfficeCli.Core.FileSource.ResolveLines(dataStr)
                             .Where(l => !string.IsNullOrWhiteSpace(l))
                             .Select(l => l.Split(',').Select(c => c.Trim()).ToArray())
                             .ToArray();

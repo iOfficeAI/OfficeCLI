@@ -11,6 +11,80 @@ namespace OfficeCli.Handlers;
 
 public partial class WordHandler
 {
+    // ==================== Binary Extraction ====================
+    //
+    // Support for `officecli get --save <dest>` on nodes that have a
+    // backing binary part (picture, ole object, media). We re-call Get()
+    // to obtain the node's relId, then look up the part on the right
+    // host part (MainDocumentPart for body content, HeaderPart/FooterPart
+    // for header/footer content — since rel ids are locally-scoped per
+    // OpenXmlPart, OLE relationships for header-embedded objects live on
+    // the HeaderPart itself, not on MainDocumentPart).
+    //
+    // BUG-R11-01: Previously this unconditionally resolved against
+    // MainDocumentPart, which caused `get --save` to fail for OLE in
+    // /header[N]/... or /footer[N]/..., mirroring the round 5/10
+    // CreateOleNode regression. Match round 10's CreateOleNode refactor:
+    // iterate candidate hosts (main → headers → footers) and pick the
+    // one whose GetPartById(relId) succeeds. Rel ids are locally-scoped,
+    // so at most one host matches.
+    public bool TryExtractBinary(string path, string destPath, out string? contentType, out long byteCount)
+    {
+        contentType = null;
+        byteCount = 0;
+        var node = Get(path, 0);
+        if (node == null) return false;
+        if (!node.Format.TryGetValue("relId", out var relObj) || relObj is not string relId
+            || string.IsNullOrEmpty(relId))
+            return false;
+
+        var main = _doc.MainDocumentPart;
+        if (main == null) return false;
+
+        DocumentFormat.OpenXml.Packaging.OpenXmlPart? part = null;
+
+        // Enumerate candidate host parts in the order they most commonly
+        // hold the target: MainDocumentPart first (body pictures/OLEs),
+        // then header parts, then footer parts. Stop at the first match.
+        var candidates = new List<DocumentFormat.OpenXml.Packaging.OpenXmlPart> { main };
+        candidates.AddRange(main.HeaderParts);
+        candidates.AddRange(main.FooterParts);
+
+        foreach (var host in candidates)
+        {
+            try
+            {
+                var candidate = host.GetPartById(relId);
+                if (candidate != null)
+                {
+                    part = candidate;
+                    break;
+                }
+            }
+            catch
+            {
+                // rel id not in this host — try the next
+            }
+        }
+
+        if (part == null) return false;
+
+        // BUG-R10-04: create the destination directory if missing so
+        // `get --save ./outdir/file.bin` works when outdir doesn't exist.
+        var destDir = Path.GetDirectoryName(destPath);
+        if (!string.IsNullOrEmpty(destDir) && !Directory.Exists(destDir))
+            Directory.CreateDirectory(destDir);
+
+        using (var src = part.GetStream())
+        using (var dst = File.Create(destPath))
+        {
+            src.CopyTo(dst);
+            byteCount = dst.Length;
+        }
+        contentType = part.ContentType;
+        return true;
+    }
+
     // ==================== Query Layer ====================
 
     public DocumentNode Get(string path, int depth = 1)
@@ -19,6 +93,33 @@ public partial class WordHandler
             throw new ArgumentException("Path cannot be empty.");
         if (path == "/")
             return GetRootNode(depth);
+
+        // Handle /body/ole[N] and friends — Word does not expose OLE as a
+        // native child of body (it lives inside a run), so NavigateToElement
+        // would bottom out in the generic "No ole found at /body" error.
+        // Intercept here and emit the consistent cross-handler message.
+        // CONSISTENCY(ole-invalid-index): match PPT/Excel phrasing exactly.
+        //
+        // BUG-R11-03: root-level `/ole[N]` shorthand is aliased to
+        // `/body/ole[N]`. This mirrors the `/` → `/body` aliasing applied
+        // by many other Word commands: users already think of the body
+        // as the root, so OLE at the root should resolve there instead of
+        // producing "Path not found: /ole[99]".
+        var wordOleMatch = System.Text.RegularExpressions.Regex.Match(
+            path, @"^(?<parent>/body|/header\[\d+\]|/footer\[\d+\])?/(?:ole|oleobject|object|embed)\[(?<idx>\d+)\]$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (wordOleMatch.Success)
+        {
+            var wOleIdx = int.Parse(wordOleMatch.Groups["idx"].Value);
+            var wOleParent = wordOleMatch.Groups["parent"].Success && wordOleMatch.Groups["parent"].Value.Length > 0
+                ? wordOleMatch.Groups["parent"].Value
+                : "/body";
+            var allOles = Query("ole").Where(n => n.Path.StartsWith(wOleParent + "/", StringComparison.OrdinalIgnoreCase)).ToList();
+            if (wOleIdx < 1 || wOleIdx > allOles.Count)
+                throw new ArgumentException(
+                    $"OLE object {wOleIdx} not found at {wOleParent} (available: {allOles.Count}).");
+            return allOles[wOleIdx - 1];
+        }
 
         // Handle /watermark path
         if (path.Equals("/watermark", StringComparison.OrdinalIgnoreCase))
@@ -610,6 +711,32 @@ public partial class WordHandler
         var body = _doc.MainDocumentPart?.Document?.Body;
         if (body == null) return results;
 
+        // BUG-R18-01: scoped OLE selector `/body/ole`, `/header[N]/ole`,
+        // `/footer[N]/ole` (and `object`/`embed` aliases) was not recognized
+        // by ParseSingleSelector — it truncated at the first `[`, so the
+        // element became `/header` and never matched the OLE branch.
+        // Intercept here and delegate to the general `ole` query, filtering
+        // results whose Path starts with the requested parent scope.
+        // CONSISTENCY(word-ole-scope): mirrors the scoped `Get` path at
+        // WordHandler.Query.cs line ~108 (wordOleMatch).
+        var wordOleScopeMatch = System.Text.RegularExpressions.Regex.Match(
+            selector,
+            // BUG-R38-01: attr filter suffix `[...]` was not captured, so
+            // `/body/ole[fileSize>0]` fell through to ParseSelector and matched 0.
+            // CONSISTENCY(word-ole-scope): delegate attr filter to Query("ole[...]")
+            // exactly as the unscoped branch does.
+            @"^(?<parent>/body|/header\[\d+\]|/footer\[\d+\])/(?:ole|oleobject|object|embed)(?<attrs>\[.*\])?$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (wordOleScopeMatch.Success)
+        {
+            var scopePrefix = wordOleScopeMatch.Groups["parent"].Value;
+            var attrSuffix = wordOleScopeMatch.Groups["attrs"].Value; // "" when absent
+            var oleSelector = "ole" + attrSuffix;
+            return Query(oleSelector)
+                .Where(n => n.Path.StartsWith(scopePrefix + "/", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
         // Simple selector parser: element[attr=value]
         var parsed = ParseSelector(selector);
 
@@ -831,7 +958,8 @@ public partial class WordHandler
         bool isPictureSelector = parsed.ChildSelector == null &&
             (parsed.Element == "picture" || parsed.Element == "image" || parsed.Element == "img");
         bool isOleSelector = parsed.ChildSelector == null &&
-            (parsed.Element is "ole" or "object" or "embed");
+            // CONSISTENCY(ole-alias): "oleobject" mirrors Add's "ole"/"oleobject"/"object"/"embed" switch
+            (parsed.Element is "ole" or "oleobject" or "object" or "embed");
         bool isEquationSelector = parsed.ChildSelector == null &&
             (parsed.Element == "equation" || parsed.Element == "math" || parsed.Element == "formula");
         bool isBookmarkSelector = parsed.ChildSelector == null &&
@@ -842,8 +970,11 @@ public partial class WordHandler
         // Scheme B: generic XML fallback for unrecognized element types
         // Use GenericXmlQuery.ParseSelector which properly handles namespace prefixes (e.g., "a:ln")
         var genericParsed = GenericXmlQuery.ParseSelector(selector);
-        bool isKnownType = string.IsNullOrEmpty(genericParsed.element)
-            || genericParsed.element is "p" or "paragraph" or "r" or "run"
+        // CONSISTENCY(selector-case): high-level element names are case-insensitive
+        // ("OLE" == "ole"). Compare against the lowercase literal list.
+        var genericElementLower = (genericParsed.element ?? "").ToLowerInvariant();
+        bool isKnownType = string.IsNullOrEmpty(genericElementLower)
+            || genericElementLower is "p" or "paragraph" or "r" or "run"
                 or "picture" or "image" or "img"
                 or "equation" or "math" or "formula"
                 or "bookmark"
@@ -858,12 +989,12 @@ public partial class WordHandler
                 or "revision" or "change" or "trackchange"
                 or "media"
                 or "hyperlink"
-                or "ole" or "object" or "embed";
+                or "ole" or "oleobject" or "object" or "embed";
         if (!isKnownType && parsed.ChildSelector == null)
         {
             var root = _doc.MainDocumentPart?.Document;
             if (root != null)
-                return GenericXmlQuery.Query(root, genericParsed.element, genericParsed.attrs, genericParsed.containsText);
+                return GenericXmlQuery.Query(root, genericParsed.element ?? "", genericParsed.attrs, genericParsed.containsText);
             return results;
         }
 
@@ -962,6 +1093,81 @@ public partial class WordHandler
                         continue;
                 }
                 results.Add(node);
+            }
+            return results;
+        }
+
+        // Handle OLE query via descendants walk — covers body paragraphs,
+        // top-level tables, nested tables, textboxes, etc. CONSISTENCY(word-ole-query):
+        // a single Descendants<EmbeddedObject>() pass replaces the previous
+        // hand-rolled body + top-level-table scan which missed nested tables.
+        // Also walks HeaderPart/FooterPart documents so that OLEs added via
+        // `Add("/header[N]", "ole", ...)` are surfaced after reopen.
+        if (isOleSelector)
+        {
+            // BUG-R15-01: the OLE query block never applied parsed.Attributes filters,
+            // so Query("ole[objectType=nonexistent]") returned all OLEs instead of 0.
+            // CONSISTENCY(query-attr-filter): apply the same Format-key attribute
+            // matching used by style/field/formfield/PPT-OLE selectors in the same file.
+            static bool OleMatchesAttrs(DocumentNode node, Dictionary<string, string> attrs)
+            {
+                foreach (var (attrKey, rawVal) in attrs)
+                {
+                    bool negate = rawVal.StartsWith("!");
+                    var val = negate ? rawVal[1..] : rawVal;
+                    var hasKey = node.Format.TryGetValue(attrKey, out var fmtVal);
+                    bool matches = hasKey && string.Equals(fmtVal?.ToString(), val, StringComparison.OrdinalIgnoreCase);
+                    if (negate ? matches : !matches) return false;
+                }
+                return true;
+            }
+
+            foreach (var oleObject in body.Descendants<EmbeddedObject>())
+            {
+                var run = oleObject.Ancestors<Run>().FirstOrDefault();
+                if (run == null) continue;
+                var olePath = BuildOleRunPath(body, "/body", run);
+                var oleNode = CreateOleNode(oleObject, run, olePath);
+                if (OleMatchesAttrs(oleNode, parsed.Attributes)) results.Add(oleNode);
+            }
+
+            var mainPart = _doc.MainDocumentPart;
+            if (mainPart != null)
+            {
+                int hIdx = 0;
+                foreach (var headerPart in mainPart.HeaderParts)
+                {
+                    hIdx++;
+                    var header = headerPart.Header;
+                    if (header == null) continue;
+                    foreach (var oleObject in header.Descendants<EmbeddedObject>())
+                    {
+                        var run = oleObject.Ancestors<Run>().FirstOrDefault();
+                        if (run == null) continue;
+                        var olePath = BuildOleRunPath(header, $"/header[{hIdx}]", run);
+                        // BUG-R10-02: rel id lives on the HeaderPart, not
+                        // MainDocumentPart — pass the headerPart so
+                        // CreateOleNode can populate contentType/fileSize.
+                        var oleNode = CreateOleNode(oleObject, run, olePath, headerPart);
+                        if (OleMatchesAttrs(oleNode, parsed.Attributes)) results.Add(oleNode);
+                    }
+                }
+                int fIdx = 0;
+                foreach (var footerPart in mainPart.FooterParts)
+                {
+                    fIdx++;
+                    var footer = footerPart.Footer;
+                    if (footer == null) continue;
+                    foreach (var oleObject in footer.Descendants<EmbeddedObject>())
+                    {
+                        var run = oleObject.Ancestors<Run>().FirstOrDefault();
+                        if (run == null) continue;
+                        var olePath = BuildOleRunPath(footer, $"/footer[{fIdx}]", run);
+                        // BUG-R10-02: same fix for footers.
+                        var oleNode = CreateOleNode(oleObject, run, olePath, footerPart);
+                        if (OleMatchesAttrs(oleNode, parsed.Attributes)) results.Add(oleNode);
+                    }
+                }
             }
             return results;
         }
@@ -1314,6 +1520,41 @@ public partial class WordHandler
                     }
                     results.Add(node);
                 }
+                else if (isOleSelector)
+                {
+                    // Scan inside table cells for OLE objects. CONSISTENCY(word-ole-query):
+                    // mirrors the body-level OLE branch (see isOleSelector block below for
+                    // free-body paragraphs). Without this branch, `Query("ole")` silently
+                    // skips any OLE embedded in a table cell.
+                    var tblIdx = body.Elements<DocumentFormat.OpenXml.Wordprocessing.Table>()
+                        .TakeWhile(t => t != tbl).Count();
+                    int rowIdx = 0;
+                    foreach (var row in tbl.Elements<TableRow>())
+                    {
+                        rowIdx++;
+                        int cellIdx = 0;
+                        foreach (var cell in row.Elements<TableCell>())
+                        {
+                            cellIdx++;
+                            int cellParaIdx = 0;
+                            foreach (var cellPara in cell.Elements<Paragraph>())
+                            {
+                                cellParaIdx++;
+                                int cellRunIdx = 0;
+                                foreach (var cellRun in GetAllRuns(cellPara))
+                                {
+                                    cellRunIdx++;
+                                    var oleObject = cellRun.GetFirstChild<EmbeddedObject>();
+                                    if (oleObject != null)
+                                    {
+                                        results.Add(CreateOleNode(oleObject, cellRun,
+                                            $"/body/tbl[{tblIdx + 1}]/tr[{rowIdx}]/tc[{cellIdx}]/{BuildParaPathSegment(cellPara, cellParaIdx)}/r[{cellRunIdx}]"));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 else if (isEquationSelector)
                 {
                     // Scan inside table cells for equations
@@ -1438,16 +1679,11 @@ public partial class WordHandler
                             }
                         }
 
-                        // Embedded OLE objects (Visio, Excel, etc.) also
-                        // appear in the picture listing so that a single
-                        // "what images are in this document" query does
-                        // not miss them.
-                        var oleObject = run.GetFirstChild<EmbeddedObject>();
-                        if (oleObject != null)
-                        {
-                            results.Add(CreateOleNode(oleObject, run, $"/body/{BuildParaPathSegment(para, paraIdx + 1)}/r[{runIdx + 1}]"));
-                        }
-
+                        // CONSISTENCY(ole-query-separation): OLE objects have
+                        // their own `query ole` selector. Do not surface them
+                        // in picture/image results — even though OLE wraps a
+                        // v:imagedata for the icon preview, that is not a real
+                        // picture from the user's perspective.
                         runIdx++;
                     }
                 }
@@ -1501,5 +1737,91 @@ public partial class WordHandler
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Builds a root-rooted path to a Run by walking its ancestor chain,
+    /// emitting a tbl[i]/tr[j]/tc[k] segment for every enclosing table.
+    /// Covers top-level runs, runs inside top-level tables, and runs inside
+    /// nested tables. Used by OLE Query so that Descendants&lt;EmbeddedObject&gt;()
+    /// can surface OLEs at any depth. The root can be a Body, Header, or
+    /// Footer; the rootPath prefix is used verbatim (e.g. "/body",
+    /// "/header[1]", "/footer[2]").
+    /// </summary>
+    private static string BuildOleRunPath(OpenXmlElement root, string rootPath, Run run)
+    {
+        // Walk from root down to the run, collecting path segments.
+        // Ancestors() returns innermost first; reverse to outer-to-inner order.
+        var ancestors = run.Ancestors().TakeWhile(a => a != root).Reverse().ToList();
+
+        var sb = new System.Text.StringBuilder(rootPath);
+        OpenXmlElement cursor = root;
+        foreach (var anc in ancestors)
+        {
+            if (anc is SdtBlock sdtBlockAnc)
+            {
+                // Count SdtBlocks among the current cursor's direct children
+                var sdtIdx = cursor.ChildElements.OfType<SdtBlock>()
+                    .TakeWhile(s => s != sdtBlockAnc).Count() + 1;
+                sb.Append($"/{BuildSdtPathSegment(sdtBlockAnc, sdtIdx)}");
+                cursor = sdtBlockAnc;
+            }
+            else if (anc is SdtContentBlock sdtContentBlockAnc)
+            {
+                // SdtContentBlock is implicit in the path format; descend
+                // into it without emitting a segment, mirroring Navigation.
+                cursor = sdtContentBlockAnc;
+            }
+            else if (anc is SdtRun sdtRunAnc)
+            {
+                var sdtIdx = cursor.ChildElements.OfType<SdtRun>()
+                    .TakeWhile(s => s != sdtRunAnc).Count() + 1;
+                sb.Append($"/{BuildSdtPathSegment(sdtRunAnc, sdtIdx)}");
+                cursor = sdtRunAnc;
+            }
+            else if (anc is SdtContentRun sdtContentRunAnc)
+            {
+                cursor = sdtContentRunAnc;
+            }
+            else if (anc is DocumentFormat.OpenXml.Wordprocessing.Table tblAnc)
+            {
+                // Index among sibling tables within the current cursor
+                var tblIdx = cursor.Elements<DocumentFormat.OpenXml.Wordprocessing.Table>()
+                    .TakeWhile(t => t != tblAnc).Count() + 1;
+                sb.Append($"/tbl[{tblIdx}]");
+                cursor = tblAnc;
+            }
+            else if (anc is TableRow rowAnc)
+            {
+                var rowIdx = cursor.Elements<TableRow>()
+                    .TakeWhile(r => r != rowAnc).Count() + 1;
+                sb.Append($"/tr[{rowIdx}]");
+                cursor = rowAnc;
+            }
+            else if (anc is TableCell cellAnc)
+            {
+                var cellIdx = cursor.Elements<TableCell>()
+                    .TakeWhile(c => c != cellAnc).Count() + 1;
+                sb.Append($"/tc[{cellIdx}]");
+                cursor = cellAnc;
+            }
+            else if (anc is Paragraph paraAnc)
+            {
+                var paraIdx = cursor.Elements<Paragraph>()
+                    .TakeWhile(p => p != paraAnc).Count() + 1;
+                sb.Append($"/{BuildParaPathSegment(paraAnc, paraIdx)}");
+                cursor = paraAnc;
+            }
+        }
+
+        // Run index within its parent paragraph (via GetAllRuns to handle sdt wrappers)
+        if (run.Ancestors<Paragraph>().FirstOrDefault() is Paragraph parentPara)
+        {
+            var runs = GetAllRuns(parentPara);
+            var runIdx = runs.TakeWhile(r => r != run).Count() + 1;
+            sb.Append($"/r[{runIdx}]");
+        }
+
+        return sb.ToString();
     }
 }

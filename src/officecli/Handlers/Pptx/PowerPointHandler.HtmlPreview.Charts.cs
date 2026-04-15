@@ -38,17 +38,32 @@ public partial class PowerPointHandler
 
         DocumentFormat.OpenXml.Drawing.Charts.Chart? chart;
         DocumentFormat.OpenXml.Drawing.Charts.PlotArea? plotArea;
+        ChartSvgRenderer.ChartInfo info;
         try
         {
-            var chartPart = (ChartPart)slidePart.GetPartById(rId);
-            chart = chartPart.ChartSpace?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Chart>();
-            plotArea = chart?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.PlotArea>();
-            if (plotArea == null) return;
+            var anyPart = slidePart.GetPartById(rId);
+            // cx:chart (extended) path — branch early, extract via ExtractCxChartInfo,
+            // skip the regular c:PlotArea pipeline since cx uses its own layout.
+            if (anyPart is ExtendedChartPart extPart)
+            {
+                var cxChart = extPart.ChartSpace?
+                    .GetFirstChild<DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing.Chart>();
+                if (cxChart == null) return;
+                info = ChartSvgRenderer.ExtractCxChartInfo(cxChart);
+                chart = null;
+                plotArea = null;
+            }
+            else if (anyPart is ChartPart chartPart)
+            {
+                chart = chartPart.ChartSpace?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Chart>();
+                plotArea = chart?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.PlotArea>();
+                if (plotArea == null) return;
+                info = ChartSvgRenderer.ExtractChartInfo(plotArea, chart);
+            }
+            else return;
         }
         catch { return; }
 
-        // Extract all chart metadata via shared helper
-        var info = ChartSvgRenderer.ExtractChartInfo(plotArea, chart);
         if (info.Series.Count == 0) return;
 
         // Derive text color from theme
@@ -78,8 +93,8 @@ public partial class PowerPointHandler
         var titleH = string.IsNullOrEmpty(info.Title) ? 0 : 20;
         var chartSvgH = svgH - titleH;
 
-        // Manual layout margins
-        var plotAreaLayout = plotArea.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Layout>();
+        // Manual layout margins — only regular c:chart has a ManualLayout.
+        var plotAreaLayout = plotArea?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.Layout>();
         var manualLayout = plotAreaLayout?.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.ManualLayout>();
         int marginTop, marginRight, marginBottom, marginLeft;
         if (manualLayout != null)

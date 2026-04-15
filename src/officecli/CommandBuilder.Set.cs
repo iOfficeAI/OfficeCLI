@@ -103,15 +103,11 @@ static partial class CommandBuilder
                 req.Props = ParsePropsArray(props);
             }, json) is {} rc) return rc;
 
-            var properties = new Dictionary<string, string>();
-            foreach (var prop in props ?? Array.Empty<string>())
-            {
-                var eqIdx = prop.IndexOf('=');
-                if (eqIdx > 0)
-                {
-                    properties[prop[..eqIdx]] = prop[(eqIdx + 1)..];
-                }
-            }
+            // CONSISTENCY(prop-key-case): --prop keys are case-insensitive
+            // so "SRC=x" and "src=x" both resolve to the same handler key.
+            // Reuse ParsePropsArray so the inline and resident-server paths
+            // stay in sync.
+            var properties = ParsePropsArray(props);
 
             using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
             var unsupported = handler.Set(path, properties);
@@ -175,7 +171,7 @@ static partial class CommandBuilder
             var message = applied.Count > 0
                 ? $"Updated {path}: {string.Join(", ", applied.Select(kv => $"{kv.Key}={kv.Value}"))}"
                   + (findMatchCount.HasValue ? $" ({findMatchCount.Value} matched)" : "")
-                : $"No properties applied to {path}";
+                : $"Error: No properties applied to {path}";
 
             // Check if position-related props were changed → show coordinates + overlap warning
             var positionChanged = applied.Any(kv => PositionKeys.Contains(kv.Key));

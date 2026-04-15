@@ -59,16 +59,24 @@ build_config() {
         echo "[$CONFIG] Building $RID -> $NAME"
         dotnet publish "$PROJECT" -c "$CONFIG" -r "$RID" -o "$TMPDIR" --nologo -v quiet
 
+        # Atomic replace: stage as .new alongside the target, sign there, then rename.
+        # Overwriting the binary in place would trash the text segment of any
+        # running officecli process that happens to be mmap'd on this path
+        # (macOS does not block ETXTBSY), leaving it stuck in uninterruptible
+        # `UE` state on the next code page fault.
         if [ -f "$TMPDIR/officecli.exe" ]; then
-            cp "$TMPDIR/officecli.exe" "$OUTPUT/$NAME"
+            cp "$TMPDIR/officecli.exe" "$OUTPUT/$NAME.new"
         else
-            cp "$TMPDIR/officecli" "$OUTPUT/$NAME"
+            cp "$TMPDIR/officecli" "$OUTPUT/$NAME.new"
         fi
 
-        # Ad-hoc codesign on macOS (required by AppleSystemPolicy)
+        # Ad-hoc codesign on macOS (required by AppleSystemPolicy).
+        # Done on the staged .new copy so the live binary is never mutated in place.
         if [ "$(uname -s)" = "Darwin" ] && [[ "$RID" == osx-* ]]; then
-            codesign -s - -f "$OUTPUT/$NAME" 2>/dev/null || true
+            codesign -s - -f "$OUTPUT/$NAME.new" 2>/dev/null || true
         fi
+
+        mv -f "$OUTPUT/$NAME.new" "$OUTPUT/$NAME"
         cp "$TMPDIR/officecli.pdb" "$OUTPUT/${NAME%.*}.pdb"
 
         rm -rf "$TMPDIR"

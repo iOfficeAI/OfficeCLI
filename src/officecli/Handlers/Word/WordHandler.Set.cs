@@ -178,7 +178,8 @@ public partial class WordHandler
 
             // If series sub-path, prefix all properties with series{N}. for ChartSetter
             var chartProps = properties;
-            if (chartMatch.Groups[2].Success)
+            var isSeriesPath = chartMatch.Groups[2].Success;
+            if (isSeriesPath)
             {
                 var seriesIdx = int.Parse(chartMatch.Groups[2].Value);
                 chartProps = new Dictionary<string, string>();
@@ -186,14 +187,39 @@ public partial class WordHandler
                     chartProps[$"series{seriesIdx}.{key}"] = value;
             }
 
+            // Chart-level position/size Set — mutate the hosting wp:inline's
+            // wp:extent. Word inline charts have no positional x/y (they
+            // flow in text), so only width/height are meaningful here.
+            //
+            // CONSISTENCY(chart-position-set): same vocabulary as Excel and
+            // PPTX. x/y are silently dropped (flagged as unsupported) since
+            // inline mode has no absolute position.
+            if (!isSeriesPath && chartInfo.Inline != null)
+            {
+                ApplyWordChartPositionSet(chartInfo.Inline, chartProps, unsupported);
+                // Drop ALL position keys (x/y/width/height) from chartProps
+                // after handling — unsupported ones were already reported by
+                // ApplyWordChartPositionSet. Forwarding them to ChartHelper
+                // would double-report them.
+                foreach (var k in new[] { "x", "y", "width", "height" })
+                {
+                    var matched = chartProps.Keys
+                        .FirstOrDefault(key => key.Equals(k, StringComparison.OrdinalIgnoreCase));
+                    if (matched != null) chartProps.Remove(matched);
+                }
+            }
+
             if (chartInfo.IsExtended)
             {
-                // Extended charts (cx:chart) — chart-internal properties are not supported
-                unsupported = chartProps.Keys.ToList();
+                // cx:chart — delegates to ChartExBuilder.SetChartProperties.
+                // Same shared implementation as Excel/PPTX: title/axis/gridline
+                // styling, series fill, histogram binning, etc.
+                unsupported.AddRange(Core.ChartExBuilder.SetChartProperties(
+                    chartInfo.ExtendedPart!, chartProps));
             }
             else
             {
-                unsupported = Core.ChartHelper.SetChartProperties(chartInfo.StandardPart!, chartProps);
+                unsupported.AddRange(Core.ChartHelper.SetChartProperties(chartInfo.StandardPart!, chartProps));
             }
             _doc.MainDocumentPart?.Document?.Save();
             return unsupported;
@@ -708,6 +734,30 @@ public partial class WordHandler
             return unsupported;
         }
 
+        // CONSISTENCY(ole-shorthand-set): mirror the /body/ole[N] shorthand
+        // already supported in Get (WordHandler.Query.cs) and Remove
+        // (WordHandler.Mutations.cs). Without this intercept, Set falls through
+        // to NavigateToElement which hits "No ole found at /body" because OLE
+        // lives inside a run, not as a direct child of the body.
+        var wordOleSetMatch = System.Text.RegularExpressions.Regex.Match(
+            path,
+            @"^(?<parent>/body|/header\[\d+\]|/footer\[\d+\])?/(?:ole|object|embed)\[(?<idx>\d+)\]$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (wordOleSetMatch.Success)
+        {
+            var wOleIdx = int.Parse(wordOleSetMatch.Groups["idx"].Value);
+            var wOleParent = wordOleSetMatch.Groups["parent"].Success && wordOleSetMatch.Groups["parent"].Value.Length > 0
+                ? wordOleSetMatch.Groups["parent"].Value
+                : "/body";
+            var allOles = Query("ole")
+                .Where(n => n.Path.StartsWith(wOleParent + "/", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (wOleIdx < 1 || wOleIdx > allOles.Count)
+                throw new ArgumentException(
+                    $"OLE object {wOleIdx} not found at {wOleParent} (available: {allOles.Count}).");
+            return Set(allOles[wOleIdx - 1].Path, properties);
+        }
+
         var parts = ParsePath(path);
         var element = NavigateToElement(parts, out var ctx);
         if (element == null)
@@ -994,6 +1044,7 @@ public partial class WordHandler
                         else unsupported.Add(key);
                         break;
                     case "width":
+                    {
                         var drawingW = run.GetFirstChild<Drawing>();
                         if (drawingW != null)
                         {
@@ -1001,10 +1052,25 @@ public partial class WordHandler
                             if (extentW != null) extentW.Cx = ParseEmu(value);
                             var extentsW = drawingW.Descendants<A.Extents>().FirstOrDefault();
                             if (extentsW != null) extentsW.Cx = ParseEmu(value);
+                            break;
                         }
-                        else unsupported.Add(key);
+                        // OLE run: update VML v:shape style.
+                        var oleW = run.GetFirstChild<EmbeddedObject>();
+                        var shapeW = oleW?.Descendants().FirstOrDefault(e => e.LocalName == "shape");
+                        if (shapeW != null)
+                        {
+                            var styleAttrW = shapeW.GetAttributes().FirstOrDefault(a => a.LocalName == "style");
+                            var currentStyleW = styleAttrW.Value ?? "";
+                            var ptStrW = (ParseEmu(value) / 12700.0).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "pt";
+                            var newStyleW = ReplaceVmlStyleDimension(currentStyleW, "width", ptStrW);
+                            shapeW.SetAttribute(new OpenXmlAttribute("", "style", "", newStyleW));
+                            break;
+                        }
+                        unsupported.Add(key);
                         break;
+                    }
                     case "height":
+                    {
                         var drawingH = run.GetFirstChild<Drawing>();
                         if (drawingH != null)
                         {
@@ -1012,30 +1078,155 @@ public partial class WordHandler
                             if (extentH != null) extentH.Cy = ParseEmu(value);
                             var extentsH = drawingH.Descendants<A.Extents>().FirstOrDefault();
                             if (extentsH != null) extentsH.Cy = ParseEmu(value);
+                            break;
                         }
-                        else unsupported.Add(key);
+                        // OLE run: update VML v:shape style.
+                        var oleH = run.GetFirstChild<EmbeddedObject>();
+                        var shapeH = oleH?.Descendants().FirstOrDefault(e => e.LocalName == "shape");
+                        if (shapeH != null)
+                        {
+                            var styleAttrH = shapeH.GetAttributes().FirstOrDefault(a => a.LocalName == "style");
+                            var currentStyleH = styleAttrH.Value ?? "";
+                            var ptStrH = (ParseEmu(value) / 12700.0).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "pt";
+                            var newStyleH = ReplaceVmlStyleDimension(currentStyleH, "height", ptStrH);
+                            shapeH.SetAttribute(new OpenXmlAttribute("", "style", "", newStyleH));
+                            break;
+                        }
+                        unsupported.Add(key);
                         break;
+                    }
                     case "path" or "src":
                     {
                         // Replace image source in a run containing a Drawing
                         var drawingSrc = run.GetFirstChild<Drawing>();
                         var blip = drawingSrc?.Descendants<A.Blip>().FirstOrDefault();
-                        if (blip == null) { unsupported.Add(key); break; }
-
-                        var mainPartImg = _doc.MainDocumentPart!;
-                        var (wordImgStream, imgType) = OfficeCli.Core.ImageSource.Resolve(value);
-                        using var wordImgDispose = wordImgStream;
-
-                        // Remove old image part to avoid storage bloat
-                        var oldEmbedId = blip.Embed?.Value;
-                        if (oldEmbedId != null)
+                        if (blip != null)
                         {
-                            try { mainPartImg.DeletePart(oldEmbedId); } catch { }
+                            var mainPartImg = _doc.MainDocumentPart!;
+                            var (wordImgStream, imgType) = OfficeCli.Core.ImageSource.Resolve(value);
+                            using var wordImgDispose = wordImgStream;
+
+                            // Remove old image part to avoid storage bloat
+                            var oldEmbedId = blip.Embed?.Value;
+                            if (oldEmbedId != null)
+                            {
+                                try { mainPartImg.DeletePart(oldEmbedId); } catch { }
+                            }
+
+                            var newImgPart = mainPartImg.AddImagePart(imgType);
+                            newImgPart.FeedData(wordImgStream);
+                            blip.Embed = mainPartImg.GetIdOfPart(newImgPart);
+                            break;
                         }
 
-                        var newImgPart = mainPartImg.AddImagePart(imgType);
-                        newImgPart.FeedData(wordImgStream);
-                        blip.Embed = mainPartImg.GetIdOfPart(newImgPart);
+                        // OLE case: run contains an EmbeddedObject. Replace
+                        // the backing embedded part and (if needed) update
+                        // the ProgID automatically from the new extension.
+                        // This is the symmetric counterpart to AddOle — the
+                        // part-cleanup rule from CLAUDE.md's Known API
+                        // Quirks ("always delete old ImagePart to avoid
+                        // storage bloat") applies equally to OLE payloads.
+                        var ole = run.GetFirstChild<EmbeddedObject>();
+                        if (ole != null)
+                        {
+                            var mainOle = _doc.MainDocumentPart!;
+                            var oleEl = ole.Descendants().FirstOrDefault(e => e.LocalName == "OLEObject");
+                            if (oleEl != null)
+                            {
+                                var relAttr = oleEl.GetAttributes().FirstOrDefault(a => a.LocalName == "id"
+                                    && a.NamespaceUri == "http://schemas.openxmlformats.org/officeDocument/2006/relationships");
+                                var oldRel = relAttr.Value;
+                                if (!string.IsNullOrEmpty(oldRel))
+                                {
+                                    try { mainOle.DeletePart(oldRel); } catch { }
+                                }
+                                var (newEmbedRel, _) = OfficeCli.Core.OleHelper.AddEmbeddedPart(mainOle, value, _filePath);
+                                // Update r:id attribute in place.
+                                oleEl.SetAttribute(new OpenXmlAttribute("r", "id",
+                                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships", newEmbedRel));
+                                // Refresh ProgID if it wasn't explicitly pinned by the caller.
+                                var newProgId = OfficeCli.Core.OleHelper.DetectProgId(value);
+                                OfficeCli.Core.OleHelper.ValidateProgId(newProgId);
+                                oleEl.SetAttribute(new OpenXmlAttribute("", "ProgID", "", newProgId));
+                            }
+                            break;
+                        }
+                        unsupported.Add(key);
+                        break;
+                    }
+                    case "progid":
+                    {
+                        // Standalone ProgID override on an existing OLE run.
+                        // Mirrors the ProgID-refresh in the "path"/"src" branch
+                        // above, but without touching the backing embedded
+                        // part. CONSISTENCY(ole-set-progid): PPT and Excel OLE
+                        // Set both accept a bare progId key; Word must too.
+                        var oleStandalone = run.GetFirstChild<EmbeddedObject>();
+                        var oleElStandalone = oleStandalone?.Descendants().FirstOrDefault(e => e.LocalName == "OLEObject");
+                        if (oleElStandalone != null)
+                        {
+                            OfficeCli.Core.OleHelper.ValidateProgId(value);
+                            oleElStandalone.SetAttribute(new OpenXmlAttribute("", "ProgID", "", value));
+                            break;
+                        }
+                        unsupported.Add(key);
+                        break;
+                    }
+                    case "display":
+                    {
+                        // Update DrawAspect attribute on o:OLEObject.
+                        // Strict: only "icon" or "content" are accepted; any
+                        // other value throws (see OleHelper.NormalizeOleDisplay).
+                        // CONSISTENCY(ole-set-display): mirrors PPT ShowAsIcon toggle.
+                        var normalized = OfficeCli.Core.OleHelper.NormalizeOleDisplay(value);
+                        var oleDisplay = run.GetFirstChild<EmbeddedObject>();
+                        var oleElDisplay = oleDisplay?.Descendants().FirstOrDefault(e => e.LocalName == "OLEObject");
+                        if (oleElDisplay != null)
+                        {
+                            var drawAspect = normalized == "content" ? "Content" : "Icon";
+                            oleElDisplay.SetAttribute(new OpenXmlAttribute("", "DrawAspect", "", drawAspect));
+                            break;
+                        }
+                        unsupported.Add(key);
+                        break;
+                    }
+                    case "icon":
+                    {
+                        // Empty/whitespace value: treat as unsupported rather
+                        // than feeding it into ImageSource.Resolve (which
+                        // throws). Matches the gentler unsupported-key pattern
+                        // used elsewhere in the Word Set OLE branch.
+                        if (string.IsNullOrWhiteSpace(value))
+                        {
+                            unsupported.Add(key);
+                            break;
+                        }
+                        // Replace the v:imagedata r:id with a new ImagePart, and
+                        // delete the old ImagePart to avoid storage bloat
+                        // (mirrors Set src cleanup rule in CLAUDE.md Known
+                        // API Quirks for picture/blip replacement).
+                        var oleIcon = run.GetFirstChild<EmbeddedObject>();
+                        var shapeIcon = oleIcon?.Descendants().FirstOrDefault(e => e.LocalName == "shape");
+                        var imagedata = shapeIcon?.Descendants().FirstOrDefault(e => e.LocalName == "imagedata");
+                        if (imagedata == null)
+                        {
+                            unsupported.Add(key);
+                            break;
+                        }
+                        var mainIcon = _doc.MainDocumentPart!;
+                        var oldIconRelAttr = imagedata.GetAttributes().FirstOrDefault(a => a.LocalName == "id"
+                            && a.NamespaceUri == "http://schemas.openxmlformats.org/officeDocument/2006/relationships");
+                        if (oldIconRelAttr.Value is string oldIconRel && !string.IsNullOrEmpty(oldIconRel))
+                        {
+                            try { mainIcon.DeletePart(oldIconRel); } catch { }
+                        }
+                        var (iconStream, iconPartType) = OfficeCli.Core.ImageSource.Resolve(value);
+                        using var iconDispose = iconStream;
+                        var newIconPart = mainIcon.AddImagePart(iconPartType);
+                        newIconPart.FeedData(iconStream);
+                        var newIconRel = mainIcon.GetIdOfPart(newIconPart);
+                        imagedata.SetAttribute(new OpenXmlAttribute("r", "id",
+                            "http://schemas.openxmlformats.org/officeDocument/2006/relationships", newIconRel));
                         break;
                     }
                     case "wrap":
@@ -1149,11 +1340,41 @@ public partial class WordHandler
                         run.Remove();
                         break;
                     }
+                    case "name":
+                    {
+                        // CONSISTENCY(ole-set-name): PPT OLE Set accepts a
+                        // bare `name` key that writes oleObj.Name. Word does
+                        // not have an equivalent attribute on o:OLEObject
+                        // (the VML CT_OleObject complex type has no Name),
+                        // so we store the friendly name on the surrounding
+                        // v:shape element's "alt" attribute. AddOle writes
+                        // to the same attribute and CreateOleNode reads it
+                        // back into Format["name"].
+                        var oleName = run.GetFirstChild<EmbeddedObject>();
+                        var shapeNameEl = oleName?.Descendants().FirstOrDefault(e => e.LocalName == "shape");
+                        if (shapeNameEl != null)
+                        {
+                            shapeNameEl.SetAttribute(new OpenXmlAttribute("", "alt", "", value));
+                            break;
+                        }
+                        unsupported.Add(key);
+                        break;
+                    }
                     default:
-                        if (!GenericXmlQuery.TryCreateTypedChild(EnsureRunProperties(run), key, value))
+                        // OLE runs use a slim prop vocabulary (src, progId,
+                        // width, height, alt) that doesn't overlap the rich
+                        // run-formatting hint suffix. Emit bare keys to match
+                        // PPT/Excel OLE Set. CONSISTENCY(ole-set-bare-key).
+                        if (run.GetFirstChild<EmbeddedObject>() != null)
+                        {
+                            unsupported.Add(key);
+                        }
+                        else if (!GenericXmlQuery.TryCreateTypedChild(EnsureRunProperties(run), key, value))
+                        {
                             unsupported.Add(unsupported.Count == 0
                                 ? $"{key} (valid run props: text, bold, italic, font, size, color, underline, strike, highlight, caps, smallcaps, superscript, subscript, shading, link, formula)"
                                 : key);
+                        }
                         break;
                 }
             }

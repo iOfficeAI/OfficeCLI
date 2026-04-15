@@ -981,7 +981,7 @@ officecli add data.xlsx / --type namedrange --prop name="DataRange" --prop ref="
 ### Pictures
 
 ```bash
-officecli add data.xlsx /Sheet1 --type picture --prop path=logo.png --prop x=1 --prop y=1 --prop width=3 --prop height=2 --prop alt="Company logo"
+officecli add data.xlsx /Sheet1 --type picture --prop src=logo.png --prop x=1 --prop y=1 --prop width=3 --prop height=2 --prop alt="Company logo"
 ```
 
 ### Comments

@@ -565,6 +565,30 @@ public partial class ExcelHandler
             return ptNode;
         }
 
+        // Slicer path: /Sheet1/slicer[N]
+        var slicerMatch = Regex.Match(cellRef, @"^slicer\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (slicerMatch.Success)
+        {
+            var slIdx = int.Parse(slicerMatch.Groups[1].Value);
+            if (!TryFindSlicerByIndex(worksheet, slIdx, out var slicerElem, out var slicerCache) || slicerElem == null)
+                throw new ArgumentException($"slicer[{slIdx}] not found on sheet '{sheetNameFromPath}'");
+            var slNode = new DocumentNode { Path = path, Type = "slicer" };
+            ReadSlicerProperties(slicerElem, slicerCache, slNode);
+            return slNode;
+        }
+
+        // OLE object path: /Sheet1/ole[N]
+        // CONSISTENCY(ole-alias): "oleobject" mirrors Add's case switch
+        var oleMatch = Regex.Match(cellRef, @"^(?:ole|oleobject|object|embed)\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (oleMatch.Success)
+        {
+            var oleIdx = int.Parse(oleMatch.Groups[1].Value);
+            var oleList = CollectOleNodesForSheet(sheetNameFromPath, worksheet);
+            if (oleIdx < 1 || oleIdx > oleList.Count)
+                throw new ArgumentException($"OLE object {oleIdx} not found at /{sheetNameFromPath} (available: {oleList.Count}).");
+            return oleList[oleIdx - 1];
+        }
+
         // Comment path: /Sheet1/comment[N]
         var commentMatch = Regex.Match(cellRef, @"^comment\[(\d+)\]$", RegexOptions.IgnoreCase);
         if (commentMatch.Success)
@@ -706,13 +730,45 @@ public partial class ExcelHandler
         if (nativeCellRef.Success)
             return [Get($"/{nativeCellRef.Groups[1].Value}/{nativeCellRef.Groups[2].Value}")];
 
+        // CONSISTENCY(excel-sheet-separator-warn): Detect the PPT-style `>`
+        // separator form (e.g. `Sheet1>ole`) that users familiar with the
+        // PowerPoint query grammar may try against Excel. Excel uses `!`
+        // (Sheet1!cell[...]) — the legacy spreadsheet separator — so a `>`
+        // in the sheet-prefix slot will silently fall through to generic
+        // XML and return an empty result. We emit a single stderr warning
+        // pointing to the correct `!` form, then let the normal flow run.
+        // Only fire when the prefix looks like a sheet name (no `/`) and
+        // the suffix is a known Excel element type we would have handled.
+        {
+            var pptStyle = Regex.Match(selector, @"^([^/!>]+)>(\w+)");
+            if (pptStyle.Success)
+            {
+                var suffixType = pptStyle.Groups[2].Value.ToLowerInvariant();
+                if (suffixType is "ole" or "oleobject" or "object" or "embed" or "cell" or "row"
+                    or "chart" or "pivottable" or "pivot" or "slicer" or "shape"
+                    or "picture" or "table" or "listobject" or "comment" or "note"
+                    or "validation" or "namedrange" or "definedname" or "media"
+                    or "image" or "sparkline")
+                {
+                    Console.Error.WriteLine(
+                        $"Warning: Excel uses '!' not '>' as sheet separator " +
+                        $"(e.g. '{pptStyle.Groups[1].Value}!{suffixType}' not " +
+                        $"'{pptStyle.Groups[1].Value}>{suffixType}').");
+                }
+            }
+        }
+
         // Check if element type is known (Scheme A) or should fall back to generic XML (Scheme B)
         // Strip sheet prefix (Sheet1!cell[...]) but not != operator
         var selectorForType = Regex.Replace(selector, @"^.+?!(?!=)", "");
         var elementMatch = Regex.Match(selectorForType, @"^(\w+)");
-        var elementName = elementMatch.Success ? elementMatch.Groups[1].Value : "";
+        // Lowercase once so all downstream `elementName is "..."` dispatch is
+        // case-insensitive. CONSISTENCY(query-case-insensitive): matches how
+        // WordHandler.Query normalizes selector.element to lowercase.
+        var elementName = elementMatch.Success ? elementMatch.Groups[1].Value.ToLowerInvariant() : "";
         bool isKnownType = string.IsNullOrEmpty(elementName)
-            || elementName is "cell" or "row" or "sheet" or "validation" or "comment" or "note" or "table" or "listobject" or "chart" or "pivottable" or "pivot" or "shape" or "picture" or "sparkline" or "namedrange" or "definedname" or "media" or "image"
+            // CONSISTENCY(ole-alias): "oleobject" mirrors Add's case switch
+            || elementName is "cell" or "row" or "sheet" or "validation" or "comment" or "note" or "table" or "listobject" or "chart" or "pivottable" or "pivot" or "slicer" or "shape" or "picture" or "sparkline" or "namedrange" or "definedname" or "media" or "image" or "ole" or "oleobject" or "object" or "embed"
             || (elementName.Length <= 3 && Regex.IsMatch(elementName, @"^[A-Z]+$", RegexOptions.IgnoreCase));
         if (!isKnownType)
         {
@@ -876,6 +932,41 @@ public partial class ExcelHandler
             return results;
         }
 
+        // Handle slicer queries
+        if (elementName == "slicer")
+        {
+            foreach (var (sheetName, worksheetPart) in GetWorksheets())
+            {
+                if (parsed.Sheet != null && !sheetName.Equals(parsed.Sheet, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var slicersPart = worksheetPart.GetPartsOfType<SlicersPart>().FirstOrDefault();
+                if (slicersPart?.Slicers == null) continue;
+
+                var slicers = slicersPart.Slicers.Elements<X14.Slicer>().ToList();
+                for (int i = 0; i < slicers.Count; i++)
+                {
+                    if (!TryFindSlicerByIndex(worksheetPart, i + 1, out var slElem, out var slCache) || slElem == null)
+                        continue;
+                    var node = new DocumentNode
+                    {
+                        Path = $"/{sheetName}/slicer[{i + 1}]",
+                        Type = "slicer"
+                    };
+                    ReadSlicerProperties(slElem, slCache, node);
+
+                    if (parsed.ValueContains != null)
+                    {
+                        var nm = node.Format.TryGetValue("name", out var n) ? n?.ToString() : null;
+                        if (nm == null || !nm.Contains(parsed.ValueContains, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                    }
+                    results.Add(node);
+                }
+            }
+            return results;
+        }
+
         // Handle sparkline queries
         if (elementName == "sparkline")
         {
@@ -926,6 +1017,40 @@ public partial class ExcelHandler
                     if (parsed.ValueContains != null)
                     {
                         if (node.Text == null || !node.Text.Contains(parsed.ValueContains, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                    }
+                    if (MatchesFormatAttributes(node, parsed))
+                        results.Add(node);
+                }
+            }
+            return results;
+        }
+
+        // Handle OLE object queries. Excel stores OLE objects in two
+        // parallel structures:
+        //   1. <oleObjects> inside the worksheet (schema-typed OleObject
+        //      elements with progId + shapeId + r:id)
+        //   2. EmbeddedObjectParts/EmbeddedPackageParts on the WorksheetPart
+        //      (the actual binary payloads, joined via rel id)
+        // We enumerate (1) as the source of truth for path indexing and
+        // join (2) for contentType/fileSize enrichment. Worksheets that
+        // somehow have orphan parts without a matching oleObjects entry
+        // are still surfaced from the parts side so nothing is missed.
+        // CONSISTENCY(ole-alias): "oleobject" mirrors Add's case switch
+        if (elementName is "ole" or "oleobject" or "object" or "embed")
+        {
+            foreach (var (sheetName, worksheetPart) in GetWorksheets())
+            {
+                if (parsed.Sheet != null && !sheetName.Equals(parsed.Sheet, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var oleNodes = CollectOleNodesForSheet(sheetName, worksheetPart);
+                foreach (var node in oleNodes)
+                {
+                    if (parsed.ValueContains != null)
+                    {
+                        var pid = node.Format.TryGetValue("progId", out var p) ? p?.ToString() : null;
+                        if (pid == null || !pid.Contains(parsed.ValueContains, StringComparison.OrdinalIgnoreCase))
                             continue;
                     }
                     if (MatchesFormatAttributes(node, parsed))

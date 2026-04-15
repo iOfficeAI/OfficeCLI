@@ -17,6 +17,15 @@ public partial class WordHandler
 {
     public string Add(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
     {
+        // CONSISTENCY(prop-key-case): property keys are case-insensitive
+        // ("SRC"/"src"/"Src" all resolve the same). Normalize once at the
+        // dispatch entry so every AddXxx helper can rely on TryGetValue("src").
+        properties = properties == null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : properties.Comparer == StringComparer.OrdinalIgnoreCase
+                ? properties
+                : new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
+
         var body = _doc.MainDocumentPart?.Document?.Body
             ?? throw new InvalidOperationException("Document body not found");
 
@@ -62,6 +71,7 @@ public partial class WordHandler
             "cell" or "tc" => AddCell(parent, parentPath, index, properties),
             "chart" => AddChart(parent, parentPath, index, properties),
             "picture" or "image" or "img" => AddPicture(parent, parentPath, index, properties),
+            "ole" or "oleobject" or "object" or "embed" => AddOle(parent, parentPath, index, properties),
             "comment" => AddComment(parent, parentPath, index, properties),
             "bookmark" => AddBookmark(parent, parentPath, index, properties),
             "hyperlink" or "link" => AddHyperlink(parent, parentPath, index, properties),

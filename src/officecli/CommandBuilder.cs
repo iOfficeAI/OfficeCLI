@@ -38,53 +38,31 @@ static partial class CommandBuilder
             var file = result.GetValue(openFileArg)!;
             var filePath = file.FullName;
 
-            // If already running, reuse the existing resident
+            // If already running, reuse the existing resident. This covers
+            // two cases with the same code path:
+            //   (a) user previously called `open` explicitly, or
+            //   (b) `create` just auto-started a short-lived (60s) resident.
+            // In either case we upgrade the idle timeout to the default 12min
+            // via the __set-idle-timeout__ ping RPC. Failure is non-fatal —
+            // the resident is still usable, it'll just exit on its original
+            // schedule. `open` is idempotent, so repeated calls are safe.
+            const int DefaultOpenIdleSeconds = 12 * 60;
             if (ResidentClient.TryConnect(filePath, out _))
             {
-                var msg = $"Opened {file.Name} (already running, do NOT call close)";
+                ResidentClient.SendSetIdleTimeout(filePath, DefaultOpenIdleSeconds);
+                var msg = $"Opened {file.Name} (reusing running resident, idle timeout set to 12min)";
                 if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(msg));
                 else Console.WriteLine(msg);
                 return 0;
             }
 
-            // Fork a background process running the resident server
-            var exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
-            if (exePath == null)
-                throw new InvalidOperationException("Cannot determine executable path.");
+            if (!TryStartResidentProcess(filePath, idleSeconds: null, out var startError))
+                throw new InvalidOperationException(startError);
 
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = exePath,
-                Arguments = $"__resident-serve__ \"{filePath}\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-
-            var process = Process.Start(startInfo);
-            if (process == null)
-                throw new InvalidOperationException("Failed to start resident process.");
-
-            // Wait briefly for the server to start accepting connections
-            for (int i = 0; i < 50; i++) // up to 5 seconds
-            {
-                Thread.Sleep(100);
-                if (ResidentClient.TryConnect(filePath, out _))
-                {
-                    var msg = $"Opened {file.Name} (remember to call close when done)";
-                    if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(msg));
-                    else Console.WriteLine(msg);
-                    return 0;
-                }
-                if (process.HasExited)
-                {
-                    var stderr = process.StandardError.ReadToEnd();
-                    throw new InvalidOperationException($"Resident process exited. {stderr}");
-                }
-            }
-
-            throw new InvalidOperationException("Resident process started but not responding.");
+            var startedMsg = $"Opened {file.Name} (remember to call close when done)";
+            if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(startedMsg));
+            else Console.WriteLine(startedMsg);
+            return 0;
         }, json); });
 
         rootCommand.Add(openCommand);
@@ -157,6 +135,69 @@ static partial class CommandBuilder
         return rootCommand;
     }
 
+    // ==================== Helper: fork a __resident-serve__ subprocess ====================
+    //
+    // Used by both `open` (explicit) and `create` (auto-start after
+    // creating a blank file). Forks the current executable with the
+    // internal __resident-serve__ verb and waits up to 5s for the ping
+    // pipe to respond, so callers get a definitive success/fail answer.
+    //
+    // `idleSeconds` overrides the child's idle-exit timeout via the
+    // OFFICECLI_RESIDENT_IDLE_SECONDS env var (1..86400). Passing null
+    // inherits the server default (12 minutes). `create` passes 60 so
+    // an auto-started resident that nobody follows up on exits quickly.
+    //
+    // Caller must first verify no resident is already running for this
+    // file (e.g. via ResidentClient.TryConnect) — this helper always
+    // starts a fresh child.
+    internal static bool TryStartResidentProcess(string filePath, int? idleSeconds, out string? error)
+    {
+        error = null;
+        var exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
+        if (exePath == null)
+        {
+            error = "Cannot determine executable path.";
+            return false;
+        }
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = exePath,
+            Arguments = $"__resident-serve__ \"{filePath}\"",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+
+        if (idleSeconds.HasValue)
+            startInfo.Environment["OFFICECLI_RESIDENT_IDLE_SECONDS"] = idleSeconds.Value.ToString();
+
+        var process = Process.Start(startInfo);
+        if (process == null)
+        {
+            error = "Failed to start resident process.";
+            return false;
+        }
+
+        // Wait briefly for the server to start accepting connections.
+        for (int i = 0; i < 50; i++) // up to 5 seconds
+        {
+            Thread.Sleep(100);
+            if (ResidentClient.TryConnect(filePath, out _))
+                return true;
+            if (process.HasExited)
+            {
+                var stderr = process.StandardError.ReadToEnd();
+                error = $"Resident process exited. {stderr}";
+                return false;
+            }
+        }
+
+        error = "Resident process started but not responding.";
+        return false;
+    }
+
     // ==================== Helper: try forwarding to resident ====================
     //
     // Two-step protocol (CONSISTENCY(resident-two-step): same shape as
@@ -182,7 +223,23 @@ static partial class CommandBuilder
         // Step 1: does a resident own this file? Probe via the -ping pipe,
         // which is never serialized behind main-pipe commands.
         if (!ResidentClient.TryConnect(filePath, out _))
-            return null; // no resident → caller falls back to direct file access
+        {
+            // No resident running — auto-start one to avoid file-lock conflicts
+            // when multiple commands hit the same file in parallel.
+            // Opt-out: OFFICECLI_NO_AUTO_RESIDENT=1 disables auto-start (e.g.
+            // sandbox environments where named pipes may not work reliably).
+            var noAuto = Environment.GetEnvironmentVariable("OFFICECLI_NO_AUTO_RESIDENT");
+            if (noAuto == "1" || string.Equals(noAuto, "true", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            if (!TryStartResidentProcess(filePath, idleSeconds: 60, out _))
+            {
+                // Startup failed — maybe another process just started a resident
+                // for the same file (parallel race). Re-probe before giving up.
+                if (!ResidentClient.TryConnect(filePath, out _))
+                    return null; // truly no resident → caller falls back to direct file access
+            }
+        }
 
         var request = new ResidentRequest();
         configure(request);

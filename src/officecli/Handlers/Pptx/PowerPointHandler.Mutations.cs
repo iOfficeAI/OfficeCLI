@@ -269,9 +269,37 @@ public partial class PowerPointHandler
             }
             zmAc.Remove();
         }
+        else if (elementType is "ole" or "object" or "embed")
+        {
+            // Remove the GraphicFrame wrapper whose graphicData hosts a
+            // strong-typed p:oleObj. Index is 1-based among OLE frames on
+            // this slide. Also deletes the backing embedded part and the
+            // icon image part so the package doesn't bloat with orphaned
+            // binaries — same rationale as the picture-replacement quirk
+            // noted in CLAUDE.md.
+            var oleFrames = shapeTree.Elements<GraphicFrame>()
+                .Where(gf => gf.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>().Any())
+                .ToList();
+            if (elementIdx < 1 || elementIdx > oleFrames.Count)
+                throw new ArgumentException($"OLE object {elementIdx} not found (total: {oleFrames.Count})");
+            var oleFrame = oleFrames[elementIdx - 1];
+            var oleObjEl = oleFrame.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>().First();
+            // 1. Delete the embedded payload part by rel id.
+            if (oleObjEl.Id?.Value is string embedRel && !string.IsNullOrEmpty(embedRel))
+            {
+                try { slidePart.DeletePart(embedRel); } catch { }
+            }
+            // 2. Delete the inner icon image part (Blip inside p:pic).
+            var iconBlip = oleObjEl.Descendants<DocumentFormat.OpenXml.Drawing.Blip>().FirstOrDefault();
+            if (iconBlip?.Embed?.Value is string iconRel && !string.IsNullOrEmpty(iconRel))
+            {
+                try { slidePart.DeletePart(iconRel); } catch { }
+            }
+            oleFrame.Remove();
+        }
         else
         {
-            throw new ArgumentException($"Unknown element type: {elementType}. Supported: shape, picture, video, audio, table, chart, connector/connection, group, zoom, 3dmodel");
+            throw new ArgumentException($"Unknown element type: {elementType}. Supported: shape, picture, video, audio, table, chart, connector/connection, group, zoom, 3dmodel, ole");
         }
 
         GetSlide(slidePart).Save();
@@ -334,6 +362,18 @@ public partial class PowerPointHandler
                     if (bi >= 1 && bi <= slideIds.Count) beforeAnchor = slideIds[bi - 1];
                 }
                 if (beforeAnchor == null) throw new ArgumentException($"Before anchor not found: {position.Before}");
+            }
+
+            // Self-move guard: if the anchor is the slide being moved, the anchor's
+            // parent will be null after Remove() and InsertAfterSelf/InsertBeforeSelf
+            // will throw InvalidOperationException. Detect and no-op the move.
+            // CONSISTENCY(slide-move): same guard for both After and Before anchors.
+            if (ReferenceEquals(afterAnchor, slideId) || ReferenceEquals(beforeAnchor, slideId))
+            {
+                // Moving a slide after/before itself is a no-op.
+                var sameNewSlideIds = slideIdList.Elements<SlideId>().ToList();
+                var sameIdx = sameNewSlideIds.IndexOf(slideId) + 1;
+                return $"/slide[{sameIdx}]";
             }
 
             slideId.Remove();
@@ -400,9 +440,26 @@ public partial class PowerPointHandler
                 throw new ArgumentException("Cannot move placeholder shapes across slides");
         }
 
-        // Copy relationships BEFORE removing from source (so rel IDs are still accessible)
+        // Copy relationships BEFORE removing from source (so rel IDs are still accessible).
+        // For cross-slide moves, also capture the original rel ids so we can
+        // delete now-orphaned parts from the source slide after the move
+        // (e.g. OLE embedded payload + icon blip). Without this, Query("ole")
+        // on the source still surfaces the stray EmbeddedPackagePart as an
+        // "orphan" OLE node — see Ppt_MoveOleBetweenSlides_SucceedsOrErrorsClearly.
+        var oldSourceRelIds = new List<string>();
         if (srcSlidePart != tgtSlidePart)
+        {
+            var rNsUri = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+            foreach (var el in srcElement.Descendants().Prepend(srcElement))
+            {
+                foreach (var attr in el.GetAttributes())
+                {
+                    if (attr.NamespaceUri == rNsUri && !string.IsNullOrEmpty(attr.Value))
+                        oldSourceRelIds.Add(attr.Value);
+                }
+            }
             CopyRelationships(srcElement, srcSlidePart, tgtSlidePart);
+        }
 
         // Resolve after/before anchor for shape-level move
         OpenXmlElement? shapeAfterAnchor = null, shapeBeforeAnchor = null;
@@ -431,6 +488,20 @@ public partial class PowerPointHandler
         GetSlide(srcSlidePart).Save();
         if (srcSlidePart != tgtSlidePart)
             GetSlide(tgtSlidePart).Save();
+
+        // Post-move cleanup: delete any source-slide rels the moved element
+        // used exclusively, otherwise they linger as "orphan" parts detected
+        // by Query("ole") and other listers.
+        if (srcSlidePart != tgtSlidePart && oldSourceRelIds.Count > 0)
+        {
+            var srcSlideXml = GetSlide(srcSlidePart).OuterXml;
+            foreach (var oldRelId in oldSourceRelIds.Distinct())
+            {
+                // Keep rels still referenced anywhere else in the source slide XML.
+                if (srcSlideXml.Contains($"\"{oldRelId}\"")) continue;
+                try { srcSlidePart.DeletePart(oldRelId); } catch { }
+            }
+        }
 
         return ComputeElementPath(effectiveParentPath, srcElement, tgtShapeTree);
     }
@@ -531,9 +602,11 @@ public partial class PowerPointHandler
         targetParentPath = ResolveIdPath(targetParentPath);
         var slideParts = GetSlideParts().ToList();
 
-        // Whole-slide clone: --from /slide[N] to /
+        // Whole-slide clone: --from /slide[N] to / (or null == "duplicate in
+        // place" at presentation root, i.e. append the clone after the source
+        // slide).
         var slideCloneMatch = Regex.Match(sourcePath, @"^/slide\[(\d+)\]$");
-        if (slideCloneMatch.Success && (targetParentPath is "/" or "" or "/presentation"))
+        if (slideCloneMatch.Success && (targetParentPath is null or "/" or "" or "/presentation"))
         {
             return CloneSlide(slideCloneMatch, slideParts, index);
         }
@@ -767,6 +840,10 @@ public partial class PowerPointHandler
             "chart" => shapeTree.Elements<GraphicFrame>()
                 .Where(gf => gf.Descendants<C.ChartReference>().Any()).ElementAtOrDefault(elementIdx - 1)
                 ?? throw new ArgumentException($"Chart {elementIdx} not found"),
+            "ole" or "object" or "embed" => shapeTree.Elements<GraphicFrame>()
+                .Where(gf => gf.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>().Any())
+                .ElementAtOrDefault(elementIdx - 1)
+                ?? throw new ArgumentException($"OLE object {elementIdx} not found"),
             "group" => shapeTree.Elements<GroupShape>().ElementAtOrDefault(elementIdx - 1)
                 ?? throw new ArgumentException($"Group {elementIdx} not found"),
             _ => shapeTree.ChildElements
@@ -917,6 +994,13 @@ public partial class PowerPointHandler
                 typeName = "chart";
                 typeIdx = shapeTree.Elements<GraphicFrame>()
                     .Where(f => f.Descendants<C.ChartReference>().Any())
+                    .ToList().IndexOf(gf) + 1;
+            }
+            else if (gf.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>().Any())
+            {
+                typeName = "ole";
+                typeIdx = shapeTree.Elements<GraphicFrame>()
+                    .Where(f => f.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>().Any())
                     .ToList().IndexOf(gf) + 1;
             }
             else

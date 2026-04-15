@@ -232,13 +232,15 @@
     // Main SSE listener for DOM-swap events
     es.addEventListener('update', function(e) {
         var msg = JSON.parse(e.data);
-        // Track version
+        // Track version — save prevVersion BEFORE updating so gap checks
+        // compare against the version we actually have, not the incoming one.
+        var prevVersion = _clientVersion;
         if (msg.version !== undefined) _clientVersion = msg.version;
         if (msg.action === 'word-patch') {
             // Version gap check: if we missed messages, fallback to full
-            if (msg.baseVersion !== 0 && msg.baseVersion !== _clientVersion) {
+            // Skip when prevVersion===0 (fresh client — no messages seen yet)
+            if (prevVersion > 0 && msg.baseVersion !== 0 && msg.baseVersion !== prevVersion) {
                 wordDiffUpdate(msg);
-                if (msg.version !== undefined) _clientVersion = msg.version;
                 return;
             }
             wordPatchUpdate(msg);
@@ -246,7 +248,8 @@
         }
         if (msg.action === 'excel-patch') {
             // Version gap check: if we missed messages, fallback to full reload
-            if (msg.baseVersion !== 0 && msg.baseVersion !== _clientVersion) {
+            // Skip when prevVersion===0 (fresh client — no messages seen yet)
+            if (prevVersion > 0 && msg.baseVersion !== 0 && msg.baseVersion !== prevVersion) {
                 location.reload();
                 return;
             }
@@ -309,6 +312,16 @@
                 wordDiffUpdate(msg);
                 return;
             }
+            // Defer full body replacement while a drag is in progress
+            if (window._isDragging) {
+                var _deferredMsg = msg;
+                function _applyWhenIdle() {
+                    if (window._isDragging) { setTimeout(_applyWhenIdle, 100); return; }
+                    es.dispatchEvent(new MessageEvent('update', { data: JSON.stringify(_deferredMsg) }));
+                }
+                setTimeout(_applyWhenIdle, 100);
+                return;
+            }
             // Non-Word (PPT/Excel): full body replacement
             fetch('/').then(function(r) { return r.text(); }).then(function(html) {
                 var doc = new DOMParser().parseFromString(html, 'text/html');
@@ -323,6 +336,11 @@
                 if (msg.scrollTo && msg.scrollTo.indexOf('data-sheet') >= 0) {
                     var m = msg.scrollTo.match(/data-sheet="(\d+)"/);
                     if (m) targetSheetIdx = parseInt(m[1]);
+                }
+                // Preserve current active sheet if no explicit target
+                if (targetSheetIdx < 0) {
+                    var curActive = document.querySelector('.sheet-tab.active');
+                    if (curActive) targetSheetIdx = parseInt(curActive.getAttribute('data-sheet')) || 0;
                 }
                 if (targetSheetIdx >= 0) {
                     doc.querySelectorAll('.sheet-content').forEach(function(s) {

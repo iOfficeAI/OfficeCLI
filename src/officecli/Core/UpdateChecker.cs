@@ -274,12 +274,39 @@ internal static class UpdateChecker
                 FileName = exePath,
                 Arguments = "__update-check__",
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow = true,
+                // Redirect child stdio away from the parent's console. Without
+                // these flags the child inherits the parent's stdout/stderr,
+                // which is a problem in two concrete scenarios:
+                //   (a) the parent is an MCP server — its stdout carries the
+                //       JSON-RPC protocol stream, and any byte the update-
+                //       check writes there would corrupt the protocol and
+                //       disconnect the MCP client;
+                //   (b) the parent is an interactive shell command that exits
+                //       before the child finishes — the child's "downloaded
+                //       v1.2.3" or error messages would then surface on the
+                //       user's terminal at a seemingly random later moment.
+                // We redirect to pipes and never Read them; the pipes are
+                // closed when the child exits. This cannot break the upgrade
+                // itself: RunRefresh() only writes to stdout/stderr for
+                // debugging/never (it's silent-on-success, silent-on-failure
+                // by design), and the download / verify / File.Move chain
+                // doesn't touch the console stream at all.
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                RedirectStandardInput = true
             };
 
             var process = Process.Start(startInfo);
-            // Don't wait — let it run independently
-            process?.Dispose();
+            if (process == null) return;
+            // Close our end of stdin immediately so the child sees EOF if it
+            // ever tries to read (defensive — RunRefresh doesn't read stdin).
+            try { process.StandardInput.Close(); } catch { }
+            // Don't wait, don't Read the redirected streams. When the child
+            // exits the OS closes its side of the pipes; the .NET runtime's
+            // SIGCHLD reaper waits on it so it never becomes a zombie even
+            // though we never call WaitForExit.
+            process.Dispose();
         }
         catch { }
     }

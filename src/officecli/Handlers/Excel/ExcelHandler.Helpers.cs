@@ -538,10 +538,10 @@ public partial class ExcelHandler
                         if (fonts != null && fontId < (uint)fonts.Elements<Font>().Count())
                         {
                             var font = fonts.Elements<Font>().ElementAt((int)fontId);
-                            if (font.Bold != null) { node.Format["bold"] = true; }
+                            if (font.Bold != null) { node.Format["font.bold"] = true; }
                             if (font.Italic != null)
                             {
-                                node.Format["italic"] = true;
+                                node.Format["font.italic"] = true;
                             }
                             if (font.Strike != null) node.Format["font.strike"] = true;
                             if (font.Underline != null)
@@ -1387,8 +1387,210 @@ public partial class ExcelHandler
         return (
             ParseHelpers.SafeParseInt(properties.GetValueOrDefault("x", defX) ?? defX, "x"),
             ParseHelpers.SafeParseInt(properties.GetValueOrDefault("y", defY) ?? defY, "y"),
-            ParseHelpers.SafeParseInt(properties.GetValueOrDefault("width", defW) ?? defW, "width"),
-            ParseHelpers.SafeParseInt(properties.GetValueOrDefault("height", defH) ?? defH, "height")
+            ParseAnchorDimension(properties.GetValueOrDefault("width", defW) ?? defW, "width"),
+            ParseAnchorDimension(properties.GetValueOrDefault("height", defH) ?? defH, "height")
+        );
+    }
+
+    /// <summary>
+    /// Parse a width/height anchor value that is either a plain integer
+    /// cell-count ("3", "5") or a unit-qualified size ("6cm", "2in", "72pt").
+    /// Unit-qualified values are converted to an approximate cell count using
+    /// Excel's default ~64px (~0.66cm) column width and ~15pt row height.
+    /// CONSISTENCY(ole-width-units): Picture/Drawing elsewhere accept ParseEmu;
+    /// anchor.x/y stay as cell coordinates, but width/height tolerate EMU units.
+    /// </summary>
+    private static int ParseAnchorDimension(string value, string name)
+    {
+        if (int.TryParse(value, out var plainInt))
+            return plainInt;
+
+        // Not a plain integer — treat as EMU-convertible size string.
+        long emu;
+        try
+        {
+            emu = OfficeCli.Core.EmuConverter.ParseEmu(value);
+        }
+        catch
+        {
+            throw new ArgumentException($"Expected an integer cell count or a unit-qualified size (e.g. '6cm', '2in') for {name}, got '{value}'.");
+        }
+
+        // Rough conversion: 1 default Excel column ≈ 64px ≈ 0.677cm ≈ 609600 EMU.
+        // 1 default Excel row    ≈ 15pt ≈ 0.529cm ≈ 190500 EMU.
+        // For width/height passed as a unit, choose the larger of the two
+        // converters so "6cm" yields a sensible ~9 columns result either axis.
+        const long emuPerColApprox = 609600;
+        const long emuPerRowApprox = 190500;
+        if (name == "height")
+            return Math.Max(1, (int)(emu / emuPerRowApprox));
+        return Math.Max(1, (int)(emu / emuPerColApprox));
+    }
+
+    // CONSISTENCY(ole-width-units): OLE round-trip preserves sub-cell precision
+    // by storing the full EMU extent in ObjectAnchor's From/To ColumnOffset and
+    // RowOffset, instead of rounding to whole cells like ParseAnchorDimension.
+    // Picture/shape branches keep the integer behavior for now.
+    private const long EmuPerColApprox = 609600;
+    private const long EmuPerRowApprox = 190500;
+
+    /// <summary>
+    /// Parse a width/height anchor value into EMU. Plain integers are treated
+    /// as cell counts and multiplied by the default column/row EMU width.
+    /// Unit-qualified values (e.g. "6cm", "2in") are parsed via EmuConverter.
+    /// </summary>
+    private static long ParseAnchorDimensionEmu(string value, string name)
+    {
+        if (int.TryParse(value, out var plainInt))
+        {
+            long perCell = (name == "height") ? EmuPerRowApprox : EmuPerColApprox;
+            return Math.Max(0, (long)plainInt) * perCell;
+        }
+
+        try
+        {
+            return OfficeCli.Core.EmuConverter.ParseEmu(value);
+        }
+        catch
+        {
+            throw new ArgumentException($"Expected an integer cell count or a unit-qualified size (e.g. '6cm', '2in') for {name}, got '{value}'.");
+        }
+    }
+
+    /// <summary>
+    /// Apply `x` / `y` / `width` / `height` to the N-th chart's
+    /// <see cref="XDR.TwoCellAnchor"/> in a drawings part. Accepts the same
+    /// value grammar as OLE objects and chart Add: integer cell counts, or
+    /// unit-qualified EMU strings ("6cm", "2in", "720pt", raw EMU).
+    ///
+    /// Returns any keys from the input dict that couldn't be applied (parse
+    /// failures, missing anchor, ...). Keys present but successfully applied
+    /// are NOT returned — the caller is expected to strip them before
+    /// forwarding to the chart content setter.
+    ///
+    /// CONSISTENCY(chart-position-set): mirrors the PPTX
+    /// PowerPointHandler.Set.cs chart path — same vocabulary, same units —
+    /// so one prop grammar covers chart position across all three document
+    /// types. The mutation mechanic differs because Excel charts are pinned
+    /// to cells via TwoCellAnchor.
+    /// </summary>
+    private static List<string> ApplyChartPositionSet(
+        DrawingsPart drawingsPart, int chartIdx, Dictionary<string, string> properties)
+    {
+        var unsupported = new List<string>();
+        if (drawingsPart.WorksheetDrawing == null) return unsupported;
+
+        // Find the N-th chart frame (same order as GetExcelCharts).
+        var chartFrames = drawingsPart.WorksheetDrawing
+            .Descendants<XDR.GraphicFrame>()
+            .Where(gf => gf.Descendants<C.ChartReference>().Any() || IsExtendedChartFrame(gf))
+            .ToList();
+        if (chartIdx < 1 || chartIdx > chartFrames.Count) return unsupported;
+        var gf = chartFrames[chartIdx - 1];
+        var anchor = gf.Parent as XDR.TwoCellAnchor;
+        if (anchor?.FromMarker == null || anchor.ToMarker == null)
+        {
+            foreach (var k in new[] { "x", "y", "width", "height" })
+                if (properties.ContainsKey(k)) unsupported.Add(k);
+            return unsupported;
+        }
+
+        var fromM = anchor.FromMarker;
+        var toM = anchor.ToMarker;
+
+        // ---- Position (x, y) → FromMarker cell indices ----
+        // `x` = column index (0-based), `y` = row index (0-based). Integer
+        // only — sub-cell offset is not supported here (matches chart Add).
+        if (properties.TryGetValue("x", out var xStr))
+        {
+            if (int.TryParse(xStr, out var newFromCol) && newFromCol >= 0)
+            {
+                var fromColChild = fromM.GetFirstChild<XDR.ColumnId>();
+                var oldFromCol = int.TryParse(fromColChild?.Text ?? "0", out var ofc) ? ofc : 0;
+                if (fromColChild != null) fromColChild.Text = newFromCol.ToString();
+                // Shift ToMarker column by the same delta to preserve width.
+                var toColChild = toM.GetFirstChild<XDR.ColumnId>();
+                if (toColChild != null && int.TryParse(toColChild.Text ?? "0", out var oldToCol))
+                    toColChild.Text = (oldToCol + (newFromCol - oldFromCol)).ToString();
+                // Reset fromCol offset to 0 (align to cell boundary).
+                var fromColOffChild = fromM.GetFirstChild<XDR.ColumnOffset>();
+                if (fromColOffChild != null) fromColOffChild.Text = "0";
+            }
+            else unsupported.Add("x");
+        }
+
+        if (properties.TryGetValue("y", out var yStr))
+        {
+            if (int.TryParse(yStr, out var newFromRow) && newFromRow >= 0)
+            {
+                var fromRowChild = fromM.GetFirstChild<XDR.RowId>();
+                var oldFromRow = int.TryParse(fromRowChild?.Text ?? "0", out var ofr) ? ofr : 0;
+                if (fromRowChild != null) fromRowChild.Text = newFromRow.ToString();
+                var toRowChild = toM.GetFirstChild<XDR.RowId>();
+                if (toRowChild != null && int.TryParse(toRowChild.Text ?? "0", out var oldToRow))
+                    toRowChild.Text = (oldToRow + (newFromRow - oldFromRow)).ToString();
+                var fromRowOffChild = fromM.GetFirstChild<XDR.RowOffset>();
+                if (fromRowOffChild != null) fromRowOffChild.Text = "0";
+            }
+            else unsupported.Add("y");
+        }
+
+        // ---- Dimensions (width, height) → rebuild ToMarker from FromMarker ----
+        // Reuses the OLE-object path's EMU math (EmuPerColApprox / EmuPerRowApprox
+        // approximation, sub-cell offset preserves precision).
+        if (properties.TryGetValue("width", out var wStr))
+        {
+            long emuTotal;
+            try { emuTotal = ParseAnchorDimensionEmu(wStr, "width"); }
+            catch { unsupported.Add("width"); emuTotal = -1; }
+            if (emuTotal >= 0)
+            {
+                int.TryParse(fromM.GetFirstChild<XDR.ColumnId>()?.Text ?? "0", out var fromCol);
+                long.TryParse(fromM.GetFirstChild<XDR.ColumnOffset>()?.Text ?? "0", out var fromColOff);
+                long wholeCols = emuTotal / EmuPerColApprox;
+                long remCols = emuTotal % EmuPerColApprox;
+                var toColChild = toM.GetFirstChild<XDR.ColumnId>();
+                if (toColChild != null) toColChild.Text = (fromCol + (int)wholeCols).ToString();
+                var toColOffChild = toM.GetFirstChild<XDR.ColumnOffset>();
+                if (toColOffChild != null) toColOffChild.Text = (fromColOff + remCols).ToString();
+            }
+        }
+
+        if (properties.TryGetValue("height", out var hStr))
+        {
+            long emuTotal;
+            try { emuTotal = ParseAnchorDimensionEmu(hStr, "height"); }
+            catch { unsupported.Add("height"); emuTotal = -1; }
+            if (emuTotal >= 0)
+            {
+                int.TryParse(fromM.GetFirstChild<XDR.RowId>()?.Text ?? "0", out var fromRow);
+                long.TryParse(fromM.GetFirstChild<XDR.RowOffset>()?.Text ?? "0", out var fromRowOff);
+                long wholeRows = emuTotal / EmuPerRowApprox;
+                long remRows = emuTotal % EmuPerRowApprox;
+                var toRowChild = toM.GetFirstChild<XDR.RowId>();
+                if (toRowChild != null) toRowChild.Text = (fromRow + (int)wholeRows).ToString();
+                var toRowOffChild = toM.GetFirstChild<XDR.RowOffset>();
+                if (toRowOffChild != null) toRowOffChild.Text = (fromRowOff + remRows).ToString();
+            }
+        }
+
+        drawingsPart.WorksheetDrawing.Save();
+        return unsupported;
+    }
+
+    /// <summary>
+    /// Parse x, y (cell indices) + width, height (EMU) for OLE anchors that
+    /// need sub-cell precision. See ParseAnchorDimensionEmu for width/height
+    /// semantics.
+    /// </summary>
+    private static (int x, int y, long widthEmu, long heightEmu) ParseAnchorBoundsEmu(
+        Dictionary<string, string> properties, string defX, string defY, string defW, string defH)
+    {
+        return (
+            ParseHelpers.SafeParseInt(properties.GetValueOrDefault("x", defX) ?? defX, "x"),
+            ParseHelpers.SafeParseInt(properties.GetValueOrDefault("y", defY) ?? defY, "y"),
+            ParseAnchorDimensionEmu(properties.GetValueOrDefault("width", defW) ?? defW, "width"),
+            ParseAnchorDimensionEmu(properties.GetValueOrDefault("height", defH) ?? defH, "height")
         );
     }
 
@@ -1428,6 +1630,25 @@ public partial class ExcelHandler
     // ==================== Extended Chart Helpers ====================
 
     private const string ExcelChartExUri = "http://schemas.microsoft.com/office/drawing/2014/chartex";
+
+    /// <summary>
+    /// Load a chartEx sidecar resource (style / colors XML) bundled as an
+    /// embedded resource. Files are copied verbatim from an Excel reference
+    /// treemap and reused for every chartEx type — they carry default
+    /// style/palette content that has no dependency on chart layout or data.
+    /// See the chartex-sidecars CONSISTENCY note in ExcelHandler.Add.cs for
+    /// why these sidecars are load-bearing (Excel deletes the whole drawing
+    /// if they are missing from the relationships).
+    /// </summary>
+    private static Stream LoadChartExResource(string fileName)
+    {
+        var assembly = typeof(ExcelHandler).Assembly;
+        var resourceName = $"OfficeCli.Resources.{fileName}";
+        var stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException(
+                $"Embedded resource not found: {resourceName}. Ensure it is declared in officecli.csproj.");
+        return stream;
+    }
 
     /// <summary>
     /// Check if an XDR.GraphicFrame contains an extended chart (cx:chart).
@@ -1753,5 +1974,246 @@ public partial class ExcelHandler
         }
 
         return (seriesData, categories.ToArray());
+    }
+
+    // ==================== Binary Extraction ====================
+    //
+    // Support for `officecli get --save <dest>`. Parses the path to find
+    // the owning worksheet and queries the node's relId. Both DrawingsPart
+    // (pictures) and WorksheetPart (embedded ole/package) are consulted
+    // because pictures live on DrawingsPart while OLE payloads live on
+    // WorksheetPart directly.
+    public bool TryExtractBinary(string path, string destPath, out string? contentType, out long byteCount)
+    {
+        contentType = null;
+        byteCount = 0;
+        var node = Get(path, 0);
+        if (node == null) return false;
+        if (!node.Format.TryGetValue("relId", out var relObj) || relObj is not string relId
+            || string.IsNullOrEmpty(relId))
+            return false;
+
+        // Path looks like /SheetName/... — find the worksheet.
+        var normalized = NormalizeExcelPath(path);
+        normalized = ResolveSheetIndexInPath(normalized);
+        var segments = normalized.TrimStart('/').Split('/', 2);
+        var sheetName = segments[0];
+        var worksheetPart = FindWorksheet(sheetName);
+        if (worksheetPart == null) return false;
+
+        DocumentFormat.OpenXml.Packaging.OpenXmlPart? part = null;
+        try { part = worksheetPart.GetPartById(relId); } catch { /* try drawing */ }
+        if (part == null && worksheetPart.DrawingsPart != null)
+        {
+            try { part = worksheetPart.DrawingsPart.GetPartById(relId); } catch { /* fall through */ }
+        }
+        if (part == null) return false;
+
+        // BUG-R10-04: create the destination directory if missing so
+        // `get --save ./outdir/file.bin` works when outdir doesn't exist.
+        var destDir = Path.GetDirectoryName(destPath);
+        if (!string.IsNullOrEmpty(destDir) && !Directory.Exists(destDir))
+            Directory.CreateDirectory(destDir);
+
+        using (var src = part.GetStream())
+        using (var dst = File.Create(destPath))
+        {
+            src.CopyTo(dst);
+            byteCount = dst.Length;
+        }
+        contentType = part.ContentType;
+        return true;
+    }
+
+    // ==================== OLE Object Writing Helpers ====================
+
+    /// <summary>
+    /// Ensure the given VmlDrawingPart contains a minimal v:shape with the
+    /// specified shapeId so the schema-required <c>oleObject/@shapeId</c>
+    /// attribute has a valid target. Modern Excel (2010+) renders OLE from
+    /// the companion <c>objectPr/anchor</c>, but the shape itself still
+    /// has to exist for a round-trip — otherwise opening the workbook in
+    /// older Excel versions tends to drop the object silently.
+    /// </summary>
+    internal static void EnsureExcelVmlShapeForOle(VmlDrawingPart vmlPart, uint shapeId,
+        int fromCol, int fromRow, int toCol, int toRow)
+    {
+        // Load the existing VML (may be absent on a freshly-created part).
+        string existing;
+        try
+        {
+            using var readStream = vmlPart.GetStream(FileMode.OpenOrCreate, FileAccess.Read);
+            using var reader = new StreamReader(readStream);
+            existing = reader.ReadToEnd();
+        }
+        catch
+        {
+            existing = string.Empty;
+        }
+
+        // VML clientData carries the anchor (16 coordinates: from/to col/row + offsets).
+        // Coordinates are in the legacy "left, top, right, bottom" pixel order.
+        var anchorValue = $"{fromCol}, 0, {fromRow}, 0, {toCol}, 0, {toRow}, 0";
+        var newShape = $"""
+<v:shape id="_x0000_s{shapeId}" type="#_x0000_t75" style='position:absolute;margin-left:0;margin-top:0;width:100pt;height:40pt;visibility:hidden' o:oleicon="t" o:ole="" filled="f" stroked="f">
+ <v:imagedata chromakey="white"/>
+ <o:lock v:ext="edit" aspectratio="t"/>
+ <x:ClientData ObjectType="Pict">
+  <x:Anchor>{anchorValue}</x:Anchor>
+  <x:CF>Pict</x:CF>
+  <x:AutoPict/>
+ </x:ClientData>
+</v:shape>
+""";
+
+        string merged;
+        if (string.IsNullOrWhiteSpace(existing))
+        {
+            // Build a minimal xml with shapetype + our shape.
+            merged = $"""
+<xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+ <o:shapelayout v:ext="edit"><o:idmap v:ext="edit" data="1"/></o:shapelayout>
+ <v:shapetype id="_x0000_t75" coordsize="21600,21600" o:spt="75" o:preferrelative="t" path="m@4@5l@4@11@9@11@9@5xe" filled="f" stroked="f">
+  <v:stroke joinstyle="miter"/>
+  <v:formulas>
+   <v:f eqn="if lineDrawn pixelLineWidth 0"/>
+   <v:f eqn="sum @0 1 0"/>
+   <v:f eqn="sum 0 0 @1"/>
+   <v:f eqn="prod @2 1 2"/>
+   <v:f eqn="prod @3 21600 pixelWidth"/>
+   <v:f eqn="prod @3 21600 pixelHeight"/>
+   <v:f eqn="sum @0 0 1"/>
+   <v:f eqn="prod @6 1 2"/>
+   <v:f eqn="prod @7 21600 pixelWidth"/>
+   <v:f eqn="sum @8 21600 0"/>
+   <v:f eqn="prod @7 21600 pixelHeight"/>
+   <v:f eqn="sum @10 21600 0"/>
+  </v:formulas>
+  <v:path o:extrusionok="f" gradientshapeok="t" o:connecttype="rect"/>
+  <o:lock v:ext="edit" aspectratio="t"/>
+ </v:shapetype>
+{newShape}
+</xml>
+""";
+        }
+        else
+        {
+            // Append our shape before the closing </xml> tag.
+            var closeIdx = existing.LastIndexOf("</xml>", StringComparison.OrdinalIgnoreCase);
+            if (closeIdx < 0) closeIdx = existing.Length;
+            merged = existing.Substring(0, closeIdx) + newShape + "\n</xml>";
+        }
+
+        using var writeStream = vmlPart.GetStream(FileMode.Create, FileAccess.Write);
+        using var writer = new StreamWriter(writeStream);
+        writer.Write(merged);
+    }
+
+    // ==================== OLE Object Reading ====================
+    //
+    // Enumerate all OLE objects attached to a worksheet. Excel stores these
+    // as <x:oleObjects> inside the worksheet (each <x:oleObject> has
+    // progId + shapeId + r:id), plus matching EmbeddedObjectPart /
+    // EmbeddedPackagePart parts joined by rel id.
+    //
+    // CONSISTENCY(ole-orphan-indexing): orphan embedded parts (backing parts
+    // with no matching x:oleObject XML element) are intentionally NOT
+    // surfaced under the ole[N] index. Set/Remove dispatch on
+    // ws.Descendants<OleObject>() which only yields schema-typed elements;
+    // indexing orphans here would cause Get to return nodes that Set/Remove
+    // cannot address. Orphans can still be audited via Validate() or raw
+    // package inspection.
+    internal List<DocumentNode> CollectOleNodesForSheet(string sheetName, WorksheetPart worksheetPart)
+    {
+        var nodes = new List<DocumentNode>();
+
+        // Walk schema-typed <x:oleObject> elements (may live inside
+        // <oleObjects>, directly under <worksheet>, or wrapped in an
+        // <mc:AlternateContent><mc:Choice>...</mc:Choice></mc:AlternateContent>).
+        // Descendants<OleObject> picks all of those up.
+        var oleElements = GetSheet(worksheetPart).Descendants<OleObject>().ToList();
+        for (int i = 0; i < oleElements.Count; i++)
+        {
+            var ole = oleElements[i];
+            var node = new DocumentNode
+            {
+                Path = $"/{sheetName}/ole[{i + 1}]",
+                Type = "ole",
+                Text = ole.ProgId?.Value ?? "",
+            };
+            node.Format["objectType"] = "ole";
+            // CONSISTENCY(ole-display): PPT and Word OLE Get both expose
+            // Format["display"]. Excel worksheet OLE objects have no
+            // DrawAspect concept — they always render as icons — so emit
+            // a fixed "icon" value for schema symmetry.
+            node.Format["display"] = "icon";
+            if (ole.ProgId?.Value != null) node.Format["progId"] = ole.ProgId.Value;
+            if (ole.ShapeId?.Value != null) node.Format["shapeId"] = (long)ole.ShapeId.Value;
+            if (ole.Link?.Value != null) node.Format["link"] = ole.Link.Value;
+
+            var relId = ole.Id?.Value;
+            if (!string.IsNullOrEmpty(relId))
+            {
+                node.Format["relId"] = relId;
+                try
+                {
+                    var part = worksheetPart.GetPartById(relId);
+                    if (part != null)
+                        OfficeCli.Core.OleHelper.PopulateFromPart(node, part, ole.ProgId?.Value);
+                }
+                catch
+                {
+                    // Relationship may be missing; leave part-sourced fields absent.
+                }
+            }
+
+            // Expose anchor rectangle as unit-qualified width/height (cm).
+            // CONSISTENCY(ole-width-units): mirrors PPTX/Word OLE which emit
+            // EmuConverter.FormatEmu strings. Internally the anchor stores
+            // only cell markers (col/row), so convert via the same rough
+            // default-column/row → EMU constants used by ParseAnchorDimension
+            // (Add-side). Known limitation: Excel's actual column widths are
+            // ignored; this is a symmetric round-trip of the Add inputs.
+            var objectPr = ole.GetFirstChild<EmbeddedObjectProperties>();
+            var objAnchor = objectPr?.GetFirstChild<ObjectAnchor>();
+            if (objAnchor != null)
+            {
+                var fromM = objAnchor.GetFirstChild<FromMarker>();
+                var toM = objAnchor.GetFirstChild<ToMarker>();
+                if (fromM != null && toM != null)
+                {
+                    int fromCol = 0, fromRow = 0, toCol = 0, toRow = 0;
+                    long fromColOff = 0, fromRowOff = 0, toColOff = 0, toRowOff = 0;
+                    int.TryParse(fromM.GetFirstChild<XDR.ColumnId>()?.Text ?? "0", out fromCol);
+                    int.TryParse(fromM.GetFirstChild<XDR.RowId>()?.Text ?? "0", out fromRow);
+                    int.TryParse(toM.GetFirstChild<XDR.ColumnId>()?.Text ?? "0", out toCol);
+                    int.TryParse(toM.GetFirstChild<XDR.RowId>()?.Text ?? "0", out toRow);
+                    long.TryParse(fromM.GetFirstChild<XDR.ColumnOffset>()?.Text ?? "0", out fromColOff);
+                    long.TryParse(fromM.GetFirstChild<XDR.RowOffset>()?.Text ?? "0", out fromRowOff);
+                    long.TryParse(toM.GetFirstChild<XDR.ColumnOffset>()?.Text ?? "0", out toColOff);
+                    long.TryParse(toM.GetFirstChild<XDR.RowOffset>()?.Text ?? "0", out toRowOff);
+                    // CONSISTENCY(ole-width-units): rebuild EMU extent from
+                    // (cell-count * approx-per-cell) + (to-offset - from-offset)
+                    // so sub-cell precision set on Add survives Get.
+                    long widthEmu = Math.Max(0, (long)(toCol - fromCol)) * EmuPerColApprox
+                        + (toColOff - fromColOff);
+                    long heightEmu = Math.Max(0, (long)(toRow - fromRow)) * EmuPerRowApprox
+                        + (toRowOff - fromRowOff);
+                    if (widthEmu < 0) widthEmu = 0;
+                    if (heightEmu < 0) heightEmu = 0;
+                    node.Format["width"] = OfficeCli.Core.EmuConverter.FormatEmu(widthEmu);
+                    node.Format["height"] = OfficeCli.Core.EmuConverter.FormatEmu(heightEmu);
+                    // CONSISTENCY(ole-anchor-roundtrip): expose the cell-range
+                    // form so `add ... anchor=B2:D4` survives Get/Query. XDR
+                    // markers are 0-based; A1-style needs +1 on both axes.
+                    node.Format["anchor"] =
+                        $"{IndexToColumnName(fromCol + 1)}{fromRow + 1}:{IndexToColumnName(toCol + 1)}{toRow + 1}";
+                }
+            }
+
+            nodes.Add(node);
+        }
+
+        return nodes;
     }
 }

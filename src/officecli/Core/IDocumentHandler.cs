@@ -88,6 +88,16 @@ public interface IDocumentHandler : IDisposable
     /// Validate the document against OpenXML schema and return any errors.
     /// </summary>
     List<ValidationError> Validate();
+
+    /// <summary>
+    /// Extract the binary payload backing a node (ole/picture/media/embedded)
+    /// to <paramref name="destPath"/>. Returns <c>true</c> if the node has a
+    /// backing part and the bytes were written, <c>false</c> if the node has
+    /// no binary payload (e.g. it is a text paragraph or table cell).
+    /// <paramref name="contentType"/> receives the part's MIME type on success;
+    /// <paramref name="byteCount"/> receives the number of bytes written.
+    /// </summary>
+    bool TryExtractBinary(string path, string destPath, out string? contentType, out long byteCount);
 }
 
 public record ValidationError(string ErrorType, string Description, string? Path, string? Part);

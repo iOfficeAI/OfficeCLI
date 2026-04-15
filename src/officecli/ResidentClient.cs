@@ -84,6 +84,39 @@ public static class ResidentClient
     }
 
     /// <summary>
+    /// Ask a running resident to change its idle timeout. Used by `open`
+    /// to upgrade a short-lived resident that `create` auto-started
+    /// (60s) up to the normal 12min interactive window. Served by the
+    /// ping pipe, so it succeeds even while the main pipe is busy.
+    /// Returns false if the resident isn't running, the value is out
+    /// of range, or the RPC failed.
+    /// </summary>
+    public static bool SendSetIdleTimeout(string filePath, int seconds)
+    {
+        var pipeName = ResidentServer.GetPipeName(filePath) + "-ping";
+        try
+        {
+            using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut);
+            client.Connect(200);
+
+            var request = new ResidentRequest { Command = "__set-idle-timeout__" };
+            request.Args["seconds"] = seconds.ToString();
+            var json = System.Text.Json.JsonSerializer.Serialize(request, ResidentJsonContext.Default.ResidentRequest);
+            PipeWriteLine(client, json);
+
+            var responseLine = PipeReadLine(client);
+            if (responseLine == null) return false;
+
+            var response = System.Text.Json.JsonSerializer.Deserialize<ResidentResponse>(responseLine, ResidentJsonContext.Default.ResidentResponse);
+            return response != null && response.ExitCode == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Send a close command to the resident server.
     /// </summary>
     public static bool SendClose(string filePath)

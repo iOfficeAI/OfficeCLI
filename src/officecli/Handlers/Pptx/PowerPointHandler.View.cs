@@ -145,16 +145,40 @@ public partial class PowerPointHandler
 
             int textBoxes = shapes.Count(s => !IsTitle(s) && !string.IsNullOrWhiteSpace(GetShapeText(s)));
             int pictures = GetSlide(slidePart).CommonSlideData?.ShapeTree?.Elements<Picture>().Count() ?? 0;
+            int oleObjects = CountSlideOleObjects(slidePart);
 
             var details = new List<string>();
             if (textBoxes > 0) details.Add($"{textBoxes} text box(es)");
             if (pictures > 0) details.Add($"{pictures} picture(s)");
+            if (oleObjects > 0) details.Add($"{oleObjects} ole object(s)");
 
             var detailStr = details.Count > 0 ? $" - {string.Join(", ", details)}" : "";
             sb.AppendLine($"\u251c\u2500\u2500 Slide {slideNum}: \"{title}\"{detailStr}");
         }
 
         return sb.ToString().TrimEnd();
+    }
+
+    // CONSISTENCY(ole-stats): per-slide OLE counter shared by outline and
+    // outlineJson. Same dedup rule as ViewAsStats — shapeTree oleObject
+    // elements count once, orphan embedded/package parts add extras.
+    private int CountSlideOleObjects(SlidePart slidePart)
+    {
+        int count = 0;
+        var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree;
+        var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (shapeTree != null)
+        {
+            foreach (var oleEl in shapeTree.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>())
+            {
+                count++;
+                if (oleEl.Id?.Value is string rid && !string.IsNullOrEmpty(rid))
+                    referenced.Add(rid);
+            }
+        }
+        count += slidePart.EmbeddedObjectParts.Count(p => !referenced.Contains(slidePart.GetIdOfPart(p)));
+        count += slidePart.EmbeddedPackageParts.Count(p => !referenced.Contains(slidePart.GetIdOfPart(p)));
+        return count;
     }
 
     public string ViewAsStats()
@@ -208,10 +232,32 @@ public partial class PowerPointHandler
             }
         }
 
+        // OLE count = oleObj elements + any orphan embedded parts not
+        // referenced by one. Mirrors how CollectOleNodesForSlide builds
+        // its result so summary == visible query rows.
+        int totalOleObjects = 0;
+        foreach (var slidePart in slideParts)
+        {
+            var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree;
+            var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (shapeTree != null)
+            {
+                foreach (var oleEl in shapeTree.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>())
+                {
+                    totalOleObjects++;
+                    if (oleEl.Id?.Value is string rid && !string.IsNullOrEmpty(rid))
+                        referenced.Add(rid);
+                }
+            }
+            totalOleObjects += slidePart.EmbeddedObjectParts.Count(p => !referenced.Contains(slidePart.GetIdOfPart(p)));
+            totalOleObjects += slidePart.EmbeddedPackageParts.Count(p => !referenced.Contains(slidePart.GetIdOfPart(p)));
+        }
+
         sb.AppendLine($"Slides: {slideParts.Count}");
         sb.AppendLine($"Total shapes: {totalShapes}");
         sb.AppendLine($"Text boxes: {totalTextBoxes}");
         sb.AppendLine($"Pictures: {totalPictures}");
+        if (totalOleObjects > 0) sb.AppendLine($"OLE Objects: {totalOleObjects}");
         sb.AppendLine($"Words: {totalWords}");
         sb.AppendLine($"Slides without title: {slidesWithoutTitle}");
         sb.AppendLine($"Pictures without alt text: {picturesWithoutAlt}");
@@ -266,12 +312,32 @@ public partial class PowerPointHandler
             }
         }
 
+        // Mirror the same OLE counting logic as ViewAsStats.
+        int jsonOleObjects = 0;
+        foreach (var slidePart in slideParts)
+        {
+            var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree;
+            var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (shapeTree != null)
+            {
+                foreach (var oleEl in shapeTree.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>())
+                {
+                    jsonOleObjects++;
+                    if (oleEl.Id?.Value is string rid && !string.IsNullOrEmpty(rid))
+                        referenced.Add(rid);
+                }
+            }
+            jsonOleObjects += slidePart.EmbeddedObjectParts.Count(p => !referenced.Contains(slidePart.GetIdOfPart(p)));
+            jsonOleObjects += slidePart.EmbeddedPackageParts.Count(p => !referenced.Contains(slidePart.GetIdOfPart(p)));
+        }
+
         var result = new JsonObject
         {
             ["slides"] = slideParts.Count,
             ["totalShapes"] = totalShapes,
             ["textBoxes"] = totalTextBoxes,
             ["pictures"] = totalPictures,
+            ["oleObjects"] = jsonOleObjects,
             ["words"] = totalWords,
             ["slidesWithoutTitle"] = slidesWithoutTitle,
             ["picturesWithoutAlt"] = picturesWithoutAlt
@@ -302,12 +368,14 @@ public partial class PowerPointHandler
             int textBoxes = shapes.Count(s => !IsTitle(s) && !string.IsNullOrWhiteSpace(GetShapeText(s)));
             int pictures = GetSlide(slidePart).CommonSlideData?.ShapeTree?.Elements<Picture>().Count() ?? 0;
 
+            int oleObjects = CountSlideOleObjects(slidePart);
             var slide = new JsonObject
             {
                 ["index"] = slideNum,
                 ["title"] = title,
                 ["textBoxes"] = textBoxes,
-                ["pictures"] = pictures
+                ["pictures"] = pictures,
+                ["oleObjects"] = oleObjects
             };
             slidesArray.Add((JsonNode)slide);
         }

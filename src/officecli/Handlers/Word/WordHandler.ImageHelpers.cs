@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using OfficeCli.Core;
 using A = DocumentFormat.OpenXml.Drawing;
@@ -203,6 +204,13 @@ public partial class WordHandler
         if (extent?.Cy != null) node.Format["height"] = $"{extent.Cy.Value / 360000.0:F1}cm";
         if (docProps?.Description?.Value != null) node.Format["alt"] = docProps.Description.Value;
 
+        // Surface the backing image part rel id so `get --save <path>`
+        // and other downstream consumers can locate the payload without
+        // re-walking the Drawing tree.
+        var imgBlip = drawing.Descendants<DocumentFormat.OpenXml.Drawing.Blip>().FirstOrDefault();
+        if (imgBlip?.Embed?.Value != null)
+            node.Format["relId"] = imgBlip.Embed.Value;
+
         // Distinguish inline from floating (anchor) and, for anchors, expose
         // the wrap mode, position offsets, and behind-text flag so callers
         // can inspect how the image is laid out.
@@ -315,7 +323,16 @@ public partial class WordHandler
     // in the core wordprocessing namespace, so we walk descendants by
     // LocalName rather than by CLR type.
 
-    private static DocumentNode CreateOleNode(EmbeddedObject oleObj, Run run, string path)
+    private DocumentNode CreateOleNode(EmbeddedObject oleObj, Run run, string path)
+        => CreateOleNode(oleObj, run, path, _doc.MainDocumentPart);
+
+    // BUG-R10-02: OLE inside HeaderPart/FooterPart stores its relationship
+    // on the header/footer part itself — not on MainDocumentPart. When we
+    // tried to resolve the rel id against MainDocumentPart, GetPartById
+    // threw and the node was marked orphan (no contentType/fileSize).
+    // Callers in header/footer iteration must pass the enclosing HeaderPart
+    // or FooterPart so the lookup succeeds.
+    private DocumentNode CreateOleNode(EmbeddedObject oleObj, Run run, string path, OpenXmlPart? hostPart)
     {
         var node = new DocumentNode
         {
@@ -325,15 +342,78 @@ public partial class WordHandler
         };
         node.Format["objectType"] = "ole";
 
-        // ProgID lives on the nested o:OLEObject element.
+        // ProgID + backing part rel id live on the nested o:OLEObject element.
+        // The rel id ("r:id") points to the EmbeddedObjectPart / EmbeddedPackagePart
+        // that holds the binary payload — follow it so we can surface content
+        // type and byte length in the node, matching how media/image nodes are
+        // enriched elsewhere in this handler.
         var oleElement = oleObj.Descendants().FirstOrDefault(e => e.LocalName == "OLEObject");
+        string? progId = null;
+        string? relId = null;
+        string? drawAspect = null;
         if (oleElement != null)
         {
-            var progIdAttr = oleElement.GetAttributes().FirstOrDefault(a => a.LocalName == "ProgID");
-            if (!string.IsNullOrEmpty(progIdAttr.Value))
+            foreach (var attr in oleElement.GetAttributes())
             {
-                node.Format["progId"] = progIdAttr.Value;
-                node.Text = progIdAttr.Value;
+                if (attr.LocalName == "ProgID")
+                    progId = attr.Value;
+                else if (attr.LocalName == "DrawAspect")
+                    drawAspect = attr.Value;
+                else if (attr.LocalName == "id"
+                    && attr.NamespaceUri == "http://schemas.openxmlformats.org/officeDocument/2006/relationships")
+                    relId = attr.Value;
+            }
+        }
+        // CONSISTENCY(ole-name): PPT OLE Get surfaces oleObj.Name as
+        // Format["name"]. Word has no equivalent attribute on o:OLEObject
+        // (VML CT_OleObject has no Name), so AddOle/Set store the friendly
+        // name on the surrounding v:shape@alt attribute. Read it back from
+        // the same place so Add → Get → Format["name"] round-trips.
+        var shapeForName = oleObj.Descendants().FirstOrDefault(e => e.LocalName == "shape");
+        if (shapeForName != null)
+        {
+            var altAttr = shapeForName.GetAttributes().FirstOrDefault(a => a.LocalName == "alt");
+            if (!string.IsNullOrEmpty(altAttr.Value))
+                node.Format["name"] = altAttr.Value;
+        }
+        // CONSISTENCY(ole-display): PPT OLE Get returns display=icon when the
+        // object is shown as an icon; Word stores the same bit in the
+        // o:OLEObject DrawAspect attribute ("Icon" vs "Content"). Normalize
+        // to the same lowercase "icon"/"content" vocabulary.
+        if (!string.IsNullOrEmpty(drawAspect))
+        {
+            node.Format["display"] = drawAspect.Equals("Content", StringComparison.OrdinalIgnoreCase)
+                ? "content"
+                : "icon";
+        }
+        if (!string.IsNullOrEmpty(progId))
+        {
+            node.Format["progId"] = progId;
+            node.Text = progId;
+        }
+        if (!string.IsNullOrEmpty(relId))
+        {
+            node.Format["relId"] = relId;
+            // GetPartById throws ArgumentOutOfRangeException when the rel id
+            // is not present in the part's relationships — this can happen
+            // if the document was hand-edited or partially corrupted. Degrade
+            // gracefully by marking the node orphan and skipping enrichment,
+            // rather than propagating the crash up through Query.
+            try
+            {
+                var part = hostPart?.GetPartById(relId);
+                if (part != null)
+                    OfficeCli.Core.OleHelper.PopulateFromPart(node, part, progId);
+                else
+                    node.Format["orphan"] = true;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                node.Format["orphan"] = true;
+            }
+            catch (KeyNotFoundException)
+            {
+                node.Format["orphan"] = true;
             }
         }
 
@@ -347,6 +427,33 @@ public partial class WordHandler
         }
 
         return node;
+    }
+
+    /// <summary>
+    /// Replace a single dimension (width|height) in a VML v:shape style
+    /// string, preserving all other key:value pairs. If the key is not
+    /// present, it's appended. Output is the re-joined "k1:v1;k2:v2" form.
+    /// </summary>
+    internal static string ReplaceVmlStyleDimension(string style, string dimKey, string newValue)
+    {
+        var parts = (style ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries);
+        var rebuilt = new List<string>();
+        var replaced = false;
+        foreach (var part in parts)
+        {
+            var kv = part.Split(':', 2);
+            if (kv.Length == 2 && kv[0].Trim().Equals(dimKey, StringComparison.OrdinalIgnoreCase))
+            {
+                rebuilt.Add($"{kv[0].Trim()}:{newValue}");
+                replaced = true;
+            }
+            else
+            {
+                rebuilt.Add(part.Trim());
+            }
+        }
+        if (!replaced) rebuilt.Add($"{dimKey}:{newValue}");
+        return string.Join(";", rebuilt);
     }
 
     private static void ParseVmlStyle(string style, DocumentNode node)
@@ -394,6 +501,6 @@ public partial class WordHandler
             "px" => value * 2.54 / 96.0,
             _ => value * 2.54 / 72.0,
         };
-        return $"{cm:F1}cm";
+        return $"{cm:0.##}cm";
     }
 }

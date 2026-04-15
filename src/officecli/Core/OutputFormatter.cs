@@ -22,7 +22,9 @@ internal class ViewResult
 
 internal class NodesResult
 {
+    [JsonPropertyName("matches")]
     public int Matches { get; set; }
+    [JsonPropertyName("results")]
     public List<DocumentNode> Results { get; set; } = new();
 }
 
@@ -307,7 +309,7 @@ internal static class OutputFormatter
         if (format == OutputFormat.Json)
             return JsonSerializer.Serialize(node, AppJsonContext.Default.DocumentNode);
 
-        return FormatNodeAsText(node, 0);
+        return FormatNodeAsText(node);
     }
 
     public static string FormatNodes(List<DocumentNode> nodes, OutputFormat format)
@@ -316,13 +318,8 @@ internal static class OutputFormatter
             return JsonSerializer.Serialize(new NodesResult { Matches = nodes.Count, Results = nodes }, AppJsonContext.Default.NodesResult);
 
         var sb = new StringBuilder();
-        sb.AppendLine($"Matches: {nodes.Count}");
         foreach (var node in nodes)
-        {
-            sb.AppendLine($"  {node.Path}: {node.Text ?? node.Preview ?? node.Type}");
-            foreach (var (key, val) in node.Format)
-                sb.AppendLine($"    {key}: {val}");
-        }
+            sb.AppendLine(FormatNodeOneline(node));
         return sb.ToString().TrimEnd();
     }
 
@@ -367,28 +364,39 @@ internal static class OutputFormatter
         return sb.ToString().TrimEnd();
     }
 
-    private static string FormatNodeAsText(DocumentNode node, int indent)
+    private static string FormatNodeAsText(DocumentNode node)
     {
         var sb = new StringBuilder();
-        var prefix = new string(' ', indent * 2);
 
-        sb.Append($"{prefix}{node.Path} ({node.Type})");
-        if (node.Text != null) sb.Append($" \"{Truncate(node.Text, 60)}\"");
-        if (node.Style != null) sb.Append($" [{node.Style}]");
-        if (node.ChildCount > 0 && node.Children.Count == 0) sb.Append($" ({node.ChildCount} children)");
-        sb.AppendLine();
-
-        foreach (var (key, val) in node.Format)
-            sb.AppendLine($"{prefix}  {key}: {val}");
+        sb.AppendLine(FormatNodeOneline(node));
 
         foreach (var child in node.Children)
-            sb.Append(FormatNodeAsText(child, indent + 1));
+            sb.Append(FormatNodeAsText(child));
 
         return sb.ToString();
     }
 
-    private static string Truncate(string s, int maxLen)
+    /// <summary>
+    /// Single-line format: path (type) "text" children=N style=X key=val key=val ...
+    /// Grep-friendly: every line is a complete, self-contained record.
+    /// </summary>
+    private static string FormatNodeOneline(DocumentNode node)
     {
-        return s.Length > maxLen ? s[..maxLen] + "..." : s;
+        var sb = new StringBuilder();
+
+        sb.Append($"{node.Path} ({node.Type})");
+        if (node.Text != null) sb.Append($" \"{node.Text.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "").Replace("\n", "\\n")}\"");
+        if (node.ChildCount > 0 && node.Children.Count == 0) sb.Append($" children={node.ChildCount}");
+        if (node.Style != null) sb.Append($" style={node.Style}");
+
+        foreach (var (key, val) in node.Format)
+        {
+            // style is already shown via node.Style; skip duplicate
+            if (key == "style" && node.Style != null) continue;
+            sb.Append($" {key}={val}");
+        }
+
+        return sb.ToString();
     }
+
 }

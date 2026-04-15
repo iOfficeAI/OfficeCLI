@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using OfficeCli.Core;
 using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
@@ -284,6 +285,22 @@ public partial class WordHandler
         {
             var seg = segments[i];
             IEnumerable<OpenXmlElement> children;
+            // When the current element is a block-level SDT, transparently
+            // descend into its SdtContentBlock so paths like
+            // /body/sdt[@sdtId=X]/p[N] resolve to paragraphs physically
+            // nested inside the content wrapper. Mirrors GetBodyElements()
+            // which already flattens SdtBlock when iterating body children.
+            if (current is SdtBlock navSdtBlock)
+            {
+                var contentBlock = navSdtBlock.GetFirstChild<SdtContentBlock>();
+                if (contentBlock != null) current = contentBlock;
+            }
+            else if (current is SdtRun navSdtRun)
+            {
+                var contentRun = navSdtRun.GetFirstChild<SdtContentRun>();
+                if (contentRun != null) current = contentRun;
+            }
+
             if (current is Body body2 && (seg.Name.ToLowerInvariant() == "p" || seg.Name.ToLowerInvariant() == "tbl"))
             {
                 // Only count direct body-level paragraphs/tables, skip those inside SdtBlock containers
@@ -673,6 +690,48 @@ public partial class WordHandler
                 var extent = runDrawing.Descendants<DW.Extent>().FirstOrDefault();
                 if (extent?.Cx != null) node.Format["width"] = $"{extent.Cx.Value / 360000.0:F1}cm";
                 if (extent?.Cy != null) node.Format["height"] = $"{extent.Cy.Value / 360000.0:F1}cm";
+                // Expose the image part rel id so `get --save` can extract it.
+                var runBlip = runDrawing.Descendants<DocumentFormat.OpenXml.Drawing.Blip>().FirstOrDefault();
+                if (runBlip?.Embed?.Value != null)
+                    node.Format["relId"] = runBlip.Embed.Value;
+            }
+            // OLE object if run contains an EmbeddedObject. The underlying
+            // logic is the same as CreateOleNode — reuse it so Get/Query
+            // return identical shapes.
+            var runOle = run.GetFirstChild<EmbeddedObject>();
+            if (runOle != null)
+            {
+                // CONSISTENCY(ole-host-part): mirror Query.cs's header/footer
+                // OLE handling — the EmbeddedObjectPart relationship lives on
+                // the owning Header/Footer part, not the MainDocumentPart.
+                // Walk ancestors to find the host part so CreateOleNode can
+                // populate contentType/fileSize instead of returning orphan.
+                OpenXmlPart? hostPart = _doc.MainDocumentPart;
+                var headerAncestor = run.Ancestors<Header>().FirstOrDefault();
+                if (headerAncestor != null && _doc.MainDocumentPart != null)
+                {
+                    var hp = _doc.MainDocumentPart.HeaderParts
+                        .FirstOrDefault(p => ReferenceEquals(p.Header, headerAncestor));
+                    if (hp != null) hostPart = hp;
+                }
+                else
+                {
+                    var footerAncestor = run.Ancestors<Footer>().FirstOrDefault();
+                    if (footerAncestor != null && _doc.MainDocumentPart != null)
+                    {
+                        var fp = _doc.MainDocumentPart.FooterParts
+                            .FirstOrDefault(p => ReferenceEquals(p.Footer, footerAncestor));
+                        if (fp != null) hostPart = fp;
+                    }
+                }
+                var oleNode = CreateOleNode(runOle, run, path, hostPart);
+                // Keep the node's path as-is, but swap in the OLE-sourced
+                // type/format bag.
+                node.Type = oleNode.Type;
+                foreach (var kv in oleNode.Format)
+                    node.Format[kv.Key] = kv.Value;
+                if (!string.IsNullOrEmpty(oleNode.Text))
+                    node.Text = oleNode.Text;
             }
             if (run.Parent is Hyperlink hlParent && hlParent.Id?.Value != null)
             {

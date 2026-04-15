@@ -482,6 +482,38 @@ public partial class ExcelHandler
             return null;
         }
 
+        // ole[N] — remove embedded OLE object (cleanup embedded payload +
+        // icon image part). Same part-cleanup discipline as picture/chart
+        // removal to avoid orphaned binaries bloating the package.
+        var oleRemoveMatch = Regex.Match(cellRef, @"^(?:ole|object|embed)\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (oleRemoveMatch.Success)
+        {
+            var oleIdx = int.Parse(oleRemoveMatch.Groups[1].Value);
+            var ws = GetSheet(worksheet);
+            var oleElements = ws.Descendants<OleObject>().ToList();
+            if (oleIdx < 1 || oleIdx > oleElements.Count)
+                throw new ArgumentException($"OLE object index {oleIdx} out of range (1..{oleElements.Count})");
+            var oleToRemove = oleElements[oleIdx - 1];
+            // Delete backing embedded payload + icon image part by rel id.
+            if (oleToRemove.Id?.Value is string oleRelId && !string.IsNullOrEmpty(oleRelId))
+            {
+                try { worksheet.DeletePart(oleRelId); } catch { }
+            }
+            var objectPr = oleToRemove.GetFirstChild<EmbeddedObjectProperties>();
+            if (objectPr?.Id?.Value is string oleIconRelId && !string.IsNullOrEmpty(oleIconRelId))
+            {
+                try { worksheet.DeletePart(oleIconRelId); } catch { }
+            }
+            // Remove the OleObject element itself; if its parent OleObjects
+            // becomes empty, remove that too so the worksheet XML stays clean.
+            var oleParent = oleToRemove.Parent;
+            oleToRemove.Remove();
+            if (oleParent is OleObjects oleColl && !oleColl.HasChildren)
+                oleColl.Remove();
+            SaveWorksheet(worksheet);
+            return null;
+        }
+
         // autofilter — remove AutoFilter from worksheet
         if (cellRef.Equals("autofilter", StringComparison.OrdinalIgnoreCase))
         {

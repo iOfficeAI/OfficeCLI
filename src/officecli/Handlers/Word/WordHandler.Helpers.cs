@@ -1647,6 +1647,11 @@ public partial class WordHandler
         public ChartPart? StandardPart { get; set; }
         public ExtendedChartPart? ExtendedPart { get; set; }
         public DW.DocProperties? DocProperties { get; set; }
+        /// <summary>
+        /// The <c>wp:inline</c> element that hosts this chart — needed by
+        /// chart position Set to mutate the <c>wp:extent</c> child.
+        /// </summary>
+        public DW.Inline? Inline { get; set; }
         public bool IsExtended => ExtendedPart != null;
     }
 
@@ -1674,7 +1679,7 @@ public partial class WordHandler
                 try
                 {
                     var chartPart = (ChartPart)mainPart.GetPartById(chartRef.Id.Value);
-                    result.Add(new WordChartInfo { StandardPart = chartPart, DocProperties = docProps });
+                    result.Add(new WordChartInfo { StandardPart = chartPart, DocProperties = docProps, Inline = inline });
                 }
                 catch { /* skip invalid references */ }
             }
@@ -1686,13 +1691,54 @@ public partial class WordHandler
                 try
                 {
                     var extPart = (ExtendedChartPart)mainPart.GetPartById(relId);
-                    result.Add(new WordChartInfo { ExtendedPart = extPart, DocProperties = docProps });
+                    result.Add(new WordChartInfo { ExtendedPart = extPart, DocProperties = docProps, Inline = inline });
                 }
                 catch { /* skip invalid references */ }
             }
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Apply <c>width</c> / <c>height</c> to a Word inline chart's
+    /// <c>wp:extent</c>. Accepts unit-qualified sizes (`6cm`, `2in`,
+    /// `720pt`) or raw EMU integers via EmuConverter.
+    ///
+    /// CONSISTENCY(chart-position-set): mirrors the PPTX and Excel path.
+    /// Word inline charts have no absolute x/y (they flow with text), so
+    /// those keys — if provided — are appended to <paramref name="unsupported"/>
+    /// rather than silently dropped.
+    /// </summary>
+    private static void ApplyWordChartPositionSet(
+        DW.Inline inline, Dictionary<string, string> properties, List<string> unsupported)
+    {
+        var extent = inline.Extent;
+        if (extent == null) return;
+
+        // x/y are meaningless for inline charts.
+        foreach (var k in new[] { "x", "y" })
+        {
+            var matched = properties.Keys
+                .FirstOrDefault(key => key.Equals(k, StringComparison.OrdinalIgnoreCase));
+            if (matched == null) continue;
+            unsupported.Add(matched);
+            Console.Error.WriteLine(
+                $"Warning: '{matched}' is ignored on Word inline charts — inline elements have no absolute position. " +
+                "For positioned charts, switch to anchor mode (not currently supported).");
+        }
+
+        if (properties.TryGetValue("width", out var wStr))
+        {
+            try { extent.Cx = OfficeCli.Core.EmuConverter.ParseEmu(wStr); }
+            catch { unsupported.Add("width"); }
+        }
+
+        if (properties.TryGetValue("height", out var hStr))
+        {
+            try { extent.Cy = OfficeCli.Core.EmuConverter.ParseEmu(hStr); }
+            catch { unsupported.Add("height"); }
+        }
     }
 
     /// <summary>

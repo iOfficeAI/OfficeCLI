@@ -198,7 +198,7 @@ officecli remove doc.docx "/body/tbl[1]/tr[5]"
 
 ```bash
 # Replace image file
-officecli set doc.docx "/body/p[5]/r[1]" --prop path=new-image.jpg
+officecli set doc.docx "/body/p[5]/r[1]" --prop src=new-image.jpg
 
 # Update image dimensions
 officecli set doc.docx "/body/p[5]/r[1]" --prop width=12cm --prop height=8cm

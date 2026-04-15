@@ -1,0 +1,949 @@
+// Copyright 2025 OfficeCli (officecli.ai)
+// SPDX-License-Identifier: Apache-2.0
+
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
+using Drawing = DocumentFormat.OpenXml.Drawing;
+using C = DocumentFormat.OpenXml.Drawing.Charts;
+
+namespace OfficeCli.Core;
+
+internal static partial class ChartHelper
+{
+    // ==================== Chart Readback ====================
+
+    internal static void ReadChartProperties(C.Chart chart, DocumentNode node, int depth)
+    {
+        var plotArea = chart.GetFirstChild<C.PlotArea>();
+        if (plotArea == null) return;
+
+        var chartType = DetectChartType(plotArea);
+        if (chartType != null) node.Format["chartType"] = chartType;
+
+        var titleEl = chart.GetFirstChild<C.Title>();
+        var titleText = titleEl?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
+        if (titleText != null) node.Format["title"] = titleText;
+
+        // Title formatting: font, size, color, bold from RunProperties
+        if (titleEl != null)
+        {
+            var titleRun = titleEl.Descendants<Drawing.Run>().FirstOrDefault();
+            var titleRp = titleRun?.RunProperties;
+            if (titleRp != null)
+            {
+                var titleFont = titleRp.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value;
+                if (titleFont != null) node.Format["title.font"] = titleFont;
+                if (titleRp.FontSize?.HasValue == true)
+                    node.Format["title.size"] = $"{titleRp.FontSize.Value / 100.0:0.##}pt";
+                var titleFill = titleRp.GetFirstChild<Drawing.SolidFill>();
+                if (titleFill != null)
+                {
+                    var tColor = ReadColorFromFill(titleFill);
+                    if (tColor != null) node.Format["title.color"] = tColor;
+                }
+                if (titleRp.Bold?.HasValue == true)
+                    node.Format["title.bold"] = titleRp.Bold.Value ? "true" : "false";
+            }
+        }
+
+        var legend = chart.GetFirstChild<C.Legend>();
+        if (legend != null)
+        {
+            var posRaw = legend.GetFirstChild<C.LegendPosition>()?.Val?.HasValue == true
+                ? legend.GetFirstChild<C.LegendPosition>()!.Val!.InnerText : "b";
+            node.Format["legend"] = posRaw switch
+            {
+                "b" => "bottom",
+                "t" => "top",
+                "l" => "left",
+                "r" => "right",
+                "tr" => "topRight",
+                _ => posRaw
+            };
+        }
+
+        var dataLabels = plotArea.Descendants<C.DataLabels>().FirstOrDefault();
+        if (dataLabels != null)
+        {
+            var parts = new List<string>();
+            if (dataLabels.GetFirstChild<C.ShowValue>()?.Val?.Value == true) parts.Add("value");
+            if (dataLabels.GetFirstChild<C.ShowCategoryName>()?.Val?.Value == true) parts.Add("category");
+            if (dataLabels.GetFirstChild<C.ShowSeriesName>()?.Val?.Value == true) parts.Add("series");
+            if (dataLabels.GetFirstChild<C.ShowPercent>()?.Val?.Value == true) parts.Add("percent");
+            if (parts.Count > 0) node.Format["dataLabels"] = string.Join(",", parts);
+            var dlPos = dataLabels.GetFirstChild<C.DataLabelPosition>()?.Val;
+            if (dlPos?.HasValue == true) node.Format["labelPos"] = dlPos.InnerText;
+        }
+
+        // Chart style
+        var style = chart.Parent?.GetFirstChild<C.Style>();
+        if (style?.Val?.HasValue == true) node.Format["style"] = (int)style.Val.Value;
+
+        // ManualLayout readback: plotArea, title, legend, trendlineLabel, displayUnitsLabel
+        ReadManualLayout(plotArea, node, "plotArea");
+        if (titleEl != null) ReadManualLayout(titleEl, node, "title");
+        if (legend != null) ReadManualLayout(legend, node, "legend");
+        var trendlineLbl = plotArea.Descendants<C.TrendlineLabel>().FirstOrDefault();
+        if (trendlineLbl != null) ReadManualLayout(trendlineLbl, node, "trendlineLabel");
+        var dispUnitsLbl = chart.Descendants<C.DisplayUnitsLabel>().FirstOrDefault();
+        if (dispUnitsLbl != null) ReadManualLayout(dispUnitsLbl, node, "displayUnitsLabel");
+
+        // Individual data label (dLbl) layout readback — first series
+        var firstSer = plotArea.Descendants<OpenXmlCompositeElement>()
+            .FirstOrDefault(e => e.LocalName == "ser");
+        var dLbls = firstSer?.GetFirstChild<C.DataLabels>();
+        if (dLbls != null)
+        {
+            foreach (var dLbl in dLbls.Elements<C.DataLabel>())
+            {
+                var idx = dLbl.Index?.Val?.Value;
+                if (idx == null) continue;
+                var prefix = $"dataLabel{idx.Value + 1}";
+                ReadManualLayout(dLbl, node, prefix);
+                // Custom text
+                var chartText = dLbl.GetFirstChild<C.ChartText>();
+                var richText = chartText?.GetFirstChild<C.RichText>();
+                var customText = richText?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
+                if (customText != null) node.Format[$"{prefix}.text"] = customText;
+                // Delete flag
+                var delFlag = dLbl.GetFirstChild<C.Delete>()?.Val;
+                if (delFlag?.HasValue == true && delFlag.Value) node.Format[$"{prefix}.delete"] = "true";
+            }
+        }
+
+        // Plot area fill (plotArea uses C.ShapeProperties, not C.ChartShapeProperties)
+        var plotSpPr = plotArea.GetFirstChild<C.ShapeProperties>();
+        var plotFill = plotSpPr?.GetFirstChild<Drawing.SolidFill>();
+        if (plotFill != null)
+        {
+            var pColor = ReadColorFromFill(plotFill);
+            if (pColor != null) node.Format["plotFill"] = pColor;
+        }
+
+        // Chart area fill (ChartSpace > spPr, NOT PlotArea)
+        // Note: The SDK serializes ChartShapeProperties but deserializes it as C.ShapeProperties
+        // after round-trip. Check both types, plus in-memory ChartShapeProperties.
+        {
+            Drawing.SolidFill? chartAreaFill = null;
+            var csSpPr = chart.Parent?.GetFirstChild<C.ShapeProperties>();
+            if (csSpPr != null)
+                chartAreaFill = csSpPr.GetFirstChild<Drawing.SolidFill>();
+            if (chartAreaFill == null)
+            {
+                var csCSpPr = chart.Parent?.GetFirstChild<C.ChartShapeProperties>();
+                if (csCSpPr != null)
+                    chartAreaFill = csCSpPr.GetFirstChild<Drawing.SolidFill>();
+            }
+            if (chartAreaFill != null)
+            {
+                var cColor = ReadColorFromFill(chartAreaFill);
+                if (cColor != null) node.Format["chartFill"] = cColor;
+            }
+        }
+
+        // Gridlines: "true" for presence, detail in gridlineColor/gridlineWidth/gridlineDash
+        var valAxisForGrid = plotArea.GetFirstChild<C.ValueAxis>();
+        var majorGL = valAxisForGrid?.GetFirstChild<C.MajorGridlines>();
+        if (majorGL != null)
+        {
+            node.Format["gridlines"] = "true";
+            ReadGridlineDetail(majorGL, node, "gridline");
+        }
+        else if (valAxisForGrid != null)
+        {
+            node.Format["gridlines"] = "false";
+        }
+        var minorGL = valAxisForGrid?.GetFirstChild<C.MinorGridlines>();
+        if (minorGL != null)
+        {
+            node.Format["minorGridlines"] = "true";
+            ReadGridlineDetail(minorGL, node, "minorGridline");
+        }
+
+        // GapWidth / Overlap from bar/column chart
+        var barChart = plotArea.GetFirstChild<C.BarChart>();
+        var gapWidthEl = barChart?.GetFirstChild<C.GapWidth>();
+        if (gapWidthEl?.Val?.HasValue == true) node.Format["gapwidth"] = gapWidthEl.Val.Value.ToString();
+        var overlapEl = barChart?.GetFirstChild<C.Overlap>();
+        if (overlapEl?.Val?.HasValue == true) node.Format["overlap"] = overlapEl.Val.Value.ToString();
+
+        // Legend font (TextProperties on Legend element)
+        if (legend != null)
+        {
+            var legendTp = legend.GetFirstChild<C.TextProperties>();
+            if (legendTp != null)
+            {
+                var legendFontStr = ReadFontSpec(legendTp);
+                if (legendFontStr != null) node.Format["legendFont"] = legendFontStr;
+            }
+        }
+
+        // Axis font (TextProperties on value axis)
+        var valAxisTp = valAxisForGrid?.GetFirstChild<C.TextProperties>();
+        if (valAxisTp != null)
+        {
+            var axisFontStr = ReadFontSpec(valAxisTp);
+            if (axisFontStr != null) node.Format["axisFont"] = axisFontStr;
+        }
+
+        // Secondary axis
+        var valAxes = plotArea.Elements<C.ValueAxis>().ToList();
+        if (valAxes.Count > 1) node.Format["secondaryAxis"] = "true";
+
+        // Axis titles
+        var valAxis = plotArea.GetFirstChild<C.ValueAxis>();
+        var valAxisTitle = valAxis?.GetFirstChild<C.Title>()?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
+        if (valAxisTitle != null) node.Format["axisTitle"] = valAxisTitle;
+
+        var catAxis = plotArea.GetFirstChild<C.CategoryAxis>();
+        var catAxisTitle = catAxis?.GetFirstChild<C.Title>()?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
+        if (catAxisTitle != null) node.Format["catTitle"] = catAxisTitle;
+
+        // Axis scale
+        var scaling = valAxis?.GetFirstChild<C.Scaling>();
+        var minVal = scaling?.GetFirstChild<C.MinAxisValue>()?.Val?.Value;
+        if (minVal != null) node.Format["axisMin"] = minVal;
+        var maxVal = scaling?.GetFirstChild<C.MaxAxisValue>()?.Val?.Value;
+        if (maxVal != null) node.Format["axisMax"] = maxVal;
+
+        var majorUnit = valAxis?.GetFirstChild<C.MajorUnit>()?.Val?.Value;
+        if (majorUnit != null) node.Format["majorUnit"] = majorUnit;
+        var minorUnit = valAxis?.GetFirstChild<C.MinorUnit>()?.Val?.Value;
+        if (minorUnit != null) node.Format["minorUnit"] = minorUnit;
+
+        var axisNumFmt = valAxis?.GetFirstChild<C.NumberingFormat>()?.FormatCode?.Value;
+        if (axisNumFmt != null && axisNumFmt != "General") node.Format["axisNumFmt"] = axisNumFmt;
+
+        // Axis line styling
+        var valAxisSpPr = valAxis?.GetFirstChild<C.ChartShapeProperties>();
+        var valAxisOutline = valAxisSpPr?.GetFirstChild<Drawing.Outline>();
+        if (valAxisOutline != null && valAxisOutline.GetFirstChild<Drawing.NoFill>() == null)
+            ReadOutlineDetail(valAxisOutline, node, "valAxisLine");
+        var catAxisSpPr = catAxis?.GetFirstChild<C.ChartShapeProperties>();
+        var catAxisOutline = catAxisSpPr?.GetFirstChild<Drawing.Outline>();
+        if (catAxisOutline != null && catAxisOutline.GetFirstChild<Drawing.NoFill>() == null)
+            ReadOutlineDetail(catAxisOutline, node, "catAxisLine");
+
+        // Axis visibility (c:delete)
+        var valAxisDelete = valAxis?.GetFirstChild<C.Delete>();
+        if (valAxisDelete?.Val?.HasValue == true && valAxisDelete.Val.Value)
+            node.Format["valAxisVisible"] = "false";
+        var catAxisDelete = catAxis?.GetFirstChild<C.Delete>();
+        if (catAxisDelete?.Val?.HasValue == true && catAxisDelete.Val.Value)
+            node.Format["catAxisVisible"] = "false";
+
+        // Tick marks
+        var valMajorTick = valAxis?.GetFirstChild<C.MajorTickMark>()?.Val;
+        if (valMajorTick?.HasValue == true) node.Format["majorTickMark"] = valMajorTick.InnerText;
+        var valMinorTick = valAxis?.GetFirstChild<C.MinorTickMark>()?.Val;
+        if (valMinorTick?.HasValue == true) node.Format["minorTickMark"] = valMinorTick.InnerText;
+
+        // Tick label position
+        var valTickLblPos = valAxis?.GetFirstChild<C.TickLabelPosition>()?.Val;
+        if (valTickLblPos?.HasValue == true) node.Format["tickLabelPos"] = valTickLblPos.InnerText;
+
+        // Axis orientation
+        var axisOrient = scaling?.GetFirstChild<C.Orientation>()?.Val;
+        if (axisOrient?.HasValue == true && axisOrient.InnerText == "maxMin")
+            node.Format["axisOrientation"] = "maxMin";
+
+        // Log base
+        var logBase = scaling?.GetFirstChild<C.LogBase>()?.Val?.Value;
+        if (logBase != null) node.Format["logBase"] = logBase;
+
+        // Display units
+        var dispUnits = valAxis?.GetFirstChild<C.DisplayUnits>();
+        var builtInUnit = dispUnits?.GetFirstChild<C.BuiltInUnit>()?.Val;
+        if (builtInUnit?.HasValue == true) node.Format["dispUnits"] = builtInUnit.InnerText;
+
+        // Crosses
+        var crosses = valAxis?.GetFirstChild<C.Crosses>()?.Val;
+        if (crosses?.HasValue == true) node.Format["crosses"] = crosses.InnerText;
+        var crossesAt = valAxis?.GetFirstChild<C.CrossesAt>()?.Val?.Value;
+        if (crossesAt != null) node.Format["crossesAt"] = crossesAt;
+        var crossBetween = valAxis?.GetFirstChild<C.CrossBetween>()?.Val;
+        if (crossBetween?.HasValue == true) node.Format["crossBetween"] = crossBetween.InnerText;
+
+        // Category axis specifics
+        var labelOffset = catAxis?.GetFirstChild<C.LabelOffset>()?.Val?.Value;
+        if (labelOffset != null && labelOffset != 100) node.Format["labelOffset"] = labelOffset;
+        var tickLblSkip = catAxis?.GetFirstChild<C.TickLabelSkip>()?.Val?.Value;
+        if (tickLblSkip != null && tickLblSkip > 1) node.Format["tickLabelSkip"] = tickLblSkip;
+
+        // Chart-level: smooth, showMarker, scatterStyle, varyColors, dispBlanksAs
+        var lineChart = plotArea.GetFirstChild<C.LineChart>();
+        var lineSmooth = lineChart?.GetFirstChild<C.Smooth>()?.Val;
+        if (lineSmooth?.HasValue == true) node.Format["smooth"] = lineSmooth.Value ? "true" : "false";
+        var showMarker = lineChart?.GetFirstChild<C.ShowMarker>()?.Val;
+        if (showMarker?.HasValue == true) node.Format["showMarker"] = showMarker.Value ? "true" : "false";
+
+        var scatterChart = plotArea.GetFirstChild<C.ScatterChart>();
+        var scatterStyle = scatterChart?.GetFirstChild<C.ScatterStyle>()?.Val;
+        if (scatterStyle?.HasValue == true) node.Format["scatterStyle"] = scatterStyle.InnerText;
+
+        var radarChart = plotArea.GetFirstChild<C.RadarChart>();
+        var radarStyle = radarChart?.GetFirstChild<C.RadarStyle>()?.Val;
+        if (radarStyle?.HasValue == true) node.Format["radarStyle"] = radarStyle.InnerText;
+
+        var dispBlanksAs = chart.GetFirstChild<C.DisplayBlanksAs>()?.Val;
+        if (dispBlanksAs?.HasValue == true) node.Format["dispBlanksAs"] = dispBlanksAs.InnerText;
+
+        // roundedCorners
+        var roundedCorners = chart.Parent?.GetFirstChild<C.RoundedCorners>()?.Val;
+        if (roundedCorners?.HasValue == true) node.Format["roundedCorners"] = roundedCorners.Value ? "true" : "false";
+
+        // View3D
+        var view3d = chart.GetFirstChild<C.View3D>();
+        if (view3d != null)
+        {
+            var rotX = view3d.GetFirstChild<C.RotateX>()?.Val?.Value;
+            var rotY = view3d.GetFirstChild<C.RotateY>()?.Val?.Value;
+            var persp = view3d.GetFirstChild<C.Perspective>()?.Val?.Value;
+            var v3dParts = new List<string>();
+            if (rotX != null) v3dParts.Add(rotX.Value.ToString());
+            else v3dParts.Add("0");
+            if (rotY != null) v3dParts.Add(rotY.Value.ToString());
+            else v3dParts.Add("0");
+            if (persp != null) v3dParts.Add(persp.Value.ToString());
+            else v3dParts.Add("0");
+            node.Format["view3d"] = string.Join(",", v3dParts);
+            if (rotX != null) node.Format["view3d.rotateX"] = (int)rotX.Value;
+            if (rotY != null) node.Format["view3d.rotateY"] = (int)rotY.Value;
+            if (persp != null) node.Format["view3d.perspective"] = (int)persp.Value;
+        }
+
+        // Data table
+        var dataTable = plotArea.GetFirstChild<C.DataTable>();
+        if (dataTable != null) node.Format["dataTable"] = "true";
+
+        // Legend overlay
+        var legendOverlay = legend?.GetFirstChild<C.Overlay>()?.Val;
+        if (legendOverlay?.HasValue == true && legendOverlay.Value) node.Format["legend.overlay"] = "true";
+
+        // Plot area border
+        var plotOutline = plotSpPr?.GetFirstChild<Drawing.Outline>();
+        if (plotOutline != null) ReadOutlineDetail(plotOutline, node, "plotArea.border");
+
+        // Chart area border
+        {
+            var csSpPr = chart.Parent?.GetFirstChild<C.ShapeProperties>();
+            var csOutline = csSpPr?.GetFirstChild<Drawing.Outline>();
+            if (csOutline == null)
+            {
+                var csCSpPr = chart.Parent?.GetFirstChild<C.ChartShapeProperties>();
+                csOutline = csCSpPr?.GetFirstChild<Drawing.Outline>();
+            }
+            if (csOutline != null) ReadOutlineDetail(csOutline, node, "chartArea.border");
+        }
+
+        // Chart-type-specific
+        var pieChart = plotArea.GetFirstChild<C.PieChart>();
+        var firstSliceAngle = pieChart?.GetFirstChild<C.FirstSliceAngle>()?.Val?.Value;
+        if (firstSliceAngle != null && firstSliceAngle != 0) node.Format["firstSliceAngle"] = firstSliceAngle;
+
+        var doughnutChart = plotArea.GetFirstChild<C.DoughnutChart>();
+        var holeSize = doughnutChart?.GetFirstChild<C.HoleSize>()?.Val?.Value;
+        if (holeSize != null) node.Format["holeSize"] = (int)holeSize;
+
+        var bubbleChart = plotArea.GetFirstChild<C.BubbleChart>();
+        var bubbleScale = bubbleChart?.GetFirstChild<C.BubbleScale>()?.Val?.Value;
+        if (bubbleScale != null && bubbleScale != 100) node.Format["bubbleScale"] = (int)bubbleScale;
+
+        // DataLabels additional detail
+        if (dataLabels != null)
+        {
+            var separator = dataLabels.GetFirstChild<C.Separator>()?.Text;
+            if (separator != null) node.Format["dataLabels.separator"] = separator;
+            var dlNumFmt = dataLabels.GetFirstChild<C.NumberingFormat>()?.FormatCode?.Value;
+            if (dlNumFmt != null) node.Format["dataLabels.numFmt"] = dlNumFmt;
+        }
+
+        var seriesCount = CountSeries(plotArea);
+        node.Format["seriesCount"] = seriesCount;
+
+        var cats = ReadCategories(plotArea);
+        if (cats != null) node.Format["categories"] = string.Join(",", cats);
+
+        var catsRef = ReadCategoriesRef(plotArea);
+        if (catsRef != null) node.Format["categoriesRef"] = catsRef;
+
+        // Trendline summary at chart level — scan first series with trendline
+        var firstTrendlineSer = plotArea.Descendants<OpenXmlCompositeElement>()
+            .Where(e => e.LocalName == "ser")
+            .FirstOrDefault(s => s.GetFirstChild<C.Trendline>() != null);
+        if (firstTrendlineSer != null)
+        {
+            var tlType = firstTrendlineSer.GetFirstChild<C.Trendline>()?.GetFirstChild<C.TrendlineType>()?.Val;
+            if (tlType?.HasValue == true) node.Format["trendline"] = tlType.InnerText;
+        }
+
+        if (depth > 0)
+        {
+            var seriesList = ReadAllSeries(plotArea);
+            for (int i = 0; i < seriesList.Count; i++)
+            {
+                var (sName, sValues) = seriesList[i];
+                var seriesNode = new DocumentNode
+                {
+                    Path = $"{node.Path}/series[{i + 1}]",
+                    Type = "series",
+                    Text = sName
+                };
+                seriesNode.Format["name"] = sName;
+                seriesNode.Format["values"] = string.Join(",", sValues.Select(v => v.ToString("G")));
+
+                var serEl = plotArea.Descendants<OpenXmlCompositeElement>()
+                    .Where(e => e.LocalName == "ser").ElementAtOrDefault(i);
+
+                // Cell reference formulas (for series with NumberReference/StringReference)
+                if (serEl != null)
+                {
+                    var valRef = ReadFormulaRef(serEl.GetFirstChild<C.Values>());
+                    if (valRef != null) seriesNode.Format["valuesRef"] = valRef;
+                    var catRef = ReadFormulaRef(serEl.GetFirstChild<C.CategoryAxisData>());
+                    if (catRef != null) seriesNode.Format["categoriesRef"] = catRef;
+                }
+
+                var serSpPr = serEl?.GetFirstChild<C.ChartShapeProperties>();
+                var serColor = serSpPr?.GetFirstChild<Drawing.SolidFill>();
+                if (serColor != null)
+                {
+                    var colorVal = ReadColorFromFill(serColor);
+                    if (colorVal != null) seriesNode.Format["color"] = colorVal;
+                    // Alpha/transparency
+                    var alphaEl = serColor.Descendants<Drawing.Alpha>().FirstOrDefault();
+                    if (alphaEl?.Val?.HasValue == true)
+                        seriesNode.Format["alpha"] = alphaEl.Val.Value;
+                }
+                // Gradient
+                var gradFill = serSpPr?.GetFirstChild<Drawing.GradientFill>();
+                if (gradFill != null) seriesNode.Format["gradient"] = "true";
+                // Line width
+                var outline = serSpPr?.GetFirstChild<Drawing.Outline>();
+                if (outline?.Width?.HasValue == true)
+                    seriesNode.Format["lineWidth"] = Math.Round(outline.Width.Value / 12700.0, 2);
+                // Line dash
+                var prstDash = outline?.GetFirstChild<Drawing.PresetDash>();
+                if (prstDash?.Val?.HasValue == true)
+                    seriesNode.Format["lineDash"] = prstDash.Val.InnerText;
+                // Outline color
+                var outlineFill = outline?.GetFirstChild<Drawing.SolidFill>();
+                if (outlineFill != null)
+                {
+                    var outColor = ReadColorFromFill(outlineFill);
+                    if (outColor != null) seriesNode.Format["outlineColor"] = outColor;
+                }
+                // Shadow (from EffectList)
+                var effectList = serSpPr?.GetFirstChild<Drawing.EffectList>();
+                var outerShadow = effectList?.GetFirstChild<Drawing.OuterShadow>();
+                if (outerShadow != null) seriesNode.Format["shadow"] = "true";
+                // Marker
+                var marker = serEl?.GetFirstChild<C.Marker>();
+                var markerSymbol = marker?.GetFirstChild<C.Symbol>()?.Val;
+                if (markerSymbol?.HasValue == true)
+                    seriesNode.Format["marker"] = markerSymbol.InnerText;
+                var markerSize = marker?.GetFirstChild<C.Size>()?.Val;
+                if (markerSize?.HasValue == true)
+                    seriesNode.Format["markerSize"] = (int)markerSize.Value;
+                // Smooth
+                var serSmooth = serEl?.GetFirstChild<C.Smooth>()?.Val;
+                if (serSmooth?.HasValue == true) seriesNode.Format["smooth"] = serSmooth.Value ? "true" : "false";
+                // Trendline
+                var trendline = serEl?.GetFirstChild<C.Trendline>();
+                if (trendline != null)
+                {
+                    var tlType = trendline.GetFirstChild<C.TrendlineType>()?.Val;
+                    if (tlType?.HasValue == true) seriesNode.Format["trendline"] = tlType.InnerText;
+                    var dispRSqr = trendline.GetFirstChild<C.DisplayRSquaredValue>()?.Val;
+                    if (dispRSqr?.HasValue == true && dispRSqr.Value) seriesNode.Format["trendline.dispRSqr"] = "true";
+                    var dispEq = trendline.GetFirstChild<C.DisplayEquation>()?.Val;
+                    if (dispEq?.HasValue == true && dispEq.Value) seriesNode.Format["trendline.dispEq"] = "true";
+                }
+                // Error bars
+                var errBars = serEl?.GetFirstChild<C.ErrorBars>();
+                if (errBars != null)
+                {
+                    var errValType = errBars.GetFirstChild<C.ErrorBarValueType>()?.Val;
+                    if (errValType?.HasValue == true) seriesNode.Format["errBars"] = errValType.InnerText;
+                }
+                // InvertIfNegative
+                var inv = serEl?.GetFirstChild<C.InvertIfNegative>()?.Val;
+                if (inv?.HasValue == true && inv.Value) seriesNode.Format["invertIfNeg"] = "true";
+                // Explosion (pie)
+                var explosion = serEl?.GetFirstChild<C.Explosion>()?.Val?.Value;
+                if (explosion != null && explosion > 0) seriesNode.Format["explosion"] = explosion;
+                // Data point colors
+                if (serEl != null)
+                {
+                    foreach (var dPt in serEl.Elements<C.DataPoint>())
+                    {
+                        var ptIdx = dPt.Index?.Val?.Value;
+                        if (ptIdx == null) continue;
+                        var ptFill = dPt.GetFirstChild<C.ChartShapeProperties>()?.GetFirstChild<Drawing.SolidFill>();
+                        if (ptFill != null)
+                        {
+                            var ptColor = ReadColorFromFill(ptFill);
+                            if (ptColor != null) seriesNode.Format[$"point{ptIdx.Value + 1}.color"] = ptColor;
+                        }
+                    }
+                }
+                node.Children.Add(seriesNode);
+            }
+            node.ChildCount = seriesList.Count;
+        }
+        else
+        {
+            node.ChildCount = seriesCount;
+        }
+    }
+
+    internal static string? DetectChartType(C.PlotArea plotArea)
+    {
+        // Count real chart-type elements. A LineChart containing only reference-line-shaped
+        // series (flat values, no marker, dashed outline) is a ref-line overlay added by
+        // AddReferenceLine — it must not promote the underlying chart to a "combo".
+        var chartTypeCount = plotArea.ChildElements
+            .Count(e => (e is C.BarChart or C.LineChart or C.PieChart or C.AreaChart or C.Area3DChart
+                or C.ScatterChart or C.DoughnutChart or C.Bar3DChart or C.Line3DChart or C.Pie3DChart
+                or C.BubbleChart or C.RadarChart or C.StockChart)
+                && !(e is C.LineChart lc && IsReferenceLineOnlyChart(lc)));
+        if (chartTypeCount > 1) return "combo";
+
+        if (plotArea.GetFirstChild<C.BarChart>() is C.BarChart bar)
+        {
+            var dir = bar.GetFirstChild<C.BarDirection>()?.Val?.Value;
+            var grp = bar.GetFirstChild<C.BarGrouping>()?.Val?.InnerText;
+            var prefix = dir == C.BarDirectionValues.Bar ? "bar" : "column";
+            if (grp == "stacked")
+            {
+                // Detect waterfall chart: stacked bar with 3 series where first is "Base" with NoFill
+                if (IsWaterfallPattern(bar))
+                    return "waterfall";
+                return $"{prefix}_stacked";
+            }
+            if (grp == "percentStacked") return $"{prefix}_percentStacked";
+            return prefix;
+        }
+        if (plotArea.GetFirstChild<C.LineChart>() != null) return "line";
+        if (plotArea.GetFirstChild<C.PieChart>() != null) return "pie";
+        if (plotArea.GetFirstChild<C.DoughnutChart>() != null) return "doughnut";
+        if (plotArea.GetFirstChild<C.AreaChart>() is C.AreaChart area)
+        {
+            var areaGrp = area.GetFirstChild<C.Grouping>()?.Val?.InnerText;
+            if (areaGrp == "stacked") return "area_stacked";
+            if (areaGrp == "percentStacked") return "area_percentStacked";
+            return "area";
+        }
+        if (plotArea.GetFirstChild<C.Area3DChart>() is C.Area3DChart area3d)
+        {
+            var area3dGrp = area3d.GetFirstChild<C.Grouping>()?.Val?.InnerText;
+            if (area3dGrp == "stacked") return "area3d_stacked";
+            if (area3dGrp == "percentStacked") return "area3d_percentStacked";
+            return "area3d";
+        }
+        if (plotArea.GetFirstChild<C.ScatterChart>() != null) return "scatter";
+        if (plotArea.GetFirstChild<C.BubbleChart>() != null) return "bubble";
+        if (plotArea.GetFirstChild<C.RadarChart>() != null) return "radar";
+        if (plotArea.GetFirstChild<C.StockChart>() != null) return "stock";
+        if (plotArea.GetFirstChild<C.Bar3DChart>() is C.Bar3DChart bar3d)
+        {
+            var dir3d = bar3d.GetFirstChild<C.BarDirection>()?.Val?.Value;
+            var grp3d = bar3d.GetFirstChild<C.BarGrouping>()?.Val?.InnerText;
+            var prefix3d = dir3d == C.BarDirectionValues.Bar ? "bar" : "column";
+            var suffix3d = grp3d == "stacked" ? "_stacked"
+                : grp3d == "percentStacked" ? "_percentStacked"
+                : "";
+            return $"{prefix3d}3d{suffix3d}";
+        }
+        if (plotArea.GetFirstChild<C.Line3DChart>() != null) return "line3d";
+        if (plotArea.GetFirstChild<C.Pie3DChart>() != null) return "pie3d";
+        return null;
+    }
+
+    /// <summary>
+    /// A reference-line series has (a) all values equal (flat horizontal line in OOXML terms),
+    /// (b) marker set to None, and (c) outline with a preset dash style. This matches the
+    /// shape that AddReferenceLine emits and is used to detect/remove overlays.
+    /// </summary>
+    internal static bool IsReferenceLineSeries(OpenXmlCompositeElement ser)
+    {
+        if (ser.LocalName != "ser") return false;
+
+        var marker = ser.GetFirstChild<C.Marker>();
+        if (marker?.GetFirstChild<C.Symbol>()?.Val?.Value != C.MarkerStyleValues.None) return false;
+
+        var spPr = ser.GetFirstChild<C.ChartShapeProperties>();
+        var outline = spPr?.GetFirstChild<Drawing.Outline>();
+        if (outline?.GetFirstChild<Drawing.PresetDash>() == null) return false;
+
+        // Flat values — every NumericPoint has the same text. Must have at least 1 literal point.
+        var numLit = ser.GetFirstChild<C.Values>()?.GetFirstChild<C.NumberLiteral>();
+        if (numLit == null) return false;
+        var distinct = numLit.Elements<C.NumericPoint>()
+            .Select(p => p.InnerText)
+            .Distinct()
+            .Take(2)
+            .Count();
+        return distinct == 1;
+    }
+
+    /// <summary>
+    /// True if a LineChart is made up entirely of reference-line series (i.e. it is a
+    /// ref-line overlay, not a real line chart). Empty LineCharts do not count.
+    /// </summary>
+    internal static bool IsReferenceLineOnlyChart(C.LineChart lineChart)
+    {
+        var sers = lineChart.Elements<C.LineChartSeries>().ToList();
+        if (sers.Count == 0) return false;
+        return sers.All(IsReferenceLineSeries);
+    }
+
+    /// <summary>
+    /// Read all reference-line overlays from a plot area. Returns value, label, color,
+    /// line width in points, and dash style name. Colors come back as 6-digit hex without
+    /// the '#' prefix; dash name is the OOXML PresetLineDashValues InnerText (e.g. "sysDash").
+    /// </summary>
+    internal static List<(string Name, double Value, string Color, double WidthPt, string Dash)> ReadReferenceLines(C.PlotArea plotArea)
+    {
+        var result = new List<(string, double, string, double, string)>();
+        foreach (var lineChart in plotArea.Elements<C.LineChart>())
+        {
+            foreach (var ser in lineChart.Elements<C.LineChartSeries>())
+            {
+                if (!IsReferenceLineSeries(ser)) continue;
+
+                // Value: any NumericPoint (all equal by definition of ref-line series)
+                var numLit = ser.GetFirstChild<C.Values>()?.GetFirstChild<C.NumberLiteral>();
+                var pt = numLit?.Elements<C.NumericPoint>().FirstOrDefault();
+                if (pt == null) continue;
+                if (!double.TryParse(pt.InnerText,
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out var val))
+                    continue;
+
+                var name = ser.GetFirstChild<C.SeriesText>()
+                    ?.Descendants<C.NumericValue>().FirstOrDefault()?.Text ?? "";
+
+                var outline = ser.GetFirstChild<C.ChartShapeProperties>()?.GetFirstChild<Drawing.Outline>();
+                var widthEmu = outline?.Width?.Value ?? 19050;
+                var widthPt = widthEmu / 12700.0;
+
+                // Color: solidFill srgbClr val
+                var color = "FF0000";
+                var srgb = outline?.GetFirstChild<Drawing.SolidFill>()?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+                if (!string.IsNullOrEmpty(srgb)) color = srgb;
+
+                var dashVal = outline?.GetFirstChild<Drawing.PresetDash>()?.Val;
+                var dash = dashVal?.InnerText ?? "dash";
+
+                result.Add((name, val, color, widthPt, dash));
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Detect waterfall chart pattern: a stacked bar chart with exactly 3 series
+    /// where the first series is named "Base" and has NoFill (invisible base).
+    /// </summary>
+    private static bool IsWaterfallPattern(C.BarChart bar)
+    {
+        var series = bar.Elements<C.BarChartSeries>().ToList();
+        if (series.Count != 3) return false;
+
+        // First series should be "Base" with NoFill
+        var firstSerName = series[0].GetFirstChild<C.SeriesText>()
+            ?.GetFirstChild<C.StringReference>()?.GetFirstChild<C.StringCache>()
+            ?.GetFirstChild<C.StringPoint>()?.GetFirstChild<C.NumericValue>()?.Text
+            ?? series[0].GetFirstChild<C.SeriesText>()
+            ?.GetFirstChild<C.NumericValue>()?.Text;
+
+        if (!string.Equals(firstSerName, "Base", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // First series should have NoFill in its shape properties
+        var baseSpPr = series[0].GetFirstChild<C.ChartShapeProperties>();
+        if (baseSpPr?.GetFirstChild<Drawing.NoFill>() == null)
+            return false;
+
+        return true;
+    }
+
+    internal static int CountSeries(C.PlotArea plotArea)
+    {
+        return plotArea.Descendants<C.Index>()
+            .Count(idx => idx.Parent?.LocalName == "ser");
+    }
+
+    internal static string[]? ReadCategories(C.PlotArea plotArea)
+    {
+        var catData = plotArea.Descendants<C.CategoryAxisData>().FirstOrDefault();
+        if (catData == null) return null;
+
+        var strLit = catData.GetFirstChild<C.StringLiteral>();
+        if (strLit != null)
+        {
+            return strLit.Elements<C.StringPoint>()
+                .OrderBy(p => p.Index?.Value ?? 0)
+                .Select(p => p.GetFirstChild<C.NumericValue>()?.Text ?? "")
+                .ToArray();
+        }
+
+        var strRef = catData.GetFirstChild<C.StringReference>();
+        var strCache = strRef?.GetFirstChild<C.StringCache>();
+        if (strCache != null)
+        {
+            return strCache.Elements<C.StringPoint>()
+                .OrderBy(p => p.Index?.Value ?? 0)
+                .Select(p => p.GetFirstChild<C.NumericValue>()?.Text ?? "")
+                .ToArray();
+        }
+
+        // StringReference without cache — return null (data lives in cells)
+        // The formula is read separately via ReadFormulaRef
+        return null;
+    }
+
+    /// <summary>
+    /// Read the categories formula reference from the first CategoryAxisData element.
+    /// Returns null if no reference found (literal categories).
+    /// </summary>
+    internal static string? ReadCategoriesRef(C.PlotArea plotArea)
+    {
+        var catData = plotArea.Descendants<C.CategoryAxisData>().FirstOrDefault();
+        return ReadFormulaRef(catData);
+    }
+
+    internal static List<(string name, double[] values)> ReadAllSeries(C.PlotArea plotArea)
+    {
+        var result = new List<(string name, double[] values)>();
+
+        foreach (var ser in plotArea.Descendants<OpenXmlCompositeElement>()
+            .Where(e => e.LocalName == "ser" && e.Parent != null &&
+                (e.Parent.LocalName.Contains("Chart") || e.Parent.LocalName.Contains("chart"))))
+        {
+            var serText = ser.GetFirstChild<C.SeriesText>();
+            var name = serText?.Descendants<C.NumericValue>().FirstOrDefault()?.Text ?? "?";
+
+            var values = ReadNumericData(ser.GetFirstChild<C.Values>())
+                ?? ReadNumericData(ser.Elements<OpenXmlCompositeElement>()
+                    .FirstOrDefault(e => e.LocalName == "yVal"))
+                ?? Array.Empty<double>();
+
+            result.Add((name, values));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Enumerate ser elements in the same order ReadAllSeries visits them, returning
+    /// `true` for each series that is a reference-line overlay. The caller can zip
+    /// this with the ReadAllSeries output to filter out ref-line entries without
+    /// re-walking the OOXML tree.
+    /// </summary>
+    internal static List<bool> ReadReferenceLineMask(C.PlotArea plotArea)
+    {
+        var result = new List<bool>();
+        foreach (var ser in plotArea.Descendants<OpenXmlCompositeElement>()
+            .Where(e => e.LocalName == "ser" && e.Parent != null &&
+                (e.Parent.LocalName.Contains("Chart") || e.Parent.LocalName.Contains("chart"))))
+        {
+            result.Add(IsReferenceLineSeries(ser));
+        }
+        return result;
+    }
+
+    internal static double[]? ReadNumericData(OpenXmlCompositeElement? valElement)
+    {
+        if (valElement == null) return null;
+
+        var numLit = valElement.GetFirstChild<C.NumberLiteral>();
+        if (numLit != null)
+        {
+            return numLit.Elements<C.NumericPoint>()
+                .OrderBy(p => p.Index?.Value ?? 0)
+                .Select(p => double.TryParse(p.GetFirstChild<C.NumericValue>()?.Text, out var v) ? v : 0)
+                .ToArray();
+        }
+
+        var numRef = valElement.GetFirstChild<C.NumberReference>();
+        var numCache = numRef?.GetFirstChild<C.NumberingCache>();
+        if (numCache != null)
+        {
+            return numCache.Elements<C.NumericPoint>()
+                .OrderBy(p => p.Index?.Value ?? 0)
+                .Select(p => double.TryParse(p.GetFirstChild<C.NumericValue>()?.Text, out var v) ? v : 0)
+                .ToArray();
+        }
+
+        // NumberReference without cache — return empty array (data lives in cells)
+        if (numRef != null) return Array.Empty<double>();
+
+        return null;
+    }
+
+    /// <summary>
+    /// Read the formula string from a NumberReference or StringReference inside a Values/CategoryAxisData element.
+    /// Returns null if no reference found.
+    /// </summary>
+    internal static string? ReadFormulaRef(OpenXmlCompositeElement? element)
+    {
+        if (element == null) return null;
+        var numRef = element.GetFirstChild<C.NumberReference>();
+        if (numRef != null) return numRef.GetFirstChild<C.Formula>()?.Text;
+        var strRef = element.GetFirstChild<C.StringReference>();
+        if (strRef != null) return strRef.GetFirstChild<C.Formula>()?.Text;
+        return null;
+    }
+
+    internal static string? ReadColorFromFill(Drawing.SolidFill? solidFill)
+    {
+        if (solidFill == null) return null;
+        var rgb = solidFill.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+        if (rgb != null) return ParseHelpers.FormatHexColor(rgb);
+        var scheme = solidFill.GetFirstChild<Drawing.SchemeColor>()?.Val;
+        if (scheme?.HasValue == true) return scheme.InnerText;
+        return null;
+    }
+
+    /// <summary>
+    /// Read gridline detail into separate format keys: {prefix}Color, {prefix}Width, {prefix}Dash.
+    /// </summary>
+    private static void ReadGridlineDetail(OpenXmlCompositeElement gridlines, DocumentNode node, string prefix)
+    {
+        var spPr = gridlines.GetFirstChild<C.ChartShapeProperties>();
+        var outline = spPr?.GetFirstChild<Drawing.Outline>();
+        if (outline == null) return;
+
+        var fill = outline.GetFirstChild<Drawing.SolidFill>();
+        var color = ReadColorFromFill(fill);
+        if (color != null) node.Format[$"{prefix}Color"] = color;
+
+        if (outline.Width?.HasValue == true)
+            node.Format[$"{prefix}Width"] = Math.Round(outline.Width.Value / 12700.0, 2);
+
+        var dash = outline.GetFirstChild<Drawing.PresetDash>()?.Val;
+        if (dash?.HasValue == true)
+            node.Format[$"{prefix}Dash"] = dash.InnerText!;
+    }
+
+    /// <summary>
+    /// Read outline (border) detail into format keys: {prefix}.color, {prefix}.width, {prefix}.dash.
+    /// </summary>
+    private static void ReadOutlineDetail(Drawing.Outline outline, DocumentNode node, string prefix)
+    {
+        var fill = outline.GetFirstChild<Drawing.SolidFill>();
+        var color = ReadColorFromFill(fill);
+        if (color != null) node.Format[$"{prefix}.color"] = color;
+        if (outline.Width?.HasValue == true)
+            node.Format[$"{prefix}.width"] = Math.Round(outline.Width.Value / 12700.0, 2);
+        var dash = outline.GetFirstChild<Drawing.PresetDash>()?.Val;
+        if (dash?.HasValue == true)
+            node.Format[$"{prefix}.dash"] = dash.InnerText!;
+    }
+
+    /// <summary>
+    /// Read font spec from TextProperties: returns "SIZE:COLOR:FONTNAME" format or null.
+    /// </summary>
+    private static string? ReadFontSpec(C.TextProperties textProperties)
+    {
+        var defRp = textProperties.Descendants<Drawing.DefaultRunProperties>().FirstOrDefault();
+        if (defRp == null) return null;
+
+        var parts = new List<string>();
+        if (defRp.FontSize?.HasValue == true)
+            parts.Add((defRp.FontSize.Value / 100.0).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+        else
+            parts.Add("");
+
+        var fill = defRp.GetFirstChild<Drawing.SolidFill>();
+        var color = ReadColorFromFill(fill);
+        parts.Add(color?.TrimStart('#') ?? "");
+
+        var font = defRp.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value;
+        if (font != null)
+            parts.Add(font);
+
+        var result = string.Join(":", parts).TrimEnd(':');
+        return string.IsNullOrEmpty(result) ? null : result;
+    }
+
+    // ==================== Chart Set ====================
+
+    internal static void UpdateSeriesData(C.PlotArea plotArea, List<(string name, double[] values)> newData)
+    {
+        var allSer = plotArea.Descendants<OpenXmlCompositeElement>()
+            .Where(e => e.LocalName == "ser").ToList();
+
+        // Update existing series
+        for (int i = 0; i < Math.Min(newData.Count, allSer.Count); i++)
+        {
+            var ser = allSer[i];
+            var (sName, sVals) = newData[i];
+
+            var serText = ser.GetFirstChild<C.SeriesText>();
+            if (serText != null)
+            {
+                serText.RemoveAllChildren();
+                serText.AppendChild(new C.NumericValue(sName));
+            }
+
+            var valEl = ser.GetFirstChild<C.Values>();
+            if (valEl != null)
+            {
+                valEl.RemoveAllChildren();
+                var builtVals = BuildValues(sVals);
+                foreach (var child in builtVals.ChildElements.ToList())
+                    valEl.AppendChild(child.CloneNode(true));
+            }
+        }
+
+        // Remove excess existing series
+        for (int i = newData.Count; i < allSer.Count; i++)
+            allSer[i].Remove();
+
+        // Add new series by cloning the last existing one as a template
+        if (newData.Count > allSer.Count && allSer.Count > 0)
+        {
+            var lastSer = allSer[^1];
+            var parent = lastSer.Parent!;
+            for (int i = allSer.Count; i < newData.Count; i++)
+            {
+                var (sName, sVals) = newData[i];
+                var newSer = (OpenXmlCompositeElement)lastSer.CloneNode(true);
+
+                // Update index and order
+                var idx = newSer.GetFirstChild<C.Index>();
+                if (idx != null) idx.Val = (uint)i;
+                var order = newSer.GetFirstChild<C.Order>();
+                if (order != null) order.Val = (uint)i;
+
+                // Update series name
+                var serText = newSer.GetFirstChild<C.SeriesText>();
+                if (serText != null)
+                {
+                    serText.RemoveAllChildren();
+                    serText.AppendChild(new C.NumericValue(sName));
+                }
+
+                // Update values
+                var valEl = newSer.GetFirstChild<C.Values>();
+                if (valEl != null)
+                {
+                    valEl.RemoveAllChildren();
+                    var builtVals = BuildValues(sVals);
+                    foreach (var child in builtVals.ChildElements.ToList())
+                        valEl.AppendChild(child.CloneNode(true));
+                }
+
+                // Remove cloned color so the new series gets a distinct auto-color
+                var spPr = newSer.GetFirstChild<C.ChartShapeProperties>();
+                if (spPr != null) spPr.Remove();
+
+                parent.AppendChild(newSer);
+            }
+        }
+    }
+}

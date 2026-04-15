@@ -145,7 +145,7 @@ officecli add slides.pptx /slide[3] --type shape --prop "text=Our market positio
 officecli add slides.pptx /slide[3] --type shape --prop preset=roundRect --prop x=18cm --prop y=5cm --prop width=14cm --prop height=12cm --prop fill=E8EDF3 --prop line=CADCFC --prop lineWidth=1pt
 
 # Or add an actual image:
-# officecli add slides.pptx /slide[3] --type picture --prop path=market-chart.png --prop x=18cm --prop y=5cm --prop width=14cm --prop height=12cm --prop alt="Market share chart"
+# officecli add slides.pptx /slide[3] --type picture --prop src=market-chart.png --prop x=18cm --prop y=5cm --prop width=14cm --prop height=12cm --prop alt="Market share chart"
 ```
 
 ### Stats / Callout Slide (Big Numbers)
@@ -304,7 +304,7 @@ officecli add slides.pptx /slide[1] --type shape --prop preset=ellipse --prop fi
 officecli add slides.pptx /slide[1] --type shape --prop text="01" --prop x=2cm --prop y=5cm --prop width=2.5cm --prop height=2.5cm --prop fill=none --prop color=FFFFFF --prop size=16 --prop bold=true --prop align=center --prop valign=center --prop font=Calibri
 
 # Or use an SVG icon file
-officecli add slides.pptx /slide[1] --type picture --prop path=icon.svg --prop x=2.3cm --prop y=5.3cm --prop width=1.9cm --prop height=1.9cm --prop alt="Settings icon"
+officecli add slides.pptx /slide[1] --type picture --prop src=icon.svg --prop x=2.3cm --prop y=5.3cm --prop width=1.9cm --prop height=1.9cm --prop alt="Settings icon"
 ```
 
 For icon + text rows, repeat the pattern at consistent vertical intervals (e.g., y=5cm, y=8.5cm, y=12cm) with a bold label and description text box to the right of each circle.
@@ -377,22 +377,22 @@ officecli add slides.pptx /slide[1]/shape[1]/paragraph[1] --type run --prop text
 
 ```bash
 # Local file
-officecli add slides.pptx /slide[1] --type picture --prop path=photo.jpg --prop x=2cm --prop y=4cm --prop width=14cm --prop height=10cm --prop alt="Team photo"
+officecli add slides.pptx /slide[1] --type picture --prop src=photo.jpg --prop x=2cm --prop y=4cm --prop width=14cm --prop height=10cm --prop alt="Team photo"
 
 # HTTP URL
-officecli add slides.pptx /slide[1] --type picture --prop path=https://example.com/logo.png --prop x=28cm --prop y=16cm --prop width=4cm --prop height=2cm --prop alt="Company logo"
+officecli add slides.pptx /slide[1] --type picture --prop src=https://example.com/logo.png --prop x=28cm --prop y=16cm --prop width=4cm --prop height=2cm --prop alt="Company logo"
 
 # Base64 data URI
 officecli add slides.pptx /slide[1] --type picture --prop "path=data:image/png;base64,iVBORw0KGgo..." --prop width=10cm --prop height=8cm
 
 # Clipped to circle (for avatars)
-officecli add slides.pptx /slide[1] --type picture --prop path=avatar.jpg --prop geometry=ellipse --prop width=5cm --prop height=5cm --prop alt="Profile photo"
+officecli add slides.pptx /slide[1] --type picture --prop src=avatar.jpg --prop geometry=ellipse --prop width=5cm --prop height=5cm --prop alt="Profile photo"
 
 # Clipped to rounded rectangle
-officecli add slides.pptx /slide[1] --type picture --prop path=screenshot.png --prop shape=roundRect --prop x=2cm --prop y=4cm --prop width=14cm --prop height=10cm
+officecli add slides.pptx /slide[1] --type picture --prop src=screenshot.png --prop shape=roundRect --prop x=2cm --prop y=4cm --prop width=14cm --prop height=10cm
 
 # SVG image (native support, no rasterization needed)
-officecli add slides.pptx /slide[1] --type picture --prop path=icon.svg --prop x=2cm --prop y=2cm --prop width=2cm --prop height=2cm --prop alt="Settings icon"
+officecli add slides.pptx /slide[1] --type picture --prop src=icon.svg --prop x=2cm --prop y=2cm --prop width=2cm --prop height=2cm --prop alt="Settings icon"
 ```
 
 Supported formats: png, jpg, gif, bmp, tiff, emf, wmf, svg. HTTP URLs have 30s timeout.
@@ -888,10 +888,10 @@ Pattern: Each trapezoid is progressively narrower (x inset increases, width decr
 
 ```bash
 # Embed video with autoplay
-officecli add slides.pptx /slide[1] --type video --prop path=demo.mp4 --prop x=3cm --prop y=3cm --prop width=18cm --prop height=10cm --prop autoplay=true
+officecli add slides.pptx /slide[1] --type video --prop src=demo.mp4 --prop x=3cm --prop y=3cm --prop width=18cm --prop height=10cm --prop autoplay=true
 
 # Background audio
-officecli add slides.pptx /slide[1] --type audio --prop path=bgm.mp3 --prop volume=50 --prop autoplay=true
+officecli add slides.pptx /slide[1] --type audio --prop src=bgm.mp3 --prop volume=50 --prop autoplay=true
 ```
 
 ### Equations
@@ -912,7 +912,7 @@ officecli add slides.pptx /slide[1] --type zoom --prop target=3 --prop x=2cm --p
 
 ```bash
 # Insert .glb 3D model
-officecli add slides.pptx /slide[1] --type 3dmodel --prop path=model.glb --prop x=5cm --prop y=3cm --prop width=12cm --prop height=12cm --prop rotx=30 --prop roty=45
+officecli add slides.pptx /slide[1] --type 3dmodel --prop src=model.glb --prop x=5cm --prop y=3cm --prop width=12cm --prop height=12cm --prop rotx=30 --prop roty=45
 ```
 
 ### Groups

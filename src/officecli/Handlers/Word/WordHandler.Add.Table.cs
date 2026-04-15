@@ -37,12 +37,12 @@ public partial class WordHandler
                 ApplyTableBorders(tblProps, bk, bv);
         }
 
-        // Parse data if provided: "H1,H2;R1C1,R1C2;R2C1,R2C2" or CSV file path
+        // Parse data if provided: "H1,H2;R1C1,R1C2;R2C1,R2C2" or CSV file/URL/data-URI
         string[][]? tableData = null;
         if (properties.TryGetValue("data", out var dataStr))
         {
-            if (File.Exists(dataStr))
-                tableData = File.ReadAllLines(dataStr)
+            if (OfficeCli.Core.FileSource.IsResolvable(dataStr))
+                tableData = OfficeCli.Core.FileSource.ResolveLines(dataStr)
                     .Where(l => !string.IsNullOrWhiteSpace(l))
                     .Select(l => l.Split(',').Select(c => c.Trim()).ToArray())
                     .ToArray();

@@ -143,14 +143,23 @@ public partial class ExcelHandler
 
                 if (properties.TryGetValue("value", out var value))
                 {
-                    // R2-2: strip XML-illegal chars (e.g. U+0000) from the cell
-                    // value before it gets serialized to sheet1.xml. Without
-                    // this, a NUL byte from upstream data would crash every
-                    // downstream save (including the pivot cache write).
-                    var safeValue = OfficeCli.Core.PivotTableHelper.SanitizeXmlText(value);
-                    cell.CellValue = new CellValue(safeValue);
-                    if (!double.TryParse(safeValue, out _))
-                        cell.DataType = new EnumValue<CellValues>(CellValues.String);
+                    // Auto-detect formula: value starting with '=' is treated as formula
+                    if (value.StartsWith('=') && value.Length > 1)
+                    {
+                        cell.CellFormula = new CellFormula(value.TrimStart('='));
+                        cell.CellValue = null;
+                    }
+                    else
+                    {
+                        // R2-2: strip XML-illegal chars (e.g. U+0000) from the cell
+                        // value before it gets serialized to sheet1.xml. Without
+                        // this, a NUL byte from upstream data would crash every
+                        // downstream save (including the pivot cache write).
+                        var safeValue = OfficeCli.Core.PivotTableHelper.SanitizeXmlText(value);
+                        cell.CellValue = new CellValue(safeValue);
+                        if (!double.TryParse(safeValue, out _))
+                            cell.DataType = new EnumValue<CellValues>(CellValues.String);
+                    }
                 }
                 if (properties.TryGetValue("formula", out var formula))
                 {
@@ -873,21 +882,216 @@ public partial class ExcelHandler
                 return $"/{fcfSheetName}/cf[{fcfCfCount}]";
             }
 
+            case "ole":
+            case "oleobject":
+            case "object":
+            case "embed":
+            {
+                // ---- Excel OLE insertion (modern form, Office 2010+) ----
+                //
+                // Structure produced:
+                //   Worksheet > oleObjects > oleObject(progId, shapeId, r:id=embedRel)
+                //     > objectPr(defaultSize=0, r:id=iconRel)
+                //       > anchor(moveWithCells=1)
+                //         > from(col, colOff, row, rowOff)
+                //         > to  (col, colOff, row, rowOff)
+                //
+                // We skip the legacy VML shape that Excel historically
+                // generates as a fallback — when the modern objectPr/anchor
+                // is present, Office 2010+ renders from it directly. The
+                // constraint-required shapeId still needs a value, so we
+                // allocate one in the legal range (1-67098623) unique per
+                // worksheet. For round-trip fidelity, we also create an
+                // empty legacy VmlDrawingPart and register the shapeId
+                // there so the relationship target exists.
+                var oleSheetSegs = parentPath.TrimStart('/').Split('/', 2);
+                var oleSheetName = oleSheetSegs[0];
+                var oleWorksheet = FindWorksheet(oleSheetName)
+                    ?? throw new ArgumentException($"Sheet not found: {oleSheetName}");
+
+                var oleSrc = OfficeCli.Core.OleHelper.RequireSource(properties);
+                OfficeCli.Core.OleHelper.WarnOnUnknownOleProps(properties);
+
+                // CONSISTENCY(excel-ole-display): Excel OLE does not have a
+                // DrawAspect concept — worksheet objects are always shown as
+                // icons via objectPr/anchor, so 'display' would be a no-op.
+                // Set already rejects it; Add must too, for symmetry.
+                if (properties.ContainsKey("display"))
+                    throw new ArgumentException(
+                        "'display' property is not supported for Excel OLE "
+                        + "(Excel always shows objects as icon). Remove --prop display.");
+
+                // CONSISTENCY(ole-name): Word/PPT OLE accept --prop name=... and
+                // round-trip it via Get. SpreadsheetML x:oleObject has no Name
+                // attribute in the schema, so there is nowhere to persist it.
+                // Throw explicitly rather than silently dropping the value —
+                // keep 'name' in KnownOleProps so Word/PPT still accept it.
+                if (properties.ContainsKey("name"))
+                    throw new ArgumentException(
+                        "'name' property is not supported for Excel OLE "
+                        + "(Spreadsheet OleObject schema has no Name attribute). Remove --prop name.");
+
+                // 1. Embedded payload.
+                var (oleEmbedRelId, _) = OfficeCli.Core.OleHelper.AddEmbeddedPart(oleWorksheet, oleSrc, _filePath);
+
+                // 2. Icon preview image part.
+                var (_, oleIconRelId) = OfficeCli.Core.OleHelper.CreateIconPart(oleWorksheet, properties);
+
+                // 3. Resolve ProgID.
+                var oleProgId = OfficeCli.Core.OleHelper.ResolveProgId(properties, oleSrc);
+
+                // 4. Anchor: accept either cell range "B2:E6" or x/y/width/height (column units).
+                // CONSISTENCY(ole-width-units): sub-cell precision is carried in
+                // ColumnOffset/RowOffset (EMU) so unit-qualified widths like
+                // "6cm" survive a round-trip. When the user passes a cell range
+                // or a bare integer cell count, the remainder offsets are 0 and
+                // behavior matches the legacy whole-cell path.
+                int oleFromCol, oleFromRow, oleToCol, oleToRow;
+                // FromMarker offsets are always zero (anchor starts at cell boundary);
+                // ToMarker offsets carry the sub-cell EMU remainder for unit-qualified
+                // width/height inputs, preserving round-trip precision.
+                const long oleFromColOff = 0, oleFromRowOff = 0;
+                long oleToColOff = 0, oleToRowOff = 0;
+                if (properties.TryGetValue("anchor", out var oleAnchorStr) && !string.IsNullOrWhiteSpace(oleAnchorStr))
+                {
+                    // CONSISTENCY(ole-width-units): anchor= defines the full
+                    // rectangle (start+end cells), so width/height on the same
+                    // Add call would be ambiguous and are silently dropped.
+                    // Warn loudly rather than fail, so existing scripts keep
+                    // working but users notice the dropped value.
+                    if (properties.ContainsKey("width") || properties.ContainsKey("height"))
+                        Console.Error.WriteLine(
+                            "Warning: 'width'/'height' are ignored when 'anchor' is provided (anchor defines the full rectangle).");
+                    var m = Regex.Match(oleAnchorStr, @"^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$", RegexOptions.IgnoreCase);
+                    if (!m.Success)
+                        throw new ArgumentException($"Invalid anchor: '{oleAnchorStr}'. Expected e.g. 'B2' or 'B2:E6'.");
+                    // CONSISTENCY(xdr-coords): XDR ColumnId/RowId are 0-based;
+                    // ColumnNameToIndex returns 1-based, so subtract 1 here.
+                    oleFromCol = ColumnNameToIndex(m.Groups[1].Value) - 1;
+                    oleFromRow = int.Parse(m.Groups[2].Value) - 1;
+                    if (m.Groups[3].Success)
+                    {
+                        oleToCol = ColumnNameToIndex(m.Groups[3].Value) - 1;
+                        oleToRow = int.Parse(m.Groups[4].Value) - 1;
+                    }
+                    else
+                    {
+                        oleToCol = oleFromCol + 2;
+                        oleToRow = oleFromRow + 3;
+                    }
+                }
+                else
+                {
+                    var (ax, ay, awEmu, ahEmu) = ParseAnchorBoundsEmu(properties, "1", "1", "3", "4");
+                    oleFromCol = ax;
+                    oleFromRow = ay;
+                    // Split the EMU extent into (whole cells, sub-cell offset).
+                    // EmuPerCol/Row constants live in ExcelHandler.Helpers.cs.
+                    long wholeCols = awEmu / EmuPerColApprox;
+                    long remCols = awEmu % EmuPerColApprox;
+                    long wholeRows = ahEmu / EmuPerRowApprox;
+                    long remRows = ahEmu % EmuPerRowApprox;
+                    oleToCol = ax + (int)wholeCols;
+                    oleToRow = ay + (int)wholeRows;
+                    oleToColOff = remCols;
+                    oleToRowOff = remRows;
+                }
+
+                // 5. Ensure the legacy VmlDrawingPart exists and carry an
+                //    empty shape placeholder referencing our shapeId. This
+                //    keeps the schema happy without writing VML rendering
+                //    logic — Excel 2010+ renders from objectPr/anchor anyway.
+                var oleVmlPart = oleWorksheet.VmlDrawingParts.FirstOrDefault()
+                    ?? oleWorksheet.AddNewPart<VmlDrawingPart>();
+                // Allocate a unique shapeId per worksheet (1025+N is the
+                // conventional Excel starting point for legacy VML shapes).
+                var existingOleCount = GetSheet(oleWorksheet).Descendants<OleObject>().Count();
+                uint oleShapeId = (uint)(1025 + existingOleCount);
+                EnsureExcelVmlShapeForOle(oleVmlPart, oleShapeId, oleFromCol, oleFromRow, oleToCol, oleToRow);
+
+                // Ensure worksheet references the VML drawing part.
+                var oleWsElement = GetSheet(oleWorksheet);
+                if (oleWsElement.GetFirstChild<LegacyDrawing>() == null)
+                {
+                    var vmlRelId = oleWorksheet.GetIdOfPart(oleVmlPart);
+                    // LegacyDrawing must sit after the AutoFilter/Phonetic
+                    // region per schema order — safe to insert before the
+                    // last known printing-related elements. Use InsertAfter
+                    // relative to AutoFilter when present, else append.
+                    var lgd = new LegacyDrawing { Id = vmlRelId };
+                    var pageSetup = oleWsElement.GetFirstChild<PageSetup>();
+                    if (pageSetup != null)
+                        oleWsElement.InsertAfter(lgd, pageSetup);
+                    else
+                        oleWsElement.AppendChild(lgd);
+                }
+
+                // 6. Build the oleObject element + objectPr/anchor.
+                var oleObj = new OleObject
+                {
+                    ProgId = oleProgId,
+                    ShapeId = oleShapeId,
+                    Id = oleEmbedRelId,
+                };
+                var objectPr = new EmbeddedObjectProperties
+                {
+                    DefaultSize = false,
+                    Id = oleIconRelId,
+                };
+                var anchor = new ObjectAnchor { MoveWithCells = true };
+                anchor.AppendChild(new FromMarker(
+                    new XDR.ColumnId(oleFromCol.ToString()),
+                    new XDR.ColumnOffset(oleFromColOff.ToString()),
+                    new XDR.RowId(oleFromRow.ToString()),
+                    new XDR.RowOffset(oleFromRowOff.ToString())));
+                anchor.AppendChild(new ToMarker(
+                    new XDR.ColumnId(oleToCol.ToString()),
+                    new XDR.ColumnOffset(oleToColOff.ToString()),
+                    new XDR.RowId(oleToRow.ToString()),
+                    new XDR.RowOffset(oleToRowOff.ToString())));
+                objectPr.AppendChild(anchor);
+                oleObj.AppendChild(objectPr);
+
+                // 7. Find/create oleObjects collection and append.
+                var oleObjects = oleWsElement.GetFirstChild<OleObjects>();
+                if (oleObjects == null)
+                {
+                    oleObjects = new OleObjects();
+                    // Schema: oleObjects sits between picture and controls;
+                    // safest is after tableParts if present, else before
+                    // pageSetup, else append.
+                    var insertBefore = oleWsElement.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.ExtensionList>()
+                        ?? (OpenXmlElement?)null;
+                    if (insertBefore != null)
+                        oleWsElement.InsertBefore(oleObjects, insertBefore);
+                    else
+                        oleWsElement.AppendChild(oleObjects);
+                }
+                oleObjects.AppendChild(oleObj);
+
+                SaveWorksheet(oleWorksheet);
+
+                var oleCount = oleWsElement.Descendants<OleObject>().Count();
+                return $"/{oleSheetName}/ole[{oleCount}]";
+            }
+
             case "picture":
             case "image":
+            case "img":
             {
                 var picSegments = parentPath.TrimStart('/').Split('/', 2);
                 var picSheetName = picSegments[0];
                 var picWorksheet = FindWorksheet(picSheetName)
                     ?? throw new ArgumentException($"Sheet not found: {picSheetName}");
 
-                var imgPath = properties.GetValueOrDefault("path", "") ?? "";
-                if (string.IsNullOrEmpty(imgPath))
-                    imgPath = properties.GetValueOrDefault("src", "");
-                if (string.IsNullOrEmpty(imgPath))
-                    throw new ArgumentException("picture requires a 'path' or 'src' property");
+                if (!properties.TryGetValue("path", out var imgPath)
+                    && !properties.TryGetValue("src", out imgPath))
+                    throw new ArgumentException("'src' property is required for picture type");
 
-                var (px, py, pw, ph) = ParseAnchorBounds(properties, "0", "0", "5", "5");
+                // CONSISTENCY(picture-emu): use ParseAnchorBoundsEmu like OLE,
+                // so width/height accept unit-qualified strings ("6cm", "2in")
+                // in addition to bare integer cell counts.
+                var (px, py, pwEmu, phEmu) = ParseAnchorBoundsEmu(properties, "0", "0", "5", "5");
                 var alt = properties.GetValueOrDefault("alt", "");
 
                 var picDrawingsPart = picWorksheet.DrawingsPart
@@ -915,6 +1119,13 @@ public partial class ExcelHandler
 
                 var picId = picDrawingsPart.WorksheetDrawing.Descendants<XDR.NonVisualDrawingProperties>()
                     .Select(p => (uint?)p.Id?.Value ?? 0u).DefaultIfEmpty(0u).Max() + 1;
+                // CONSISTENCY(picture-emu): split EMU extent into whole-cell
+                // count + sub-cell offset, matching the OLE anchor path.
+                long picWholeCols = pwEmu / EmuPerColApprox;
+                long picRemCols = pwEmu % EmuPerColApprox;
+                long picWholeRows = phEmu / EmuPerRowApprox;
+                long picRemRows = phEmu % EmuPerRowApprox;
+
                 var anchor = new XDR.TwoCellAnchor(
                     new XDR.FromMarker(
                         new XDR.ColumnId(px.ToString()),
@@ -923,10 +1134,10 @@ public partial class ExcelHandler
                         new XDR.RowOffset("0")
                     ),
                     new XDR.ToMarker(
-                        new XDR.ColumnId((px + pw).ToString()),
-                        new XDR.ColumnOffset("0"),
-                        new XDR.RowId((py + ph).ToString()),
-                        new XDR.RowOffset("0")
+                        new XDR.ColumnId((px + (int)picWholeCols).ToString()),
+                        new XDR.ColumnOffset(picRemCols.ToString()),
+                        new XDR.RowId((py + (int)picWholeRows).ToString()),
+                        new XDR.RowOffset(picRemRows.ToString())
                     ),
                     new XDR.Picture(
                         new XDR.NonVisualPictureProperties(
@@ -1398,6 +1609,31 @@ public partial class ExcelHandler
                     extChartPart.ChartSpace = cxChartSpace;
                     extChartPart.ChartSpace.Save();
 
+                    // CONSISTENCY(chartex-sidecars): every Office-canonical
+                    // chartEx part requires two sidecar parts linked via
+                    // relationships: a ChartStylePart (chs:chartStyle) and a
+                    // ChartColorStylePart (chs:colorStyle). Excel rejects
+                    // files that have the chartEx body but lack these
+                    // sidecars (silent "We found a problem" repair that
+                    // DELETES the entire drawing containing the chart —
+                    // slicers and all other anchors get collateral-damaged).
+                    // The SDK validator doesn't flag this because each part
+                    // is independently schema-valid; it's only the absence
+                    // of the sidecar relationship that Excel trips on.
+                    //
+                    // chartStyle is built by ChartExStyleBuilder; an
+                    // optional chartStyle=N prop on the caller picks a
+                    // numbered style variant, default = 0.
+                    var styleVariant = properties.GetValueOrDefault("chartStyle")
+                                    ?? properties.GetValueOrDefault("chartstyle")
+                                    ?? "default";
+                    var stylePart = extChartPart.AddNewPart<ChartStylePart>();
+                    using (var styleStream = ChartExStyleBuilder.BuildChartStyleXml(chartType, styleVariant))
+                        stylePart.FeedData(styleStream);
+                    var colorStylePart = extChartPart.AddNewPart<ChartColorStylePart>();
+                    using (var colorStream = LoadChartExResource("chartex-colors.xml"))
+                        colorStylePart.FeedData(colorStream);
+
                     var cxRelId = drawingsPart.GetIdOfPart(extChartPart);
                     var cxAnchor = new XDR.TwoCellAnchor();
                     cxAnchor.Append(new XDR.FromMarker(
@@ -1456,7 +1692,7 @@ public partial class ExcelHandler
 
                 // Apply deferred properties (axisTitle, dataLabels, etc.) via SetChartProperties
                 var deferredProps = properties
-                    .Where(kv => ChartHelper.DeferredAddKeys.Contains(kv.Key))
+                    .Where(kv => ChartHelper.IsDeferredKey(kv.Key))
                     .ToDictionary(kv => kv.Key, kv => kv.Value);
                 if (deferredProps.Count > 0)
                     ChartHelper.SetChartProperties(chartPart, deferredProps);
@@ -1608,6 +1844,11 @@ public partial class ExcelHandler
                     sourceSheetName, sourceRef, ptPosition, properties);
 
                 return $"/{ptSheetName}/pivottable[{ptIdx}]";
+            }
+
+            case "slicer":
+            {
+                return AddSlicer(parentPath, properties);
             }
 
             case "col" or "column":
@@ -2163,7 +2404,7 @@ public partial class ExcelHandler
                 if (created == null)
                     throw new ArgumentException(
                         $"Unknown element type '{type}' for {parentPath}. " +
-                        "Valid types: sheet, row, cell, shape, chart, autofilter, databar, colorscale, iconset, formulacf, comment, namedrange, table, picture, validation, pivottable. " +
+                        "Valid types: sheet, row, cell, shape, chart, ole (object, embed), autofilter, databar, colorscale, iconset, formulacf, comment, namedrange, table, picture, validation, pivottable. " +
                         "Use 'officecli xlsx add' for details.");
 
                 SaveWorksheet(fbWorksheet);

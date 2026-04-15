@@ -30,7 +30,7 @@ public partial class PowerPointHandler
         return (slidePart, shapes[shapeIdx - 1]);
     }
 
-    private (SlidePart slidePart, GraphicFrame gf, ChartPart? chartPart) ResolveChart(int slideIdx, int chartIdx)
+    private (SlidePart slidePart, GraphicFrame gf, ChartPart? chartPart, ExtendedChartPart? extChartPart) ResolveChart(int slideIdx, int chartIdx)
     {
         var slideParts = GetSlideParts().ToList();
         if (slideIdx < 1 || slideIdx > slideParts.Count)
@@ -48,11 +48,39 @@ public partial class PowerPointHandler
             throw new ArgumentException($"Chart {chartIdx} not found (total: {chartFrames.Count})");
 
         var gf = chartFrames[chartIdx - 1];
+
+        // Regular c:chart reference
         var chartRef = gf.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().FirstOrDefault();
         ChartPart? chartPart = null;
         if (chartRef?.Id?.Value != null)
             chartPart = (ChartPart)slidePart.GetPartById(chartRef.Id.Value);
-        return (slidePart, gf, chartPart);
+
+        // cx:chart (extended) reference — note: the SDK has TWO classes that
+        // both serialize with LocalName "chart":
+        //   CX.RelId  — the reference stub inside a:graphicData (has r:id)
+        //   CX.Chart  — the content element inside cx:chartSpace (has plotArea)
+        // Loaded elements may pick the "wrong" CLR type, so Descendants<CX.RelId>()
+        // can miss them. Walk graphic → graphicData and grab the first child
+        // matching the cx namespace + "chart" local name instead.
+        ExtendedChartPart? extChartPart = null;
+        var graphicData = gf.Graphic?.GraphicData;
+        if (graphicData != null)
+        {
+            const string cxNs = "http://schemas.microsoft.com/office/drawing/2014/chartex";
+            var cxChartRef = graphicData.ChildElements
+                .FirstOrDefault(e => e.LocalName == "chart" && e.NamespaceUri == cxNs);
+            if (cxChartRef != null)
+            {
+                // The r:id attribute lives in the relationships namespace.
+                const string rNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+                var relIdAttr = cxChartRef.GetAttributes()
+                    .FirstOrDefault(a => a.LocalName == "id" && a.NamespaceUri == rNs);
+                if (!string.IsNullOrEmpty(relIdAttr.Value))
+                    extChartPart = (ExtendedChartPart)slidePart.GetPartById(relIdAttr.Value);
+            }
+        }
+
+        return (slidePart, gf, chartPart, extChartPart);
     }
 
     private (SlidePart slidePart, Drawing.Table table) ResolveTable(int slideIdx, int tblIdx)
