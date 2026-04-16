@@ -1553,6 +1553,14 @@ public partial class WordHandler
         var mR = $"{pg.MarginRightPt:0.#}pt";
         var mT = $"{pg.MarginTopPt:0.#}pt";
         var mB = $"{pg.MarginBottomPt:0.#}pt";
+
+        // Honor document-level auto-hyphenation setting. CSS `hyphens: auto`
+        // requires the element (or ancestor) to specify a `lang` attribute;
+        // browsers use the language-specific hyphenation dictionaries.
+        var settings = _doc.MainDocumentPart?.DocumentSettingsPart?.Settings;
+        var hyphensCss = settings?.Descendants<AutoHyphenation>().Any() == true
+            ? "hyphens: auto; -webkit-hyphens: auto;"
+            : "";
         // Build font fallback chain: document font → platform-specific CJK equivalents → generic
         var docFont = CssSanitize(dd.Font);
         var cjkFallback = GetCjkFontFallback(docFont, _eastAsiaLang, _themeCjkFont);
@@ -1573,7 +1581,7 @@ public partial class WordHandler
             display: flex; flex-direction: column; font-kerning: none; letter-spacing: 0;
             transform-origin: left top; transition: transform 0.15s ease;
             }}
-        .page-body {{ flex: 1; display: flex; flex-direction: column; text-autospace: ideograph-alpha ideograph-numeric; }}
+        .page-body {{ flex: 1; display: flex; flex-direction: column; text-autospace: ideograph-alpha ideograph-numeric; {hyphensCss} }}
         .page-body > :first-child {{ margin-top: 0 !important; }}
         .page-body > img + h1, .page-body > img + img + h1 {{ margin-top: 0 !important; }}
         .doc-header, .doc-footer {{ font-size: {dd.SizePt:0.##}pt; }}

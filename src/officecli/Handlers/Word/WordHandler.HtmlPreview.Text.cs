@@ -334,8 +334,14 @@ public partial class WordHandler
                     }
                     else
                     {
-                        // Default half-inch tab (36pt)
-                        sb.Append("<span style=\"display:inline-block;width:36pt\"></span>");
+                        // No explicit tab stop: use document-level defaultTabStop
+                        // from settings.xml (twips → pt); fallback to 36pt (0.5in)
+                        // when settings are missing.
+                        var dts = _doc.MainDocumentPart?.DocumentSettingsPart?.Settings?.GetFirstChild<DefaultTabStop>();
+                        double defTabPt = 36.0;
+                        if (dts?.Val?.HasValue == true && dts.Val.Value > 0)
+                            defTabPt = dts.Val.Value / 20.0;
+                        sb.Append($"<span style=\"display:inline-block;width:{defTabPt:0.##}pt\"></span>");
                     }
                     _ctx.CurrentParagraphTabIndex++;
                 }
