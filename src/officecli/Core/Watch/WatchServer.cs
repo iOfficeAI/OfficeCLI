@@ -168,6 +168,11 @@ internal class WatchServer : IDisposable
         }
     }
 
+    public static bool IsWatching(string filePath)
+    {
+        return GetExistingWatchPort(filePath).HasValue;
+    }
+
     public async Task RunAsync(CancellationToken externalToken = default)
     {
         // Prevent duplicate watch processes for the same file

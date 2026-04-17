@@ -664,6 +664,8 @@ public class ResidentServer : IDisposable
 
     private void NotifyWatchSlideChanged(string? changedPath)
     {
+        if (!WatchServer.IsWatching(_filePath)) return;
+
         if (_handler is OfficeCli.Handlers.ExcelHandler excel)
         {
             string? scrollTo = null;
@@ -698,6 +700,8 @@ public class ResidentServer : IDisposable
 
     private void NotifyWatchRootChanged(int oldSlideCount)
     {
+        if (!WatchServer.IsWatching(_filePath)) return;
+
         if (_handler is OfficeCli.Handlers.WordHandler word)
         {
             var html = word.ViewAsHtml();
@@ -732,6 +736,8 @@ public class ResidentServer : IDisposable
 
     private void NotifyWatchFullRefresh()
     {
+        if (!WatchServer.IsWatching(_filePath)) return;
+
         string? fullHtml = null;
         if (_handler is OfficeCli.Handlers.PowerPointHandler ppt)
             fullHtml = ppt.ViewAsHtml();
