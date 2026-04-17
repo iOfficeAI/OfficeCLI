@@ -514,7 +514,48 @@ public partial class WordHandler
       if(ch>maxBodyH-fh+2 && visibleCount>1)again=true;
     });
     if(again)setTimeout(paginate,0);
-    else{setTimeout(positionFootnotes,0);setTimeout(applyLineNumbers,0);setTimeout(applyPageFilter,0);setTimeout(function(){scalePages(false);},0);}
+    else{setTimeout(positionFootnotes,0);setTimeout(wrapFloats,0);setTimeout(applyLineNumbers,0);setTimeout(applyPageFilter,0);setTimeout(function(){scalePages(false);},0);}
+  }
+  // #2 / #7b light approximation: a floating table whose CSS has float:*
+  // sits directly under .page-body (flex column) and has its float ignored.
+  // Wrap it + following prose siblings in a non-flex BFC div until either
+  // a heading, another table, or the wrap is tall enough for prose to
+  // have cleared the table. Re-run is idempotent.
+  function wrapFloats(){
+    // Collect direct page-body children whose outer CSS or whose first
+    // child <img> has float:*. Both cases need a BFC wrapper so the float
+    // can push following prose sideways.
+    var candidates=[];
+    document.querySelectorAll('.page-body > *').forEach(function(el){
+      if(el.parentElement && el.parentElement.classList.contains('float-wrap'))return;
+      var ownFloat=(el.style&&el.style.cssFloat)||'';
+      if(!ownFloat && el.getAttribute){
+        var st=el.getAttribute('style')||'';
+        if(/float\s*:\s*(left|right)/.test(st))ownFloat='y';
+      }
+      var innerImg=el.querySelector&&el.querySelector('img[style*=""float:""]');
+      if(ownFloat||innerImg)candidates.push({el:el,anchor:innerImg||el});
+    });
+    candidates.forEach(function(c){
+      var wrap=document.createElement('div');
+      wrap.className='float-wrap';
+      wrap.style.cssText='display:block;overflow:auto';
+      c.el.parentNode.insertBefore(wrap,c.el);
+      wrap.appendChild(c.el);
+      var anchorH=c.anchor.offsetHeight||c.el.offsetHeight;
+      // Absorb following siblings until a hard break or clearance.
+      for(var guard=0;guard<50;guard++){
+        var nxt=wrap.nextSibling;
+        if(!nxt)break;
+        if(nxt.nodeType===1){
+          var tag=nxt.tagName;
+          if(tag==='TABLE'||(tag&&tag.length===2&&tag[0]==='H'))break;
+          if(nxt.classList&&nxt.classList.contains('footnotes'))break;
+        }
+        wrap.appendChild(nxt);
+        if(wrap.offsetHeight>anchorH+16)break;
+      }
+    });
   }
   // #1: walk each page's text nodes, use Range.getClientRects() to find
   // visual line rectangles, and inject absolute-positioned <span> markers
