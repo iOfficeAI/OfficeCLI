@@ -1617,16 +1617,17 @@ public partial class WordHandler
 
             if (element is Paragraph para)
             {
-                paraIdx++;
-
-                if (isEquationSelector)
+                // #6: a w:p whose sole content is m:oMathPara is addressed
+                // via /body/oMathPara[M], not /body/p[N]. Don't bump paraIdx
+                // for these wrappers so /body/p[N] indexes only real prose.
+                if (IsOMathParaWrapperParagraph(para))
                 {
-                    // Check for display equation (oMathPara inside w:p)
-                    var oMathParaInPara = para.ChildElements.FirstOrDefault(e => e.LocalName == "oMathPara" || e is M.Paragraph);
-                    if (oMathParaInPara != null)
+                    mathParaIdx++;
+                    if (isEquationSelector)
                     {
-                        mathParaIdx++;
-                        var latex = FormulaParser.ToLatex(oMathParaInPara);
+                        var oMathParaInPara = para.ChildElements.FirstOrDefault(
+                            e => e.LocalName == "oMathPara" || e is M.Paragraph);
+                        var latex = FormulaParser.ToLatex(oMathParaInPara!);
                         if (parsed.ContainsText == null || latex.Contains(parsed.ContainsText))
                         {
                             results.Add(new DocumentNode
@@ -1637,8 +1638,14 @@ public partial class WordHandler
                                 Format = { ["mode"] = "display" }
                             });
                         }
-                        continue;
                     }
+                    continue;
+                }
+
+                paraIdx++;
+
+                if (isEquationSelector)
+                {
 
                     // Find inline math in this paragraph
                     int mathIdx = 0;

@@ -303,9 +303,15 @@ public partial class WordHandler
 
             if (current is Body body2 && (seg.Name.ToLowerInvariant() == "p" || seg.Name.ToLowerInvariant() == "tbl"))
             {
-                // Only count direct body-level paragraphs/tables, skip those inside SdtBlock containers
+                // Only count direct body-level paragraphs/tables, skip those inside SdtBlock containers.
+                // #6: paragraphs whose sole content is m:oMathPara are
+                // counted via the /body/oMathPara[N] path instead, so the
+                // /body/p[N] enumeration skips them to match HTML-preview
+                // data-path attribution (which also skips them).
                 children = seg.Name.ToLowerInvariant() == "p"
-                    ? body2.Elements<Paragraph>().Cast<OpenXmlElement>()
+                    ? body2.Elements<Paragraph>()
+                        .Where(p => !IsOMathParaWrapperParagraph(p))
+                        .Cast<OpenXmlElement>()
                     : body2.Elements<Table>().Cast<OpenXmlElement>();
             }
             else if (current is Body body3 && seg.Name == "oMathPara")

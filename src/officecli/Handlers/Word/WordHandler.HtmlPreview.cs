@@ -1103,8 +1103,13 @@ public partial class WordHandler
                 ApplySectionFnSettings(allSections, currentSectionIdx);
             }
 
-            // Emit invisible anchors for watch scroll targeting
-            if (element is Paragraph) { wParaCount++; sb.Append($"<a id=\"w-p-{wParaCount}\"></a>"); }
+            // Emit invisible anchors for watch scroll targeting. #6: a
+            // paragraph that exists purely as an m:oMathPara wrapper is
+            // emitted as a <div class="equation">, not a <p>. Skip it from
+            // the wParaCount sequence so /body/p[N] in data-path attrs
+            // lines up with Navigation.cs's path resolution.
+            if (element is Paragraph wpara && !IsOMathParaWrapperParagraph(wpara))
+            { wParaCount++; sb.Append($"<a id=\"w-p-{wParaCount}\"></a>"); }
             else if (element is Table) { wTableCount++; sb.Append($"<a id=\"w-table-{wTableCount}\"></a>"); }
 
             // Block markers for server-side diff: each top-level block gets <!--wB:N--> / <!--wE:N-->
@@ -1516,6 +1521,22 @@ public partial class WordHandler
         if (inMultiColumn) sb.AppendLine("</div>");
         if (dropCapWrapRemaining > 0) sb.Append("</div>");
         CloseAllLists(sb, listStack, ref currentListType, ref pendingLiClose);
+    }
+
+    /// <summary>
+    /// #6: a <c>&lt;w:p&gt;</c> whose only non-pPr child is an
+    /// <c>&lt;m:oMathPara&gt;</c> is semantically a display-math block,
+    /// not a text paragraph. Both <c>data-path="/body/p[N]"</c>
+    /// attribution and Navigation.cs path resolution skip such wrappers
+    /// so <c>/body/p[N]</c> counts only real prose paragraphs, while
+    /// <c>/body/oMathPara[M]</c> addresses the equations separately.
+    /// </summary>
+    internal static bool IsOMathParaWrapperParagraph(Paragraph p)
+    {
+        var kids = p.ChildElements.Where(c => c is not ParagraphProperties).ToList();
+        if (kids.Count != 1) return false;
+        var only = kids[0];
+        return only.LocalName == "oMathPara" || only is M.Paragraph;
     }
 
     /// <summary>
