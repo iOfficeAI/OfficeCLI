@@ -1147,7 +1147,11 @@ public partial class WordHandler
                     // carries a numPr, expand the level's lvlText ("%1.%2")
                     // against the running heading counters and prepend the
                     // result as a <span class="heading-num">.
-                    var hNumPr = ResolveNumPrFromStyle(para);
+                    //
+                    // An explicit `<w:numPr><w:numId w:val="0"/></w:numPr>` on
+                    // the paragraph suppresses this heading's number without
+                    // disturbing the sibling counter (Word: …2→3→unnumbered→4).
+                    var hNumPr = IsNumberingSuppressed(para) ? null : ResolveNumPrFromStyle(para);
                     if (hNumPr is { } hn)
                     {
                         headingCounters[hn.Ilvl] = headingCounters.GetValueOrDefault(hn.Ilvl, 0) + 1;
@@ -1287,17 +1291,7 @@ public partial class WordHandler
     /// <summary>Get the left indent and hanging indent (in twips) for a numbering level definition.</summary>
     private (int left, int hanging) GetListLevelIndentFull(int numId, int ilvl)
     {
-        var numPart = _doc.MainDocumentPart?.NumberingDefinitionsPart;
-        if (numPart == null) return (0, 0);
-        var numbering = numPart.Numbering;
-        var numInst = numbering?.Elements<NumberingInstance>()
-            .FirstOrDefault(n => n.NumberID?.Value == numId);
-        var absId = numInst?.AbstractNumId?.Val?.Value;
-        if (absId == null) return (0, 0);
-        var absDef = numbering?.Elements<AbstractNum>()
-            .FirstOrDefault(a => a.AbstractNumberId?.Value == absId);
-        var lvl = absDef?.Elements<Level>()
-            .FirstOrDefault(l => l.LevelIndex?.Value == ilvl);
+        var lvl = GetLevel(numId, ilvl);
         var indent = lvl?.PreviousParagraphProperties?.Indentation;
         int left = 0, hanging = 0;
         if (indent?.Left?.Value is string ls && int.TryParse(ls, out var lt))

@@ -38,10 +38,17 @@ public static class WordNumFmtRenderer
                 return ToChineseLegalSimplified(n);
             case "ideographdigital":
             case "taiwanesedigital":
-            case "koreandigital":
-            case "koreandigital2":
             case "japanesedigitaltenthousand":
                 return ToIdeographDigital(n);
+            case "koreandigital":
+            case "koreandigital2":
+                return ToKoreanDigital(n);
+            case "koreancounting":
+                return ToKoreanCounting(n);
+            case "koreanlegal":
+                return ToKoreanLegal(n);
+            case "japaneselegal":
+                return ToJapaneseLegal(n);
             case "ideographtraditional":
                 return ToHeavenlyStems(n);
             case "ideographzodiac":
@@ -65,6 +72,19 @@ public static class WordNumFmtRenderer
             case "hebrew1":
             case "hebrew2":
                 return ToHebrewNumeral(n);
+            case "thainumbers":
+            case "thaicounting":
+                return ToThaiDigits(n);
+            case "thailetters":
+                return ToThaiLetters(n);
+            case "hindinumbers":
+            case "hindicounting":
+            case "hindicardinaltext":
+                return ToDevanagariDigits(n);
+            case "hindiletters":
+                return ToHindiLetters(n);
+            case "hindivowels":
+                return ToHindiVowels(n);
             case "russianlower":
                 return ToRussianAlpha(n, uppercase: false);
             case "russianupper":
@@ -292,6 +312,95 @@ public static class WordNumFmtRenderer
         "л", "м", "н", "о", "п", "р", "с", "т", "у", "ф",
         "х", "ц", "ч", "ш", "щ", "э", "ю", "я"
     };
+    // Korean numerals ------------------------------------------------------
+
+    private static readonly char[] KoreanSinoDigits = // 〇일이삼사오육칠팔구
+        { '〇', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구' };
+    private static readonly string[] KoreanNativeCounting = // 하나..열
+        { "", "하나", "둘", "셋", "넷", "다섯", "여섯", "일곱", "여덟", "아홉", "열" };
+
+    /// <summary>Positional sino-korean digits: 1 → 일, 25 → 이오, 100 → 일〇〇.</summary>
+    private static string ToKoreanDigital(int n)
+    {
+        var s = n.ToString(CultureInfo.InvariantCulture);
+        var sb = new StringBuilder(s.Length);
+        foreach (var c in s)
+            sb.Append(c == '0' ? '〇' : KoreanSinoDigits[c - '0']);
+        return sb.ToString();
+    }
+
+    /// <summary>Native Korean counting 1..10, beyond that falls back to sino-korean digital.</summary>
+    private static string ToKoreanCounting(int n)
+        => n is >= 1 and <= 10 ? KoreanNativeCounting[n] : ToKoreanDigital(n);
+
+    /// <summary>Korean legal (formal) numerals share the Chinese formal hanzi set.</summary>
+    private static string ToKoreanLegal(int n)
+        => ToChineseCounting(n, formal: true);
+
+    /// <summary>Japanese legal uses modern formal kanji 壱弐参肆伍陸漆捌玖拾.</summary>
+    private static readonly char[] JpFormalDigits =
+        { '零', '壱', '弐', '参', '肆', '伍', '陸', '漆', '捌', '玖' };
+    private static string ToJapaneseLegal(int n)
+        => BuildCjkPositional(n, JpFormalDigits, '拾', '佰', '仟', '萬');
+
+    // Thai & Devanagari ----------------------------------------------------
+
+    /// <summary>Positional Thai digits ๐๑๒...: 1 → ๑, 25 → ๒๕.</summary>
+    private static string ToThaiDigits(int n)
+    {
+        var s = n.ToString(CultureInfo.InvariantCulture);
+        var sb = new StringBuilder(s.Length);
+        foreach (var c in s)
+            sb.Append(c is >= '0' and <= '9' ? (char)('\u0E50' + (c - '0')) : c);
+        return sb.ToString();
+    }
+
+    // Thai consonants (44 letters), Word cycles after 44.
+    private static string ToThaiLetters(int n)
+    {
+        // U+0E01..U+0E2E are the 46 code points but ฃ (U+0E03) and ฅ (U+0E05)
+        // are obsolete; Word's enumeration skips them.
+        char[] letters =
+        {
+            '\u0E01','\u0E02','\u0E04','\u0E06','\u0E07','\u0E08','\u0E09','\u0E0A','\u0E0B',
+            '\u0E0C','\u0E0D','\u0E0E','\u0E0F','\u0E10','\u0E11','\u0E12','\u0E13','\u0E14',
+            '\u0E15','\u0E16','\u0E17','\u0E18','\u0E19','\u0E1A','\u0E1B','\u0E1C','\u0E1D',
+            '\u0E1E','\u0E1F','\u0E20','\u0E21','\u0E22','\u0E23','\u0E24','\u0E25','\u0E26',
+            '\u0E27','\u0E28','\u0E29','\u0E2A','\u0E2B','\u0E2C','\u0E2D','\u0E2E'
+        };
+        return letters[(n - 1) % letters.Length].ToString();
+    }
+
+    /// <summary>Positional Devanagari digits ०१२...: 1 → १, 25 → २५.</summary>
+    private static string ToDevanagariDigits(int n)
+    {
+        var s = n.ToString(CultureInfo.InvariantCulture);
+        var sb = new StringBuilder(s.Length);
+        foreach (var c in s)
+            sb.Append(c is >= '0' and <= '9' ? (char)('\u0966' + (c - '0')) : c);
+        return sb.ToString();
+    }
+
+    // Devanagari consonants क, ख, ग, ...
+    private static string ToHindiLetters(int n)
+    {
+        char[] letters =
+        {
+            'क','ख','ग','घ','ङ','च','छ','ज','झ','ञ',
+            'ट','ठ','ड','ढ','ण','त','थ','द','ध','न',
+            'प','फ','ब','भ','म','य','र','ल','व','श',
+            'ष','स','ह'
+        };
+        return letters[(n - 1) % letters.Length].ToString();
+    }
+
+    // Devanagari vowels अ, आ, इ, ...
+    private static string ToHindiVowels(int n)
+    {
+        char[] vowels = { 'अ','आ','इ','ई','उ','ऊ','ऋ','ए','ऐ','ओ','औ' };
+        return vowels[(n - 1) % vowels.Length].ToString();
+    }
+
     private static string ToRussianAlpha(int n, bool uppercase)
     {
         if (n < 1 || n > RussianAlphaLower.Length)

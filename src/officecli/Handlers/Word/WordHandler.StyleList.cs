@@ -372,6 +372,20 @@ public partial class WordHandler
     /// heading auto-numbering, which must honour style-defined numPr even
     /// when the paragraph itself has no NumberingProperties.
     /// </summary>
+    /// <summary>
+    /// True iff the paragraph explicitly suppresses numbering via a direct
+    /// <c>&lt;w:numPr&gt;&lt;w:numId w:val="0"/&gt;&lt;/w:numPr&gt;</c>.
+    /// This intentionally ignores the style chain — callers that want the
+    /// effective numPr use <see cref="ResolveNumPrFromStyle"/> separately.
+    /// </summary>
+    private static bool IsNumberingSuppressed(Paragraph para)
+    {
+        var numProps = para.ParagraphProperties?.NumberingProperties;
+        if (numProps == null) return false;
+        var nid = numProps.NumberingId?.Val?.Value;
+        return nid == 0;
+    }
+
     private (int NumId, int Ilvl)? ResolveNumPrFromStyle(Paragraph para)
     {
         // 1. Direct numPr on the paragraph wins.
@@ -448,23 +462,7 @@ public partial class WordHandler
 
     private string GetNumberingFormat(int numId, int ilvl)
     {
-        var numbering = _doc.MainDocumentPart?.NumberingDefinitionsPart?.Numbering;
-        if (numbering == null) return "bullet";
-
-        var numInstance = numbering.Elements<NumberingInstance>()
-            .FirstOrDefault(n => n.NumberID?.Value == numId);
-        if (numInstance == null) return "bullet";
-
-        var abstractNumId = numInstance.AbstractNumId?.Val?.Value;
-        if (abstractNumId == null) return "bullet";
-
-        var abstractNum = numbering.Elements<AbstractNum>()
-            .FirstOrDefault(a => a.AbstractNumberId?.Value == abstractNumId);
-        if (abstractNum == null) return "bullet";
-
-        var level = abstractNum.Elements<Level>()
-            .FirstOrDefault(l => l.LevelIndex?.Value == ilvl);
-
+        var level = GetLevel(numId, ilvl);
         var numFmt = level?.NumberingFormat?.Val;
         if (numFmt == null || !numFmt.HasValue) return "bullet";
         return numFmt.InnerText ?? "bullet";
@@ -522,20 +520,7 @@ public partial class WordHandler
     }
 
     private string? GetLevelText(int numId, int ilvl)
-    {
-        var numbering = _doc.MainDocumentPart?.NumberingDefinitionsPart?.Numbering;
-        if (numbering == null) return null;
-        var numInstance = numbering.Elements<NumberingInstance>()
-            .FirstOrDefault(n => n.NumberID?.Value == numId);
-        if (numInstance == null) return null;
-        var abstractNumId = numInstance.AbstractNumId?.Val?.Value;
-        if (abstractNumId == null) return null;
-        var abstractNum = numbering.Elements<AbstractNum>()
-            .FirstOrDefault(a => a.AbstractNumberId?.Value == abstractNumId);
-        var level = abstractNum?.Elements<Level>()
-            .FirstOrDefault(l => l.LevelIndex?.Value == ilvl);
-        return level?.LevelText?.Val?.Value;
-    }
+        => GetLevel(numId, ilvl)?.LevelText?.Val?.Value;
 
     /// <summary>Get the LevelSuffix (tab/space/nothing) for a numbering level. Defaults to "tab".</summary>
     private string GetLevelSuffix(int numId, int ilvl)
@@ -561,7 +546,17 @@ public partial class WordHandler
         if (numbering == null) return null;
         var numInstance = numbering.Elements<NumberingInstance>()
             .FirstOrDefault(n => n.NumberID?.Value == numId);
-        var abstractNumId = numInstance?.AbstractNumId?.Val?.Value;
+        if (numInstance == null) return null;
+
+        // A `<w:lvlOverride>` on the NumberingInstance can embed an entire
+        // `<w:lvl>` replacing the abstractNum's level definition (not just
+        // the startOverride number). Honor that before falling back.
+        var lvlOverride = numInstance.Elements<LevelOverride>()
+            .FirstOrDefault(o => o.LevelIndex?.Value == ilvl);
+        var overrideLevel = lvlOverride?.GetFirstChild<Level>();
+        if (overrideLevel != null) return overrideLevel;
+
+        var abstractNumId = numInstance.AbstractNumId?.Val?.Value;
         if (abstractNumId == null) return null;
         var abstractNum = numbering.Elements<AbstractNum>()
             .FirstOrDefault(a => a.AbstractNumberId?.Value == abstractNumId);
