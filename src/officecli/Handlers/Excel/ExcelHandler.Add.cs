@@ -1984,18 +1984,44 @@ public partial class ExcelHandler
                 {
                     var rPr = new Drawing.RunProperties { Language = "en-US" };
 
+                    // R2-3: accept both bare (`size`, `bold`, `color`, `font`) and `font.*`
+                    // sub-prop forms (`font.size`, `font.bold`, `font.color`, `font.name`,
+                    // `font.italic`, `font.underline`) for consistency with cell/comment.
                     // Schema order: attributes → solidFill → effectLst → latin/ea
-                    if (properties.TryGetValue("size", out var shpSize))
-                        rPr.FontSize = (int)Math.Round(ParseHelpers.SafeParseDouble(shpSize, "size") * 100);
-                    if (properties.TryGetValue("bold", out var shpBold) && IsTruthy(shpBold))
+                    string? rawSize = properties.GetValueOrDefault("size")
+                        ?? properties.GetValueOrDefault("font.size");
+                    if (rawSize != null)
+                        rPr.FontSize = (int)Math.Round(ParseHelpers.ParseFontSize(rawSize) * 100);
+
+                    string? rawBold = properties.GetValueOrDefault("bold")
+                        ?? properties.GetValueOrDefault("font.bold");
+                    if (rawBold != null && IsTruthy(rawBold))
                         rPr.Bold = true;
-                    if (properties.TryGetValue("italic", out var shpItalic) && IsTruthy(shpItalic))
+
+                    string? rawItalic = properties.GetValueOrDefault("italic")
+                        ?? properties.GetValueOrDefault("font.italic");
+                    if (rawItalic != null && IsTruthy(rawItalic))
                         rPr.Italic = true;
 
-                    // Fill (color) before fonts
-                    if (properties.TryGetValue("color", out var shpColor))
+                    if (properties.TryGetValue("font.underline", out var shpUnder)
+                        || properties.TryGetValue("underline", out shpUnder))
                     {
-                        var (cRgb, _) = ParseHelpers.SanitizeColorForOoxml(shpColor);
+                        var uv = shpUnder.ToLowerInvariant();
+                        rPr.Underline = uv switch
+                        {
+                            "true" or "single" or "sng" => Drawing.TextUnderlineValues.Single,
+                            "double" or "dbl" => Drawing.TextUnderlineValues.Double,
+                            "none" or "false" => Drawing.TextUnderlineValues.None,
+                            _ => Drawing.TextUnderlineValues.Single
+                        };
+                    }
+
+                    // Fill (color) before fonts
+                    string? rawColor = properties.GetValueOrDefault("color")
+                        ?? properties.GetValueOrDefault("font.color");
+                    if (rawColor != null)
+                    {
+                        var (cRgb, _) = ParseHelpers.SanitizeColorForOoxml(rawColor);
                         rPr.AppendChild(new Drawing.SolidFill(new Drawing.RgbColorModelHex { Val = cRgb }));
                     }
 
@@ -2022,11 +2048,13 @@ public partial class ExcelHandler
                             rPr.AppendChild(txtEffects);
                     }
 
-                    // Fonts last (schema order)
-                    if (properties.TryGetValue("font", out var shpFont))
+                    // Fonts last (schema order). Accept `font=Arial` or `font.name=Arial`.
+                    string? rawFontName = properties.GetValueOrDefault("font.name")
+                        ?? properties.GetValueOrDefault("font");
+                    if (rawFontName != null)
                     {
-                        rPr.AppendChild(new Drawing.LatinFont { Typeface = shpFont });
-                        rPr.AppendChild(new Drawing.EastAsianFont { Typeface = shpFont });
+                        rPr.AppendChild(new Drawing.LatinFont { Typeface = rawFontName });
+                        rPr.AppendChild(new Drawing.EastAsianFont { Typeface = rawFontName });
                     }
 
                     var pPr = new Drawing.ParagraphProperties();
