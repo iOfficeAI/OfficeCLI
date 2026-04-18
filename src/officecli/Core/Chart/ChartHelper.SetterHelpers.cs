@@ -512,8 +512,8 @@ internal static partial class ChartHelper
     internal static void HandleDataLabelDottedProperty(OpenXmlCompositeElement firstSer, int pointIndex, string prop, string value)
     {
         var dLbls = firstSer.GetFirstChild<C.DataLabels>();
-        // For "text", auto-create a minimal DataLabels container on the series if not present
-        if (dLbls == null && prop == "text")
+        // Auto-create a minimal DataLabels container if not present and we're about to add per-point data.
+        if (dLbls == null && (prop == "text" || prop == "delete"))
         {
             dLbls = new C.DataLabels();
             dLbls.AppendChild(new C.ShowLegendKey { Val = false });
@@ -526,34 +526,51 @@ internal static partial class ChartHelper
         if (dLbls == null) return;
 
         var ooxmlIdx = (uint)(pointIndex - 1);
+        // Coalesce by idx: schema requires at most one <c:dLbl idx="N"> per series.
+        // Find-or-create once, then merge subsequent settings into the same element.
         var dLbl = dLbls.Elements<C.DataLabel>()
             .FirstOrDefault(dl => dl.Index?.Val?.Value == ooxmlIdx);
+        if (dLbl == null && (prop == "text" || prop == "delete"))
+        {
+            dLbl = new C.DataLabel();
+            dLbl.AppendChild(new C.Index { Val = ooxmlIdx });
+            var insertBefore = dLbls.GetFirstChild<C.ShowLegendKey>() as OpenXmlElement
+                ?? dLbls.GetFirstChild<C.ShowValue>()
+                ?? dLbls.FirstChild;
+            if (insertBefore != null) dLbls.InsertBefore(dLbl, insertBefore);
+            else dLbls.AppendChild(dLbl);
+        }
 
         switch (prop)
         {
             case "delete":
             {
-                if (dLbl == null)
+                if (dLbl == null) return;
+                var del = ParseHelpers.IsTruthy(value);
+                dLbl.RemoveAllChildren<C.Delete>();
+                dLbl.AppendChild(new C.Delete { Val = del });
+                // "delete wins" semantics: a deleted label renders nothing, so strip
+                // any previously-set visible siblings (tx, numFmt, dLblPos, show*).
+                if (del)
                 {
-                    dLbl = new C.DataLabel();
-                    dLbl.Index = new C.Index { Val = ooxmlIdx };
-                    dLbl.AppendChild(new C.Delete { Val = ParseHelpers.IsTruthy(value) });
-                    var insertBefore = dLbls.GetFirstChild<C.ShowLegendKey>() as OpenXmlElement
-                        ?? dLbls.GetFirstChild<C.ShowValue>()
-                        ?? dLbls.FirstChild;
-                    if (insertBefore != null) dLbls.InsertBefore(dLbl, insertBefore);
-                    else dLbls.AppendChild(dLbl);
-                }
-                else
-                {
-                    dLbl.RemoveAllChildren<C.Delete>();
-                    dLbl.AppendChild(new C.Delete { Val = ParseHelpers.IsTruthy(value) });
+                    dLbl.RemoveAllChildren<C.ChartText>();
+                    dLbl.RemoveAllChildren<C.NumberingFormat>();
+                    dLbl.RemoveAllChildren<C.DataLabelPosition>();
+                    dLbl.RemoveAllChildren<C.ShowLegendKey>();
+                    dLbl.RemoveAllChildren<C.ShowValue>();
+                    dLbl.RemoveAllChildren<C.ShowCategoryName>();
+                    dLbl.RemoveAllChildren<C.ShowSeriesName>();
+                    dLbl.RemoveAllChildren<C.ShowPercent>();
+                    dLbl.RemoveAllChildren<C.ShowBubbleSize>();
+                    dLbl.RemoveAllChildren<C.Separator>();
                 }
                 break;
             }
             case "pos" or "position":
             {
                 if (dLbl == null) return;
+                // Skip if this dLbl is already marked deleted — delete wins.
+                if (dLbl.GetFirstChild<C.Delete>() is { Val.Value: true }) return;
                 dLbl.RemoveAllChildren<C.DataLabelPosition>();
                 var dlPos = value.ToLowerInvariant() switch
                 {
@@ -569,23 +586,16 @@ internal static partial class ChartHelper
             case "numfmt":
             {
                 if (dLbl == null) return;
+                if (dLbl.GetFirstChild<C.Delete>() is { Val.Value: true }) return;
                 dLbl.RemoveAllChildren<C.NumberingFormat>();
                 dLbl.AppendChild(new C.NumberingFormat { FormatCode = value, SourceLinked = false });
                 break;
             }
             case "text":
             {
-                // Create or find dLbl, then set custom text via c:tx > c:rich
-                if (dLbl == null)
-                {
-                    dLbl = new C.DataLabel();
-                    dLbl.Index = new C.Index { Val = ooxmlIdx };
-                    var insertBefore = dLbls.GetFirstChild<C.ShowLegendKey>() as OpenXmlElement
-                        ?? dLbls.GetFirstChild<C.ShowValue>()
-                        ?? dLbls.FirstChild;
-                    if (insertBefore != null) dLbls.InsertBefore(dLbl, insertBefore);
-                    else dLbls.AppendChild(dLbl);
-                }
+                if (dLbl == null) return;
+                // Delete wins: if this dLbl is already deleted, ignore a later text= set.
+                if (dLbl.GetFirstChild<C.Delete>() is { Val.Value: true }) return;
                 dLbl.RemoveAllChildren<C.ChartText>();
                 var richText = new C.ChartText();
                 var rich = new C.RichText(
@@ -596,14 +606,7 @@ internal static partial class ChartHelper
                             new Drawing.RunProperties { Language = "en-US" },
                             new Drawing.Text(value))));
                 richText.AppendChild(rich);
-                // Insert tx after idx (schema order: idx, delete, layout, tx, ...)
-                var afterIdx = dLbl.GetFirstChild<C.Index>() as OpenXmlElement;
-                var afterLayout = dLbl.GetFirstChild<C.Layout>() as OpenXmlElement;
-                var insertAfter = afterLayout ?? afterIdx;
-                if (insertAfter != null)
-                    insertAfter.InsertAfterSelf(richText);
-                else
-                    dLbl.PrependChild(richText);
+                dLbl.AppendChild(richText);
                 // Ensure show flags are present so the custom text renders
                 if (dLbl.GetFirstChild<C.ShowValue>() == null)
                     dLbl.AppendChild(new C.ShowValue { Val = true });
@@ -614,6 +617,48 @@ internal static partial class ChartHelper
                 break;
             }
         }
+
+        // Final pass: enforce CT_DLbl schema order. Excel rejects the file silently
+        // if children are out of order (Sch_UnexpectedElementContentExpectingComplex).
+        // Order: idx, delete, layout, tx, numFmt, spPr, txPr, dLblPos,
+        //        showLegendKey, showVal, showCatName, showSerName, showPercent,
+        //        showBubbleSize, separator, extLst.
+        if (dLbl != null) ReorderDLblChildren(dLbl);
+    }
+
+    private static readonly Type[] s_dLblChildOrder =
+    {
+        typeof(C.Index),
+        typeof(C.Delete),
+        typeof(C.Layout),
+        typeof(C.ChartText),
+        typeof(C.NumberingFormat),
+        typeof(C.ChartShapeProperties),
+        typeof(C.TextProperties),
+        typeof(C.DataLabelPosition),
+        typeof(C.ShowLegendKey),
+        typeof(C.ShowValue),
+        typeof(C.ShowCategoryName),
+        typeof(C.ShowSeriesName),
+        typeof(C.ShowPercent),
+        typeof(C.ShowBubbleSize),
+        typeof(C.Separator),
+        typeof(C.ExtensionList),
+    };
+
+    private static void ReorderDLblChildren(C.DataLabel dLbl)
+    {
+        var kept = new List<OpenXmlElement>();
+        foreach (var t in s_dLblChildOrder)
+        {
+            foreach (var child in dLbl.ChildElements.Where(c => c.GetType() == t).ToList())
+            {
+                child.Remove();
+                kept.Add(child);
+            }
+        }
+        // Re-append in schema order. Any unknown children (shouldn't happen) are dropped.
+        foreach (var c in kept) dLbl.AppendChild(c);
     }
 
     /// <summary>
