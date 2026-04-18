@@ -1994,6 +1994,26 @@ public partial class ExcelHandler
                 node.Format["font"] = latin.Typeface.Value;
         }
 
+        // Rotation / flip readback from <a:xfrm rot="..." flipH="..." flipV="...">
+        var xfrm = shape.ShapeProperties?.Transform2D;
+        if (xfrm != null)
+        {
+            if (xfrm.Rotation?.HasValue == true && xfrm.Rotation.Value != 0)
+            {
+                // OOXML stores rotation in 60000ths of a degree; Add normalizes
+                // into [0,360). Round-trip the same canonical form.
+                var deg = xfrm.Rotation.Value / 60000.0;
+                node.Format["rotation"] = Math.Round(deg, 2);
+            }
+            if (xfrm.HorizontalFlip?.HasValue == true && xfrm.VerticalFlip?.HasValue == true
+                && xfrm.HorizontalFlip.Value && xfrm.VerticalFlip.Value)
+                node.Format["flip"] = "both";
+            else if (xfrm.HorizontalFlip?.HasValue == true && xfrm.HorizontalFlip.Value)
+                node.Format["flip"] = "h";
+            else if (xfrm.VerticalFlip?.HasValue == true && xfrm.VerticalFlip.Value)
+                node.Format["flip"] = "v";
+        }
+
         // Fill
         var spPr = shape.ShapeProperties;
         if (spPr?.GetFirstChild<Drawing.NoFill>() != null)
