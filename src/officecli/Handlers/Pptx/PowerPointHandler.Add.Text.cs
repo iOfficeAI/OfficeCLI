@@ -162,6 +162,34 @@ public partial class PowerPointHandler
                     pProps.RightMargin = (int)ParseEmu(pMarR);
                 if (properties.TryGetValue("list", out var pList) || properties.TryGetValue("liststyle", out pList))
                     ApplyListStyle(pProps, pList);
+                if (properties.TryGetValue("level", out var pLevelStr))
+                {
+                    if (!int.TryParse(pLevelStr, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var pLevelVal) || pLevelVal < 0 || pLevelVal > 8)
+                        throw new ArgumentException($"Invalid 'level' value: '{pLevelStr}'. Expected an integer between 0 and 8 (OOXML a:pPr/@lvl).");
+                    pProps.Level = pLevelVal;
+                }
+                // Line spacing (CONSISTENCY(lineSpacing): same idiom as AddShape:~180)
+                if (properties.TryGetValue("lineSpacing", out var pLsVal) || properties.TryGetValue("linespacing", out pLsVal))
+                {
+                    var (pLsInternal, pLsIsPercent) = SpacingConverter.ParsePptLineSpacing(pLsVal);
+                    pProps.RemoveAllChildren<Drawing.LineSpacing>();
+                    if (pLsIsPercent)
+                        pProps.AppendChild(new Drawing.LineSpacing(
+                            new Drawing.SpacingPercent { Val = pLsInternal }));
+                    else
+                        pProps.AppendChild(new Drawing.LineSpacing(
+                            new Drawing.SpacingPoints { Val = pLsInternal }));
+                }
+                if (properties.TryGetValue("spaceBefore", out var pSbVal) || properties.TryGetValue("spacebefore", out pSbVal))
+                {
+                    pProps.RemoveAllChildren<Drawing.SpaceBefore>();
+                    pProps.AppendChild(new Drawing.SpaceBefore(new Drawing.SpacingPoints { Val = SpacingConverter.ParsePptSpacing(pSbVal) }));
+                }
+                if (properties.TryGetValue("spaceAfter", out var pSaVal) || properties.TryGetValue("spaceafter", out pSaVal))
+                {
+                    pProps.RemoveAllChildren<Drawing.SpaceAfter>();
+                    pProps.AppendChild(new Drawing.SpaceAfter(new Drawing.SpacingPoints { Val = SpacingConverter.ParsePptSpacing(pSaVal) }));
+                }
 
                 newPara.ParagraphProperties = pProps;
 

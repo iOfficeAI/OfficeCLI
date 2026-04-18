@@ -381,6 +381,14 @@ public partial class PowerPointHandler
                         pProps.Indent = (int)ParseEmu(value);
                         break;
                     }
+                    case "level":
+                    {
+                        var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
+                        if (!int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var lvl) || lvl < 0 || lvl > 8)
+                            throw new ArgumentException($"Invalid 'level' value: '{value}'. Expected an integer between 0 and 8 (OOXML a:pPr/@lvl).");
+                        pProps.Level = lvl;
+                        break;
+                    }
                     case "marginleft" or "marl":
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
