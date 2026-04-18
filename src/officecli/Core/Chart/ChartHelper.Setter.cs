@@ -985,8 +985,20 @@ internal static partial class ChartHelper
                     var scaling = valAx?.GetFirstChild<C.Scaling>();
                     if (scaling == null) { unsupported.Add(key); break; }
                     scaling.RemoveAllChildren<C.LogBase>();
-                    if (!value.Equals("none", StringComparison.OrdinalIgnoreCase) &&
-                        !value.Equals("false", StringComparison.OrdinalIgnoreCase))
+                    // DEFERRED(xlsx/chart-logscale) CL23: accept `logScale=true`
+                    // as shorthand for logBase=10 (Excel's default log base).
+                    // `false`/`none` removes the log scale. `logBase=<n>` still
+                    // accepts an explicit numeric base via the same key.
+                    if (value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                        value.Equals("yes", StringComparison.OrdinalIgnoreCase) ||
+                        value == "1")
+                    {
+                        scaling.PrependChild(new C.LogBase { Val = 10d });
+                    }
+                    else if (!value.Equals("none", StringComparison.OrdinalIgnoreCase) &&
+                             !value.Equals("false", StringComparison.OrdinalIgnoreCase) &&
+                             !value.Equals("no", StringComparison.OrdinalIgnoreCase) &&
+                             value != "0")
                     {
                         var logVal = ParseHelpers.SafeParseDouble(value, "logBase");
                         scaling.PrependChild(new C.LogBase { Val = logVal });
