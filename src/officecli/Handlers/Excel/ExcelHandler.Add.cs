@@ -947,13 +947,18 @@ public partial class ExcelHandler
 
             case "cf":
             {
-                // Dispatch to specific CF type based on "type" property
-                var cfType = properties.GetValueOrDefault("type", "databar").ToLowerInvariant();
+                // Dispatch to specific CF type based on "type" (primary) or "rule" (alias) property.
+                // R2-2: `rule=cellIs` is also accepted — user expectation from real Excel vocabulary
+                // (Excel calls these "rules", OOXML calls them cfRule "type").
+                var cfType = (properties.GetValueOrDefault("type")
+                    ?? properties.GetValueOrDefault("rule")
+                    ?? "databar").ToLowerInvariant();
                 return cfType switch
                 {
                     "iconset" => Add(parentPath, "iconset", position, properties),
                     "colorscale" => Add(parentPath, "colorscale", position, properties),
-                    "formula" => Add(parentPath, "formulacf", position, properties),
+                    "formula" or "expression" => Add(parentPath, "formulacf", position, properties),
+                    "cellis" => Add(parentPath, "cellis", position, properties),
                     "topn" or "top10" => Add(parentPath, "topn", position, properties),
                     "aboveaverage" => Add(parentPath, "aboveaverage", position, properties),
                     "uniquevalues" => Add(parentPath, "uniquevalues", position, properties),
@@ -969,13 +974,16 @@ public partial class ExcelHandler
             case "databar":
             case "conditionalformatting":
             {
-                // Dispatch to specific CF type if "type" property is specified
-                if (properties.TryGetValue("type", out var cfTypeVal))
+                // Dispatch to specific CF type if "type" or "rule" property is specified.
+                // R2-2: `rule=` is an accepted alias for `type=` (matches Excel UI vocabulary).
+                var cfTypeProp = properties.GetValueOrDefault("type") ?? properties.GetValueOrDefault("rule");
+                if (cfTypeProp != null)
                 {
-                    var cfTypeLower = cfTypeVal.ToLowerInvariant();
+                    var cfTypeLower = cfTypeProp.ToLowerInvariant();
                     if (cfTypeLower is "iconset") return Add(parentPath, "iconset", position, properties);
                     if (cfTypeLower is "colorscale") return Add(parentPath, "colorscale", position, properties);
-                    if (cfTypeLower is "formula") return Add(parentPath, "formulacf", position, properties);
+                    if (cfTypeLower is "formula" or "expression") return Add(parentPath, "formulacf", position, properties);
+                    if (cfTypeLower is "cellis") return Add(parentPath, "cellis", position, properties);
                     if (cfTypeLower is "topn" or "top10") return Add(parentPath, "topn", position, properties);
                     if (cfTypeLower is "aboveaverage") return Add(parentPath, "aboveaverage", position, properties);
                     if (cfTypeLower is "uniquevalues") return Add(parentPath, "uniquevalues", position, properties);
@@ -1225,6 +1233,106 @@ public partial class ExcelHandler
                 SaveWorksheet(fcfWorksheet);
                 var fcfCfCount = fcfWsElement.Elements<ConditionalFormatting>().Count();
                 return $"/{fcfSheetName}/cf[{fcfCfCount}]";
+            }
+
+            case "cellis":
+            {
+                // R2-2: cellIs conditional formatting — compare each cell value against
+                // a literal (or formula) using one of greaterThan/lessThan/... operators.
+                var cisSegments = parentPath.TrimStart('/').Split('/', 2);
+                var cisSheetName = cisSegments[0];
+                var cisWorksheet = FindWorksheet(cisSheetName)
+                    ?? throw new ArgumentException($"Sheet not found: {cisSheetName}");
+
+                var cisSqref = properties.GetValueOrDefault("sqref")
+                    ?? properties.GetValueOrDefault("range", "A1:A10");
+                var opStr = (properties.GetValueOrDefault("operator") ?? "greaterThan").Trim();
+                var opVal = opStr.ToLowerInvariant() switch
+                {
+                    "greaterthan" or "gt" or ">" => ConditionalFormattingOperatorValues.GreaterThan,
+                    "lessthan" or "lt" or "<" => ConditionalFormattingOperatorValues.LessThan,
+                    "greaterthanorequal" or "gte" or ">=" => ConditionalFormattingOperatorValues.GreaterThanOrEqual,
+                    "lessthanorequal" or "lte" or "<=" => ConditionalFormattingOperatorValues.LessThanOrEqual,
+                    "equal" or "eq" or "=" or "==" => ConditionalFormattingOperatorValues.Equal,
+                    "notequal" or "ne" or "!=" or "<>" => ConditionalFormattingOperatorValues.NotEqual,
+                    "between" => ConditionalFormattingOperatorValues.Between,
+                    "notbetween" => ConditionalFormattingOperatorValues.NotBetween,
+                    _ => throw new ArgumentException(
+                        $"Unsupported cellIs operator '{opStr}'. Valid: greaterThan, lessThan, greaterThanOrEqual, lessThanOrEqual, equal, notEqual, between, notBetween.")
+                };
+
+                var primary = properties.GetValueOrDefault("value")
+                    ?? properties.GetValueOrDefault("formula")
+                    ?? properties.GetValueOrDefault("value1")
+                    ?? throw new ArgumentException("cellIs conditional formatting requires 'value' property (e.g. value=50).");
+                var secondary = properties.GetValueOrDefault("value2")
+                    ?? properties.GetValueOrDefault("maxvalue");
+
+                // Build DifferentialFormat (dxf)
+                var cisDxf = new DifferentialFormat();
+                if (properties.TryGetValue("font.color", out var cisFontColor))
+                {
+                    var normalizedFontColor = ParseHelpers.NormalizeArgbColor(cisFontColor);
+                    cisDxf.Append(new Font(new DocumentFormat.OpenXml.Spreadsheet.Color { Rgb = normalizedFontColor }));
+                }
+                if (properties.TryGetValue("font.bold", out var cisFontBold) && IsTruthy(cisFontBold))
+                {
+                    var existingFont = cisDxf.GetFirstChild<Font>();
+                    if (existingFont != null) existingFont.Append(new Bold());
+                    else cisDxf.Append(new Font(new Bold()));
+                }
+                if (properties.TryGetValue("fill", out var cisFill))
+                {
+                    var normalizedFill = ParseHelpers.NormalizeArgbColor(cisFill);
+                    cisDxf.Append(new Fill(new PatternFill(
+                        new BackgroundColor { Rgb = normalizedFill })
+                    { PatternType = PatternValues.Solid }));
+                }
+
+                var cisWbPart = _doc.WorkbookPart
+                    ?? throw new InvalidOperationException("Workbook not found");
+                var cisStyleMgr = new ExcelStyleManager(cisWbPart);
+                cisStyleMgr.EnsureStylesPart();
+                var cisStylesheet = cisWbPart.WorkbookStylesPart!.Stylesheet!;
+                var cisDxfs = cisStylesheet.GetFirstChild<DifferentialFormats>();
+                if (cisDxfs == null)
+                {
+                    cisDxfs = new DifferentialFormats { Count = 0 };
+                    cisStylesheet.Append(cisDxfs);
+                }
+                cisDxfs.Append(cisDxf);
+                cisDxfs.Count = (uint)cisDxfs.Elements<DifferentialFormat>().Count();
+                _dirtyStylesheet = true;
+                var cisDxfId = cisDxfs.Count!.Value - 1;
+
+                var cisRule = new ConditionalFormattingRule
+                {
+                    Type = ConditionalFormatValues.CellIs,
+                    Priority = NextCfPriority(GetSheet(cisWorksheet)),
+                    FormatId = cisDxfId,
+                    Operator = opVal
+                };
+                cisRule.Append(new Formula(primary));
+                if ((opVal == ConditionalFormattingOperatorValues.Between
+                     || opVal == ConditionalFormattingOperatorValues.NotBetween)
+                    && secondary != null)
+                {
+                    cisRule.Append(new Formula(secondary));
+                }
+                ApplyStopIfTrue(cisRule, properties);
+
+                var cisCf = new ConditionalFormatting(cisRule)
+                {
+                    SequenceOfReferences = new ListValue<StringValue>(
+                        cisSqref.Split(' ').Select(s => new StringValue(s)))
+                };
+
+                var cisWsElement = GetSheet(cisWorksheet);
+                InsertConditionalFormatting(cisWsElement, cisCf);
+
+                SaveWorksheet(cisWorksheet);
+                var cisCfCount = cisWsElement.Elements<ConditionalFormatting>().Count();
+                return $"/{cisSheetName}/cf[{cisCfCount}]";
             }
 
             case "ole":
