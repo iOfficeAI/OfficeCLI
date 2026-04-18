@@ -3,7 +3,6 @@
 
 using System.Text;
 using DocumentFormat.OpenXml;
-using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
 using OfficeCli.Core;
 using Drawing = DocumentFormat.OpenXml.Drawing;
@@ -120,24 +119,25 @@ public partial class PowerPointHandler
                         cellStyles.Add($"color:{runColor}");
                 }
 
-                // Cell borders (per-edge)
-                if (tcPr != null)
-                {
-                    var borderLeft = tcPr.GetFirstChild<Drawing.LeftBorderLineProperties>();
-                    var borderRight = tcPr.GetFirstChild<Drawing.RightBorderLineProperties>();
-                    var borderTop = tcPr.GetFirstChild<Drawing.TopBorderLineProperties>();
-                    var borderBottom = tcPr.GetFirstChild<Drawing.BottomBorderLineProperties>();
-                    var bl = TableBorderToCss(borderLeft, themeColors);
-                    var br = TableBorderToCss(borderRight, themeColors);
-                    var bt = TableBorderToCss(borderTop, themeColors);
-                    var bb = TableBorderToCss(borderBottom, themeColors);
-                    if (bl != null) cellStyles.Add($"border-left:{bl}");
-                    if (br != null) cellStyles.Add($"border-right:{br}");
-                    if (bt != null) cellStyles.Add($"border-top:{bt}");
-                    if (bb != null) cellStyles.Add($"border-bottom:{bb}");
-                    // No explicit borders → no border rendered (table style borders
-                    // should come from tableStyles.xml but are not yet resolved)
-                }
+                // Cell borders (per-edge). When the edge is absent from tcPr,
+                // fall back to Office's implicit default: 1pt solid black hairline.
+                // An explicit <a:lnL>/<a:lnR>/<a:lnT>/<a:lnB> with <a:noFill/> still
+                // yields "none" via TableBorderToCss and is preserved as-is.
+                // CONSISTENCY(table-borders): matches the `Npt solid #color` idiom
+                // already produced by TableBorderToCss.
+                const string defaultBorder = "1pt solid #000000";
+                var borderLeft = tcPr?.GetFirstChild<Drawing.LeftBorderLineProperties>();
+                var borderRight = tcPr?.GetFirstChild<Drawing.RightBorderLineProperties>();
+                var borderTop = tcPr?.GetFirstChild<Drawing.TopBorderLineProperties>();
+                var borderBottom = tcPr?.GetFirstChild<Drawing.BottomBorderLineProperties>();
+                var bl = TableBorderToCss(borderLeft, themeColors) ?? defaultBorder;
+                var br = TableBorderToCss(borderRight, themeColors) ?? defaultBorder;
+                var bt = TableBorderToCss(borderTop, themeColors) ?? defaultBorder;
+                var bb = TableBorderToCss(borderBottom, themeColors) ?? defaultBorder;
+                cellStyles.Add($"border-left:{bl}");
+                cellStyles.Add($"border-right:{br}");
+                cellStyles.Add($"border-top:{bt}");
+                cellStyles.Add($"border-bottom:{bb}");
 
                 // Cell margins/padding
                 var marL = tcPr?.LeftMargin?.Value;
