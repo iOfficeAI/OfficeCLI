@@ -1796,12 +1796,17 @@ public partial class PowerPointHandler
         if (!string.IsNullOrEmpty(destDir) && !Directory.Exists(destDir))
             Directory.CreateDirectory(destDir);
 
+        // CONSISTENCY(ole-cfb-wrap): unwrap CFB Ole10Native payload on read.
+        byte[] rawBytes;
         using (var src = part.GetStream())
-        using (var dst = File.Create(destPath))
+        using (var ms = new MemoryStream())
         {
-            src.CopyTo(dst);
-            byteCount = dst.Length;
+            src.CopyTo(ms);
+            rawBytes = ms.ToArray();
         }
+        var payload = OfficeCli.Core.OleHelper.UnwrapOle10NativeIfCfb(rawBytes);
+        File.WriteAllBytes(destPath, payload);
+        byteCount = payload.Length;
         contentType = part.ContentType;
         return true;
     }

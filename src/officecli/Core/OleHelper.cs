@@ -208,10 +208,10 @@ internal static class OleHelper
         // it, so DeletePart is safe.
         try
         {
-            FileStream src;
+            byte[] srcBytes;
             try
             {
-                src = new FileStream(srcPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                srcBytes = File.ReadAllBytes(srcPath);
             }
             catch (IOException ioEx)
             {
@@ -220,10 +220,18 @@ internal static class OleHelper
                     $"If an officecli resident or watch process has this file open, run " +
                     $"'officecli close {srcPath}' first, then retry.", ioEx);
             }
-            using (src)
-            {
-                part.FeedData(src);
-            }
+
+            // CONSISTENCY(ole-cfb-wrap): non-Office payloads (.pdf/.txt/binary)
+            // must be wrapped in a CFB container with a \x01Ole10Native stream.
+            // Excel rejects the file (0x800A03EC) otherwise. Office OOXML
+            // payloads are embedded raw via EmbeddedPackagePart — Excel reads
+            // them directly using the progId (Word.Document.12 / etc).
+            byte[] payload = kind == EmbeddingKind.Object
+                ? BuildOle10NativeCfb(srcBytes, Path.GetFileName(srcPath))
+                : srcBytes;
+
+            using var payloadStream = new MemoryStream(payload);
+            part.FeedData(payloadStream);
         }
         catch
         {
@@ -277,8 +285,15 @@ internal static class OleHelper
         node.Format["contentType"] = part.ContentType;
         try
         {
+            // CONSISTENCY(ole-cfb-wrap): fileSize reports the logical payload
+            // size (as fed via `add ole src=...`), not the on-disk CFB wrapper
+            // size. Read the stream fully and unwrap Ole10Native if CFB.
             using var s = part.GetStream();
-            node.Format["fileSize"] = s.Length;
+            using var ms = new MemoryStream();
+            s.CopyTo(ms);
+            var raw = ms.ToArray();
+            var payload = UnwrapOle10NativeIfCfb(raw);
+            node.Format["fileSize"] = (long)payload.Length;
         }
         catch
         {
@@ -478,4 +493,141 @@ internal static class OleHelper
             _ => throw new InvalidOperationException(
                 $"Host part type {host.GetType().Name} does not support image parts"),
         };
+
+    /// <summary>
+    /// Wrap an arbitrary payload (pdf/txt/binary) in an OLE1.0 Ole10Native
+    /// stream inside a CFB (Compound File Binary) container. This is the
+    /// shape Excel expects for generic "Package" OLE embeddings — without
+    /// it, Excel rejects the host .xlsx at open with 0x800A03EC.
+    ///
+    /// Ole10Native stream layout (little-endian):
+    ///   uint32  total size of remaining bytes
+    ///   uint16  version (0x0002)
+    ///   cstring display name (ANSI, null-terminated)
+    ///   cstring original file path (ANSI, null-terminated — may be bogus)
+    ///   uint32  reserved (0)
+    ///   uint32  reserved (0)
+    ///   cstring temp path (ANSI, null-terminated)
+    ///   uint32  payload size
+    ///   byte[]  payload
+    /// </summary>
+    public static byte[] BuildOle10NativeCfb(byte[] payload, string displayName)
+    {
+        if (payload == null) throw new ArgumentNullException(nameof(payload));
+        if (string.IsNullOrEmpty(displayName)) displayName = "embedded.bin";
+
+        // Build the \x01Ole10Native stream body.
+        byte[] streamBody;
+        using (var ms = new MemoryStream())
+        using (var w = new BinaryWriter(ms))
+        {
+            // Use ASCII-safe rendering of the display name. Non-ASCII chars
+            // get best-effort '?' substitution (ANSI constraint of the OLE1
+            // wire format; Excel only displays this).
+            string ansiName = SanitizeAnsi(displayName);
+            string fakePath = "C:\\" + ansiName;
+
+            // Reserve 4 bytes for total-size prefix; fill in at the end.
+            w.Write((uint)0);
+            w.Write((ushort)0x0002);
+            WriteCString(w, ansiName);
+            WriteCString(w, fakePath);
+            w.Write((uint)0);
+            w.Write((uint)0);
+            WriteCString(w, ansiName);
+            w.Write((uint)payload.Length);
+            w.Write(payload);
+
+            // Backfill total size = entire body length minus the 4-byte prefix.
+            long end = ms.Position;
+            ms.Position = 0;
+            w.Write((uint)(end - 4));
+            ms.Position = end;
+            streamBody = ms.ToArray();
+        }
+
+        // Wrap in a CFB container with a single stream named "\x01Ole10Native".
+        // Default (non-transacted) mode writes through on dispose; calling
+        // Commit() in that mode throws NotSupportedException.
+        using var cfbMs = new MemoryStream();
+        using (var root = OpenMcdf.RootStorage.Create(cfbMs, OpenMcdf.Version.V3, OpenMcdf.StorageModeFlags.LeaveOpen))
+        {
+            using var cfbStream = root.CreateStream("\u0001Ole10Native");
+            cfbStream.Write(streamBody, 0, streamBody.Length);
+        }
+        return cfbMs.ToArray();
+    }
+
+    /// <summary>
+    /// If <paramref name="raw"/> starts with CFB magic bytes and contains a
+    /// single <c>\x01Ole10Native</c> stream, return the unwrapped payload.
+    /// Otherwise return <paramref name="raw"/> unchanged. This is the
+    /// counterpart to <see cref="BuildOle10NativeCfb"/> — after we wrap
+    /// non-Office payloads at embed time, <c>TryExtractBinary</c> has to
+    /// strip the wrapping so callers see the bytes they fed in.
+    /// </summary>
+    public static byte[] UnwrapOle10NativeIfCfb(byte[] raw)
+    {
+        if (raw == null || raw.Length < 8) return raw ?? Array.Empty<byte>();
+        // CFB magic: D0 CF 11 E0 A1 B1 1A E1
+        if (raw[0] != 0xD0 || raw[1] != 0xCF || raw[2] != 0x11 || raw[3] != 0xE0 ||
+            raw[4] != 0xA1 || raw[5] != 0xB1 || raw[6] != 0x1A || raw[7] != 0xE1)
+            return raw;
+
+        try
+        {
+            using var ms = new MemoryStream(raw, writable: false);
+            using var root = OpenMcdf.RootStorage.Open(ms, OpenMcdf.StorageModeFlags.LeaveOpen);
+            if (!root.TryOpenStream("\u0001Ole10Native", out var nativeStream) || nativeStream == null)
+                return raw;
+            using (nativeStream)
+            {
+                // Parse Ole10Native header: uint32 totalSize, uint16 version,
+                // cstring name, cstring path, 8 bytes reserved, cstring temp,
+                // uint32 payloadSize, bytes payload.
+                using var br = new BinaryReader(nativeStream);
+                br.ReadUInt32();          // totalSize
+                br.ReadUInt16();          // version
+                ReadCString(br);          // displayName
+                ReadCString(br);          // origPath
+                br.ReadUInt32();          // reserved1
+                br.ReadUInt32();          // reserved2
+                ReadCString(br);          // tempPath
+                uint payloadSize = br.ReadUInt32();
+                if (payloadSize > int.MaxValue) return raw;
+                return br.ReadBytes((int)payloadSize);
+            }
+        }
+        catch
+        {
+            return raw;
+        }
+    }
+
+    private static string ReadCString(BinaryReader br)
+    {
+        var sb = new System.Text.StringBuilder();
+        while (true)
+        {
+            byte b = br.ReadByte();
+            if (b == 0) break;
+            sb.Append((char)b);
+        }
+        return sb.ToString();
+    }
+
+    private static void WriteCString(BinaryWriter w, string s)
+    {
+        foreach (char c in s)
+            w.Write(c < 0x80 ? (byte)c : (byte)'?');
+        w.Write((byte)0);
+    }
+
+    private static string SanitizeAnsi(string s)
+    {
+        var chars = new char[s.Length];
+        for (int i = 0; i < s.Length; i++)
+            chars[i] = s[i] < 0x80 && s[i] >= 0x20 ? s[i] : '_';
+        return new string(chars);
+    }
 }

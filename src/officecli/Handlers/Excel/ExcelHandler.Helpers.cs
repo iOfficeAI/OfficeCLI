@@ -2800,12 +2800,19 @@ public partial class ExcelHandler
         if (!string.IsNullOrEmpty(destDir) && !Directory.Exists(destDir))
             Directory.CreateDirectory(destDir);
 
+        // CONSISTENCY(ole-cfb-wrap): non-Office OLE payloads are stored as
+        // CFB containers with \x01Ole10Native; unwrap on read so the caller
+        // gets back the bytes they fed in via `add ole src=...`.
+        byte[] rawBytes;
         using (var src = part.GetStream())
-        using (var dst = File.Create(destPath))
+        using (var ms = new MemoryStream())
         {
-            src.CopyTo(dst);
-            byteCount = dst.Length;
+            src.CopyTo(ms);
+            rawBytes = ms.ToArray();
         }
+        var payload = OfficeCli.Core.OleHelper.UnwrapOle10NativeIfCfb(rawBytes);
+        File.WriteAllBytes(destPath, payload);
+        byteCount = payload.Length;
         contentType = part.ContentType;
         return true;
     }
