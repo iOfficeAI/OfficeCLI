@@ -1873,6 +1873,34 @@ public partial class ExcelHandler
                             existingCell.CellFormula = new CellFormula($"SUBTOTAL({subtotalCode},{formulaRange})");
                         }
                     }
+
+                    // T10: per-column custom totalsFormula override. Syntax:
+                    //   columns.N.totalsFormula="=SUM(Table1[Sales])/2"
+                    // where N is 1-based. This sets the column's
+                    // totalsRowFunction to "custom" + writes <calculatedColumnFormula>,
+                    // and replaces the SUBTOTAL cell formula with the user's.
+                    foreach (var (rawKey, rawVal) in properties)
+                    {
+                        var m = Regex.Match(rawKey, @"^columns?\.(\d+)\.totalsFormula$",
+                            RegexOptions.IgnoreCase);
+                        if (!m.Success) continue;
+                        var n = int.Parse(m.Groups[1].Value);
+                        if (n < 1 || n > tblCols.Count) continue;
+                        var ci = n - 1;
+                        var colLetter = IndexToColumnName(startColIdx + ci);
+                        var cellRefStr = $"{colLetter}{totalRowIdx}";
+                        var existingCell = totalRow.Elements<Cell>()
+                            .FirstOrDefault(c => c.CellReference?.Value == cellRefStr)
+                            ?? totalRow.AppendChild(new Cell { CellReference = cellRefStr });
+
+                        var customFormula = rawVal.TrimStart('=');
+                        tblCols[ci].TotalsRowFunction = TotalsRowFunctionValues.Custom;
+                        tblCols[ci].TotalsRowLabel = null;
+                        tblCols[ci].TotalsRowFormula = new TotalsRowFormula(customFormula);
+                        existingCell.CellFormula = new CellFormula(customFormula);
+                        existingCell.CellValue = null;
+                        existingCell.DataType = null;
+                    }
                 }
 
                 tableDefPart.Table = table;
