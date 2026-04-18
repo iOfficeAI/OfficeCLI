@@ -1080,10 +1080,14 @@ static partial class CommandBuilder
     /// </summary>
     private static string? CheckTextOverflow(IDocumentHandler handler, string path)
     {
-        if (handler is not OfficeCli.Handlers.PowerPointHandler pptHandler) return null;
         try
         {
-            return pptHandler.CheckShapeTextOverflow(path);
+            return handler switch
+            {
+                OfficeCli.Handlers.PowerPointHandler ppt => ppt.CheckShapeTextOverflow(path),
+                OfficeCli.Handlers.ExcelHandler xl => xl.CheckCellOverflow(path),
+                _ => null
+            };
         }
         catch { return null; }
     }
