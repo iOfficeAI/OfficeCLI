@@ -535,6 +535,11 @@ public partial class ExcelHandler
                 var refVal = properties.GetValueOrDefault("ref",
                     properties.GetValueOrDefault("refersTo",
                         properties.GetValueOrDefault("formula", "")));
+                // R7-2: per ECMA-376 §18.2.5, <x:definedName> content must NOT
+                // have a leading '=' (unlike the formula-bar form in Excel UI).
+                // Excel rejects the file with 0x800A03EC if '=' is present.
+                if (refVal.StartsWith('='))
+                    refVal = refVal.TrimStart('=');
 
                 var workbook = GetWorkbook();
                 var definedNames = workbook.GetFirstChild<DefinedNames>();
@@ -566,6 +571,28 @@ public partial class ExcelHandler
                     dn.Comment = nrComment;
 
                 definedNames.AppendChild(dn);
+
+                // R7-3: if the defined-name body is a formula (not just a pure
+                // range reference), set fullCalcOnLoad so Excel recomputes on
+                // first open — otherwise the name evaluates to 0 until the
+                // user triggers a recalc.
+                if (LooksLikeFormulaBody(refVal))
+                {
+                    var calcPr = workbook.GetFirstChild<CalculationProperties>();
+                    if (calcPr == null)
+                    {
+                        calcPr = new CalculationProperties();
+                        var insertBefore = (DocumentFormat.OpenXml.OpenXmlElement?)workbook.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.OleSize>()
+                            ?? (DocumentFormat.OpenXml.OpenXmlElement?)workbook.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.CustomWorkbookViews>()
+                            ?? (DocumentFormat.OpenXml.OpenXmlElement?)workbook.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.PivotCaches>();
+                        if (insertBefore != null)
+                            workbook.InsertBefore(calcPr, insertBefore);
+                        else
+                            workbook.AppendChild(calcPr);
+                    }
+                    calcPr.FullCalculationOnLoad = true;
+                }
+
                 workbook.Save();
 
                 var nrIdx = definedNames.Elements<DefinedName>().ToList().IndexOf(dn) + 1;
