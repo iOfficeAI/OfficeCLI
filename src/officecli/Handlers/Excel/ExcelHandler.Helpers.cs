@@ -453,6 +453,24 @@ public partial class ExcelHandler
         return true;
     }
 
+    // R7-3: heuristic — is `s` a formula body (SUM(...), A1+B1, IF(...)),
+    // as opposed to a pure range-ref body (Sheet1!$A$1:$A$5, A1:A5, A1)?
+    // Used to decide whether to flip <calcPr fullCalcOnLoad="1"/> so Excel
+    // evaluates the defined name on first open. Range-only bodies don't
+    // need forced recalc; function calls and operator expressions do.
+    internal static bool LooksLikeFormulaBody(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return false;
+        var t = s.Trim();
+        if (t.Length == 0) return false;
+        // A function call or arithmetic expression contains '(' or an
+        // operator outside a sheet-qualified range.
+        if (t.Contains('(')) return true;
+        if (t.IndexOfAny(new[] { '+', '-', '*', '/', '^', '&', '<', '>', '=', '%' }) >= 0)
+            return true;
+        return false;
+    }
+
     // Make a string safe to use as an Excel table name, displayName, or
     // tableColumn name. Excel refuses to open files where these identifiers
     // look like a cell reference ("tbl1" → column TBL row 1) or are purely
