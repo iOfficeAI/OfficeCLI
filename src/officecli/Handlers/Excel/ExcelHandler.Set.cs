@@ -1436,6 +1436,25 @@ public partial class ExcelHandler
                             cell.CellValue = new CellValue(cellValue);
                             cell.DataType = new EnumValue<CellValues>(CellValues.String);
                         }
+                        else if (explicitTypeIsString)
+                        {
+                            // R15-2: honor explicit type=string even for
+                            // numeric-looking literals. Without this, Excel
+                            // renders 123 as a number despite user intent.
+                            cell.CellValue = new CellValue(cellValue);
+                            cell.DataType = new EnumValue<CellValues>(CellValues.String);
+                        }
+                        else if (explicitTypeIsNumber)
+                        {
+                            // R15-2: honor explicit type=number — refuse
+                            // non-numeric values rather than silently storing
+                            // as string.
+                            if (!double.TryParse(cellValue, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _))
+                                throw new ArgumentException(
+                                    $"Cannot store '{cellValue}' as number; use type=string or remove type=");
+                            cell.CellValue = new CellValue(cellValue);
+                            cell.DataType = null;
+                        }
                         else
                         {
                             cell.CellValue = new CellValue(cellValue);
