@@ -1959,10 +1959,17 @@ public partial class ExcelHandler
         if (nvProps?.Name?.Value != null)
             node.Format["name"] = nvProps.Name.Value;
 
-        // Text
+        // Text — shape TextBody has one <a:p> per paragraph, each with
+        // zero-or-more <a:r>/<a:t> runs. Concatenate runs within a
+        // paragraph, then join paragraphs with '\n' so multi-line shape
+        // text round-trips through Get.
+        var paragraphs = shape.TextBody?.Elements<Drawing.Paragraph>().ToList();
+        if (paragraphs != null && paragraphs.Count > 0)
+        {
+            node.Text = string.Join("\n", paragraphs.Select(p =>
+                string.Join("", p.Elements<Drawing.Run>().Select(r => r.Text?.Text ?? ""))));
+        }
         var textRuns = shape.TextBody?.Descendants<Drawing.Run>().ToList();
-        if (textRuns != null && textRuns.Count > 0)
-            node.Text = string.Join("", textRuns.Select(r => r.Text?.Text ?? ""));
 
         // Position/size
         ReadAnchorPosition(anchor, node);
