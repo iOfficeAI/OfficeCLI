@@ -100,6 +100,7 @@ officecli view <file> <mode>          # outline | stats | issues | text | annota
 officecli get <file> <path> --depth N # Get a node and its children [--json]
 officecli query <file> <selector>     # CSS-like query
 officecli validate <file>             # Validate against OpenXML schema
+officecli check <file>                # Scan .pptx/.xlsx for text-overflow layout issues
 ```
 
 ### view modes
@@ -322,9 +323,9 @@ officecli add <file> <parent> --from <path>                               # clon
 
 | Format | Types |
 |--------|-------|
-| **pptx** | slide, shape (textbox), picture (image/img), chart, table, row (tr), connector (connection/line), group, video (audio/media), equation (formula/math), notes, paragraph (para), run, zoom (slidezoom), ole (oleobject/object/embed) |
-| **docx** | paragraph (para), run, table, row (tr), cell (td), image (picture/img), header, footer, section, bookmark, comment, footnote, endnote, formfield (text/checkbox/dropdown), sdt (contentcontrol), chart, equation (formula/math), field, hyperlink, style, toc, watermark, break (pagebreak/columnbreak), ole (oleobject/object/embed). Document protection: `set / --prop protection=forms\|readOnly\|comments\|trackedChanges\|none` |
-| **xlsx** | sheet, row, cell, chart, image (picture), comment, table (listobject), namedrange (definedname), pivottable (pivot), sparkline, validation (datavalidation), autofilter, shape, textbox, databar/colorscale/iconset/formulacf (conditional formatting), ole (oleobject/object/embed — no Remove yet), csv (tsv). `value="=SUM(...)"` auto-detects as formula. Formulas auto-evaluated on write (150+ functions including VLOOKUP, SUMIF, IF, DATE, PMT, etc.) |
+| **pptx** | slide, shape (textbox), picture (image/img — SVG supported, auto-dual-representation), chart, table, row (tr), connector (connection/line), group, video (audio/media), equation (formula/math), notes, paragraph (para, supports level/lineSpacing/spaceBefore/spaceAfter), run, zoom (slidezoom), ole (oleobject/object/embed), placeholder (phType=title/body/subtitle/footer/...) |
+| **docx** | paragraph (para), run, table, row (tr), cell (td), image (picture/img — SVG supported), header, footer, section, bookmark, comment, footnote, endnote, formfield (text/checkbox/dropdown), sdt (contentcontrol), chart, equation (formula/math), field (22 zero-param types: pagenum/date/author/...; 6 parameterized: mergefield/ref/pageref/seq/styleref/docproperty/if), hyperlink, style, toc, watermark, break (pagebreak/columnbreak), ole (oleobject/object/embed). Document protection: `set / --prop protection=forms\|readOnly\|comments\|trackedChanges\|none` |
+| **xlsx** | sheet, row, cell, chart (includes pareto with auto-sort + cumulative-%), image (picture — SVG supported), comment, table (listobject), namedrange (definedname), pivottable (pivot, supports calculatedField), sparkline, validation (datavalidation), autofilter, shape, textbox, databar/colorscale/iconset/formulacf/cellIs/topN/aboveAverage (conditional formatting), ole (oleobject/object/embed — no Remove yet), csv (tsv). `value="=SUM(...)"` auto-detects as formula. Formulas auto-evaluated on write (150+ functions including VLOOKUP, SUMIF, IF, DATE, PMT, etc.). Chart/picture/shape/slicer accept `anchor=A1:E10` cell-range. |
 
 ### Pivot tables (xlsx)
 
