@@ -120,10 +120,15 @@ public partial class WordHandler
                 var wrapped = TryWrapExistingRunsWithBookmark(parent, runs, bkText, bookmarkStart, bookmarkEnd);
                 if (!wrapped)
                 {
-                    // No matching text found — create a new run as fallback
-                    parent.AppendChild(bookmarkStart);
-                    parent.AppendChild(new Run(new Text(bkText) { Space = SpaceProcessingModeValues.Preserve }));
-                    parent.AppendChild(bookmarkEnd);
+                    // No matching text found — create a new run as fallback.
+                    // Route through InsertAtIndexOrAppend so body-level inserts
+                    // respect the trailing <w:sectPr> invariant (bookmarks
+                    // landing after sectPr would be schema-invalid).
+                    InsertAtIndexOrAppend(parent, bookmarkStart, index);
+                    InsertAtIndexOrAppend(parent, new Run(new Text(bkText) { Space = SpaceProcessingModeValues.Preserve }),
+                        index.HasValue ? index + 1 : null);
+                    InsertAtIndexOrAppend(parent, bookmarkEnd,
+                        index.HasValue ? index + 2 : null);
                 }
             }
         }
@@ -133,11 +138,18 @@ public partial class WordHandler
         }
         else
         {
-            parent.AppendChild(bookmarkStart);
-            parent.AppendChild(bookmarkEnd);
+            // Body/other parents: honor --index/--after/--before and respect
+            // Body's trailing <w:sectPr> invariant by routing through
+            // InsertAtIndexOrAppend (which falls back to AppendToParent).
+            InsertAtIndexOrAppend(parent, bookmarkStart, index);
+            InsertAtIndexOrAppend(parent, bookmarkEnd, index.HasValue ? index + 1 : null);
         }
 
-        var resultPath = $"{parentPath}/bookmark[{bkName}]";
+        // Return a navigable path: /...parent/bookmarkStart[@name=<name>] is
+        // a real DOM element Navigation understands (the legacy
+        // `/bookmark[<name>]` form addressed a synthetic type that Get/Add
+        // could not resolve, breaking --after/--before reuse).
+        var resultPath = $"{parentPath}/bookmarkStart[@name={bkName}]";
         return resultPath;
     }
 

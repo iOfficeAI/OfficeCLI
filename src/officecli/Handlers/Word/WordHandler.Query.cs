@@ -1417,7 +1417,7 @@ public partial class WordHandler
                         continue;
                 }
 
-                results.Add(ElementToNode(bkStart, $"/bookmark[{bkName}]", 0));
+                results.Add(ElementToNode(bkStart, $"/bookmark[@name={bkName}]", 0));
             }
             return results;
         }

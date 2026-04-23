@@ -49,6 +49,14 @@ public partial class WordHandler
             stylesPart.Styles ??= new Styles();
             parent = stylesPart.Styles;
         }
+        else if (TryResolveFootnoteOrEndnoteBody(parentPath, out var fnBody, out var canonicalPath))
+        {
+            // Route /footnote[@footnoteId=N] / /footnote[N] (and endnote
+            // equivalents) to the footnote/endnote element itself so block-
+            // level adds (paragraph, run, ...) land inside its body.
+            parent = fnBody!;
+            parentPath = canonicalPath!;
+        }
         else
         {
             List<PathSegment> parts;
@@ -142,6 +150,48 @@ public partial class WordHandler
     }
 
     /// <summary>
+    /// Resolve a top-level /footnote[...] or /endnote[...] path to the
+    /// corresponding Footnote/Endnote element (so block-level adds land in
+    /// its content). Returns false for anything else. Supports the two
+    /// emitted predicate shapes: [@footnoteId=N]/[@endnoteId=N] and [N].
+    /// </summary>
+    private bool TryResolveFootnoteOrEndnoteBody(string parentPath, out OpenXmlElement? fnBody, out string? canonicalPath)
+    {
+        fnBody = null;
+        canonicalPath = null;
+
+        var fnMatch = System.Text.RegularExpressions.Regex.Match(
+            parentPath, @"^/footnote\[(?:@footnoteId=)?(\d+)\]$");
+        if (fnMatch.Success)
+        {
+            var fnId = int.Parse(fnMatch.Groups[1].Value);
+            var fn = _doc.MainDocumentPart?.FootnotesPart?.Footnotes?
+                .Elements<Footnote>().FirstOrDefault(f => f.Id?.Value == fnId);
+            if (fn == null)
+                throw new ArgumentException($"Footnote {fnId} not found");
+            fnBody = fn;
+            canonicalPath = $"/footnote[@footnoteId={fnId}]";
+            return true;
+        }
+
+        var enMatch = System.Text.RegularExpressions.Regex.Match(
+            parentPath, @"^/endnote\[(?:@endnoteId=)?(\d+)\]$");
+        if (enMatch.Success)
+        {
+            var enId = int.Parse(enMatch.Groups[1].Value);
+            var en = _doc.MainDocumentPart?.EndnotesPart?.Endnotes?
+                .Elements<Endnote>().FirstOrDefault(e => e.Id?.Value == enId);
+            if (en == null)
+                throw new ArgumentException($"Endnote {enId} not found");
+            fnBody = en;
+            canonicalPath = $"/endnote[@endnoteId={enId}]";
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Reject add operations whose parent/child combination would produce
     /// schema-invalid OOXML. Keeps validation cheap: just the handful of
     /// categories that corrupt documents silently.
@@ -189,7 +239,60 @@ public partial class WordHandler
                 case "tc":
                     throw new ArgumentException(
                         $"Cannot add '{type}' under {parentPath}: cells must be added under a row (/body/tbl[N]/tr[M]).");
+                case "run":
+                case "r":
+                case "hyperlink":
+                case "link":
+                    // Inline-level elements can't be direct body children — they
+                    // must live inside a paragraph. Reject CopyFrom that would
+                    // produce <w:r>/<w:hyperlink> as a body child.
+                    // (bookmark/field/pagebreak are wrapped or pair-inserted by
+                    // their Add* helpers when targeting /body, so allowed.)
+                    throw new ArgumentException(
+                        $"Cannot add '{type}' under {parentPath}: inline-level elements must live inside a paragraph (/body/p[N]).");
+                case "sectpr":
+                    // Raw <w:sectPr> as a direct body child is a singleton managed
+                    // implicitly by the document; block direct clone-via-from that
+                    // would produce two <w:sectPr> children. Note: `--type section`
+                    // is a distinct legit operation (creates a paragraph whose pPr
+                    // carries a sectPr — a section break) and is allowed.
+                    throw new ArgumentException(
+                        $"Cannot add '{type}' under {parentPath}: body-level <w:sectPr> is a singleton. Use 'officecli set /body/sectPr' to modify it, or add a section break via `--type section` (which creates a paragraph-level break).");
+                case "style":
+                    throw new ArgumentException(
+                        $"Cannot add 'style' under {parentPath}: styles belong under /styles, not /body.");
             }
+        }
+
+        // <w:tc> (TableCell) accepts only block-level elements: paragraph,
+        // table, sdt, tcPr, customXml. Reject bare runs/hyperlinks/cells
+        // cloned directly into a cell via --from, mirroring Table/TableRow.
+        if (parent is TableCell)
+        {
+            switch (t)
+            {
+                case "paragraph":
+                case "p":
+                case "table":
+                case "tbl":
+                case "sdt":
+                case "contentcontrol":
+                    break;
+                case "cell":
+                case "tc":
+                    throw new ArgumentException(
+                        $"Cannot add '{type}' under {parentPath}: cells cannot be nested inside cells. Add cells under a row (/body/tbl[N]/tr[M]).");
+                default:
+                    throw new ArgumentException(
+                        $"Cannot add '{type}' under {parentPath}: table cells only accept paragraphs, tables, or SDTs (block-level content). Add the element inside a paragraph first.");
+            }
+        }
+
+        // Global: 'style' belongs only under /styles, never anywhere else.
+        if (t == "style" && parent is not Styles)
+        {
+            throw new ArgumentException(
+                $"Cannot add 'style' under {parentPath}: styles belong under /styles.");
         }
 
         // <w:tbl> only accepts tblPr, tblGrid, tr, sdt, customXml as children.

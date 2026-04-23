@@ -510,6 +510,62 @@ public partial class WordHandler
             p.TextId = GenerateParaId();
         }
 
+        // Regenerate bookmark ids/names so a cloned paragraph containing
+        // <w:bookmarkStart>/<w:bookmarkEnd> doesn't introduce duplicate
+        // numeric ids or duplicate names (the latter silently breaks
+        // hyperlink/ref resolution, the former is a schema violation).
+        var docBody = _doc.MainDocumentPart?.Document?.Body;
+        if (docBody != null)
+        {
+            var existingIds = docBody.Descendants<BookmarkStart>()
+                .Where(b => !ReferenceEquals(b, clone) && !b.Ancestors().Contains(clone))
+                .Select(b => int.TryParse(b.Id?.Value, out var id) ? id : 0);
+            var existingNames = new HashSet<string>(
+                docBody.Descendants<BookmarkStart>()
+                    .Where(b => !ReferenceEquals(b, clone) && !b.Ancestors().Contains(clone))
+                    .Select(b => b.Name?.Value ?? "")
+                    .Where(n => n.Length > 0));
+            var nextId = existingIds.Any() ? existingIds.Max() + 1 : 1;
+
+            // Collect pairs inside the clone (by matching old Id).
+            var startsInClone = clone is BookmarkStart bsSelf
+                ? new[] { bsSelf }
+                : clone.Descendants<BookmarkStart>().ToArray();
+            var endsInClone = clone is BookmarkEnd beSelf
+                ? new[] { beSelf }
+                : clone.Descendants<BookmarkEnd>().ToArray();
+
+            foreach (var bs in startsInClone)
+            {
+                var oldId = bs.Id?.Value;
+                var newId = nextId++.ToString();
+                bs.Id = newId;
+                var name = bs.Name?.Value ?? "";
+                if (string.IsNullOrEmpty(name) || existingNames.Contains(name))
+                {
+                    var baseName = string.IsNullOrEmpty(name) ? "bm" : name;
+                    var candidate = $"{baseName}_{newId}";
+                    while (existingNames.Contains(candidate))
+                        candidate = $"{baseName}_{nextId++}";
+                    bs.Name = candidate;
+                    existingNames.Add(candidate);
+                }
+                else
+                {
+                    existingNames.Add(name);
+                }
+                // Retarget matching ends.
+                if (oldId != null)
+                {
+                    foreach (var be in endsInClone)
+                    {
+                        if (be.Id?.Value == oldId)
+                            be.Id = newId;
+                    }
+                }
+            }
+        }
+
         // Handle find: anchor sentinel up front — Add() uses AddAtFindPosition
         // to split the paragraph at a text-match point, but CopyFrom has no
         // analogous split-based insertion path. The common case (e.g. cloning
@@ -575,7 +631,11 @@ public partial class WordHandler
             "tc" => "cell",
             "r" => "run",
             "body" => "body",
-            "sectpr" => "section",
+            // Keep "sectpr" distinct from "section": the former represents a raw
+            // <w:sectPr> element being cloned (only valid as body-level singleton)
+            // and is rejected by ValidateParentChild; the latter is the user-level
+            // Add verb that creates a paragraph carrying a section break.
+            "sectpr" => "sectpr",
             "sdt" => "sdt",
             "hyperlink" => "hyperlink",
             "bookmarkstart" or "bookmarkend" => "bookmark",

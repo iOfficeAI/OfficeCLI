@@ -266,9 +266,28 @@ public partial class WordHandler
                     throw new ArgumentException(
                         $"Malformed path segment '{part}'. Empty predicate — expected 'name[index]' or 'name[@attr=value]'.");
                 if (int.TryParse(indexStr, out var idx))
+                {
+                    if (idx <= 0)
+                        throw new ArgumentException(
+                            $"Malformed path segment '{part}'. Index predicate must be a positive integer (1-based), got '{indexStr}'.");
                     segments.Add(new PathSegment(name, idx));
+                }
                 else
-                    segments.Add(new PathSegment(name, null, indexStr));
+                {
+                    // Only accept a tightly specified set of string predicates:
+                    //   last()
+                    //   @attr=value   where attr is a simple identifier
+                    //                 ([A-Za-z_][A-Za-z0-9_]*) and value is
+                    //                 either bare-word (no whitespace, not
+                    //                 starting with '@' or quote) or
+                    //                 double-quoted.
+                    // Anything else (e.g. "XYZ", " 1", "@=X", "@paraId",
+                    //   "@w:paraId=X", "@attr='X'") is rejected up front so
+                    //   typos cannot silently hit the FirstOrDefault()
+                    //   fallback in NavigateToElement.
+                    var normalizedPredicate = ValidateAndNormalizePredicate(part, indexStr);
+                    segments.Add(new PathSegment(name, null, normalizedPredicate));
+                }
             }
             else
             {
@@ -277,6 +296,68 @@ public partial class WordHandler
         }
 
         return segments;
+    }
+
+    /// <summary>
+    /// Validate a string predicate (the content inside [...] that isn't an
+    /// integer) and return its normalized form. Accepted grammar:
+    ///   last()
+    ///   @ident=value            (bare value: no whitespace, no quotes, no '@')
+    ///   @ident="quoted value"   (double-quoted value)
+    /// Everything else throws ArgumentException so typos like "p[XYZ]",
+    /// "p[ 1]", "p[@paraId]" (no =), "p[@=X]", "p[@w:paraId=X]" are rejected
+    /// instead of silently falling through to childList.FirstOrDefault().
+    /// </summary>
+    private static string ValidateAndNormalizePredicate(string part, string predicate)
+    {
+        if (predicate == "last()")
+            return predicate;
+
+        if (predicate.Length > 0 && predicate[0] == '@')
+        {
+            // Must have '=' and a non-empty identifier before it.
+            var eq = predicate.IndexOf('=');
+            if (eq <= 1)
+                throw new ArgumentException(
+                    $"Malformed path segment '{part}'. Attribute predicate must be '[@name=value]' with a non-empty attribute name.");
+
+            var attr = predicate[1..eq];
+            // Simple identifier: [A-Za-z_][A-Za-z0-9_]*
+            if (!System.Text.RegularExpressions.Regex.IsMatch(attr, "^[A-Za-z_][A-Za-z0-9_]*$"))
+                throw new ArgumentException(
+                    $"Malformed path segment '{part}'. Attribute name '{attr}' is not a simple identifier (no prefixes/colons).");
+
+            var value = predicate[(eq + 1)..];
+            if (value.Length == 0)
+                throw new ArgumentException(
+                    $"Malformed path segment '{part}'. Attribute predicate value is empty.");
+
+            // Accept double-quoted value — strip quotes so downstream
+            // comparisons (which use bare string equality) work uniformly.
+            if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
+            {
+                var inner = value[1..^1];
+                if (inner.Contains('"'))
+                    throw new ArgumentException(
+                        $"Malformed path segment '{part}'. Quoted attribute value must not contain embedded double quotes.");
+                return $"@{attr}={inner}";
+            }
+
+            // Bare value: no whitespace, no quotes, no leading '@'.
+            if (value[0] == '@' || value[0] == '\'' || value[0] == '"')
+                throw new ArgumentException(
+                    $"Malformed path segment '{part}'. Attribute value must be bare-word or double-quoted.");
+            foreach (var c in value)
+            {
+                if (char.IsWhiteSpace(c))
+                    throw new ArgumentException(
+                        $"Malformed path segment '{part}'. Attribute value must not contain whitespace (use double quotes).");
+            }
+            return predicate;
+        }
+
+        throw new ArgumentException(
+            $"Malformed path segment '{part}'. Predicate must be a positive integer, 'last()', or '[@attr=value]'.");
     }
 
     private OpenXmlElement? NavigateToElement(List<PathSegment> segments)
@@ -293,12 +374,14 @@ public partial class WordHandler
 
         var first = segments[0];
 
-        // Handle bookmark[Name] as top-level path
-        if (first.Name.ToLowerInvariant() == "bookmark" && first.StringIndex != null)
+        // Handle bookmark[@name=...] as top-level path
+        if (first.Name.ToLowerInvariant() == "bookmark" && first.StringIndex != null
+            && first.StringIndex.StartsWith("@name=", StringComparison.OrdinalIgnoreCase))
         {
+            var targetName = first.StringIndex["@name=".Length..];
             var body = _doc.MainDocumentPart?.Document?.Body;
             return body?.Descendants<BookmarkStart>()
-                .FirstOrDefault(b => b.Name?.Value == first.StringIndex);
+                .FirstOrDefault(b => b.Name?.Value == targetName);
         }
 
         OpenXmlElement? current = first.Name.ToLowerInvariant() switch
@@ -333,6 +416,17 @@ public partial class WordHandler
             {
                 var contentRun = navSdtRun.GetFirstChild<SdtContentRun>();
                 if (contentRun != null) current = contentRun;
+            }
+
+            // Allow an explicit "/sdtContent" segment as a no-op selector: after
+            // the transparent descend above, `current` is already the
+            // SdtContent{Block,Run}. This keeps the ValidateParentChild hint
+            // ("Add under <sdt>/sdtContent instead") literally navigable.
+            if (seg.Name.Equals("sdtContent", StringComparison.OrdinalIgnoreCase)
+                && (current is SdtContentBlock || current is SdtContentRun))
+            {
+                parentPath += "/sdtContent";
+                continue;
             }
 
             if (current is Body body2 && (seg.Name.ToLowerInvariant() == "p" || seg.Name.ToLowerInvariant() == "tbl"))
@@ -408,6 +502,14 @@ public partial class WordHandler
                 var targetId = seg.StringIndex["@commentId=".Length..];
                 next = childList.OfType<Comment>()
                     .FirstOrDefault(c => c.Id?.Value == targetId);
+            }
+            else if (seg.StringIndex != null && seg.StringIndex.StartsWith("@name=", StringComparison.OrdinalIgnoreCase))
+            {
+                // Generic @name=... selector, used by bookmarkStart[@name=X]
+                // so that the path returned by AddBookmark is navigable.
+                var targetName = seg.StringIndex["@name=".Length..];
+                next = childList.FirstOrDefault(e =>
+                    e is BookmarkStart bs && string.Equals(bs.Name?.Value, targetName, StringComparison.Ordinal));
             }
             else if (seg.StringIndex != null && seg.StringIndex.StartsWith("@sdtId=", StringComparison.OrdinalIgnoreCase))
             {
