@@ -271,6 +271,11 @@ public partial class WordHandler
         var ffType = ciProps.GetValueOrDefault("formfieldtype",
             ciProps.GetValueOrDefault("type", "text")).ToLowerInvariant();
         var name = ciProps.GetValueOrDefault("name", $"ff_{Guid.NewGuid():N}"[..12]);
+        if (name.Any(c => c == '/' || c == '[' || c == ']'))
+            throw new ArgumentException(
+                $"Form field name '{name}' contains path-special characters " +
+                "('/', '[', ']'). These characters prevent later addressing via " +
+                "selectors. Use only letters, digits, '.', '_', '-' in form field names.");
         var text = ciProps.GetValueOrDefault("text", ciProps.GetValueOrDefault("value", ""));
 
         // Generate unique bookmark ID

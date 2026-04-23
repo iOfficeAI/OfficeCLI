@@ -90,6 +90,12 @@ public partial class WordHandler
         if (string.IsNullOrEmpty(bkName))
             throw new ArgumentException("'name' property is required for bookmark");
 
+        if (bkName.Any(c => c == '/' || c == '[' || c == ']'))
+            throw new ArgumentException(
+                $"Bookmark name '{bkName}' contains path-special characters " +
+                "('/', '[', ']'). These characters prevent later addressing via " +
+                "selectors. Use only letters, digits, '.', '_', '-' in bookmark names.");
+
         // Reject duplicate bookmark names. OOXML bookmark names are expected
         // to be unique per document; tolerating duplicates makes
         // /bookmark[@name=X] ambiguous (it picks the first), so the path
