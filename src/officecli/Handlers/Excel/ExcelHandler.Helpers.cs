@@ -2548,6 +2548,31 @@ public partial class ExcelHandler
     /// types. The mutation mechanic differs because Excel charts are pinned
     /// to cells via TwoCellAnchor.
     /// </summary>
+    // BUG-R11-04: read the N-th chart's TwoCellAnchor as a "B2:F7" cell range
+    // for chart Get. Mirrors ApplyChartPositionSet's GraphicFrame lookup so the
+    // index semantics match. Returns null if the chart has no TwoCellAnchor
+    // (e.g. absolute-anchored), in which case the caller omits the field.
+    private static string? GetChartAnchorRange(DrawingsPart drawingsPart, int chartIdx)
+    {
+        if (drawingsPart.WorksheetDrawing == null) return null;
+        var chartFrames = drawingsPart.WorksheetDrawing
+            .Descendants<XDR.GraphicFrame>()
+            .Where(gf => gf.Descendants<C.ChartReference>().Any() || IsExtendedChartFrame(gf))
+            .ToList();
+        if (chartIdx < 1 || chartIdx > chartFrames.Count) return null;
+        var gf = chartFrames[chartIdx - 1];
+        if (gf.Parent is not XDR.TwoCellAnchor anchor) return null;
+        var fromM = anchor.FromMarker;
+        var toM = anchor.ToMarker;
+        if (fromM == null || toM == null) return null;
+        if (!int.TryParse(fromM.GetFirstChild<XDR.ColumnId>()?.Text ?? "0", out var fc)) return null;
+        if (!int.TryParse(fromM.GetFirstChild<XDR.RowId>()?.Text ?? "0", out var fr)) return null;
+        if (!int.TryParse(toM.GetFirstChild<XDR.ColumnId>()?.Text ?? "0", out var tc)) return null;
+        if (!int.TryParse(toM.GetFirstChild<XDR.RowId>()?.Text ?? "0", out var tr)) return null;
+        // XDR col/row are 0-based; IndexToColumnName expects 1-based.
+        return $"{IndexToColumnName(fc + 1)}{fr + 1}:{IndexToColumnName(tc + 1)}{tr + 1}";
+    }
+
     private static List<string> ApplyChartPositionSet(
         DrawingsPart drawingsPart, int chartIdx, Dictionary<string, string> properties)
     {

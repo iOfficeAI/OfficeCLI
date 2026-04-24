@@ -491,7 +491,19 @@ public class ResidentServer : IDisposable
                     : isFailure
                         ? OutputFormatter.WrapEnvelopeError(stdout, warnings)
                         : OutputFormatter.WrapEnvelopeText(stdout, warnings);
-                return MakeResponse(0, envelope, "");
+                // BUG-R11-03: JSON-mode exit code must match text mode. Previously
+                // hard-coded to 0, which silently swallowed every error type
+                // (path-not-found, unsupported_property, failed open) for any
+                // resident --json call. Map parity with text mode below:
+                //   - envelope success:false                        -> 1
+                //   - stderr contains UNSUPPORTED (unsupported_property) -> 2
+                //   - otherwise                                      -> 0
+                int jsonExitCode = 0;
+                if (stderr.Contains("UNSUPPORTED"))
+                    jsonExitCode = 2;
+                else if (!EnvelopeSuccess(envelope))
+                    jsonExitCode = 1;
+                return MakeResponse(jsonExitCode, envelope, "");
             }
 
             int exitCode = stderr.Contains("UNSUPPORTED") ? 2 : 0;
@@ -517,6 +529,28 @@ public class ResidentServer : IDisposable
     {
         var trimmed = s.AsSpan().TrimStart();
         return trimmed.Length > 0 && (trimmed[0] == '{' || trimmed[0] == '[');
+    }
+
+    // BUG-R11-03 helper: inspect envelope JSON for the "success" field so
+    // resident JSON-mode exit codes track the envelope's actual success flag
+    // instead of always returning 0.
+    private static bool EnvelopeSuccess(string envelopeJson)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(envelopeJson);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                return true;
+            if (!doc.RootElement.TryGetProperty("success", out var s))
+                return true;
+            if (s.ValueKind == System.Text.Json.JsonValueKind.False) return false;
+            if (s.ValueKind == System.Text.Json.JsonValueKind.True) return true;
+            return true;
+        }
+        catch
+        {
+            return true; // malformed — don't synthesize a failure
+        }
     }
 
     private static List<CliWarning>? BuildWarnings(string stderr)

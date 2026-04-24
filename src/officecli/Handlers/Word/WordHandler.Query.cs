@@ -267,6 +267,23 @@ public partial class WordHandler
             if (levelsMatch.Success) tocNode.Format["levels"] = levelsMatch.Groups[1].Value;
             tocNode.Format["hyperlinks"] = instrText.Contains("\\h");
             tocNode.Format["pageNumbers"] = !instrText.Contains("\\z");
+
+            // BUG-R11-05: recover the `title=` supplied to `add toc` — it is
+            // stored as a preceding paragraph styled `TOCHeading`, not on the
+            // TOC field itself. Read the previous sibling, and if it carries
+            // that style, surface its text as `Format["title"]` so that
+            // Add→Get round-trips the title prop.
+            var prevPara = tocPara.PreviousSibling<Paragraph>();
+            if (prevPara != null)
+            {
+                var prevStyle = prevPara.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
+                if (prevStyle == "TOCHeading")
+                {
+                    var titleText = string.Concat(prevPara.Descendants<Text>().Select(t => t.Text));
+                    if (!string.IsNullOrEmpty(titleText))
+                        tocNode.Format["title"] = titleText;
+                }
+            }
             return tocNode;
         }
 

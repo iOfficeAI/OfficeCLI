@@ -556,6 +556,16 @@ public partial class ExcelHandler
 
             var chartInfo = allCharts[chartIdx - 1];
             var chartNode = new DocumentNode { Path = $"/{sheetNameFromPath}/chart[{chartIdx}]", Type = "chart" };
+
+            // BUG-R11-04: chart Get used to skip the TwoCellAnchor even though
+            // `add chart --prop anchor=B2:F7` and `set ... anchor=...` both
+            // support it. Round-trip requires Get to surface the anchor range
+            // in the same `B2:F7` grammar. CONSISTENCY(ole-width-units) —
+            // mirrors the Add/Set accepted grammar.
+            var chartAnchorRange = GetChartAnchorRange(drawingsPart, chartIdx);
+            if (chartAnchorRange != null)
+                chartNode.Format["anchor"] = chartAnchorRange;
+
             if (chartInfo.IsExtended)
             {
                 var cxChartSpace = chartInfo.ExtendedPart!.ChartSpace!;
