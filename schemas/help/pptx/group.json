@@ -1,0 +1,35 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "group",
+  "parent": "slide",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/slide[N]/group[M]"]
+  },
+  "note": "Groups existing shapes on a slide. 'shapes' takes comma-separated shape indices or DOM paths. Group bounding box auto-computed from member transforms.",
+  "properties": {
+    "shapes": {
+      "type": "string",
+      "description": "comma-separated shape indices (1,2,3) or DOM paths (/slide[N]/shape[M],...). Required.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop shapes=1,2"],
+      "readback": "n/a (structural)",
+      "enforcement": "report"
+    },
+    "name": {
+      "type": "string",
+      "description": "group name. Defaults to 'Group N'.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop name=\"Logos\""],
+      "readback": "name string",
+      "enforcement": "report"
+    }
+  }
+}
