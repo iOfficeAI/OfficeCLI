@@ -1353,6 +1353,11 @@ public partial class WordHandler
                         anchor.BehindDoc = value.Equals("true", StringComparison.OrdinalIgnoreCase);
                         break;
                     }
+                    // CONSISTENCY(docx-hyperlink-canonical-url): canonical key is `url`
+                    // (per schemas/help/docx/hyperlink.json). `link` / `href` are
+                    // accepted input aliases.
+                    case "url":
+                    case "href":
                     case "link":
                     {
                         var mainPart3 = _doc.MainDocumentPart!;

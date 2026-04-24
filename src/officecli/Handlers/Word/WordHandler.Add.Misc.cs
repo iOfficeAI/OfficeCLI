@@ -311,7 +311,12 @@ public partial class WordHandler
 
     private string AddHyperlink(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
     {
-        var hasUrl = properties.TryGetValue("url", out var hlUrl) || properties.TryGetValue("href", out hlUrl);
+        // CONSISTENCY(docx-hyperlink-canonical-url): canonical key is `url`
+        // (per schemas/help/docx/hyperlink.json). `href` and `link` are legacy
+        // input aliases; Get normalizes readback to `url`.
+        var hasUrl = properties.TryGetValue("url", out var hlUrl)
+            || properties.TryGetValue("href", out hlUrl)
+            || properties.TryGetValue("link", out hlUrl);
         var hasAnchor = properties.TryGetValue("anchor", out var hlAnchor) || properties.TryGetValue("bookmark", out hlAnchor);
         if (!hasUrl && !hasAnchor)
             throw new ArgumentException("'url' or 'anchor' property is required for hyperlink type");

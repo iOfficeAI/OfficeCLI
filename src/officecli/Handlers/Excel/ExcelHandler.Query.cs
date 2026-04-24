@@ -819,7 +819,7 @@ public partial class ExcelHandler
         var elementName = elementMatch.Success ? elementMatch.Groups[1].Value.ToLowerInvariant() : "";
         bool isKnownType = string.IsNullOrEmpty(elementName)
             // CONSISTENCY(ole-alias): "oleobject" mirrors Add's case switch
-            || elementName is "cell" or "row" or "sheet" or "validation" or "comment" or "note" or "table" or "listobject" or "chart" or "pivottable" or "pivot" or "slicer" or "shape" or "picture" or "sparkline" or "namedrange" or "definedname" or "media" or "image" or "ole" or "oleobject" or "object" or "embed"
+            || elementName is "cell" or "row" or "col" or "column" or "sheet" or "validation" or "comment" or "note" or "table" or "listobject" or "chart" or "pivottable" or "pivot" or "slicer" or "shape" or "picture" or "sparkline" or "namedrange" or "definedname" or "media" or "image" or "ole" or "oleobject" or "object" or "embed" or "hyperlink"
             || (elementName.Length <= 3 && Regex.IsMatch(elementName, @"^[A-Z]+$", RegexOptions.IgnoreCase));
         if (!isKnownType)
         {
@@ -1179,6 +1179,97 @@ public partial class ExcelHandler
                         }
                     }
                     results.Add(node);
+                }
+            }
+            return results;
+        }
+
+        // Handle column queries. OOXML stores columns as <col min=".." max="..">,
+        // which can span a range of column indices. We expand spans into one
+        // DocumentNode per concrete column so `/SheetName/col[X]` paths align
+        // with the Get path format.
+        if (elementName is "col" or "column")
+        {
+            foreach (var (sheetName, worksheetPart) in GetWorksheets())
+            {
+                if (parsed.Sheet != null && !sheetName.Equals(parsed.Sheet, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var columns = GetSheet(worksheetPart).GetFirstChild<Columns>();
+                if (columns == null) continue;
+
+                foreach (var col in columns.Elements<Column>())
+                {
+                    var min = col.Min?.Value ?? 0u;
+                    var max = col.Max?.Value ?? min;
+                    if (min == 0) continue;
+                    for (uint ci = min; ci <= max; ci++)
+                    {
+                        var colName = IndexToColumnName((int)ci);
+                        var node = new DocumentNode
+                        {
+                            Path = $"/{sheetName}/col[{colName}]",
+                            Type = "column",
+                            Preview = colName
+                        };
+                        if (col.Width?.Value != null) node.Format["width"] = col.Width.Value;
+                        if (col.Hidden?.Value == true) node.Format["hidden"] = true;
+                        if (col.CustomWidth?.Value == true) node.Format["customWidth"] = true;
+                        if (col.OutlineLevel?.HasValue == true && col.OutlineLevel.Value > 0)
+                            node.Format["outlineLevel"] = (int)col.OutlineLevel.Value;
+                        if (col.Collapsed?.Value == true) node.Format["collapsed"] = true;
+                        if (MatchesFormatAttributes(node, parsed))
+                            results.Add(node);
+                    }
+                }
+            }
+            return results;
+        }
+
+        // Handle hyperlink queries. In xlsx, hyperlinks are cell-level metadata
+        // (worksheet <hyperlinks><hyperlink ref=".." r:id=".."/></hyperlinks>),
+        // not standalone addressable elements. We surface them as discoverable
+        // nodes whose Path points at the owning cell so the agent can Get/Set
+        // the hyperlink via cell `link` / `tooltip` / `display` props.
+        // CONSISTENCY(xlsx-hyperlink-cell-backed): Add/Set live on cells, not here.
+        if (elementName is "hyperlink")
+        {
+            foreach (var (sheetName, worksheetPart) in GetWorksheets())
+            {
+                if (parsed.Sheet != null && !sheetName.Equals(parsed.Sheet, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var ws = GetSheet(worksheetPart);
+                var hyperlinksEl = ws.GetFirstChild<Hyperlinks>();
+                if (hyperlinksEl == null) continue;
+
+                foreach (var hl in hyperlinksEl.Elements<Hyperlink>())
+                {
+                    var cellRef = hl.Reference?.Value ?? "";
+                    var node = new DocumentNode
+                    {
+                        Path = string.IsNullOrEmpty(cellRef) ? $"/{sheetName}" : $"/{sheetName}/{cellRef}",
+                        Type = "hyperlink",
+                        Preview = cellRef
+                    };
+                    if (!string.IsNullOrEmpty(cellRef)) node.Format["ref"] = cellRef;
+                    // Resolve external URL via relationship id
+                    if (hl.Id?.Value != null)
+                    {
+                        try
+                        {
+                            var rel = worksheetPart.HyperlinkRelationships
+                                .FirstOrDefault(r => r.Id == hl.Id.Value);
+                            if (rel != null) node.Format["url"] = rel.Uri.ToString();
+                        }
+                        catch { }
+                    }
+                    if (hl.Location?.Value != null) node.Format["location"] = hl.Location.Value;
+                    if (hl.Display?.Value != null) node.Format["display"] = hl.Display.Value;
+                    if (hl.Tooltip?.Value != null) node.Format["tooltip"] = hl.Tooltip.Value;
+
+                    if (MatchesFormatAttributes(node, parsed))
+                        results.Add(node);
                 }
             }
             return results;

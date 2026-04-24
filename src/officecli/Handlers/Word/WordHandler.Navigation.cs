@@ -1066,7 +1066,10 @@ public partial class WordHandler
                 try
                 {
                     var rel = _doc.MainDocumentPart?.HyperlinkRelationships.FirstOrDefault(r => r.Id == hlParent.Id.Value);
-                    if (rel != null) node.Format["link"] = rel.Uri.ToString();
+                    // CONSISTENCY(docx-hyperlink-canonical-url): schema docx/hyperlink.json
+                    // declares `url` as the canonical key; `link` is accepted as an input
+                    // alias by Add/Set but Get normalizes output to `url`.
+                    if (rel != null) node.Format["url"] = rel.Uri.ToString();
                 }
                 catch { }
             }
@@ -1087,7 +1090,8 @@ public partial class WordHandler
                 {
                     var rel = _doc.MainDocumentPart?.HyperlinkRelationships
                         .FirstOrDefault(r => r.Id == relId);
-                    if (rel != null) node.Format["link"] = rel.Uri.ToString();
+                    // CONSISTENCY(docx-hyperlink-canonical-url): see note above.
+                    if (rel != null) node.Format["url"] = rel.Uri.ToString();
                 }
                 catch { }
             }
