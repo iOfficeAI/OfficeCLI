@@ -1,0 +1,57 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "chart-series",
+  "parent": "chart",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/SheetName/chart[N]/series[K]"]
+  },
+  "note": "Mirror of pptx/chart-series and docx/chart-series. At Add time, series pass as dotted props on the parent chart (series1.name, series1.values, series1.color, series1.categories). This schema represents per-series Set/Get after creation.",
+  "properties": {
+    "name": {
+      "type": "string",
+      "aliases": ["title"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop name=\"Q1\"", "--prop series1.name=\"Q1\""],
+      "enforcement": "report"
+    },
+    "values": {
+      "type": "string",
+      "description": "comma-separated numbers, OR cell range reference.",
+      "add": true, "set": true, "get": true,
+      "examples": [
+        "--prop series1.values=\"120,150,180\"",
+        "--prop series1.values=\"Sheet1!$B$2:$B$5\""
+      ],
+      "enforcement": "report"
+    },
+    "categories": {
+      "type": "string",
+      "description": "per-series category override; range reference only.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop series1.categories=\"Sheet1!$A$2:$A$5\""],
+      "enforcement": "report"
+    },
+    "color": {
+      "type": "color",
+      "description": "series fill color.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop series1.color=#4472C4"],
+      "readback": "#-prefixed uppercase hex",
+      "enforcement": "report"
+    },
+    "smooth": {
+      "type": "bool",
+      "appliesWhen": { "parent.chartType": ["line", "scatter"] },
+      "set": true, "get": true,
+      "examples": ["--prop smooth=true"],
+      "enforcement": "report"
+    }
+  }
+}
