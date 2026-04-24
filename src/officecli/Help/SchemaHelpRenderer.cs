@@ -103,6 +103,10 @@ internal static class SchemaHelpRenderer
             }
             if (active.Count > 0)
                 sb.AppendLine($"Operations: {string.Join(" ", active)}");
+
+            // Usage examples block: synthesize one CLI line per supported verb
+            // from `paths.positional[0]` (fallback `paths.stable[0]`) + `element`.
+            RenderUsageBlock(sb, root, element, isContainer, verbFilter);
         }
 
         if (root.TryGetProperty("properties", out var props)
@@ -151,6 +155,80 @@ internal static class SchemaHelpRenderer
         }
 
         return sb.ToString().TrimEnd('\r', '\n');
+    }
+
+    /// <summary>
+    /// Emit a "Usage:" block with one CLI line per operation declared true
+    /// in the schema. Parent path is derived from the first available
+    /// positional/stable path by dropping its last segment.
+    /// </summary>
+    private static void RenderUsageBlock(
+        StringBuilder sb, JsonElement root, string element,
+        bool isContainer, string? verbFilter)
+    {
+        if (!root.TryGetProperty("operations", out var ops)) return;
+
+        // Pick the first positional path, falling back to stable.
+        string? firstPath = null;
+        if (root.TryGetProperty("paths", out var paths))
+        {
+            if (paths.TryGetProperty("positional", out var pos)
+                && pos.ValueKind == JsonValueKind.Array
+                && pos.GetArrayLength() > 0)
+            {
+                firstPath = pos[0].GetString();
+            }
+            if (string.IsNullOrEmpty(firstPath)
+                && paths.TryGetProperty("stable", out var stable)
+                && stable.ValueKind == JsonValueKind.Array
+                && stable.GetArrayLength() > 0)
+            {
+                firstPath = stable[0].GetString();
+            }
+        }
+        if (string.IsNullOrEmpty(firstPath) || string.IsNullOrEmpty(element))
+            return;
+
+        var parentPath = DeriveParentPath(firstPath!);
+        var targetPath = firstPath!;
+
+        bool Has(string v) =>
+            ops.TryGetProperty(v, out var ov) && ov.ValueKind == JsonValueKind.True;
+
+        bool WantVerb(string v) => verbFilter == null || verbFilter == v;
+
+        var lines = new List<string>();
+        if (Has("add") && !isContainer && WantVerb("add"))
+            lines.Add($"  officecli add <file> {parentPath} --type {element} [--prop key=val ...]");
+        if (Has("set") && !isContainer && WantVerb("set"))
+            lines.Add($"  officecli set <file> {targetPath} --prop key=val ...");
+        if (Has("get") && WantVerb("get"))
+            lines.Add($"  officecli get <file> {targetPath}");
+        if (Has("query") && WantVerb("query"))
+            lines.Add($"  officecli query <file> {element}");
+        if (Has("remove") && !isContainer && WantVerb("remove"))
+            lines.Add($"  officecli remove <file> {targetPath}");
+
+        if (lines.Count == 0) return;
+
+        sb.AppendLine();
+        sb.AppendLine("Usage:");
+        foreach (var line in lines) sb.AppendLine(line);
+    }
+
+    /// <summary>
+    /// Drop the last segment of a path: "/body/p[N]" → "/body",
+    /// "/slide[N]/shape[N]" → "/slide[N]", "/Sheet1/A1" → "/Sheet1".
+    /// Single-segment paths are returned unchanged.
+    /// </summary>
+    private static string DeriveParentPath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return path;
+        var trimmed = path.TrimEnd('/');
+        var lastSlash = trimmed.LastIndexOf('/');
+        if (lastSlash < 0) return path;     // no slash at all — keep as-is
+        if (lastSlash == 0) return "/";      // single absolute segment → root
+        return trimmed.Substring(0, lastSlash);
     }
 
     private static void RenderProperty(StringBuilder sb, JsonProperty prop, bool isContainer)

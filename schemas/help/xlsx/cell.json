@@ -14,7 +14,7 @@
     "stable":     ["/<sheetName>/<A1Ref>"],
     "positional": ["/Sheet1/A1", "/Sheet1/B2:C3"]
   },
-  "note": "Canonical keys per CLAUDE.md: numberformat (not `format`), alignment.horizontal / alignment.vertical / alignment.wrapText. Font properties surface in Get as font.bold / font.italic / font.name / font.size / font.color (readback namespace). Add/Set accept both the short forms (bold, italic, font, size, color) and the font.* forms.",
+  "note": "Canonical keys per CLAUDE.md: numberformat (not `format`), alignment.horizontal / alignment.vertical / alignment.wrapText. Font properties surface in Get as font.bold / font.italic / font.name / font.size / font.color (readback namespace). Add/Set accept both the short forms (bold, italic, font, size, color) and the font.* forms. Parent path controls placement: `add <file> /Sheet1 --type cell` appends to the next empty cell; use `add <file> /Sheet1/A2 --type cell` to target a specific cell.",
   "properties": {
     "value": {
       "type": "string",

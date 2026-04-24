@@ -17,6 +17,7 @@
   "properties": {
     "text": {
       "type": "string",
+      "description": "Sets plain text on the paragraph by creating an implicit single run. Do not also add a 'run' child with text on the same paragraph — they will duplicate.",
       "add": true, "set": true, "get": true,
       "examples": ["--prop text=\"Hello world\""],
       "readback": "plain text content of paragraph",

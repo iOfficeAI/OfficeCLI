@@ -155,6 +155,18 @@
       "examples": ["--prop name=MyShape"],
       "readback": "plain string",
       "enforcement": "strict"
+    },
+    "geometry": {
+      "type": "string",
+      "description": "Preset shape geometry (default: rect).",
+      "aliases": ["preset"],
+      "values": ["rect", "roundRect", "ellipse", "triangle", "diamond", "parallelogram", "rightArrow", "star5"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop geometry=ellipse", "--prop preset=roundRect"],
+      "readback": "preset name (e.g. \"ellipse\", \"roundRect\")",
+      "enforcement": "strict"
     }
   }
 }
