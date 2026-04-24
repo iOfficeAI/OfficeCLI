@@ -919,6 +919,14 @@ public class ResidentServer : IDisposable
     {
         var selector = req.GetArg("selector", "");
         var filters = AttributeFilter.Parse(selector);
+        // CONSISTENCY(cell-selector-alias): mirror the direct-mode normalization in
+        // CommandBuilder.GetQuery.cs — without this, resident-mode Excel cell queries
+        // with short aliases (bold, size, ...) silently drop every hit (BUG-R17-01).
+        if (_handler is ExcelHandler
+            && selector.TrimStart().StartsWith("cell", StringComparison.OrdinalIgnoreCase))
+        {
+            filters = AttributeFilter.NormalizeKeys(filters, ExcelHandler.ResolveCellAttributeAlias);
+        }
         var (results, warnings) = AttributeFilter.ApplyWithWarnings(_handler.Query(selector), filters);
         var textFilter = req.GetArgOrNull("text");
         if (!string.IsNullOrEmpty(textFilter))

@@ -359,6 +359,16 @@ public partial class WordHandler
             while (IdTaken(styleId)) styleId = $"{baseId}{suffix++}";
         }
 
+        // OOXML requires w:name to be unique across styles.xml, same as w:styleId.
+        // Reject duplicate display names — silently auto-suffixing the id while
+        // leaving name unchanged produced two styles with identical UI labels
+        // that users could not tell apart (BUG-R17-02).
+        bool NameTaken(string candidate) => stylesPart.Styles.Elements<Style>()
+            .Any(s => string.Equals(s.StyleName?.Val?.Value, candidate, StringComparison.Ordinal));
+        if (NameTaken(styleName))
+            throw new ArgumentException(
+                $"Style with name '{styleName}' already exists. Pick a unique --prop name.");
+
         // Built-in styles must not have customStyle=true, or Word won't recognize them
         // (e.g. TOC won't find Heading1 if it's marked as custom)
         var builtInIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
