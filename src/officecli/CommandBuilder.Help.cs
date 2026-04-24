@@ -14,6 +14,48 @@ static partial class CommandBuilder
     private static readonly string[] HelpVerbs =
         { "add", "set", "get", "query", "remove" };
 
+    // Commands that are NOT registered as System.CommandLine subcommands but
+    // are instead early-dispatched in Program.cs. They do not understand
+    // `--help` (install would actually run InstallBinary!), so the help
+    // dispatcher must print their usage itself rather than shell out.
+    // Keep these usage blurbs in sync with the Console.Error.WriteLine
+    // blocks in Program.cs (mcp: ~line 40, skills: ~line 87, install path:
+    // documented via Installer.Run).
+    private static readonly Dictionary<string, string[]> EarlyDispatchHelp =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["mcp"] = new[]
+            {
+                "Usage:",
+                "  officecli mcp                    Start MCP stdio server (for AI agents)",
+                "  officecli mcp <target>           Register officecli with an MCP client",
+                "  officecli mcp uninstall <target> Unregister officecli from an MCP client",
+                "  officecli mcp list               Show registration status across all clients",
+                "",
+                "Targets: lms (LM Studio), claude (Claude Code), cursor, vscode (Copilot)",
+            },
+            ["skills"] = new[]
+            {
+                "Usage:",
+                "  officecli skills install                Install base SKILL.md to all detected agents",
+                "  officecli skills install <skill-name>   Install a specific skill to all detected agents",
+                "  officecli skills <agent>                Install base SKILL.md to a specific agent",
+                "  officecli skills list                   List all available skills",
+                "",
+                "Skills: pptx, word, excel, morph-ppt, pitch-deck, academic-paper, data-dashboard, financial-model",
+                "Agents: claude, copilot, codex, cursor, windsurf, minimax, openclaw, nanobot, zeroclaw, all",
+            },
+            ["install"] = new[]
+            {
+                "Usage:",
+                "  officecli install           One-step setup: install binary + skills + MCP to all detected agents",
+                "  officecli install <target>  Install to a specific agent (claude, copilot, cursor, vscode, ...)",
+                "",
+                "Equivalent to: installing the binary, then `officecli skills install` and `officecli mcp <target>`.",
+                "Targets: claude, copilot, codex, cursor, windsurf, vscode, minimax, openclaw, nanobot, zeroclaw, all",
+            },
+        };
+
     /// <summary>
     /// `officecli help [format] [verb] [element] [--json]` — schema-driven help.
     ///
@@ -91,7 +133,7 @@ static partial class CommandBuilder
 
     private static int RunHelp(string? format, string? verb, string? element, bool json, RootCommand? rootCommand)
     {
-        // Case 1: no args — list formats and usage banner.
+        // Case 1: no args — list formats, commands, and usage banner.
         if (string.IsNullOrEmpty(format))
         {
             Console.WriteLine("officecli help — capability reference (schema-driven)");
@@ -100,6 +142,11 @@ static partial class CommandBuilder
             foreach (var f in SchemaHelpLoader.ListFormats())
                 Console.WriteLine($"  {f}");
             Console.WriteLine();
+
+            Console.WriteLine("Commands (use 'officecli help <command>' for details):");
+            WriteCommandIndex(rootCommand);
+            Console.WriteLine();
+
             Console.WriteLine("Usage:");
             Console.WriteLine("  officecli help <format>                         List all elements");
             Console.WriteLine("  officecli help <format> <verb>                  Elements supporting the verb");
@@ -115,21 +162,30 @@ static partial class CommandBuilder
             return 0;
         }
 
-        // Case 1b: format token isn't a known format — try forwarding to a
-        // top-level command's --help so `officecli help move` behaves the
-        // same as `officecli move --help`. Only triggers when no verb/element
-        // was supplied (those only make sense for the schema path).
+        // Case 1b: not a format — try command help.
+        //   - Early-dispatch commands (mcp/skills/install) don't understand
+        //     --help (install would actually run InstallBinary!), so print
+        //     a hardcoded usage blurb.
+        //   - Registered SCL subcommands get their --help forwarded.
         if (!SchemaHelpLoader.IsKnownFormat(format)
             && verb == null
-            && element == null
-            && rootCommand != null)
+            && element == null)
         {
-            var match = rootCommand.Subcommands.FirstOrDefault(
-                c => string.Equals(c.Name, format, StringComparison.OrdinalIgnoreCase)
-                     && !c.Hidden
-                     && c.Name != "help");
-            if (match != null)
-                return rootCommand.Parse(new[] { match.Name, "--help" }).Invoke();
+            if (EarlyDispatchHelp.TryGetValue(format, out var lines))
+            {
+                foreach (var line in lines) Console.WriteLine(line);
+                return 0;
+            }
+
+            if (rootCommand != null)
+            {
+                var match = rootCommand.Subcommands.FirstOrDefault(
+                    c => string.Equals(c.Name, format, StringComparison.OrdinalIgnoreCase)
+                         && !c.Hidden
+                         && c.Name != "help");
+                if (match != null)
+                    return rootCommand.Parse(new[] { match.Name, "--help" }).Invoke();
+            }
         }
 
         // Validate verb if supplied.
@@ -210,5 +266,49 @@ static partial class CommandBuilder
             ? SchemaHelpRenderer.RenderJson(doc)
             : SchemaHelpRenderer.RenderHuman(doc, verb));
         return 0;
+    }
+
+    // Groups of top-level commands for the no-arg `officecli help` banner.
+    // The same command may not appear twice; anything registered on the root
+    // but not listed here falls into "Other". Early-dispatch commands
+    // (mcp/skills/install) are hardcoded into the Integration group since
+    // they never appear in RootCommand.Subcommands.
+    private static readonly (string Label, string[] Names)[] CommandGroups =
+    {
+        ("Document",     new[] { "create", "view", "get", "query", "set", "add", "remove", "move", "swap" }),
+        ("Advanced",     new[] { "raw", "raw-set", "add-part", "validate", "batch", "import", "merge" }),
+        ("Resident",     new[] { "open", "close" }),
+        ("Preview",      new[] { "watch", "unwatch", "mark", "unmark", "get-marks" }),
+        ("Integration",  new[] { "mcp", "skills", "install" }),
+    };
+
+    private static void WriteCommandIndex(RootCommand? rootCommand)
+    {
+        // Collect live subcommand names (non-hidden, excluding 'help' itself).
+        var registered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (rootCommand != null)
+        {
+            foreach (var c in rootCommand.Subcommands)
+            {
+                if (c.Hidden || c.Name == "help") continue;
+                registered.Add(c.Name);
+            }
+        }
+        // Early-dispatch commands are always available even though they are
+        // not SCL subcommands.
+        foreach (var k in EarlyDispatchHelp.Keys) registered.Add(k);
+
+        var printed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (label, names) in CommandGroups)
+        {
+            var present = names.Where(n => registered.Contains(n)).ToList();
+            if (present.Count == 0) continue;
+            Console.WriteLine($"  {label,-12} {string.Join(", ", present)}");
+            foreach (var n in present) printed.Add(n);
+        }
+
+        var leftover = registered.Where(n => !printed.Contains(n)).OrderBy(n => n).ToList();
+        if (leftover.Count > 0)
+            Console.WriteLine($"  {"Other",-12} {string.Join(", ", leftover)}");
     }
 }
