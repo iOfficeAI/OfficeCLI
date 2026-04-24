@@ -3,6 +3,7 @@
   "format": "docx",
   "element": "footnote",
   "parent": "paragraph|body",
+  "addParent": "/body/p[N]",
   "operations": {
     "add": true,
     "set": true,
@@ -13,7 +14,7 @@
   "paths": {
     "positional": ["/footnotes/footnote[N]"]
   },
-  "note": "Footnotes live in FootnotesPart. A FootnoteReference run is inserted at the anchor point; the note body is appended to footnotes.xml.",
+  "note": "Footnotes live in FootnotesPart. A FootnoteReference run is inserted at the anchor point; the note body is appended to footnotes.xml. Parent must be a paragraph path (/body/p[N]); use --index N to control position within the paragraph. Run-level parent (/body/p[N]/r[M]) is not accepted -- the footnote reference is inserted as a new run.",
   "properties": {
     "text": {
       "type": "string",

@@ -214,8 +214,24 @@ internal static class SchemaHelpRenderer
         if (string.IsNullOrEmpty(firstPath) || string.IsNullOrEmpty(element))
             return;
 
-        var parentPath = DeriveParentPath(firstPath!);
+        var derivedParent = DeriveParentPath(firstPath!);
         var targetPath = firstPath!;
+
+        // Prefer explicit `addParent` (string or array). When the element's
+        // positional path describes the element's own location (e.g.
+        // /comments/comment[N]) rather than a valid Add parent, schema authors
+        // must declare addParent to keep the Usage line accurate.
+        var addParents = new List<string>();
+        if (root.TryGetProperty("addParent", out var apEl))
+        {
+            if (apEl.ValueKind == JsonValueKind.String && apEl.GetString() is { } aps)
+                addParents.Add(aps);
+            else if (apEl.ValueKind == JsonValueKind.Array)
+                foreach (var p in apEl.EnumerateArray())
+                    if (p.GetString() is { } ps) addParents.Add(ps);
+        }
+        if (addParents.Count == 0)
+            addParents.Add(derivedParent);
 
         bool Has(string v) =>
             ops.TryGetProperty(v, out var ov) && ov.ValueKind == JsonValueKind.True;
@@ -224,7 +240,8 @@ internal static class SchemaHelpRenderer
 
         var lines = new List<string>();
         if (Has("add") && !isContainer && WantVerb("add"))
-            lines.Add($"  officecli add <file> {parentPath} --type {element} [--prop key=val ...]");
+            foreach (var ap in addParents)
+                lines.Add($"  officecli add <file> {ap} --type {element} [--prop key=val ...]");
         if (Has("set") && !isContainer && WantVerb("set"))
             lines.Add($"  officecli set <file> {targetPath} --prop key=val ...");
         if (Has("get") && WantVerb("get"))

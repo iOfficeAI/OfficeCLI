@@ -3,6 +3,7 @@
   "format": "docx",
   "element": "comment",
   "parent": "paragraph|run",
+  "addParent": ["/body/p[N]", "/body/p[N]/r[M]"],
   "operations": {
     "add": true,
     "set": true,

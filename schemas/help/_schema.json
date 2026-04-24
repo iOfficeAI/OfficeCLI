@@ -42,6 +42,13 @@
       },
       "additionalProperties": false
     },
+    "addParent": {
+      "description": "concrete CLI parent path(s) accepted by Add. Used by help renderer to print accurate `officecli add <file> <parent> --type <element>` usage. Required when the element's positional/stable paths describe the element's own addressable location (e.g. /comments/comment[N], /footnotes/footnote[N]) rather than its Add-time parent. If omitted, the renderer derives parent by dropping the last segment of paths.positional[0].",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } }
+      ]
+    },
     "paths": {
       "type": "object",
       "description": "path forms accepted when this element is addressed by index or @id",

@@ -152,7 +152,19 @@ public partial class PowerPointHandler
             return directId;
         }
 
-        // Try DOM path: /slide[N]/shape[M]
+        // Try @id path form first: /slide[N]/shape[@id=M] (as returned by `query shape`).
+        // CONSISTENCY(query-path-roundtrip): query shape returns @id form; Add must accept it.
+        var atIdMatch = Regex.Match(value, @"/slide\[\d+\]/shape\[@id=(\d+)\]");
+        if (atIdMatch.Success)
+        {
+            var atId = uint.Parse(atIdMatch.Groups[1].Value);
+            var shapes = shapeTree.Elements<Shape>().ToList();
+            if (!shapes.Any(s => s.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value == atId))
+                throw new ArgumentException($"Shape @id={atId} not found on this slide");
+            return atId;
+        }
+
+        // Try DOM path: /slide[N]/shape[M] (positional)
         var pathMatch = Regex.Match(value, @"/slide\[\d+\]/shape\[(\d+)\]");
         if (pathMatch.Success)
         {
@@ -164,7 +176,7 @@ public partial class PowerPointHandler
                 ?? throw new ArgumentException($"Shape {shapeIdx} has no ID");
         }
 
-        throw new ArgumentException($"Invalid shape reference: '{value}'. Expected a shape index (1, 2, ...) or path (/slide[N]/shape[M]).");
+        throw new ArgumentException($"Invalid shape reference: '{value}'. Expected a shape index (1, 2, ...), path (/slide[N]/shape[M]), or @id path (/slide[N]/shape[@id=M]).");
     }
 
     private string AddGroup(string parentPath, int? index, Dictionary<string, string> properties)
