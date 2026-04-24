@@ -29,7 +29,7 @@ static partial class CommandBuilder
     /// `officecli help docx add chart` reads exactly like the command you
     /// are about to run.
     /// </summary>
-    public static Command BuildHelpCommand(Option<bool> jsonOption)
+    public static Command BuildHelpCommand(Option<bool> jsonOption, RootCommand? rootCommand = null)
     {
         var formatArg = new Argument<string?>("format")
         {
@@ -83,13 +83,13 @@ static partial class CommandBuilder
                 }
             }
 
-            return SafeRun(() => RunHelp(format, verb, element, json), json);
+            return SafeRun(() => RunHelp(format, verb, element, json, rootCommand), json);
         });
 
         return command;
     }
 
-    private static int RunHelp(string? format, string? verb, string? element, bool json)
+    private static int RunHelp(string? format, string? verb, string? element, bool json, RootCommand? rootCommand)
     {
         // Case 1: no args — list formats and usage banner.
         if (string.IsNullOrEmpty(format))
@@ -106,12 +106,30 @@ static partial class CommandBuilder
             Console.WriteLine("  officecli help <format> <element>               Full element detail");
             Console.WriteLine("  officecli help <format> <verb> <element>        Verb-filtered element detail");
             Console.WriteLine("  officecli help <format> <element> --json        Raw schema JSON");
+            Console.WriteLine("  officecli help <command>                        Forward to '<command> --help'");
             Console.WriteLine();
             Console.WriteLine("Verbs: add, set, get, query, remove");
             Console.WriteLine("Aliases: word→docx, excel→xlsx, ppt/powerpoint→pptx");
             Console.WriteLine();
             Console.WriteLine("Tip: most shells expand [brackets] — quote paths: officecli get doc.docx \"/body/p[1]\"");
             return 0;
+        }
+
+        // Case 1b: format token isn't a known format — try forwarding to a
+        // top-level command's --help so `officecli help move` behaves the
+        // same as `officecli move --help`. Only triggers when no verb/element
+        // was supplied (those only make sense for the schema path).
+        if (!SchemaHelpLoader.IsKnownFormat(format)
+            && verb == null
+            && element == null
+            && rootCommand != null)
+        {
+            var match = rootCommand.Subcommands.FirstOrDefault(
+                c => string.Equals(c.Name, format, StringComparison.OrdinalIgnoreCase)
+                     && !c.Hidden
+                     && c.Name != "help");
+            if (match != null)
+                return rootCommand.Parse(new[] { match.Name, "--help" }).Invoke();
         }
 
         // Validate verb if supplied.

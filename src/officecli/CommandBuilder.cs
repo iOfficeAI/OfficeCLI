@@ -131,7 +131,7 @@ static partial class CommandBuilder
         rootCommand.Add(BuildCreateCommand(jsonOption));
         rootCommand.Add(BuildMergeCommand(jsonOption));
 
-        rootCommand.Add(BuildHelpCommand(jsonOption));
+        rootCommand.Add(BuildHelpCommand(jsonOption, rootCommand));
 
         return rootCommand;
     }

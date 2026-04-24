@@ -63,6 +63,15 @@ internal static class SchemaHelpLoader
     internal static IReadOnlyList<string> ListFormats() => CanonicalFormats;
 
     /// <summary>
+    /// True if <paramref name="input"/> is a known format alias (docx/xlsx/pptx
+    /// or word/excel/ppt/powerpoint). Used by the help dispatcher to decide
+    /// whether to treat the token as a schema format or fall through to
+    /// top-level command forwarding.
+    /// </summary>
+    internal static bool IsKnownFormat(string input) =>
+        !string.IsNullOrEmpty(input) && FormatAliases.ContainsKey(input);
+
+    /// <summary>
     /// Normalize a user-supplied format token to canonical docx/xlsx/pptx.
     /// Throws InvalidOperationException with a suggestion if unknown.
     /// </summary>
