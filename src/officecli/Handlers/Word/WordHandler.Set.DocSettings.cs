@@ -123,6 +123,16 @@ public partial class WordHandler
                 EnsureSettings().Save();
                 return true;
 
+            // ==================== Review / Tracked Changes (lives in Settings) ====================
+            // Toggle the top-level "Track Changes" flag independently of any
+            // existing w:ins / w:del markup. Callers typically combine this
+            // with acceptAllChanges / rejectAllChanges to finalize a review
+            // session and take the document out of tracked-changes mode.
+            case "trackrevisions" or "trackchanges":
+                SetOnOffSetting<TrackRevisions>(EnsureSettings(), IsTruthy(value));
+                EnsureSettings().Save();
+                return true;
+
             // ==================== Layout Flags (lives in Settings) ====================
             case "mirrormargins":
                 SetOnOffSetting<MirrorMargins>(EnsureSettings(), IsTruthy(value));

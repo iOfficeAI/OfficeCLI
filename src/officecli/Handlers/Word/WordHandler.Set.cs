@@ -36,13 +36,30 @@ public partial class WordHandler
         if (properties.TryGetValue("find", out var findText))
         {
             var replace = properties.TryGetValue("replace", out var r) ? r : null;
+
+            // Tracked changes mode: wrap del/ins instead of direct replacement
+            bool tracked = properties.TryGetValue("tracked", out var tv)
+                && (tv == "true" || tv == "1");
+            if (tracked)
+            {
+                var trackedAuthor = properties.TryGetValue("author", out var ta) ? ta : "Cove";
+                // CONSISTENCY(find-regex)
+                if (properties.TryGetValue("regex", out var regexFlag2) && ParseHelpers.IsTruthySafe(regexFlag2) && !findText.StartsWith("r\"") && !findText.StartsWith("r'"))
+                    findText = $"r\"{findText}\"";
+                var effectivePath2 = (path is "" or "/") ? "/body" : path;
+                var matchCount2 = ProcessTrackedFind(effectivePath2, findText, replace, trackedAuthor, DateTime.UtcNow);
+                LastFindMatchCount = matchCount2;
+                _doc.MainDocumentPart?.Document?.Save();
+                return unsupported;
+            }
+
             // Separate run-level format properties from paragraph-level properties
             var formatProps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var paraProps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var (key, value) in properties)
             {
                 var k = key.ToLowerInvariant();
-                if (k is "find" or "replace" or "scope" or "regex") continue;
+                if (k is "find" or "replace" or "scope" or "regex" or "tracked" or "author") continue;
                 // Paragraph-level properties go to paraProps
                 if (k is "style" or "alignment" or "align" or "firstlineindent" or "leftindent" or "indentleft"
                     or "indent" or "rightindent" or "indentright" or "hangingindent" or "spacebefore"
