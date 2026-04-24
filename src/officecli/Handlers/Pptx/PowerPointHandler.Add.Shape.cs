@@ -3,12 +3,9 @@
 
 using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml;
-using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
 using OfficeCli.Core;
 using Drawing = DocumentFormat.OpenXml.Drawing;
-using C = DocumentFormat.OpenXml.Drawing.Charts;
-using M = DocumentFormat.OpenXml.Math;
 
 namespace OfficeCli.Handlers;
 
@@ -287,9 +284,24 @@ public partial class PowerPointHandler
                 }
 
                 // Opacity (alpha on fill) — like POI XSLFColor uses <a:alpha val="N"/>
-                // Must come after gradient so it can apply to gradient stops too
+                // Must come after gradient so it can apply to gradient stops too.
+                // Alpha must attach to a color element inside a fill carrier; if
+                // the caller gave 'opacity' without any fill/gradient/pattern,
+                // the value has nothing to bind to. Per schemas/help/pptx/shape.json
+                // 'opacity.requires: ["fill"]', reject rather than silently drop.
                 if (properties.TryGetValue("opacity", out var opacityVal))
                 {
+                    var hasFillCarrier =
+                        properties.ContainsKey("fill") ||
+                        properties.ContainsKey("gradient") ||
+                        properties.ContainsKey("pattern") ||
+                        (newShape.ShapeProperties?.GetFirstChild<Drawing.SolidFill>() != null) ||
+                        (newShape.ShapeProperties?.GetFirstChild<Drawing.GradientFill>() != null) ||
+                        (newShape.ShapeProperties?.GetFirstChild<Drawing.PatternFill>() != null);
+                    if (!hasFillCarrier)
+                        throw new ArgumentException(
+                            $"'opacity'='{opacityVal}' requires a fill carrier. Provide one of 'fill' / 'gradient' / 'pattern' " +
+                            "so the alpha value has a color element to attach to.");
                     if (double.TryParse(opacityVal, System.Globalization.CultureInfo.InvariantCulture, out var alphaNum))
                     {
                         if (alphaNum > 1.0) alphaNum /= 100.0; // treat >1 as percentage (e.g. 30 → 0.30)

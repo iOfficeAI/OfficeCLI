@@ -1988,6 +1988,24 @@ public partial class ExcelHandler
                     break;
                 }
 
+                case "hidden":
+                {
+                    // Sheet visibility lives on the workbook-level <sheet> element,
+                    // not on the worksheet. Flip State between Visible and Hidden.
+                    var wbSheets = GetWorkbook().GetFirstChild<Sheets>();
+                    var wbSheet = wbSheets?.Elements<Sheet>()
+                        .FirstOrDefault(s => s.Name?.Value?.Equals(sheetName, StringComparison.OrdinalIgnoreCase) == true);
+                    if (wbSheet != null)
+                    {
+                        if (ParseHelpers.IsTruthy(value))
+                            wbSheet.State = SheetStateValues.Hidden;
+                        else
+                            wbSheet.State = null;
+                        GetWorkbook().Save();
+                    }
+                    break;
+                }
+
                 // ==================== Sheet Protection ====================
                 case "protect":
                 {
@@ -2196,7 +2214,7 @@ public partial class ExcelHandler
 
                 default:
                     unsupported.Add(unsupported.Count == 0
-                        ? $"{key} (valid sheet props: name, freeze, zoom, showGridLines, showRowColHeaders, tabcolor, autofilter, merge, protect, password, printarea, orientation, papersize, fittopage, header, footer, sort, sortHeader)"
+                        ? $"{key} (valid sheet props: name, freeze, zoom, showGridLines, showRowColHeaders, tabcolor, autofilter, hidden, merge, protect, password, printarea, orientation, papersize, fittopage, header, footer, sort, sortHeader)"
                         : key);
                     break;
             }

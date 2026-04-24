@@ -1,14 +1,9 @@
 // Copyright 2025 OfficeCli (officecli.ai)
 // SPDX-License-Identifier: Apache-2.0
 
-using System.Text;
 using DocumentFormat.OpenXml;
-using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using OfficeCli.Core;
-using A = DocumentFormat.OpenXml.Drawing;
-using C = DocumentFormat.OpenXml.Drawing.Charts;
-using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
 using M = DocumentFormat.OpenXml.Math;
 
 namespace OfficeCli.Handlers;
@@ -109,17 +104,21 @@ public partial class WordHandler
         if (properties.TryGetValue("leftindent", out var addLI) || properties.TryGetValue("leftIndent", out addLI) || properties.TryGetValue("indentleft", out addLI) || properties.TryGetValue("indent", out addLI))
         {
             var ind = pProps.Indentation ?? (pProps.Indentation = new Indentation());
-            ind.Left = ParseHelpers.SafeParseUint(addLI, "leftindent").ToString();
+            // CONSISTENCY(lenient-spacing): route through SpacingConverter so indent accepts
+            // "2cm"/"0.5in"/"24pt"/bare twips — parity with spaceBefore/spaceAfter/lineSpacing.
+            ind.Left = SpacingConverter.ParseWordSpacing(addLI).ToString();
         }
         if (properties.TryGetValue("rightindent", out var addRI) || properties.TryGetValue("rightIndent", out addRI) || properties.TryGetValue("indentright", out addRI))
         {
             var ind = pProps.Indentation ?? (pProps.Indentation = new Indentation());
-            ind.Right = ParseHelpers.SafeParseUint(addRI, "rightindent").ToString();
+            // CONSISTENCY(lenient-spacing): see leftindent above.
+            ind.Right = SpacingConverter.ParseWordSpacing(addRI).ToString();
         }
         if (properties.TryGetValue("hangingindent", out var addHI) || properties.TryGetValue("hangingIndent", out addHI) || properties.TryGetValue("hanging", out addHI))
         {
             var ind = pProps.Indentation ?? (pProps.Indentation = new Indentation());
-            ind.Hanging = ParseHelpers.SafeParseUint(addHI, "hangingindent").ToString();
+            // CONSISTENCY(lenient-spacing): see leftindent above.
+            ind.Hanging = SpacingConverter.ParseWordSpacing(addHI).ToString();
             ind.FirstLine = null;
         }
         // firstlineindent already handled above (line ~66-74) with × 480 conversion

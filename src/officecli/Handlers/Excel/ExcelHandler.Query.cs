@@ -174,6 +174,14 @@ public partial class ExcelHandler
                 sheetNode.Format["autoFilter"] = autoFilter.Reference.Value;
             }
 
+            // Sheet-state (hidden / very hidden) readback — lives on the
+            // workbook-level Sheet element, not on the Worksheet.
+            var wbSheet = GetWorkbook().GetFirstChild<Sheets>()?.Elements<Sheet>()
+                .FirstOrDefault(s => s.Name?.Value?.Equals(sheetNameFromPath, StringComparison.OrdinalIgnoreCase) == true);
+            if (wbSheet?.State?.Value is { } sheetState
+                && (sheetState == SheetStateValues.Hidden || sheetState == SheetStateValues.VeryHidden))
+                sheetNode.Format["hidden"] = true;
+
             // Sheet protection readback
             var sheetProtection = ws.GetFirstChild<SheetProtection>();
             if (sheetProtection?.Sheet?.Value == true)
