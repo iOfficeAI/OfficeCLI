@@ -936,136 +936,17 @@ public partial class WordHandler
         {
             foreach (var (key, value) in properties)
             {
+                // CONSISTENCY(run-prop-helper): rPr-only props delegate to
+                // ApplyRunLevelProperty so the per-property OOXML write logic
+                // lives in one place; non-rPr cases (text content, image
+                // swap, OLE resize, etc.) stay in the inline switch below.
+                if (ApplyRunLevelProperty(EnsureRunProperties(run), key, value))
+                    continue;
                 switch (key.ToLowerInvariant())
                 {
                     case "text":
                         var textEl = run.GetFirstChild<Text>();
                         if (textEl != null) textEl.Text = value;
-                        break;
-                    case "bold":
-                        EnsureRunProperties(run).Bold = IsTruthy(value) ? new Bold() : null;
-                        break;
-                    case "italic":
-                        EnsureRunProperties(run).Italic = IsTruthy(value) ? new Italic() : null;
-                        break;
-                    case "caps":
-                        EnsureRunProperties(run).Caps = IsTruthy(value) ? new Caps() : null;
-                        break;
-                    case "smallcaps":
-                        EnsureRunProperties(run).SmallCaps = IsTruthy(value) ? new SmallCaps() : null;
-                        break;
-                    case "dstrike":
-                        EnsureRunProperties(run).DoubleStrike = IsTruthy(value) ? new DoubleStrike() : null;
-                        break;
-                    case "vanish":
-                        EnsureRunProperties(run).Vanish = IsTruthy(value) ? new Vanish() : null;
-                        break;
-                    case "outline":
-                        EnsureRunProperties(run).Outline = IsTruthy(value) ? new Outline() : null;
-                        break;
-                    case "shadow":
-                        EnsureRunProperties(run).Shadow = IsTruthy(value) ? new Shadow() : null;
-                        break;
-                    case "emboss":
-                        EnsureRunProperties(run).Emboss = IsTruthy(value) ? new Emboss() : null;
-                        break;
-                    case "imprint":
-                        EnsureRunProperties(run).Imprint = IsTruthy(value) ? new Imprint() : null;
-                        break;
-                    case "noproof":
-                        EnsureRunProperties(run).NoProof = IsTruthy(value) ? new NoProof() : null;
-                        break;
-                    case "rtl":
-                        EnsureRunProperties(run).RightToLeftText = IsTruthy(value) ? new RightToLeftText() : null;
-                        break;
-                    case "font":
-                        var rPrFont = EnsureRunProperties(run);
-                        var existingFonts = rPrFont.RunFonts;
-                        if (existingFonts != null)
-                        {
-                            existingFonts.Ascii = value;
-                            existingFonts.HighAnsi = value;
-                            existingFonts.EastAsia = value;
-                        }
-                        else
-                        {
-                            rPrFont.RunFonts = new RunFonts { Ascii = value, HighAnsi = value, EastAsia = value };
-                        }
-                        break;
-                    case "size":
-                        EnsureRunProperties(run).FontSize = new FontSize
-                        {
-                            Val = ((int)Math.Round(ParseFontSize(value) * 2, MidpointRounding.AwayFromZero)).ToString() // half-points
-                        };
-                        break;
-                    case "highlight":
-                        EnsureRunProperties(run).Highlight = new Highlight
-                        {
-                            Val = ParseHighlightColor(value)
-                        };
-                        break;
-                    case "color":
-                        EnsureRunProperties(run).Color = new Color { Val = SanitizeHex(value) };
-                        break;
-                    case "underline":
-                    {
-                        var ulVal = NormalizeUnderlineValue(value);
-                        EnsureRunProperties(run).Underline = new Underline
-                        {
-                            Val = new UnderlineValues(ulVal)
-                        };
-                        break;
-                    }
-                    case "strike":
-                        EnsureRunProperties(run).Strike = IsTruthy(value) ? new Strike() : null;
-                        break;
-                    case "superscript":
-                        EnsureRunProperties(run).VerticalTextAlignment = IsTruthy(value)
-                            ? new VerticalTextAlignment { Val = VerticalPositionValues.Superscript }
-                            : null;
-                        break;
-                    case "subscript":
-                        EnsureRunProperties(run).VerticalTextAlignment = IsTruthy(value)
-                            ? new VerticalTextAlignment { Val = VerticalPositionValues.Subscript }
-                            : null;
-                        break;
-                    case "charspacing" or "charSpacing" or "letterspacing" or "letterSpacing" or "spacing":
-                    {
-                        // Word spacing: w:rPr/w:spacing @w:val in twips (1/20 pt)
-                        // Accept pt values (e.g. "2pt", "0.5pt") or bare numbers as pt
-                        var csVal = value.TrimEnd();
-                        double csPt;
-                        if (csVal.EndsWith("pt", StringComparison.OrdinalIgnoreCase))
-                            csPt = ParseHelpers.SafeParseDouble(csVal[..^2], "charspacing");
-                        else
-                            csPt = ParseHelpers.SafeParseDouble(csVal, "charspacing");
-                        var twips = (int)Math.Round(csPt * 20, MidpointRounding.AwayFromZero);
-                        EnsureRunProperties(run).Spacing = new Spacing { Val = twips };
-                        break;
-                    }
-                    case "shading":
-                    case "shd":
-                        // shd has w:val, w:fill, w:color — value format: "fill" or "val;fill" or "val;fill;color"
-                        var shdParts = value.Split(';');
-                        var shd = new Shading();
-                        if (shdParts.Length == 1)
-                        {
-                            shd.Val = ShadingPatternValues.Clear;
-                            shd.Fill = SanitizeHex(shdParts[0]);
-                        }
-                        else if (shdParts.Length >= 2)
-                        {
-                            var setRunPat = shdParts[0].TrimStart('#');
-                            if (setRunPat.Length >= 6 && setRunPat.All(char.IsAsciiHexDigit))
-                            { shd.Val = ShadingPatternValues.Clear; shd.Fill = SanitizeHex(shdParts[0]); }
-                            else
-                            {
-                                WarnIfShadingOrderWrong(shdParts[0]); shd.Val = new ShadingPatternValues(shdParts[0]);
-                                shd.Fill = SanitizeHex(shdParts[1]);
-                                if (shdParts.Length >= 3) shd.Color = SanitizeHex(shdParts[2]);
-                            }
-                        }
-                        EnsureRunProperties(run).Shading = shd;
                         break;
                     case "alt" or "alttext" or "description":
                         var drawingAlt = run.GetFirstChild<Drawing>();
@@ -2559,26 +2440,7 @@ public partial class WordHandler
                 else pProps.ContextualSpacing = null;
                 return true;
             case "shading" or "shd":
-                var shdParts = value.Split(';');
-                var shd = new Shading();
-                if (shdParts.Length == 1)
-                {
-                    shd.Val = ShadingPatternValues.Clear;
-                    shd.Fill = SanitizeHex(shdParts[0]);
-                }
-                else if (shdParts.Length >= 2)
-                {
-                    var setPPat = shdParts[0].TrimStart('#');
-                    if (setPPat.Length >= 6 && setPPat.All(char.IsAsciiHexDigit))
-                    { shd.Val = ShadingPatternValues.Clear; shd.Fill = SanitizeHex(shdParts[0]); }
-                    else
-                    {
-                        WarnIfShadingOrderWrong(shdParts[0]); shd.Val = new ShadingPatternValues(shdParts[0]);
-                        shd.Fill = SanitizeHex(shdParts[1]);
-                        if (shdParts.Length >= 3) shd.Color = SanitizeHex(shdParts[2]);
-                    }
-                }
-                pProps.Shading = shd;
+                pProps.Shading = ParseShadingValue(value);
                 return true;
             case "spacebefore":
                 var spacingBefore = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
@@ -2605,6 +2467,119 @@ public partial class WordHandler
             case "pbdr.top" or "pbdr.bottom" or "pbdr.left" or "pbdr.right" or "pbdr.between" or "pbdr.bar" or "pbdr.all" or "pbdr":
             case "border.all" or "border" or "border.top" or "border.bottom" or "border.left" or "border.right":
                 ApplyParagraphBorders(pProps, key, value);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Parse a w:shd value string ("fill", "val;fill", "val;fill;color") into a Shading element.
+    /// Shared by paragraph-level and run-level shading handlers.
+    /// </summary>
+    private static Shading ParseShadingValue(string value)
+    {
+        var shdParts = value.Split(';');
+        var shd = new Shading();
+        if (shdParts.Length == 1)
+        {
+            shd.Val = ShadingPatternValues.Clear;
+            shd.Fill = SanitizeHex(shdParts[0]);
+        }
+        else if (shdParts.Length >= 2)
+        {
+            var firstAsHex = shdParts[0].TrimStart('#');
+            if (firstAsHex.Length >= 6 && firstAsHex.All(char.IsAsciiHexDigit))
+            {
+                shd.Val = ShadingPatternValues.Clear;
+                shd.Fill = SanitizeHex(shdParts[0]);
+            }
+            else
+            {
+                WarnIfShadingOrderWrong(shdParts[0]);
+                shd.Val = new ShadingPatternValues(shdParts[0]);
+                shd.Fill = SanitizeHex(shdParts[1]);
+                if (shdParts.Length >= 3) shd.Color = SanitizeHex(shdParts[2]);
+            }
+        }
+        return shd;
+    }
+
+    /// <summary>
+    /// Apply a run-level (rPr) property by key. Returns true if handled, false if the key
+    /// isn't a run-property (caller should fall through to its own switch). Mirrors
+    /// ApplyParagraphLevelProperty in shape and is reused across the Run / TableCell-run /
+    /// Style-run code paths so the per-property OOXML write logic lives in exactly one place.
+    /// </summary>
+    private static bool ApplyRunLevelProperty(RunProperties rPr, string key, string? value)
+    {
+        if (value is null) return false;
+        switch (key.ToLowerInvariant())
+        {
+            case "bold":      rPr.Bold = IsTruthy(value) ? new Bold() : null; return true;
+            case "italic":    rPr.Italic = IsTruthy(value) ? new Italic() : null; return true;
+            case "caps":      rPr.Caps = IsTruthy(value) ? new Caps() : null; return true;
+            case "smallcaps": rPr.SmallCaps = IsTruthy(value) ? new SmallCaps() : null; return true;
+            case "dstrike":   rPr.DoubleStrike = IsTruthy(value) ? new DoubleStrike() : null; return true;
+            case "vanish":    rPr.Vanish = IsTruthy(value) ? new Vanish() : null; return true;
+            case "outline":   rPr.Outline = IsTruthy(value) ? new Outline() : null; return true;
+            case "shadow":    rPr.Shadow = IsTruthy(value) ? new Shadow() : null; return true;
+            case "emboss":    rPr.Emboss = IsTruthy(value) ? new Emboss() : null; return true;
+            case "imprint":   rPr.Imprint = IsTruthy(value) ? new Imprint() : null; return true;
+            case "noproof":   rPr.NoProof = IsTruthy(value) ? new NoProof() : null; return true;
+            case "rtl":       rPr.RightToLeftText = IsTruthy(value) ? new RightToLeftText() : null; return true;
+            case "strike":    rPr.Strike = IsTruthy(value) ? new Strike() : null; return true;
+            case "font":
+            {
+                var fonts = rPr.RunFonts;
+                if (fonts != null)
+                {
+                    fonts.Ascii = value;
+                    fonts.HighAnsi = value;
+                    fonts.EastAsia = value;
+                }
+                else
+                {
+                    rPr.RunFonts = new RunFonts { Ascii = value, HighAnsi = value, EastAsia = value };
+                }
+                return true;
+            }
+            case "size":
+                rPr.FontSize = new FontSize
+                {
+                    Val = ((int)Math.Round(ParseFontSize(value) * 2, MidpointRounding.AwayFromZero)).ToString()
+                };
+                return true;
+            case "highlight":
+                rPr.Highlight = new Highlight { Val = ParseHighlightColor(value) };
+                return true;
+            case "color":
+                rPr.Color = new Color { Val = SanitizeHex(value) };
+                return true;
+            case "underline":
+                rPr.Underline = new Underline { Val = new UnderlineValues(NormalizeUnderlineValue(value)) };
+                return true;
+            case "superscript":
+                rPr.VerticalTextAlignment = IsTruthy(value)
+                    ? new VerticalTextAlignment { Val = VerticalPositionValues.Superscript }
+                    : null;
+                return true;
+            case "subscript":
+                rPr.VerticalTextAlignment = IsTruthy(value)
+                    ? new VerticalTextAlignment { Val = VerticalPositionValues.Subscript }
+                    : null;
+                return true;
+            case "charspacing" or "letterspacing" or "spacing":
+            {
+                var csVal = value.TrimEnd();
+                double csPt = csVal.EndsWith("pt", StringComparison.OrdinalIgnoreCase)
+                    ? ParseHelpers.SafeParseDouble(csVal[..^2], "charspacing")
+                    : ParseHelpers.SafeParseDouble(csVal, "charspacing");
+                rPr.Spacing = new Spacing { Val = (int)Math.Round(csPt * 20, MidpointRounding.AwayFromZero) };
+                return true;
+            }
+            case "shading" or "shd":
+                rPr.Shading = ParseShadingValue(value);
                 return true;
             default:
                 return false;
