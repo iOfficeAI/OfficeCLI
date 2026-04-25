@@ -369,7 +369,9 @@ internal static class UpdateChecker
     /// <summary>
     /// Handle 'officecli config key [value]' command.
     /// </summary>
-    internal static void HandleConfigCommand(string[] args)
+    /// <summary>Returns 0 on success, 1 on unknown key (so callers can
+    /// surface a non-zero exit code).</summary>
+    internal static int HandleConfigCommand(string[] args)
     {
         const string available = "autoUpdate, log, log clear";
         var key = args[0].ToLowerInvariant();
@@ -380,7 +382,7 @@ internal static class UpdateChecker
         {
             CliLogger.Clear();
             Console.WriteLine("Log cleared.");
-            return;
+            return 0;
         }
 
         if (args.Length == 1)
@@ -393,10 +395,12 @@ internal static class UpdateChecker
                 _ => null
             };
             if (value != null)
+            {
                 Console.WriteLine(value);
-            else
-                Console.Error.WriteLine($"Unknown config key: {args[0]}. Available: {available}");
-            return;
+                return 0;
+            }
+            Console.Error.WriteLine($"Unknown config key: {args[0]}. Available: {available}");
+            return 1;
         }
 
         // Write
@@ -411,7 +415,7 @@ internal static class UpdateChecker
                 break;
             default:
                 Console.Error.WriteLine($"Unknown config key: {args[0]}. Available: {available}");
-                return;
+                return 1;
         }
 
         try
@@ -419,10 +423,12 @@ internal static class UpdateChecker
             Directory.CreateDirectory(ConfigDir);
             SaveConfig(config);
             Console.WriteLine($"{args[0]} = {newValue}");
+            return 0;
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Error saving config: {ex.Message}");
+            return 1;
         }
     }
 

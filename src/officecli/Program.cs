@@ -48,14 +48,12 @@ if (args.Length >= 1 && args[0] == "mcp")
     }
     if (args.Length == 3 && args[1] == "uninstall")
     {
-        OfficeCli.McpInstaller.Uninstall(args[2]);
-        return 0;
+        return OfficeCli.McpInstaller.Uninstall(args[2]) ? 0 : 1;
     }
     if (args.Length == 2)
     {
         // officecli mcp <target> → register + show instructions
-        OfficeCli.McpInstaller.Install(args[1]);
-        return 0;
+        return OfficeCli.McpInstaller.Install(args[1]) ? 0 : 1;
     }
     OfficeCli.CommandBuilder.WriteEarlyDispatchUsage("mcp", Console.Error);
     return 1;
@@ -97,9 +95,11 @@ if (args.Length >= 1 && args[0] == "skills")
     }
     if (args.Length == 2)
     {
-        // Legacy: officecli skills claude → base SKILL.md to specific agent
-        OfficeCli.Core.SkillInstaller.Install(args[1]);
-        return 0;
+        // Legacy: officecli skills claude → base SKILL.md to specific agent.
+        // SkillInstaller.Install returns the set of agents written to;
+        // empty set means the target wasn't recognized.
+        var result = OfficeCli.Core.SkillInstaller.Install(args[1]);
+        return result.Count > 0 ? 0 : 1;
     }
     OfficeCli.CommandBuilder.WriteEarlyDispatchUsage("skills", Console.Error);
     return 1;
@@ -109,8 +109,7 @@ if (args.Length >= 1 && args[0] == "skills")
 if (args.Length >= 2 && args[0] == "config")
 {
     OfficeCli.Core.CliLogger.LogCommand(args);
-    OfficeCli.Core.UpdateChecker.HandleConfigCommand(args.Skip(1).ToArray());
-    return 0;
+    return OfficeCli.Core.UpdateChecker.HandleConfigCommand(args.Skip(1).ToArray());
 }
 
 // Log command
