@@ -19,13 +19,8 @@ static partial class CommandBuilder
         var rootCommand = new RootCommand("""
             officecli: AI-friendly CLI for Office documents (.docx, .xlsx, .pptx)
 
-            Help:
-              officecli help                          List formats
-              officecli help docx                     List docx elements
-              officecli help docx paragraph           Paragraph capability detail
-              officecli help docx paragraph --json    Structured schema for agents
-
-            Commands: view, get, query, set, add, remove, move, swap, raw, validate, batch.
+            Run 'officecli help' for the schema-driven capability reference (formats, elements, properties).
+            See the Commands section below for the full list of subcommands.
             """);
         rootCommand.Add(jsonOption);
 
@@ -130,6 +125,9 @@ static partial class CommandBuilder
         rootCommand.Add(BuildImportCommand(jsonOption));
         rootCommand.Add(BuildCreateCommand(jsonOption));
         rootCommand.Add(BuildMergeCommand(jsonOption));
+
+        foreach (var stub in BuildIntegrationStubCommands())
+            rootCommand.Add(stub);
 
         rootCommand.Add(BuildHelpCommand(jsonOption, rootCommand));
 
