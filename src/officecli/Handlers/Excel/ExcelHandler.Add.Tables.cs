@@ -62,6 +62,15 @@ public partial class ExcelHandler
         if (refVal.StartsWith('='))
             refVal = refVal.TrimStart('=');
 
+        // R27-1: cross-workbook references like "[Other.xlsx]Sheet1!$A$1"
+        // or "[1]Sheet1!$A$1" need an externalReferences part to resolve.
+        // Without one, Excel opens the file but formulas referencing the
+        // name show #REF!. Reject up-front rather than write a silently
+        // broken defined name.
+        if (System.Text.RegularExpressions.Regex.IsMatch(refVal, @"^\s*\["))
+            throw new ArgumentException(
+                $"Cross-workbook references like '{refVal}' require an externalLinks part which officecli doesn't expose; use raw-set for this case");
+
         var workbook = GetWorkbook();
         var definedNames = workbook.GetFirstChild<DefinedNames>();
         if (definedNames == null)
