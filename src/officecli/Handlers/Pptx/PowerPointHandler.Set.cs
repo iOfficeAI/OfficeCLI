@@ -740,161 +740,7 @@ public partial class PowerPointHandler
 
         // Try zoom-level path: /slide[N]/zoom[M]
         var zoomSetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/zoom\[(\d+)\]$");
-        if (zoomSetMatch.Success)
-        {
-            var slideIdx = int.Parse(zoomSetMatch.Groups[1].Value);
-            var zmIdx = int.Parse(zoomSetMatch.Groups[2].Value);
-            var zmSlideParts = GetSlideParts().ToList();
-            if (slideIdx < 1 || slideIdx > zmSlideParts.Count)
-                throw new ArgumentException($"Slide {slideIdx} not found (total: {zmSlideParts.Count})");
-            var zmSlidePart = zmSlideParts[slideIdx - 1];
-            var zmShapeTree = GetSlide(zmSlidePart).CommonSlideData?.ShapeTree
-                ?? throw new InvalidOperationException("Slide has no shape tree");
-            var zoomElements = GetZoomElements(zmShapeTree);
-            if (zmIdx < 1 || zmIdx > zoomElements.Count)
-                throw new ArgumentException($"Zoom {zmIdx} not found (total: {zoomElements.Count})");
-
-            var acElement = zoomElements[zmIdx - 1];
-            var choice = acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Choice");
-            var fallback = acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Fallback");
-            var gf = choice?.ChildElements.FirstOrDefault(e => e.LocalName == "graphicFrame");
-            var sldZmObj = acElement.Descendants().FirstOrDefault(d => d.LocalName == "sldZmObj");
-            var zmPr = acElement.Descendants().FirstOrDefault(d => d.LocalName == "zmPr");
-
-            var unsupported = new List<string>();
-            foreach (var (key, value) in properties)
-            {
-                switch (key.ToLowerInvariant())
-                {
-                    case "target" or "slide":
-                    {
-                        if (!int.TryParse(value, out var targetNum))
-                            throw new ArgumentException($"Invalid target value: '{value}'. Expected a slide number.");
-                        if (targetNum < 1 || targetNum > zmSlideParts.Count)
-                            throw new ArgumentException($"Target slide {targetNum} not found (total: {zmSlideParts.Count})");
-                        var zmPresentation = _doc.PresentationPart?.Presentation
-                            ?? throw new InvalidOperationException("No presentation");
-                        var zmSlideIds = zmPresentation.GetFirstChild<SlideIdList>()
-                            ?.Elements<SlideId>().ToList()
-                            ?? throw new InvalidOperationException("No slides");
-                        var newSldId = zmSlideIds[targetNum - 1].Id!.Value;
-                        sldZmObj?.SetAttribute(new OpenXmlAttribute("", "sldId", null!, newSldId.ToString()));
-
-                        // Update fallback hyperlink relationship
-                        var fbPic = fallback?.ChildElements.FirstOrDefault(e => e.LocalName == "pic");
-                        var fbCNvPr = fbPic?.Descendants().FirstOrDefault(d => d.LocalName == "cNvPr");
-                        var hlinkClick = fbCNvPr?.ChildElements.FirstOrDefault(e => e.LocalName == "hlinkClick");
-                        if (hlinkClick != null)
-                        {
-                            var rNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-                            var targetSlidePart = zmSlideParts[targetNum - 1];
-                            var newRelId = zmSlidePart.CreateRelationshipToPart(targetSlidePart);
-                            hlinkClick.SetAttribute(new OpenXmlAttribute("r", "id", rNs, newRelId));
-                        }
-                        break;
-                    }
-                    case "returntoparent":
-                        zmPr?.SetAttribute(new OpenXmlAttribute("", "returnToParent", null!, IsTruthy(value) ? "1" : "0"));
-                        break;
-                    case "transitiondur":
-                        zmPr?.SetAttribute(new OpenXmlAttribute("", "transitionDur", null!, value));
-                        break;
-                    case "x" or "y" or "width" or "height":
-                    {
-                        var emu = ParseEmu(value);
-                        // Update graphicFrame xfrm
-                        var gfXfrm = gf?.ChildElements.FirstOrDefault(e => e.LocalName == "xfrm");
-                        if (gfXfrm != null)
-                        {
-                            if (key.ToLowerInvariant() is "x" or "y")
-                            {
-                                var off = gfXfrm.ChildElements.FirstOrDefault(e => e.LocalName == "off");
-                                off?.SetAttribute(new OpenXmlAttribute("", key.ToLowerInvariant(), null!, emu.ToString()));
-                            }
-                            else
-                            {
-                                var ext = gfXfrm.ChildElements.FirstOrDefault(e => e.LocalName == "ext");
-                                var attrName = key.ToLowerInvariant() == "width" ? "cx" : "cy";
-                                ext?.SetAttribute(new OpenXmlAttribute("", attrName, null!, emu.ToString()));
-                            }
-                        }
-                        // Update fallback spPr xfrm
-                        var fbPic = fallback?.ChildElements.FirstOrDefault(e => e.LocalName == "pic");
-                        var fbSpPr = fbPic?.ChildElements.FirstOrDefault(e => e.LocalName == "spPr");
-                        var fbXfrm = fbSpPr?.ChildElements.FirstOrDefault(e => e.LocalName == "xfrm");
-                        if (fbXfrm != null)
-                        {
-                            if (key.ToLowerInvariant() is "x" or "y")
-                            {
-                                var off = fbXfrm.ChildElements.FirstOrDefault(e => e.LocalName == "off");
-                                off?.SetAttribute(new OpenXmlAttribute("", key.ToLowerInvariant(), null!, emu.ToString()));
-                            }
-                            else
-                            {
-                                var ext = fbXfrm.ChildElements.FirstOrDefault(e => e.LocalName == "ext");
-                                var attrName = key.ToLowerInvariant() == "width" ? "cx" : "cy";
-                                ext?.SetAttribute(new OpenXmlAttribute("", attrName, null!, emu.ToString()));
-                            }
-                        }
-                        // Update inner zmPr > spPr > xfrm (only for width/height)
-                        if (key.ToLowerInvariant() is "width" or "height")
-                        {
-                            var p166Ns = "http://schemas.microsoft.com/office/powerpoint/2016/6/main";
-                            var zmSpPr = zmPr?.ChildElements.FirstOrDefault(e => e.LocalName == "spPr" && e.NamespaceUri == p166Ns);
-                            var zmSpXfrm = zmSpPr?.ChildElements.FirstOrDefault(e => e.LocalName == "xfrm");
-                            var zmSpExt = zmSpXfrm?.ChildElements.FirstOrDefault(e => e.LocalName == "ext");
-                            var attrName = key.ToLowerInvariant() == "width" ? "cx" : "cy";
-                            zmSpExt?.SetAttribute(new OpenXmlAttribute("", attrName, null!, emu.ToString()));
-                        }
-                        break;
-                    }
-                    case "name":
-                    {
-                        // Update cNvPr name in Choice
-                        var nvGfPr = gf?.ChildElements.FirstOrDefault(e => e.LocalName == "nvGraphicFramePr");
-                        var choiceCNvPr = nvGfPr?.ChildElements.FirstOrDefault(e => e.LocalName == "cNvPr");
-                        choiceCNvPr?.SetAttribute(new OpenXmlAttribute("", "name", null!, value));
-                        // Update cNvPr name in Fallback
-                        var fbPic = fallback?.ChildElements.FirstOrDefault(e => e.LocalName == "pic");
-                        var fbNvPicPr = fbPic?.ChildElements.FirstOrDefault(e => e.LocalName == "nvPicPr");
-                        var fbCNvPr = fbNvPicPr?.ChildElements.FirstOrDefault(e => e.LocalName == "cNvPr");
-                        fbCNvPr?.SetAttribute(new OpenXmlAttribute("", "name", null!, value));
-                        break;
-                    }
-                    case "image" or "path" or "src" or "cover":
-                    {
-                        var (zmImgStream, zmImgPartType) = OfficeCli.Core.ImageSource.Resolve(value);
-                        using var zmImgDispose = zmImgStream;
-                        // Add new image part
-                        var newImagePart = zmSlidePart.AddImagePart(zmImgPartType);
-                        newImagePart.FeedData(zmImgStream);
-                        var newImgRelId = zmSlidePart.GetIdOfPart(newImagePart);
-                        var rNs2 = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-                        // Update blip in zmPr > blipFill
-                        var zmBlip = zmPr?.Descendants().FirstOrDefault(d => d.LocalName == "blip");
-                        zmBlip?.SetAttribute(new OpenXmlAttribute("r", "embed", rNs2, newImgRelId));
-                        // Update blip in fallback > blipFill
-                        var fbBlipFill = fallback?.Descendants().FirstOrDefault(d => d.LocalName == "blipFill");
-                        var fbBlip = fbBlipFill?.ChildElements.FirstOrDefault(e => e.LocalName == "blip");
-                        fbBlip?.SetAttribute(new OpenXmlAttribute("r", "embed", rNs2, newImgRelId));
-                        // Set imageType to "cover" so PowerPoint uses our image instead of auto-preview
-                        zmPr?.SetAttribute(new OpenXmlAttribute("", "imageType", null!, "cover"));
-                        break;
-                    }
-                    case "imagetype":
-                        zmPr?.SetAttribute(new OpenXmlAttribute("", "imageType", null!, value));
-                        break;
-                    default:
-                        if (unsupported.Count == 0)
-                            unsupported.Add($"{key} (valid zoom props: target, image, src, path, imagetype, x, y, width, height)");
-                        else
-                            unsupported.Add(key);
-                        break;
-                }
-            }
-            GetSlide(zmSlidePart).Save();
-            return unsupported;
-        }
+        if (zoomSetMatch.Success) return SetZoomByPath(zoomSetMatch, properties);
 
         // Try shape-level path: /slide[N]/shape[M]
         var match = Regex.Match(path, @"^/slide\[(\d+)\]/shape\[(\d+)\]$");
@@ -1683,6 +1529,162 @@ public partial class PowerPointHandler
         var allRuns = shape.Descendants<Drawing.Run>().ToList();
         var unsupported = SetRunOrShapeProperties(properties, allRuns, shape, slidePart);
         GetSlide(slidePart).Save();
+        return unsupported;
+    }
+
+    private List<string> SetZoomByPath(Match zoomSetMatch, Dictionary<string, string> properties)
+    {
+        var slideIdx = int.Parse(zoomSetMatch.Groups[1].Value);
+        var zmIdx = int.Parse(zoomSetMatch.Groups[2].Value);
+        var zmSlideParts = GetSlideParts().ToList();
+        if (slideIdx < 1 || slideIdx > zmSlideParts.Count)
+            throw new ArgumentException($"Slide {slideIdx} not found (total: {zmSlideParts.Count})");
+        var zmSlidePart = zmSlideParts[slideIdx - 1];
+        var zmShapeTree = GetSlide(zmSlidePart).CommonSlideData?.ShapeTree
+            ?? throw new InvalidOperationException("Slide has no shape tree");
+        var zoomElements = GetZoomElements(zmShapeTree);
+        if (zmIdx < 1 || zmIdx > zoomElements.Count)
+            throw new ArgumentException($"Zoom {zmIdx} not found (total: {zoomElements.Count})");
+
+        var acElement = zoomElements[zmIdx - 1];
+        var choice = acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Choice");
+        var fallback = acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Fallback");
+        var gf = choice?.ChildElements.FirstOrDefault(e => e.LocalName == "graphicFrame");
+        var sldZmObj = acElement.Descendants().FirstOrDefault(d => d.LocalName == "sldZmObj");
+        var zmPr = acElement.Descendants().FirstOrDefault(d => d.LocalName == "zmPr");
+
+        var unsupported = new List<string>();
+        foreach (var (key, value) in properties)
+        {
+            switch (key.ToLowerInvariant())
+            {
+                case "target" or "slide":
+                {
+                    if (!int.TryParse(value, out var targetNum))
+                        throw new ArgumentException($"Invalid target value: '{value}'. Expected a slide number.");
+                    if (targetNum < 1 || targetNum > zmSlideParts.Count)
+                        throw new ArgumentException($"Target slide {targetNum} not found (total: {zmSlideParts.Count})");
+                    var zmPresentation = _doc.PresentationPart?.Presentation
+                        ?? throw new InvalidOperationException("No presentation");
+                    var zmSlideIds = zmPresentation.GetFirstChild<SlideIdList>()
+                        ?.Elements<SlideId>().ToList()
+                        ?? throw new InvalidOperationException("No slides");
+                    var newSldId = zmSlideIds[targetNum - 1].Id!.Value;
+                    sldZmObj?.SetAttribute(new OpenXmlAttribute("", "sldId", null!, newSldId.ToString()));
+
+                    // Update fallback hyperlink relationship
+                    var fbPic = fallback?.ChildElements.FirstOrDefault(e => e.LocalName == "pic");
+                    var fbCNvPr = fbPic?.Descendants().FirstOrDefault(d => d.LocalName == "cNvPr");
+                    var hlinkClick = fbCNvPr?.ChildElements.FirstOrDefault(e => e.LocalName == "hlinkClick");
+                    if (hlinkClick != null)
+                    {
+                        var rNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+                        var targetSlidePart = zmSlideParts[targetNum - 1];
+                        var newRelId = zmSlidePart.CreateRelationshipToPart(targetSlidePart);
+                        hlinkClick.SetAttribute(new OpenXmlAttribute("r", "id", rNs, newRelId));
+                    }
+                    break;
+                }
+                case "returntoparent":
+                    zmPr?.SetAttribute(new OpenXmlAttribute("", "returnToParent", null!, IsTruthy(value) ? "1" : "0"));
+                    break;
+                case "transitiondur":
+                    zmPr?.SetAttribute(new OpenXmlAttribute("", "transitionDur", null!, value));
+                    break;
+                case "x" or "y" or "width" or "height":
+                {
+                    var emu = ParseEmu(value);
+                    // Update graphicFrame xfrm
+                    var gfXfrm = gf?.ChildElements.FirstOrDefault(e => e.LocalName == "xfrm");
+                    if (gfXfrm != null)
+                    {
+                        if (key.ToLowerInvariant() is "x" or "y")
+                        {
+                            var off = gfXfrm.ChildElements.FirstOrDefault(e => e.LocalName == "off");
+                            off?.SetAttribute(new OpenXmlAttribute("", key.ToLowerInvariant(), null!, emu.ToString()));
+                        }
+                        else
+                        {
+                            var ext = gfXfrm.ChildElements.FirstOrDefault(e => e.LocalName == "ext");
+                            var attrName = key.ToLowerInvariant() == "width" ? "cx" : "cy";
+                            ext?.SetAttribute(new OpenXmlAttribute("", attrName, null!, emu.ToString()));
+                        }
+                    }
+                    // Update fallback spPr xfrm
+                    var fbPic = fallback?.ChildElements.FirstOrDefault(e => e.LocalName == "pic");
+                    var fbSpPr = fbPic?.ChildElements.FirstOrDefault(e => e.LocalName == "spPr");
+                    var fbXfrm = fbSpPr?.ChildElements.FirstOrDefault(e => e.LocalName == "xfrm");
+                    if (fbXfrm != null)
+                    {
+                        if (key.ToLowerInvariant() is "x" or "y")
+                        {
+                            var off = fbXfrm.ChildElements.FirstOrDefault(e => e.LocalName == "off");
+                            off?.SetAttribute(new OpenXmlAttribute("", key.ToLowerInvariant(), null!, emu.ToString()));
+                        }
+                        else
+                        {
+                            var ext = fbXfrm.ChildElements.FirstOrDefault(e => e.LocalName == "ext");
+                            var attrName = key.ToLowerInvariant() == "width" ? "cx" : "cy";
+                            ext?.SetAttribute(new OpenXmlAttribute("", attrName, null!, emu.ToString()));
+                        }
+                    }
+                    // Update inner zmPr > spPr > xfrm (only for width/height)
+                    if (key.ToLowerInvariant() is "width" or "height")
+                    {
+                        var p166Ns = "http://schemas.microsoft.com/office/powerpoint/2016/6/main";
+                        var zmSpPr = zmPr?.ChildElements.FirstOrDefault(e => e.LocalName == "spPr" && e.NamespaceUri == p166Ns);
+                        var zmSpXfrm = zmSpPr?.ChildElements.FirstOrDefault(e => e.LocalName == "xfrm");
+                        var zmSpExt = zmSpXfrm?.ChildElements.FirstOrDefault(e => e.LocalName == "ext");
+                        var attrName = key.ToLowerInvariant() == "width" ? "cx" : "cy";
+                        zmSpExt?.SetAttribute(new OpenXmlAttribute("", attrName, null!, emu.ToString()));
+                    }
+                    break;
+                }
+                case "name":
+                {
+                    // Update cNvPr name in Choice
+                    var nvGfPr = gf?.ChildElements.FirstOrDefault(e => e.LocalName == "nvGraphicFramePr");
+                    var choiceCNvPr = nvGfPr?.ChildElements.FirstOrDefault(e => e.LocalName == "cNvPr");
+                    choiceCNvPr?.SetAttribute(new OpenXmlAttribute("", "name", null!, value));
+                    // Update cNvPr name in Fallback
+                    var fbPic = fallback?.ChildElements.FirstOrDefault(e => e.LocalName == "pic");
+                    var fbNvPicPr = fbPic?.ChildElements.FirstOrDefault(e => e.LocalName == "nvPicPr");
+                    var fbCNvPr = fbNvPicPr?.ChildElements.FirstOrDefault(e => e.LocalName == "cNvPr");
+                    fbCNvPr?.SetAttribute(new OpenXmlAttribute("", "name", null!, value));
+                    break;
+                }
+                case "image" or "path" or "src" or "cover":
+                {
+                    var (zmImgStream, zmImgPartType) = OfficeCli.Core.ImageSource.Resolve(value);
+                    using var zmImgDispose = zmImgStream;
+                    // Add new image part
+                    var newImagePart = zmSlidePart.AddImagePart(zmImgPartType);
+                    newImagePart.FeedData(zmImgStream);
+                    var newImgRelId = zmSlidePart.GetIdOfPart(newImagePart);
+                    var rNs2 = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+                    // Update blip in zmPr > blipFill
+                    var zmBlip = zmPr?.Descendants().FirstOrDefault(d => d.LocalName == "blip");
+                    zmBlip?.SetAttribute(new OpenXmlAttribute("r", "embed", rNs2, newImgRelId));
+                    // Update blip in fallback > blipFill
+                    var fbBlipFill = fallback?.Descendants().FirstOrDefault(d => d.LocalName == "blipFill");
+                    var fbBlip = fbBlipFill?.ChildElements.FirstOrDefault(e => e.LocalName == "blip");
+                    fbBlip?.SetAttribute(new OpenXmlAttribute("r", "embed", rNs2, newImgRelId));
+                    // Set imageType to "cover" so PowerPoint uses our image instead of auto-preview
+                    zmPr?.SetAttribute(new OpenXmlAttribute("", "imageType", null!, "cover"));
+                    break;
+                }
+                case "imagetype":
+                    zmPr?.SetAttribute(new OpenXmlAttribute("", "imageType", null!, value));
+                    break;
+                default:
+                    if (unsupported.Count == 0)
+                        unsupported.Add($"{key} (valid zoom props: target, image, src, path, imagetype, x, y, width, height)");
+                    else
+                        unsupported.Add(key);
+                    break;
+            }
+        }
+        GetSlide(zmSlidePart).Save();
         return unsupported;
     }
 
