@@ -164,75 +164,7 @@ public partial class PowerPointHandler
             var masterBgMatch = Regex.Match(path, @"^/slidemaster\[(\d+)\](?:/slidelayout\[(\d+)\])?$", RegexOptions.IgnoreCase);
             var layoutBgMatch = Regex.Match(path, @"^/slidelayout\[(\d+)\]$", RegexOptions.IgnoreCase);
             if (masterBgMatch.Success || layoutBgMatch.Success)
-            {
-                OpenXmlPart targetPart;
-                OpenXmlPartRootElement targetRoot;
-                if (masterBgMatch.Success)
-                {
-                    var masterIdx = int.Parse(masterBgMatch.Groups[1].Value);
-                    var masters = _doc.PresentationPart?.SlideMasterParts?.ToList() ?? [];
-                    if (masterIdx < 1 || masterIdx > masters.Count)
-                        throw new ArgumentException($"Slide master {masterIdx} not found (total: {masters.Count})");
-                    var mp = masters[masterIdx - 1];
-                    if (masterBgMatch.Groups[2].Success)
-                    {
-                        var lIdx = int.Parse(masterBgMatch.Groups[2].Value);
-                        var layouts = mp.SlideLayoutParts?.ToList() ?? [];
-                        if (lIdx < 1 || lIdx > layouts.Count)
-                            throw new ArgumentException($"Slide layout {lIdx} not found under master {masterIdx} (total: {layouts.Count})");
-                        targetPart = layouts[lIdx - 1];
-                        targetRoot = layouts[lIdx - 1].SlideLayout
-                            ?? throw new InvalidOperationException("Corrupt slide layout");
-                    }
-                    else
-                    {
-                        targetPart = mp;
-                        targetRoot = mp.SlideMaster
-                            ?? throw new InvalidOperationException("Corrupt slide master");
-                    }
-                }
-                else
-                {
-                    var lIdx = int.Parse(layoutBgMatch.Groups[1].Value);
-                    var allLayouts = (_doc.PresentationPart?.SlideMasterParts ?? Enumerable.Empty<SlideMasterPart>())
-                        .SelectMany(m => m.SlideLayoutParts ?? Enumerable.Empty<SlideLayoutPart>()).ToList();
-                    if (lIdx < 1 || lIdx > allLayouts.Count)
-                        throw new ArgumentException($"Slide layout {lIdx} not found (total: {allLayouts.Count})");
-                    targetPart = allLayouts[lIdx - 1];
-                    targetRoot = allLayouts[lIdx - 1].SlideLayout
-                        ?? throw new InvalidOperationException("Corrupt slide layout");
-                }
-
-                var unsupported = new List<string>();
-                foreach (var (key, value) in properties)
-                {
-                    switch (key.ToLowerInvariant())
-                    {
-                        case "background":
-                            ApplyBackground(targetPart, value, ReadBackgroundImageOptions(properties));
-                            break;
-                        case "background.mode":
-                        case "background.alpha":
-                        case "background.scale":
-                            break;
-                        case "name":
-                        {
-                            var csd = targetRoot.GetFirstChild<CommonSlideData>();
-                            if (csd != null) csd.Name = value;
-                            break;
-                        }
-                        default:
-                            if (unsupported.Count == 0)
-                                unsupported.Add($"{key} (valid slidemaster/slidelayout props: background, background.mode, background.alpha, background.scale, name)");
-                            else
-                                unsupported.Add(key);
-                            break;
-                    }
-                }
-                MaybeMutateExistingBackgroundImage(targetPart, properties);
-                SaveBackgroundRoot(targetPart);
-                return unsupported;
-            }
+                return SetMasterOrLayoutBackgroundByPath(masterBgMatch, layoutBgMatch, properties);
         }
 
         // Try slideMaster/slideLayout shape editing: /slideMaster[N]/shape[M] or /slideLayout[N]/shape[M]
@@ -807,6 +739,77 @@ public partial class PowerPointHandler
         var allRuns = shape.Descendants<Drawing.Run>().ToList();
         var unsupported = SetRunOrShapeProperties(properties, allRuns, shape, slidePart);
         GetSlide(slidePart).Save();
+        return unsupported;
+    }
+
+    private List<string> SetMasterOrLayoutBackgroundByPath(Match masterBgMatch, Match layoutBgMatch, Dictionary<string, string> properties)
+    {
+        OpenXmlPart targetPart;
+        OpenXmlPartRootElement targetRoot;
+        if (masterBgMatch.Success)
+        {
+            var masterIdx = int.Parse(masterBgMatch.Groups[1].Value);
+            var masters = _doc.PresentationPart?.SlideMasterParts?.ToList() ?? [];
+            if (masterIdx < 1 || masterIdx > masters.Count)
+                throw new ArgumentException($"Slide master {masterIdx} not found (total: {masters.Count})");
+            var mp = masters[masterIdx - 1];
+            if (masterBgMatch.Groups[2].Success)
+            {
+                var lIdx = int.Parse(masterBgMatch.Groups[2].Value);
+                var layouts = mp.SlideLayoutParts?.ToList() ?? [];
+                if (lIdx < 1 || lIdx > layouts.Count)
+                    throw new ArgumentException($"Slide layout {lIdx} not found under master {masterIdx} (total: {layouts.Count})");
+                targetPart = layouts[lIdx - 1];
+                targetRoot = layouts[lIdx - 1].SlideLayout
+                    ?? throw new InvalidOperationException("Corrupt slide layout");
+            }
+            else
+            {
+                targetPart = mp;
+                targetRoot = mp.SlideMaster
+                    ?? throw new InvalidOperationException("Corrupt slide master");
+            }
+        }
+        else
+        {
+            var lIdx = int.Parse(layoutBgMatch.Groups[1].Value);
+            var allLayouts = (_doc.PresentationPart?.SlideMasterParts ?? Enumerable.Empty<SlideMasterPart>())
+                .SelectMany(m => m.SlideLayoutParts ?? Enumerable.Empty<SlideLayoutPart>()).ToList();
+            if (lIdx < 1 || lIdx > allLayouts.Count)
+                throw new ArgumentException($"Slide layout {lIdx} not found (total: {allLayouts.Count})");
+            targetPart = allLayouts[lIdx - 1];
+            targetRoot = allLayouts[lIdx - 1].SlideLayout
+                ?? throw new InvalidOperationException("Corrupt slide layout");
+        }
+
+        var unsupported = new List<string>();
+        foreach (var (key, value) in properties)
+        {
+            switch (key.ToLowerInvariant())
+            {
+                case "background":
+                    ApplyBackground(targetPart, value, ReadBackgroundImageOptions(properties));
+                    break;
+                case "background.mode":
+                case "background.alpha":
+                case "background.scale":
+                    break;
+                case "name":
+                {
+                    var csd = targetRoot.GetFirstChild<CommonSlideData>();
+                    if (csd != null) csd.Name = value;
+                    break;
+                }
+                default:
+                    if (unsupported.Count == 0)
+                        unsupported.Add($"{key} (valid slidemaster/slidelayout props: background, background.mode, background.alpha, background.scale, name)");
+                    else
+                        unsupported.Add(key);
+                    break;
+            }
+        }
+        MaybeMutateExistingBackgroundImage(targetPart, properties);
+        SaveBackgroundRoot(targetPart);
         return unsupported;
     }
 
