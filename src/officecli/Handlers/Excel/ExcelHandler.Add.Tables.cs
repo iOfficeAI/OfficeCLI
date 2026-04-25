@@ -50,6 +50,11 @@ public partial class ExcelHandler
             throw new ArgumentException($"Invalid defined-name '{nrName}': must start with a letter/underscore and contain only letters, digits, underscores, or periods (no spaces).");
         if (LooksLikeCellReference(nrName))
             throw new ArgumentException($"Invalid defined-name '{nrName}': name parses as a cell reference; choose a different name.");
+        // R39-5: Excel reserves the single letters R and C (case-insensitive)
+        // because they collide with R1C1 reference notation. Excel rejects
+        // the file with 0x800A03EC if either is used as a defined name.
+        if (nrName.Length == 1 && (nrName[0] == 'R' || nrName[0] == 'r' || nrName[0] == 'C' || nrName[0] == 'c'))
+            throw new ArgumentException($"Invalid defined-name '{nrName}': single letter 'R' / 'C' is reserved by Excel for R1C1 reference notation; choose a different name.");
         // `refersTo` is the common Excel-documented alias for `ref`;
         // silently map it so users don't end up with an empty
         // <x:definedName/> that corrupts the file.
