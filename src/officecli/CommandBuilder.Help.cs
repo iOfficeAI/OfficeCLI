@@ -117,12 +117,6 @@ static partial class CommandBuilder
             var third = result.GetValue(thirdArg);
 
             // Disambiguate middle arg: is it a verb or an element?
-            // Normalize empty/whitespace tokens to null so `help docx ''` routes
-            // to LoadSchema (→ proper "unknown element" error) rather than silently
-            // falling into the "list all elements" branch. CONSISTENCY(empty-arg).
-            if (string.IsNullOrWhiteSpace(second)) second = null;
-            if (string.IsNullOrWhiteSpace(third)) third = null;
-
             string? verb = null;
             string? element = null;
             if (second != null)
@@ -249,7 +243,10 @@ static partial class CommandBuilder
         var canonicalFormat = SchemaHelpLoader.NormalizeFormat(format);
 
         // Case 2: format (+ optional verb) only — list elements.
-        if (string.IsNullOrEmpty(element))
+        // Use `== null` (not IsNullOrEmpty) so that an explicit empty-string
+        // arg (`help docx ''`) falls through to Case 3 where LoadSchema raises
+        // a proper "unknown element ''" error. CONSISTENCY(empty-arg).
+        if (element == null)
         {
             var all = SchemaHelpLoader.ListElements(canonicalFormat);
             var filtered = verb == null
