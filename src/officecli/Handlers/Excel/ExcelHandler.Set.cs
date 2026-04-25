@@ -417,6 +417,7 @@ public partial class ExcelHandler
                     }
                     break;
                 case "formula":
+                    RejectCrossWorkbookFormula(value);
                     cell.CellFormula = new CellFormula(Core.ModernFunctionQualifier.Qualify(Core.ModernFunctionQualifier.AutoQuoteSheetRefs(value.TrimStart('='))));
                     // Try to evaluate and cache the result immediately
                     var evalSheetData = GetSheet(worksheet).GetFirstChild<SheetData>();
@@ -498,6 +499,7 @@ public partial class ExcelHandler
                     break;
                 case "arrayformula":
                 {
+                    RejectCrossWorkbookFormula(value);
                     var arrRef = properties.GetValueOrDefault("ref", cellRef);
                     cell.CellFormula = new CellFormula(Core.ModernFunctionQualifier.Qualify(Core.ModernFunctionQualifier.AutoQuoteSheetRefs(value.TrimStart('='))))
                     {
@@ -671,6 +673,19 @@ public partial class ExcelHandler
                     if (sheet != null)
                     {
                         var oldName = sheet.Name!.Value!;
+                        // R35-1: Excel sheet names are case-insensitive and must be
+                        // unique. Match the Add path's duplicate-name check
+                        // (ExcelHandler.Add.Cells.cs) so renaming Sheet1→Data when a
+                        // "Data" sheet already exists fails up-front rather than
+                        // writing two <sheet name="Data"> entries.
+                        // CONSISTENCY(sheet-name-unique)
+                        if (!oldName.Equals(value, StringComparison.OrdinalIgnoreCase) &&
+                            sheets!.Any(s => s != sheet &&
+                                s.Name?.Value?.Equals(value, StringComparison.OrdinalIgnoreCase) == true))
+                        {
+                            throw new ArgumentException(
+                                $"A sheet named '{value}' already exists. Sheet names must be unique.");
+                        }
                         sheet.Name = value;
 
                         // Excel stores sheet references in formulas as either:
