@@ -3033,8 +3033,14 @@ public partial class ExcelHandler
         if (sheetData == null)
             throw new ArgumentException($"Sheet '{rangeSheetName}' has no data");
 
-        // Build cell lookup
+        // Build cell lookup. Track value, the originating Cell (for DataType),
+        // and a "is blank" flag for cells that exist but carry no value.
+        // R20-03: blank-vs-zero distinction is needed for dispBlanksAs=gap.
+        // R20-04: DataType drives header detection — only string-typed
+        // first-row cells are treated as series names.
         var cellLookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var cellTypeLookup = new Dictionary<string, Cell>(StringComparer.OrdinalIgnoreCase);
+        var cellPresent = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in sheetData.Elements<Row>())
         {
             var rowIdx = (int)(row.RowIndex?.Value ?? 0);
@@ -3042,14 +3048,42 @@ public partial class ExcelHandler
             foreach (var cell in row.Elements<Cell>())
             {
                 if (cell.CellReference?.Value != null)
+                {
                     cellLookup[cell.CellReference.Value] = GetCellDisplayValue(cell);
+                    cellTypeLookup[cell.CellReference.Value] = cell;
+                    cellPresent.Add(cell.CellReference.Value);
+                }
             }
         }
 
-        // First row = headers: first cell is ignored (corner), rest are series names
-        // First column (excluding header row) = category labels
+        // R20-04: a first-row cell counts as a header only when its DataType
+        // is string-like (SharedString / InlineString / String). Numeric or
+        // missing first-row cells mean "no header" — series starts at row 1.
+        bool IsStringTypedHeader(string cellRef)
+        {
+            if (!cellTypeLookup.TryGetValue(cellRef, out var c)) return false;
+            var dt = c.DataType?.Value;
+            return dt == CellValues.SharedString
+                || dt == CellValues.InlineString
+                || dt == CellValues.String;
+        }
+
+        // Decide globally: if ANY non-corner cell in the first row is string-typed,
+        // treat row 1 as headers; otherwise treat all rows as data and synthesize
+        // series names. Picking globally keeps a single header convention
+        // across columns (mixed string/number headers would be ambiguous).
+        bool hasHeaderRow = false;
+        for (int c = startColIdx + 1; c <= endColIdx; c++)
+        {
+            var headerRef = $"{IndexToColumnName(c)}{startRow}";
+            if (IsStringTypedHeader(headerRef)) { hasHeaderRow = true; break; }
+        }
+
+        int dataStartRow = hasHeaderRow ? startRow + 1 : startRow;
+
+        // First column (excluding header row if present) = category labels
         var categories = new List<string>();
-        for (int r = startRow + 1; r <= endRow; r++)
+        for (int r = dataStartRow; r <= endRow; r++)
         {
             var cellRef = $"{startCol}{r}";
             cellLookup.TryGetValue(cellRef, out var catVal);
@@ -3061,29 +3095,47 @@ public partial class ExcelHandler
         for (int c = startColIdx + 1; c <= endColIdx; c++)
         {
             var colName = IndexToColumnName(c);
-            // Series name from header row
-            var headerRef = $"{colName}{startRow}";
-            cellLookup.TryGetValue(headerRef, out var seriesName);
-            seriesName ??= $"Series {seriesIdx}";
+            string seriesName;
+            if (hasHeaderRow)
+            {
+                var headerRef = $"{colName}{startRow}";
+                cellLookup.TryGetValue(headerRef, out var sn);
+                seriesName = sn ?? $"Series {seriesIdx}";
+            }
+            else
+            {
+                seriesName = $"Series {seriesIdx}";
+            }
 
-            // Series values
+            // Series values + per-index blank tracking. R20-03: under
+            // dispBlanksAs=gap, blank source cells must be omitted from the
+            // numCache; we forward the blank-index list via properties so
+            // ApplySeriesReferences/numCache builder can honor it.
             var values = new List<double>();
-            for (int r = startRow + 1; r <= endRow; r++)
+            var blankIndexes = new List<int>();
+            int idx = 0;
+            for (int r = dataStartRow; r <= endRow; r++)
             {
                 var cellRef = $"{colName}{r}";
+                bool isBlank = !cellPresent.Contains(cellRef)
+                    || string.IsNullOrEmpty(cellLookup.GetValueOrDefault(cellRef));
                 cellLookup.TryGetValue(cellRef, out var valStr);
                 if (double.TryParse(valStr, System.Globalization.CultureInfo.InvariantCulture, out var num))
                     values.Add(num);
                 else
                     values.Add(0);
+                if (isBlank) blankIndexes.Add(idx);
+                idx++;
             }
 
             // Set up cell references in properties for ApplySeriesReferences
-            var valuesRef = $"{rangeSheetName}!${colName}${startRow + 1}:${colName}${endRow}";
-            var categoriesRef = $"{rangeSheetName}!${startCol}${startRow + 1}:${startCol}${endRow}";
+            var valuesRef = $"{rangeSheetName}!${colName}${dataStartRow}:${colName}${endRow}";
+            var categoriesRef = $"{rangeSheetName}!${startCol}${dataStartRow}:${startCol}${endRow}";
             properties[$"series{seriesIdx}.name"] = seriesName;
             properties[$"series{seriesIdx}.values"] = valuesRef;
             properties[$"series{seriesIdx}.categories"] = categoriesRef;
+            if (blankIndexes.Count > 0)
+                properties[$"series{seriesIdx}._blankIndexes"] = string.Join(",", blankIndexes);
 
             seriesData.Add((seriesName, values.ToArray()));
             seriesIdx++;
