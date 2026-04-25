@@ -2598,8 +2598,15 @@ public partial class ExcelHandler
             // with ParseAnchorOriginCell so x/y/width/height all flip to
             // EMU at the same boundary.
             const int MaxCellIndex = 16384;
-            if (plainInt >= MaxCellIndex)
-                return plainInt;
+            // R39-2: cell-count form is rejected above the grid limit so
+            // mistakes like `width=20000` raise a clear error instead of
+            // being silently treated as raw EMU. Users passing EMU should
+            // use a unit-qualified form (`914400emu`, `1in`) which is parsed
+            // through EmuConverter further down. CONSISTENCY with
+            // ParseAnchorOriginCell.
+            if (plainInt > MaxCellIndex - 1)
+                throw new ArgumentException(
+                    $"Picture/shape {name} column/row index must be in [0, {MaxCellIndex - 1}] (got '{value}'). For EMU-scale sizes use a unit-qualified value like '1in' / '6cm' / '72pt'.");
             long perCell = (name == "height") ? EmuPerRowApprox : EmuPerColApprox;
             return plainInt * perCell;
         }
@@ -2854,11 +2861,17 @@ public partial class ExcelHandler
             // passing inch-EMU (914400) consistently land on a sensible cell
             // on either axis.
             const int MaxCellIndex = 16384;
-            if (plainInt >= MaxCellIndex)
-            {
-                long perCell = (name == "y") ? EmuPerRowApprox : EmuPerColApprox;
-                return (int)(plainInt / perCell);
-            }
+            // R39-2: bare cell-count form must reject above-grid values
+            // outright. Previously, x=20000 hit the "large bare int = EMU"
+            // branch and divided by 609600, silently coercing the origin
+            // back to col=0 (or row=0 for y). Cell-count input is small
+            // by definition; if a user passes a number above the column
+            // max, it's either a typo or an EMU value mistakenly fed
+            // without a unit suffix. Either way, refuse rather than silently
+            // remap. CONSISTENCY with R30-1 negative guard.
+            if (plainInt > MaxCellIndex - 1)
+                throw new ArgumentException(
+                    $"Picture/shape {name} column/row index must be in [0, {MaxCellIndex - 1}] (got '{value}'). For EMU-scale offsets use a unit-qualified value like '1in' / '6cm' / '72pt'.");
             return (int)plainInt;
         }
 
