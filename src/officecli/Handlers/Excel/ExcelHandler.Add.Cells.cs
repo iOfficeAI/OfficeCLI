@@ -503,8 +503,6 @@ public partial class ExcelHandler
         if (properties.TryGetValue("link", out var linkUrl) && !string.IsNullOrEmpty(linkUrl))
         {
             var ws = GetSheet(cellWorksheet);
-            var hlUri = new Uri(linkUrl, UriKind.RelativeOrAbsolute);
-            var hlRel = cellWorksheet.AddHyperlinkRelationship(hlUri, isExternal: true);
             var hyperlinksEl = ws.GetFirstChild<Hyperlinks>();
             if (hyperlinksEl == null)
             {
@@ -519,15 +517,34 @@ public partial class ExcelHandler
                 else
                     ws.AppendChild(hyperlinksEl);
             }
-            var hl = new Hyperlink { Reference = cellRef.ToUpperInvariant(), Id = hlRel.Id };
             // H2: tooltip (OOXML @tooltip) — Excel surfaces it as a
             // ScreenTip when the cell is hovered in read mode.
             var hlTip = properties.GetValueOrDefault("tooltip")
                 ?? properties.GetValueOrDefault("screenTip")
                 ?? properties.GetValueOrDefault("screentip");
-            if (!string.IsNullOrEmpty(hlTip))
-                hl.Tooltip = hlTip;
-            hyperlinksEl.AppendChild(hl);
+            // R37-B: detect internal `[#]Sheet!Cell` (and quoted variants);
+            // emit as @location with no relationship.
+            // CONSISTENCY(internal-hyperlink): same detection used in Set.cs.
+            var addInternalLoc = TryParseInternalHyperlinkLocation(linkUrl);
+            if (addInternalLoc != null)
+            {
+                var hl = new Hyperlink
+                {
+                    Reference = cellRef.ToUpperInvariant(),
+                    Location = addInternalLoc
+                };
+                if (!string.IsNullOrEmpty(hlTip)) hl.Tooltip = hlTip;
+                hyperlinksEl.AppendChild(hl);
+            }
+            else
+            {
+                var hlUri = new Uri(linkUrl, UriKind.RelativeOrAbsolute);
+                var hlRel = cellWorksheet.AddHyperlinkRelationship(hlUri, isExternal: true);
+                var hl = new Hyperlink { Reference = cellRef.ToUpperInvariant(), Id = hlRel.Id };
+                if (!string.IsNullOrEmpty(hlTip))
+                    hl.Tooltip = hlTip;
+                hyperlinksEl.AppendChild(hl);
+            }
         }
 
         // CONSISTENCY(cell-prop-hints): mirror Set's CellPropHints check

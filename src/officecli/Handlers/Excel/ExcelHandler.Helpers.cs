@@ -3816,6 +3816,26 @@ public partial class ExcelHandler
         return any ? font : null;
     }
 
+    // R37-B: detect whether a hyperlink target is an internal sheet/cell reference
+    // (location-based) rather than an external URI. Recognises both the canonical
+    // "#Sheet1!A1" form and the bare "Sheet1!A1" form (no leading '#'), as well
+    // as the quoted variants used when the sheet name contains spaces or special
+    // characters: "#'Multi Word'!A1" and "'Multi Word'!A1".
+    //
+    // Returns the location string (without leading '#') when matched, or null.
+    // The location string is what gets written to the OOXML @location attribute.
+    private static readonly System.Text.RegularExpressions.Regex s_internalLinkPattern =
+        new System.Text.RegularExpressions.Regex(
+            @"^#?(?:'(?:[^']|'')+'|[A-Za-z_][\w\.]*)![A-Za-z]{1,3}\d+(?::[A-Za-z]{1,3}\d+)?$",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    internal static string? TryParseInternalHyperlinkLocation(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return null;
+        if (!s_internalLinkPattern.IsMatch(value)) return null;
+        return value.StartsWith("#") ? value.Substring(1) : value;
+    }
+
     // R24-1: detect whether a styleProps bag asks for the text number format
     // ("@"). All three accepted aliases are checked: numberformat, numfmt,
     // format. Whitespace is trimmed; quoting is not expected here because

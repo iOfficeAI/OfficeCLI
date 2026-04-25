@@ -535,16 +535,19 @@ public partial class ExcelHandler
                         var setHlTip = properties.GetValueOrDefault("tooltip")
                             ?? properties.GetValueOrDefault("screenTip")
                             ?? properties.GetValueOrDefault("screentip");
-                        if (value.StartsWith("#"))
+                        // R37-B: also accept bare `SheetName!Cell` (no '#' prefix)
+                        // and quoted `'Multi Word'!Cell` as internal targets.
+                        // CONSISTENCY(internal-hyperlink): same detection used in Add.Cells.cs.
+                        var internalLoc = TryParseInternalHyperlinkLocation(value);
+                        if (internalLoc != null)
                         {
                             // Internal target (sheet cell or named range) is
                             // written as an in-document hyperlink via the
                             // `location` attribute, no relationship/target.
-                            var location = value.Substring(1);
                             var hl = new Hyperlink
                             {
                                 Reference = cellRef.ToUpperInvariant(),
-                                Location = location
+                                Location = internalLoc
                             };
                             if (!string.IsNullOrEmpty(setHlTip)) hl.Tooltip = setHlTip;
                             hyperlinksEl.AppendChild(hl);
