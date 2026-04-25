@@ -1041,8 +1041,22 @@ internal static partial class PivotTableHelper
             }
         }
 
+        // R34-2: pivot Add must be transactional. The four package mutations
+        // below (cachePart, recordsPart child of cachePart, PivotCache entry
+        // in workbook.xml, pivotPart on the target sheet) used to leak into
+        // the .xlsx zip when a downstream step threw — most visibly an
+        // unknown showDataAs token caught inside BuildPivotTableDefinition,
+        // leaving a 0-byte pivotTable.xml whose rels Excel then complains
+        // about. Wrap the whole emit-and-link sequence in a try/catch that
+        // rolls back the parts and the workbook.xml entry on any throw.
+        PivotTableCacheDefinitionPart? cachePart = null;
+        PivotTablePart? pivotPart = null;
+        PivotCache? pivotCacheEntry = null;
+        try
+        {
+
         // 4. Create PivotTableCacheDefinitionPart at workbook level
-        var cachePart = workbookPart.AddNewPart<PivotTableCacheDefinitionPart>();
+        cachePart = workbookPart.AddNewPart<PivotTableCacheDefinitionPart>();
         var cacheRelId = workbookPart.GetIdOfPart(cachePart);
 
         // Build cache definition + per-field shared-item index maps. The maps are
@@ -1108,11 +1122,12 @@ internal static partial class PivotTableHelper
             else
                 workbook.AppendChild(pivotCaches);
         }
-        pivotCaches.AppendChild(new PivotCache { CacheId = cacheId, Id = cacheRelId });
+        pivotCacheEntry = new PivotCache { CacheId = cacheId, Id = cacheRelId };
+        pivotCaches.AppendChild(pivotCacheEntry);
         workbook.Save();
 
         // 5. Create PivotTablePart at worksheet level
-        var pivotPart = targetSheet.AddNewPart<PivotTablePart>();
+        pivotPart = targetSheet.AddNewPart<PivotTablePart>();
         // Link pivot table to cache definition
         pivotPart.AddPart(cachePart);
 
@@ -1235,6 +1250,47 @@ internal static partial class PivotTableHelper
 
         // Return 1-based index
         return targetSheet.PivotTableParts.ToList().IndexOf(pivotPart) + 1;
+
+        }
+        catch
+        {
+            // R34-2 rollback: drop everything we added so a failed Add
+            // leaves the package exactly as it was on entry.
+            try
+            {
+                if (pivotPart != null)
+                {
+                    targetSheet.DeletePart(pivotPart);
+                }
+            }
+            catch { /* best-effort */ }
+            try
+            {
+                if (cachePart != null)
+                {
+                    // Deleting the cache part also drops its child
+                    // PivotTableCacheRecordsPart and the relationship
+                    // from pivotPart (already deleted above).
+                    workbookPart.DeletePart(cachePart);
+                }
+            }
+            catch { /* best-effort */ }
+            try
+            {
+                if (pivotCacheEntry != null && pivotCacheEntry.Parent != null)
+                {
+                    pivotCacheEntry.Remove();
+                    if (pivotCaches != null
+                        && !pivotCaches.Elements<PivotCache>().Any())
+                    {
+                        pivotCaches.Remove();
+                    }
+                    workbook.Save();
+                }
+            }
+            catch { /* best-effort */ }
+            throw;
+        }
     }
 
     // ==================== Axis Tree (general N-level row/col abstraction) ====================
