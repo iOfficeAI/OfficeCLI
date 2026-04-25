@@ -2793,10 +2793,14 @@ public partial class ExcelHandler
     {
         if (long.TryParse(value, out var plainInt))
         {
-            const int MaxCols = 16384;
-            const int MaxRows = 1048576;
-            long boundary = (name == "y") ? MaxRows : MaxCols;
-            if (plainInt >= boundary)
+            // Excel's column max (16384) is the tightest sheet-coordinate
+            // bound — anything beyond that is unambiguously an EMU offset
+            // (rows go to 1048576 but a row index that high is also clearly
+            // EMU in practice). Use the same threshold for x and y so users
+            // passing inch-EMU (914400) consistently land on a sensible cell
+            // on either axis.
+            const int MaxCellIndex = 16384;
+            if (plainInt >= MaxCellIndex)
             {
                 long perCell = (name == "y") ? EmuPerRowApprox : EmuPerColApprox;
                 return (int)Math.Max(0, plainInt / perCell);
