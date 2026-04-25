@@ -234,7 +234,13 @@ public partial class ExcelHandler
                 // downstream save (including the pivot cache write).
                 var safeValue = OfficeCli.Core.PivotTableHelper.SanitizeXmlText(value);
                 cell.CellValue = new CellValue(safeValue);
-                if (!double.TryParse(safeValue, out _))
+                // R32-1: double.TryParse("NaN") returns true with double.NaN,
+                // which would write <c><v>NaN</v></c> with no t= — invalid
+                // xs:double content that crashes Excel. Force string type for
+                // any non-finite double (NaN/Infinity), matching the
+                // already-string behavior of "Infinity"/"-Infinity" (which
+                // TryParse rejects under default culture).
+                if (!double.TryParse(safeValue, out var dbl) || !double.IsFinite(dbl))
                     cell.DataType = new EnumValue<CellValues>(CellValues.String);
             }
         }

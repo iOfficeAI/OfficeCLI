@@ -390,8 +390,11 @@ public partial class ExcelHandler
                         {
                             // R15-2: honor explicit type=number — refuse
                             // non-numeric values rather than silently storing
-                            // as string.
-                            if (!double.TryParse(cellValue, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _))
+                            // as string. R32-1: also refuse NaN/Infinity even
+                            // though TryParse may accept them — they are not
+                            // valid xs:double cell content.
+                            if (!double.TryParse(cellValue, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var numDbl)
+                                || !double.IsFinite(numDbl))
                                 throw new ArgumentException(
                                     $"Cannot store '{cellValue}' as number; use type=string or remove type=");
                             cell.CellValue = new CellValue(cellValue);
@@ -400,7 +403,13 @@ public partial class ExcelHandler
                         else
                         {
                             cell.CellValue = new CellValue(cellValue);
-                            if (double.TryParse(cellValue, out _))
+                            // R32-1: double.TryParse("NaN") returns true; without
+                            // an IsFinite gate, the cell would be written with
+                            // no t= attribute (numeric default) and content
+                            // "NaN", which Excel rejects as invalid xs:double.
+                            // Force string storage for non-finite doubles,
+                            // matching how "Infinity" already behaves.
+                            if (double.TryParse(cellValue, out var dbl) && double.IsFinite(dbl))
                                 cell.DataType = null;
                             else
                                 cell.DataType = new EnumValue<CellValues>(CellValues.String);
