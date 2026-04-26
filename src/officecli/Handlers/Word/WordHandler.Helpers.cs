@@ -37,7 +37,7 @@ public partial class WordHandler
     internal static string NormalizeUnderlineValue(string value)
     {
         var v = (value ?? "").Trim();
-        return v.ToLowerInvariant() switch
+        var mapped = v.ToLowerInvariant() switch
         {
             "true" or "single" or "1" => "single",
             "false" or "none" or "0" or "" => "none",
@@ -60,7 +60,24 @@ public partial class WordHandler
             "words" or "word" => "words",
             _ => v  // pass-through for already-valid OOXML tokens
         };
+        // CONSISTENCY(allowlist): mirror tab val/leader allowlist (R1 a1554d59) and
+        // ParseJustification — validate before handing off to OpenXML SDK to avoid
+        // leaking "specified value is not valid according to the specified enum type".
+        if (!ValidUnderlineValues.Contains(mapped))
+            throw new ArgumentException(
+                $"Invalid underline value: '{value}'. Valid values: single, double, thick, dotted, " +
+                "dottedHeavy, dash, dashedHeavy, dashLong, dashLongHeavy, dotDash, dashDotHeavy, " +
+                "dotDotDash, dashDotDotHeavy, wave, wavyHeavy, wavyDouble, words, none.");
+        return mapped;
     }
+
+    private static readonly HashSet<string> ValidUnderlineValues = new(StringComparer.Ordinal)
+    {
+        "single", "double", "thick", "dotted", "dottedHeavy",
+        "dash", "dashedHeavy", "dashLong", "dashLongHeavy",
+        "dotDash", "dashDotHeavy", "dotDotDash", "dashDotDotHeavy",
+        "wave", "wavyHeavy", "wavyDouble", "words", "none"
+    };
 
     private static JustificationValues ParseJustification(string value) =>
         value.ToLowerInvariant() switch
