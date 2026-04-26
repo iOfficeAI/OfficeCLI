@@ -1442,15 +1442,13 @@ public partial class ExcelHandler
                         node.Format["numberformat"] = fmtVal;
                     }
 
-                    // Protection readback — always output locked state when protection is set
-                    var prot = xf.Protection;
-                    if (xf.ApplyProtection?.Value == true && prot != null)
-                    {
-                        // Always output locked state so agent can see it
-                        node.Format["locked"] = prot.Locked?.Value ?? true;
-                        if (prot.Hidden?.Value == true)
-                            node.Format["formulahidden"] = true;
-                    }
+                    // Protection readback handled above via the dotted
+                    // canonical form (`protection.locked` / `protection.hidden`)
+                    // — see CONSISTENCY(canonical-keys) in CLAUDE.md. Flat
+                    // `locked` / `formulahidden` Get emission was removed to
+                    // avoid double-emission alongside the dotted form. The
+                    // Set side still accepts both flat shorthand and dotted
+                    // input via IsStyleKey routing.
                 }
             }
 

@@ -662,22 +662,12 @@ internal class ExcelStyleManager
             colorTheme = baseFont.Color?.Theme?.Value;
         }
 
-        // Search for existing match (skip dedup when long-tail children are
-        // present — FontMatches only compares curated fields, so a match here
-        // would silently lose any long-tail children the caller intends to
-        // attach. Force-new in that case; dedup-table bloat is bounded by the
-        // number of distinct long-tail combinations per file.)
+        // Long-tail children are added below (post-build) and dedup runs after
+        // — that way SDK-rejected keys (e.g. font.bogus=xyz) don't influence
+        // the dedup target, and a Font that ends up identical to an existing
+        // record (because all long-tail attempts failed) reuses that record
+        // instead of bloating the table.
         bool hasLongTail = longTailFontProps != null && longTailFontProps.Count > 0;
-        if (!hasLongTail)
-        {
-            int idx = 0;
-            foreach (var f in fonts.Elements<Font>())
-            {
-                if (FontMatches(f, bold, italic, strike, underline, vertAlign, size, name, color, colorTheme))
-                    return (uint)idx;
-                idx++;
-            }
-        }
 
         // Create new font (element order: b, i, strike, u, vertAlign, sz, color, name)
         var newFont = new Font();
@@ -709,23 +699,70 @@ internal class ExcelStyleManager
 
         // Append long-tail children (charset, family, outline, shadow, condense,
         // extend, scheme, ...) via SDK schema-aware AddChild — orders correctly
-        // per CT_Font even though the curated chain above used Append. Keys
-        // the SDK doesn't recognize as typed Font children flow back to the
-        // caller via unsupportedLongTail (so e.g. `font.bogus=xyz` is reported
-        // instead of silently producing a duplicate Font with no extra data).
+        // per CT_Font even though the curated chain above used Append. Track
+        // which keys actually landed (vs. SDK-rejected) so dedup runs against
+        // the truly-resulting Font, not the input wishlist.
+        var addedLongTail = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (hasLongTail)
         {
             foreach (var (key, value) in longTailFontProps!)
             {
-                if (!OfficeCli.Core.GenericXmlQuery.TryCreateTypedChild(newFont, key, value))
+                if (OfficeCli.Core.GenericXmlQuery.TryCreateTypedChild(newFont, key, value))
+                    addedLongTail[key] = value;
+                else
                     unsupportedLongTail?.Add($"font.{key}");
             }
+        }
+
+        // Dedup against existing fonts using the actually-built children.
+        // Catches three cases the pre-append dedup would miss:
+        // (a) repeated SAME long-tail Set on same cell — actualLongTail equals
+        //     existing record -> reuse id, no bloat
+        // (b) all long-tail rejected (e.g. font.bogus) — actualLongTail is
+        //     empty so this matches a curated-only font
+        // (c) different cells reaching the same curated+long-tail combo
+        int existingIdx = 0;
+        foreach (var f in fonts.Elements<Font>())
+        {
+            if (FontMatches(f, bold, italic, strike, underline, vertAlign, size, name, color, colorTheme)
+                && LongTailChildrenMatch(f, addedLongTail))
+                return (uint)existingIdx;
+            existingIdx++;
         }
 
         fonts.Append(newFont);
         fonts.Count = (uint)fonts.Elements<Font>().Count();
 
         return (uint)(fonts.Elements<Font>().Count() - 1);
+    }
+
+    // Compare a Font's long-tail children (anything outside CuratedFontChildLocalNames)
+    // against a target name->val map. Equal iff the sets match exactly (same keys,
+    // same val attribute values). Used to extend FontMatches dedup with long-tail
+    // awareness so repeated SAME-value Sets don't bloat the font table.
+    private static bool LongTailChildrenMatch(Font font, Dictionary<string, string>? target)
+    {
+        var targetMap = target ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var fontLongTail = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var child in font.ChildElements)
+        {
+            var name = child.LocalName;
+            if (CuratedFontChildLocalNames.Contains(name)) continue;
+            string? valStr = null;
+            foreach (var a in child.GetAttributes())
+            {
+                if (a.LocalName.Equals("val", StringComparison.OrdinalIgnoreCase))
+                { valStr = a.Value; break; }
+            }
+            if (valStr != null) fontLongTail[name] = valStr;
+        }
+        if (fontLongTail.Count != targetMap.Count) return false;
+        foreach (var (k, v) in targetMap)
+        {
+            if (!fontLongTail.TryGetValue(k, out var fv)) return false;
+            if (!string.Equals(fv, v, StringComparison.Ordinal)) return false;
+        }
+        return true;
     }
 
     private static bool FontMatches(Font font, bool bold, bool italic, bool strike,
@@ -1144,7 +1181,8 @@ internal class ExcelStyleManager
         if (a == null && b == null) return true;
         if (a == null || b == null) return false;
         return (a.Locked?.Value ?? true) == (b.Locked?.Value ?? true) &&
-               (a.Hidden?.Value ?? false) == (b.Hidden?.Value ?? false);
+               (a.Hidden?.Value ?? false) == (b.Hidden?.Value ?? false) &&
+               UnknownAttrsMatch(a, b, ProtectionCuratedAttrs);
     }
 
     private static bool AlignmentMatches(Alignment? a, Alignment? b)
@@ -1157,7 +1195,44 @@ internal class ExcelStyleManager
                (a.TextRotation?.Value ?? 0) == (b.TextRotation?.Value ?? 0) &&
                (a.Indent?.Value ?? 0) == (b.Indent?.Value ?? 0) &&
                (a.ShrinkToFit?.Value ?? false) == (b.ShrinkToFit?.Value ?? false) &&
-               (a.ReadingOrder?.Value ?? 0) == (b.ReadingOrder?.Value ?? 0);
+               (a.ReadingOrder?.Value ?? 0) == (b.ReadingOrder?.Value ?? 0) &&
+               UnknownAttrsMatch(a, b, AlignmentCuratedAttrs);
+    }
+
+    // Curated attribute local-names already covered by the typed comparison
+    // in AlignmentMatches / ProtectionMatches. The long-tail-aware comparison
+    // (UnknownAttrsMatch) walks GetAttributes() and skips these so curated
+    // values aren't double-compared via attribute reflection.
+    private static readonly HashSet<string> AlignmentCuratedAttrs =
+        new(StringComparer.Ordinal)
+    {
+        "horizontal", "vertical", "wrapText", "textRotation",
+        "indent", "shrinkToFit", "readingOrder",
+    };
+    private static readonly HashSet<string> ProtectionCuratedAttrs =
+        new(StringComparer.Ordinal) { "locked", "hidden" };
+
+    // Compare unknown attributes (anything not in the curated set) on two
+    // OpenXmlElements. Used by AlignmentMatches/ProtectionMatches so a second
+    // Set with a different long-tail attribute value (e.g.
+    // alignment.justifyLastLine flipped from "false" to "true") doesn't dedup
+    // back to the prior xf and silently drop the new value (BUG-LT4).
+    private static bool UnknownAttrsMatch(DocumentFormat.OpenXml.OpenXmlElement a,
+        DocumentFormat.OpenXml.OpenXmlElement b, HashSet<string> curated)
+    {
+        var aAttrs = new Dictionary<string, string>(StringComparer.Ordinal);
+        var bAttrs = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var attr in a.GetAttributes())
+            if (!curated.Contains(attr.LocalName)) aAttrs[attr.LocalName] = attr.Value ?? "";
+        foreach (var attr in b.GetAttributes())
+            if (!curated.Contains(attr.LocalName)) bAttrs[attr.LocalName] = attr.Value ?? "";
+        if (aAttrs.Count != bAttrs.Count) return false;
+        foreach (var (k, v) in aAttrs)
+        {
+            if (!bAttrs.TryGetValue(k, out var bv)) return false;
+            if (!string.Equals(v, bv, StringComparison.Ordinal)) return false;
+        }
+        return true;
     }
 
     // ==================== Helpers ====================
