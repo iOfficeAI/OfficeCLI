@@ -493,6 +493,19 @@ public partial class WordHandler
             {
                 var nid = ParseHelpers.SafeParseInt(sNumIdStr, "numId");
                 if (nid < 0) throw new ArgumentException($"numId must be >= 0 (got {nid}).");
+                // CONSISTENCY(numId-ref-check): mirror paragraph-level validation
+                // in WordHandler.Add.Text.cs. Positive numIds must reference an
+                // existing w:num so styles don't silently introduce dangling refs.
+                if (nid > 0)
+                {
+                    var numberingPart = _doc.MainDocumentPart?.NumberingDefinitionsPart?.Numbering;
+                    var numExists = numberingPart?.Elements<NumberingInstance>()
+                        .Any(n => n.NumberID?.Value == nid) ?? false;
+                    if (!numExists)
+                        throw new ArgumentException(
+                            $"numId={nid} not found in /numbering. " +
+                            "Create the num first (add /numbering --type num), or use numId=0 to remove numbering.");
+                }
                 numPr.NumberingId = new NumberingId { Val = nid };
             }
             string? ilvlRaw = null;
