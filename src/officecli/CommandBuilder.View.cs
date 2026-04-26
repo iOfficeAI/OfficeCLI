@@ -127,7 +127,17 @@ static partial class CommandBuilder
                     if (!string.IsNullOrEmpty(pageFilter))
                     {
                         var firstTok = pageFilter.Split(',')[0].Split('-')[0].Trim();
-                        if (int.TryParse(firstTok, out var p) && p > 0) slideNum = p;
+                        // CONSISTENCY(strict-page): reject non-positive --page
+                        // values explicitly instead of silently rendering
+                        // slide 1, mirroring how 0 / negatives are surfaced
+                        // elsewhere in the CLI.
+                        if (!int.TryParse(firstTok, out var p))
+                            throw new ArgumentException(
+                                $"Invalid --page value '{pageFilter}': expected a positive slide number.");
+                        if (p <= 0)
+                            throw new ArgumentException(
+                                $"Invalid --page value '{pageFilter}': slide number must be >= 1.");
+                        slideNum = p;
                     }
                     else if (start.HasValue && start.Value > 0)
                     {

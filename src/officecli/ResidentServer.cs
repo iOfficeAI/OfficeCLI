@@ -853,7 +853,16 @@ public class ResidentServer : IDisposable
                 if (!string.IsNullOrEmpty(pageFilter))
                 {
                     var firstTok = pageFilter.Split(',')[0].Split('-')[0].Trim();
-                    if (int.TryParse(firstTok, out var p) && p > 0) slideNum = p;
+                    // CONSISTENCY(strict-page): mirror CommandBuilder.View.cs
+                    // — reject non-positive --page values rather than
+                    // silently rendering slide 1.
+                    if (!int.TryParse(firstTok, out var p))
+                        throw new ArgumentException(
+                            $"Invalid --page value '{pageFilter}': expected a positive slide number.");
+                    if (p <= 0)
+                        throw new ArgumentException(
+                            $"Invalid --page value '{pageFilter}': slide number must be >= 1.");
+                    slideNum = p;
                 }
                 else if (start.HasValue && start.Value > 0)
                 {
