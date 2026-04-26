@@ -383,8 +383,10 @@ public partial class WordHandler
             return BuildSectionNode(sectPr, path);
         }
 
-        // Style paths: /styles/StyleId
-        var styleMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/styles/(.+)$");
+        // Style paths: /styles/StyleId (read the style itself).
+        // Restrict to a single segment so deeper paths like /styles/<id>/tab[N]
+        // fall through to generic Navigation.
+        var styleMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/styles/([^/]+)$");
         if (styleMatch.Success)
         {
             var styleId = styleMatch.Groups[1].Value;

@@ -617,17 +617,16 @@ public partial class WordHandler
             run.AppendChild(new Text("") { Space = SpaceProcessingModeValues.Preserve });
     }
 
-    // Add a paragraph tab stop. Parent must be a Paragraph; the helper finds
-    // or creates pPr/Tabs and appends a TabStop. `pos` is required (twips,
-    // or any unit accepted by SpacingConverter.ParseWordSpacing). `val`
-    // defaults to "left"; `leader` is optional. Returns the new tab's
-    // path under the conventional /<para>/tabs/tab[N] form (Navigation
-    // descends through pPr transparently for this segment shape).
+    // Add a tab stop. Parent must be a Paragraph or a paragraph/table-typed
+    // Style; the helper finds or creates the pPr/Tabs container and appends
+    // a TabStop. `pos` is required (twips, or any unit accepted by
+    // SpacingConverter.ParseWordSpacing). `val` defaults to "left";
+    // `leader` is optional. Returns the new tab's path under the
+    // conventional /<parent>/tab[N] form — Navigation descends through
+    // pPr/tabs (paragraph) or StyleParagraphProperties/tabs (style)
+    // transparently for this segment shape.
     private string AddTab(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
     {
-        if (parent is not Paragraph para)
-            throw new ArgumentException("Tab stops can only be added to paragraphs");
-
         if (!properties.TryGetValue("pos", out var posStr) || string.IsNullOrWhiteSpace(posStr))
             throw new ArgumentException("tab requires 'pos' property (e.g. --prop pos=9360 or --prop pos=6cm)");
 
@@ -641,17 +640,29 @@ public partial class WordHandler
         if (properties.TryGetValue("leader", out var leaderStr) && !string.IsNullOrEmpty(leaderStr))
             tabStop.Leader = new EnumValue<TabStopLeaderCharValues>(new TabStopLeaderCharValues(leaderStr.ToLowerInvariant()));
 
-        // pPr must come first inside <w:p> per CT_P schema
-        var pProps = para.ParagraphProperties ?? para.PrependChild(new ParagraphProperties());
-        var tabs = pProps.GetFirstChild<Tabs>();
-        if (tabs == null)
+        // pPr children have schema order; Tabs sits early. PrependChild
+        // is conservative — Word accepts Tabs at the start of pPr and
+        // we don't want to interleave with later siblings (numPr, ind, ...)
+        // that have stricter ordering constraints.
+        Tabs tabs;
+        if (parent is Paragraph para)
         {
-            tabs = new Tabs();
-            // pPr children have schema order; Tabs sits early. PrependChild
-            // is conservative — Word accepts Tabs at the start of pPr and
-            // we don't want to interleave with later siblings (numPr, ind, ...)
-            // that have stricter ordering constraints.
-            pProps.PrependChild(tabs);
+            // pPr must come first inside <w:p> per CT_P schema
+            var pProps = para.ParagraphProperties ?? para.PrependChild(new ParagraphProperties());
+            tabs = pProps.GetFirstChild<Tabs>() ?? pProps.PrependChild(new Tabs());
+        }
+        else if (parent is Style style)
+        {
+            // Type guard already enforced in Add.cs (paragraph/table only).
+            // EnsureStyleParagraphProperties handles schema-correct insertion
+            // before StyleRunProperties.
+            var spProps = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+            tabs = spProps.GetFirstChild<Tabs>() ?? spProps.PrependChild(new Tabs());
+        }
+        else
+        {
+            throw new ArgumentException(
+                $"Cannot add 'tab' under {parentPath}: tab stops belong inside a paragraph or a paragraph-typed style.");
         }
 
         var existing = tabs.Elements<TabStop>().ToList();
@@ -661,6 +672,6 @@ public partial class WordHandler
             tabs.AppendChild(tabStop);
 
         var newIdx = tabs.Elements<TabStop>().ToList().IndexOf(tabStop) + 1;
-        return $"{parentPath}/tabs/tab[{newIdx}]";
+        return $"{parentPath}/tab[{newIdx}]";
     }
 }

@@ -348,13 +348,26 @@ public partial class WordHandler
                 $"Cannot add 'style' under {parentPath}: styles belong under /styles.");
         }
 
-        // 'tab' (paragraph tab stop) only lives in a paragraph's pPr/tabs container.
-        // Reject anywhere else so users get a useful pointer instead of falling
-        // through to AddDefault and writing a stray <w:tab> at the wrong level.
-        if ((t == "tab" || t == "tabstop") && parent is not Paragraph)
+        // 'tab' (tab stop) lives in a paragraph's pPr/tabs container, or in a
+        // paragraph/table style's pPr/tabs container. Reject anywhere else so
+        // users get a useful pointer instead of falling through to AddDefault
+        // and writing a stray <w:tab> at the wrong level.
+        if (t == "tab" || t == "tabstop")
         {
-            throw new ArgumentException(
-                $"Cannot add 'tab' under {parentPath}: tab stops belong inside a paragraph (e.g. /body/p[N]). Add via --type tab on the paragraph path.");
+            if (parent is Style stl)
+            {
+                var stType = stl.Type?.Value;
+                if (stType != StyleValues.Paragraph && stType != StyleValues.Table)
+                    throw new ArgumentException(
+                        $"Cannot add 'tab' under {parentPath}: style '{stl.StyleId?.Value}' is type=" +
+                        $"{stl.Type?.InnerText ?? "(unset)"}. Tab stops require a paragraph or table style.");
+            }
+            else if (parent is not Paragraph)
+            {
+                throw new ArgumentException(
+                    $"Cannot add 'tab' under {parentPath}: tab stops belong inside a paragraph (e.g. /body/p[N]) " +
+                    $"or a paragraph-typed style (e.g. /styles/Heading1).");
+            }
         }
 
 

@@ -652,14 +652,27 @@ public partial class WordHandler
                     "tc" => current.Elements<TableCell>().Cast<OpenXmlElement>(),
                     "sdt" => current.ChildElements
                         .Where(e => e is SdtBlock || e is SdtRun).Cast<OpenXmlElement>(),
-                    // /<para>/tabs descends transparently through pPr so the
-                    // user-facing path stays flat (/body/p[N]/tabs/tab[M])
-                    // instead of leaking the OOXML container (.../pPr/tabs/tab).
+                    // /<para>/tab[N] and /styles/<id>/tab[N] descend
+                    // transparently through pPr/tabs (or StyleParagraph-
+                    // Properties/tabs) so the user-facing path stays flat
+                    // instead of leaking the OOXML containers (.../pPr/tabs/tab).
                     // Symmetric with how AddTab returns the flat form.
-                    "tabs" when current is Paragraph navParaT
-                        => navParaT.ParagraphProperties?.GetFirstChild<Tabs>() is { } t
-                            ? new[] { (OpenXmlElement)t }
-                            : Enumerable.Empty<OpenXmlElement>(),
+                    "tab" when current is Paragraph navParaT
+                        => navParaT.ParagraphProperties?.GetFirstChild<Tabs>()?.Elements<TabStop>().Cast<OpenXmlElement>()
+                           ?? Enumerable.Empty<OpenXmlElement>(),
+                    "tab" when current is Style navStyleT
+                        => navStyleT.StyleParagraphProperties?.GetFirstChild<Tabs>()?.Elements<TabStop>().Cast<OpenXmlElement>()
+                           ?? Enumerable.Empty<OpenXmlElement>(),
+                    // /styles/<key> resolves <key> as a styleId or styleName
+                    // (matches Set.Dispatch.cs's regex+OR matching), so paths
+                    // like /styles/Heading1 are navigable for Add/Get/Set.
+                    // The segment name here IS the key, not an OOXML local-
+                    // name; downstream FirstOrDefault picks the (single) match.
+                    _ when current is Styles navStylesContainer
+                        => navStylesContainer.Elements<Style>().Where(s =>
+                            string.Equals(s.StyleId?.Value, seg.Name, StringComparison.Ordinal)
+                            || string.Equals(s.StyleName?.Val?.Value, seg.Name, StringComparison.Ordinal))
+                           .Cast<OpenXmlElement>(),
                     _ => current.ChildElements.Where(e => e.LocalName == seg.Name).Cast<OpenXmlElement>()
                 };
             }
@@ -724,6 +737,12 @@ public partial class WordHandler
             else if (next is Comment navComment && navComment.Id?.Value != null)
             {
                 parentPath += "/" + seg.Name + $"[@commentId={navComment.Id.Value}]";
+            }
+            else if (next is Style navStyle)
+            {
+                // Style is keyed by styleId — emit /styles/<id> without a
+                // positional [N] suffix to match Query's canonical form.
+                parentPath += "/" + (navStyle.StyleId?.Value ?? seg.Name);
             }
             else if (next is SdtBlock or SdtRun)
             {

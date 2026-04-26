@@ -172,8 +172,10 @@ public partial class WordHandler
         var secSetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^(?:/section\[(\d+)\]|/body/sectPr(?:\[(\d+)\])?)$");
         if (secSetMatch.Success) return SetSectionPath(secSetMatch, properties);
 
-        // Style paths: /styles/StyleId
-        var styleSetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/styles/(.+)$");
+        // Style paths: /styles/StyleId (set props on the style itself).
+        // Restrict to a single segment so deeper paths like /styles/<id>/tab[N]
+        // fall through to generic Navigation + SetElement (TabStop branch).
+        var styleSetMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/styles/([^/]+)$");
         if (styleSetMatch.Success) return SetStylePath(styleSetMatch, properties);
 
         // CONSISTENCY(ole-shorthand-set): mirror the /body/ole[N] shorthand
