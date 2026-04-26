@@ -148,6 +148,16 @@ public partial class WordHandler
             else
                 pProps.WidowControl = new WidowControl { Val = false };
         }
+        // CONSISTENCY(add-set-symmetry): Set supports contextualSpacing (WordHandler.Set.cs:529);
+        // Add must accept the same prop so the "Add then Get" lifecycle test pattern works
+        // without falling back to a separate Set call. Mirrors widowControl above.
+        if (properties.TryGetValue("contextualspacing", out var addCS) || properties.TryGetValue("contextualSpacing", out addCS))
+        {
+            if (IsTruthy(addCS))
+                pProps.ContextualSpacing = new ContextualSpacing();
+            else
+                pProps.ContextualSpacing = new ContextualSpacing { Val = false };
+        }
         foreach (var (pk, pv) in properties)
         {
             if (pk.StartsWith("pbdr", StringComparison.OrdinalIgnoreCase))

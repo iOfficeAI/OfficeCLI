@@ -337,9 +337,9 @@
     },
     "contextualSpacing": {
       "type": "bool",
-      "description": "suppress space between paragraphs of the same style. Applied on Set to Style's pPr.",
+      "description": "suppress space between paragraphs of the same style. Applied on Add/Set to paragraph pPr; also valid on Style.",
       "aliases": ["contextualspacing"],
-      "add": false, "set": true, "get": false,
+      "add": true, "set": true, "get": true,
       "examples": ["--prop contextualSpacing=true"],
       "enforcement": "report"
     }
