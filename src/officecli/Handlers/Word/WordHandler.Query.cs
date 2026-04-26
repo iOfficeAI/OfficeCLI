@@ -1141,6 +1141,77 @@ public partial class WordHandler
             return results;
         }
 
+        // Handle numbering container selector — singleton, mirrors `query styles`.
+        // Schema also exposes `num` and `abstractNum` as queryable element types
+        // that live under NumberingDefinitionsPart, not under body. Without
+        // these intercepts, the generic XML fallback only walks body and
+        // returns 0 results despite Get(/numbering/...) working fine.
+        if (parsed.Element == "numbering")
+        {
+            var numbering = _doc.MainDocumentPart?.NumberingDefinitionsPart?.Numbering;
+            if (numbering != null)
+            {
+                var node = new DocumentNode { Path = "/numbering", Type = "numbering" };
+                node.Format["abstractNumCount"] = numbering.Elements<AbstractNum>().Count();
+                node.Format["numCount"] = numbering.Elements<NumberingInstance>().Count();
+                results.Add(node);
+            }
+            return results;
+        }
+
+        if (parsed.Element == "abstractNum" || parsed.Element == "abstractnum")
+        {
+            var numbering = _doc.MainDocumentPart?.NumberingDefinitionsPart?.Numbering;
+            if (numbering != null)
+            {
+                foreach (var abs in numbering.Elements<AbstractNum>())
+                {
+                    var aid = abs.AbstractNumberId?.Value;
+                    if (aid == null) continue;
+                    var node = Get($"/numbering/abstractNum[@id={aid}]");
+                    if (node == null || node.Type == "error") continue;
+                    // Filter by attributes (e.g. abstractNum[type=hybridMultilevel])
+                    bool matchAttrs = true;
+                    foreach (var (attrKey, rawVal) in parsed.Attributes)
+                    {
+                        bool negate = rawVal.StartsWith("!");
+                        var val = negate ? rawVal[1..] : rawVal;
+                        var hasKey = node.Format.TryGetValue(attrKey, out var fmtVal);
+                        bool matches = hasKey && string.Equals(fmtVal?.ToString(), val, StringComparison.OrdinalIgnoreCase);
+                        if (negate ? matches : !matches) { matchAttrs = false; break; }
+                    }
+                    if (matchAttrs) results.Add(node);
+                }
+            }
+            return results;
+        }
+
+        if (parsed.Element == "num")
+        {
+            var numbering = _doc.MainDocumentPart?.NumberingDefinitionsPart?.Numbering;
+            if (numbering != null)
+            {
+                foreach (var inst in numbering.Elements<NumberingInstance>())
+                {
+                    var nid = inst.NumberID?.Value;
+                    if (nid == null) continue;
+                    var node = Get($"/numbering/num[@id={nid}]");
+                    if (node == null || node.Type == "error") continue;
+                    bool matchAttrs = true;
+                    foreach (var (attrKey, rawVal) in parsed.Attributes)
+                    {
+                        bool negate = rawVal.StartsWith("!");
+                        var val = negate ? rawVal[1..] : rawVal;
+                        var hasKey = node.Format.TryGetValue(attrKey, out var fmtVal);
+                        bool matches = hasKey && string.Equals(fmtVal?.ToString(), val, StringComparison.OrdinalIgnoreCase);
+                        if (negate ? matches : !matches) { matchAttrs = false; break; }
+                    }
+                    if (matchAttrs) results.Add(node);
+                }
+            }
+            return results;
+        }
+
         // Handle toc selector
         if (parsed.Element is "toc" or "tableofcontents")
         {
