@@ -207,6 +207,40 @@ public partial class WordHandler
         // Numbering paths: /numbering/num[@id=N], /numbering/abstractNum[@id=N],
         // /numbering/abstractNum[@id=N]/level[L]. Routed BEFORE ParsePath because
         // these use [@id=...] / [N starting at 0] predicates ParsePath rejects.
+        //
+        // Positional aliases /numbering/abstractNum[N] and /numbering/num[N]
+        // translate to the canonical [@id=K] form of the Nth element. Without
+        // this translation, the positional path falls through to generic
+        // ParsePath and emits a node with raw OOXML field names (abstractNumId,
+        // multiLevelType, lvl[N]) instead of the canonical keys (id, type,
+        // level[L]) returned by [@id=K] — same data, two vocabularies.
+        var numPosMatch = System.Text.RegularExpressions.Regex.Match(
+            path, @"^/numbering/(abstractNum|num)\[(\d+)\](.*)$");
+        if (numPosMatch.Success)
+        {
+            var kind = numPosMatch.Groups[1].Value;
+            var posIdx = int.Parse(numPosMatch.Groups[2].Value); // 1-based
+            var rest = numPosMatch.Groups[3].Value;
+            var nb = _doc.MainDocumentPart?.NumberingDefinitionsPart?.Numbering;
+            int? canonId = null;
+            if (kind == "abstractNum")
+            {
+                var abs = nb?.Elements<AbstractNum>().ElementAtOrDefault(posIdx - 1);
+                canonId = abs?.AbstractNumberId?.Value;
+            }
+            else
+            {
+                var inst = nb?.Elements<NumberingInstance>().ElementAtOrDefault(posIdx - 1);
+                canonId = inst?.NumberID?.Value;
+            }
+            if (canonId != null)
+            {
+                // Re-enter Get with the canonical [@id=K] form so the rest of
+                // this method's branches (level[L], format keys) all hit.
+                return Get($"/numbering/{kind}[@id={canonId}]{rest}", depth);
+            }
+        }
+
         var numMatch = System.Text.RegularExpressions.Regex.Match(
             path, @"^/numbering/num\[@id=(\d+)\]$");
         if (numMatch.Success)
