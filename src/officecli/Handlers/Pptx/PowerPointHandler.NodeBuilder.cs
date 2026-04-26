@@ -829,12 +829,71 @@ public partial class PowerPointHandler
                 var linkUrl = ReadRunHyperlinkUrl(run, part);
                 if (linkUrl != null) node.Format["link"] = linkUrl;
             }
+
+            // Long-tail OOXML fallback. drawingML rPr carries most properties
+            // as attributes on rPr itself (kern, spc, lang, dirty, smtClean,
+            // normalizeH, baseline, ...), with sub-elements for fills/fonts/
+            // hyperlinks. Symmetric with the run-context Set fallback in
+            // SetRunOrShapeProperties.
+            FillUnknownRunProps(run.RunProperties, node);
         }
 
         // Populate effective.* properties from slide layout/master inheritance
         PopulateEffectiveRunProperties(node, run, part);
 
         return node;
+    }
+
+    // OOXML attribute names already mapped to canonical Format keys by the
+    // curated run reader. Skip these in the long-tail fallback so we don't
+    // emit `b: "1"` alongside `bold: true`, `sz: "2400"` alongside `size: "24pt"`.
+    private static readonly System.Collections.Generic.HashSet<string> CuratedRunAttrs =
+        new(System.StringComparer.Ordinal)
+    {
+        "b", "i", "u", "strike", "sz", "spc", "baseline",
+    };
+
+    private static readonly System.Collections.Generic.HashSet<string> CuratedRunChildren =
+        new(System.StringComparer.Ordinal)
+    {
+        "latin", "ea", "cs", "solidFill", "gradFill", "hlinkClick",
+    };
+
+    private static void FillUnknownRunProps(Drawing.RunProperties? rPr, DocumentNode node)
+    {
+        if (rPr == null) return;
+
+        // Walk attributes on rPr itself.
+        foreach (var attr in rPr.GetAttributes())
+        {
+            var name = attr.LocalName;
+            if (string.IsNullOrEmpty(name)) continue;
+            if (CuratedRunAttrs.Contains(name)) continue;
+            if (node.Format.ContainsKey(name)) continue;
+            node.Format[name] = attr.Value;
+        }
+
+        // Walk leaf children that match the OOXML "child-with-val" or "toggle"
+        // pattern symmetric with TryCreateTypedChild's accepted shapes.
+        foreach (var child in rPr.ChildElements)
+        {
+            var name = child.LocalName;
+            if (string.IsNullOrEmpty(name)) continue;
+            if (CuratedRunChildren.Contains(name)) continue;
+            if (node.Format.ContainsKey(name)) continue;
+            if (child.ChildElements.Count > 0) continue;
+
+            string? valAttr = null;
+            int attrCount = 0;
+            foreach (var a in child.GetAttributes())
+            {
+                attrCount++;
+                if (a.LocalName.Equals("val", System.StringComparison.OrdinalIgnoreCase))
+                    valAttr = a.Value;
+            }
+            if (valAttr != null) node.Format[name] = valAttr;
+            else if (attrCount == 0) node.Format[name] = true;
+        }
     }
 
     private static DocumentNode PictureToNode(Picture pic, int slideNum, int picIdx, SlidePart? slidePart = null)

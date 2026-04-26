@@ -19,8 +19,29 @@ public partial class PowerPointHandler
             ?? new List<Drawing.Run>();
     }
 
+    // drawingML CT_TextCharacterProperties attribute set (rPr attrs).
+    // Long-tail run-context Set in SetRunOrShapeProperties uses this to
+    // distinguish attribute-pattern keys (set as XML attributes on rPr) from
+    // child-pattern keys (route through TryCreateTypedChild). Symmetric with
+    // FillUnknownRunProps in NodeBuilder.cs which surfaces these via Get.
+    // Source: ECMA-376 Part 1, 21.1.2.3.9 (a:rPr).
+    private static readonly System.Collections.Generic.HashSet<string> DrawingRunPropertyAttrs =
+        new(System.StringComparer.Ordinal)
+    {
+        "kumimoji", "lang", "altLang", "sz", "b", "i", "u", "strike",
+        "kern", "cap", "spc", "normalizeH", "baseline", "noProof",
+        "dirty", "err", "smtClean", "smtId", "bmk",
+    };
+
+    // runContext=true when the caller is a run-targeted Set path (e.g.
+    // /slide[N]/shape[K]/r[R] or /slide[N]/shape[K]/p[P]/r[R]). Affects the
+    // default branch only: long-tail unknown keys are routed to each run's
+    // RunProperties (attribute or child) instead of the shape element.
+    // Curated cases keep their existing per-key targeting (some still write
+    // to shape regardless of context — fill, geometry, etc.).
     private static List<string> SetRunOrShapeProperties(
-        Dictionary<string, string> properties, List<Drawing.Run> runs, Shape shape, OpenXmlPart? part = null)
+        Dictionary<string, string> properties, List<Drawing.Run> runs, Shape shape, OpenXmlPart? part = null,
+        bool runContext = false)
     {
         var unsupported = new List<string>();
 
@@ -865,6 +886,42 @@ public partial class PowerPointHandler
                 }
 
                 default:
+                {
+                    // Long-tail OOXML fallback. In run-context (e.g. set on
+                    // /slide[N]/shape[K]/r[R]), drawingML rPr stores most
+                    // properties as attributes on rPr itself (kern, spc,
+                    // baseline, lang, dirty, smtClean, normalizeH, ...), with
+                    // a few child-pattern props (effectLst, hlinkClick).
+                    // Try attribute-setting first against the known
+                    // drawingML CT_TextCharacterProperties attribute set; fall
+                    // back to TryCreateTypedChild for child-pattern keys.
+                    bool handledByRun = false;
+                    if (runContext && runs.Count > 0 && DrawingRunPropertyAttrs.Contains(key))
+                    {
+                        handledByRun = true;
+                        foreach (var run in runs)
+                        {
+                            var rPr = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
+                            rPr.SetAttribute(new OpenXmlAttribute("", key, "", value));
+                        }
+                    }
+                    if (handledByRun) break;
+                    if (runContext && runs.Count > 0)
+                    {
+                        // Child-pattern fallback (rare in rPr but exists for
+                        // hlinkClick etc.). Symmetric with Word.
+                        handledByRun = true;
+                        foreach (var run in runs)
+                        {
+                            var rPr = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
+                            if (!GenericXmlQuery.TryCreateTypedChild(rPr, key, value))
+                            {
+                                handledByRun = false;
+                                break;
+                            }
+                        }
+                    }
+                    if (handledByRun) break;
                     if (!GenericXmlQuery.SetGenericAttribute(shape, key, value))
                     {
                         if (unsupported.Count == 0)
@@ -873,6 +930,7 @@ public partial class PowerPointHandler
                             unsupported.Add(key);
                     }
                     break;
+                }
             }
         }
 

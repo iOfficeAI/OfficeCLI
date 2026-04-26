@@ -32,7 +32,7 @@ public partial class PowerPointHandler
             .Where(kv => !kv.Key.Equals("link", StringComparison.OrdinalIgnoreCase)
                       && !kv.Key.Equals("tooltip", StringComparison.OrdinalIgnoreCase))
             .ToDictionary(kv => kv.Key, kv => kv.Value);
-        var unsupported = SetRunOrShapeProperties(runOnlyProps, new List<Drawing.Run> { targetRun }, shape, slidePart);
+        var unsupported = SetRunOrShapeProperties(runOnlyProps, new List<Drawing.Run> { targetRun }, shape, slidePart, runContext: true);
         if (linkValRun != null) ApplyRunHyperlink(slidePart, targetRun, linkValRun, tooltipValRun);
         GetSlide(slidePart).Save();
         return unsupported;
@@ -63,7 +63,7 @@ public partial class PowerPointHandler
             .Where(kv => !kv.Key.Equals("link", StringComparison.OrdinalIgnoreCase)
                       && !kv.Key.Equals("tooltip", StringComparison.OrdinalIgnoreCase))
             .ToDictionary(kv => kv.Key, kv => kv.Value);
-        var unsupported = SetRunOrShapeProperties(runOnlyProps, new List<Drawing.Run> { targetRun }, shape, slidePart);
+        var unsupported = SetRunOrShapeProperties(runOnlyProps, new List<Drawing.Run> { targetRun }, shape, slidePart, runContext: true);
         if (linkVal != null) ApplyRunHyperlink(slidePart, targetRun, linkVal, tooltipVal);
         GetSlide(slidePart).Save();
         return unsupported;
@@ -162,7 +162,7 @@ public partial class PowerPointHandler
                 default:
                     // Apply run-level properties to all runs in this paragraph
                     var runUnsup = SetRunOrShapeProperties(
-                        new Dictionary<string, string> { { key, value } }, paraRuns, shape, slidePart);
+                        new Dictionary<string, string> { { key, value } }, paraRuns, shape, slidePart, runContext: true);
                     unsupported.AddRange(runUnsup);
                     break;
             }
