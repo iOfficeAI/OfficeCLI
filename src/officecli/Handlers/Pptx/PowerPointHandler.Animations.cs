@@ -1635,9 +1635,13 @@ public partial class PowerPointHandler
                 "bounce"                          => (24, null),
                 "swipe" or "sweep"                => (2,  null),
                 _ => throw new ArgumentException(
-                    $"Unknown animation effect: '{effect}'. " +
+                    $"Unknown animation effect: '{effect}' for class '{(cls == TimeNodePresetClassValues.Entrance ? "entrance" : "exit")}'. " +
+                    (effect is "spin" or "rotate" or "grow" or "shrink" or "wave" or "bold" or "boldflash"
+                        ? $"'{effect}' is an emphasis effect — pass class=emphasis (e.g. effect={effect} class=emphasis). "
+                        : "") +
                     "Supported entrance/exit effects: appear, fade, fly, zoom, wipe, bounce, float, split, " +
                     "wheel, swivel, checkerboard, blinds, dissolve, flash, box, circle, diamond, plus, strips, wedge, random. " +
+                    "Supported emphasis effects (require class=emphasis): spin, grow, bold, wave, fade. " +
                     "Use 'none' to remove.")
             };
         }
