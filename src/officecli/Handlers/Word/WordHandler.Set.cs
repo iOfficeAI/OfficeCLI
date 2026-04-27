@@ -721,9 +721,69 @@ public partial class WordHandler
         }
     }
 
+    /// <summary>
+    /// CT_TcPr child schema order. Used by InsertTcPrChildInOrder to insert
+    /// new tcPr children at their schema position rather than the tail.
+    /// Children whose type isn't on this list (mc:AlternateContent and
+    /// extensions, for instance) are tolerated — they sort to the end via
+    /// the IndexOf == -1 sentinel.
+    /// </summary>
+    private static readonly Type[] s_tcPrChildOrder =
+    [
+        typeof(ConditionalFormatStyle),
+        typeof(TableCellWidth),
+        typeof(GridSpan),
+        typeof(HorizontalMerge),
+        typeof(VerticalMerge),
+        typeof(TableCellBorders),
+        typeof(Shading),
+        typeof(NoWrap),
+        typeof(TableCellMargin),
+        typeof(TextDirection),
+        typeof(TableCellFitText),
+        typeof(TableCellVerticalAlignment),
+        typeof(HideMark),
+        // headers/cellIns/cellDel/cellMerge/tcPrChange follow but are rare
+        // enough that we let the SDK's own setters handle them; they get
+        // sentinel positions (-1) and end up at the tail, which is correct
+        // when nothing else past tcPr has been written.
+    ];
+
+    private static void InsertTcPrChildInOrder(TableCellProperties tcPr, OpenXmlElement child)
+    {
+        var targetIdx = Array.IndexOf(s_tcPrChildOrder, child.GetType());
+        if (targetIdx < 0)
+        {
+            tcPr.AppendChild(child);
+            return;
+        }
+        foreach (var sibling in tcPr.ChildElements)
+        {
+            var sibIdx = Array.IndexOf(s_tcPrChildOrder, sibling.GetType());
+            if (sibIdx > targetIdx)
+            {
+                tcPr.InsertBefore(child, sibling);
+                return;
+            }
+        }
+        tcPr.AppendChild(child);
+    }
+
     private static void ApplyCellBorders(TableCellProperties tcPr, string key, string value)
     {
-        var borders = tcPr.TableCellBorders ?? tcPr.AppendChild(new TableCellBorders());
+        // CT_TcPr child sequence is strict: cnfStyle → tcW → gridSpan →
+        // hMerge → vMerge → tcBorders → shd → noWrap → tcMar →
+        // textDirection → tcFitText → vAlign → hideMark → ... → tcPrChange.
+        // Plain AppendChild lands tcBorders at the tail, after shd/vAlign/
+        // tcMar that earlier setter calls already wrote, producing
+        // Sch_UnexpectedElementContentExpectingComplex on tcBorders. Insert
+        // before the first existing sibling that should come after tcBorders.
+        var borders = tcPr.TableCellBorders;
+        if (borders == null)
+        {
+            borders = new TableCellBorders();
+            InsertTcPrChildInOrder(tcPr, borders);
+        }
         var (style, size, color, space) = ParseBorderValue(value);
 
         switch (key.ToLowerInvariant())
