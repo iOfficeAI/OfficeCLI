@@ -1379,22 +1379,9 @@ public partial class PowerPointHandler
         var animEffect = effectCTn.Descendants<AnimateEffect>().FirstOrDefault();
         var filter = animEffect?.Filter?.Value ?? "";
 
-        var effectName = filter switch
-        {
-            "fly" => "fly",
-            "fade" => "fade",
-            "zoom" => "zoom",
-            "" when presetId == 1 => "appear",
-            "" when presetId == 24 => "bounce",
-            _ => presetId switch
-            {
-                1 => "appear", 2 => "fly", 10 => "fade",
-                12 => "float", 17 => "swivel", 20 => "wipe",
-                21 => "zoom", 24 => "bounce",
-                26 => "grow", 27 => "spin",
-                _ => "unknown"
-            }
-        };
+        // CONSISTENCY(anim-preset-map): use shared resolver in Animations.cs so
+        // sub-path Get returns the same effect name as slide-level shape Get.
+        var effectName = ResolveAnimEffectName(filter, (int)presetId, cls);
 
         animNode.Format["effect"] = effectName;
         animNode.Format["class"] = cls;
