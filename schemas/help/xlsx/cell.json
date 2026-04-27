@@ -1,0 +1,208 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "cell",
+  "parent": "sheet",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "stable":     ["/<sheetName>/<A1Ref>"],
+    "positional": ["/Sheet1/A1", "/Sheet1/B2:C3"]
+  },
+  "note": "Canonical keys per CLAUDE.md: numberformat (not `format`), alignment.horizontal / alignment.vertical / alignment.wrapText. Font properties surface in Get as font.bold / font.italic / font.name / font.size / font.color (readback namespace). Add/Set accept both the short forms (bold, italic, font, size, color) and the font.* forms. Parent path controls placement: `add <file> /Sheet1 --type cell` appends to the next empty cell; use `add <file> /Sheet1/A2 --type cell` to target a specific cell.",
+  "properties": {
+    "value": {
+      "type": "string",
+      "description": "literal cell value — string, number, or date. Numeric strings are stored as numbers. Readback lives in DocumentNode.Text, not Format[].",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop value=\"Hello\"", "--prop value=42", "--prop value=3.14"],
+      "readback": "plain string in DocumentNode.Text",
+      "enforcement": "report"
+    },
+    "formula": {
+      "type": "string",
+      "description": "cell formula, without leading =",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop formula=\"SUM(A1:A10)\""],
+      "readback": "formula text without leading =",
+      "enforcement": "report"
+    },
+    "numberformat": {
+      "type": "string",
+      "description": "Excel number format string",
+      "aliases": ["format", "numfmt"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop numberformat=\"#,##0.00\"", "--prop numberformat=yyyy-mm-dd"],
+      "readback": "format string as stored",
+      "enforcement": "report"
+    },
+    "font.bold": {
+      "type": "bool",
+      "aliases": ["bold"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop bold=true"],
+      "enforcement": "strict"
+    },
+    "font.italic": {
+      "type": "bool",
+      "aliases": ["italic"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop italic=true"],
+      "enforcement": "strict"
+    },
+    "font.name": {
+      "type": "string",
+      "aliases": ["font", "fontname"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop font=\"Calibri\""],
+      "enforcement": "strict"
+    },
+    "font.size": {
+      "type": "font-size",
+      "aliases": ["size", "fontsize"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop size=11pt"],
+      "readback": "unit-qualified, e.g. \"11pt\"",
+      "enforcement": "strict"
+    },
+    "font.color": {
+      "type": "color",
+      "aliases": ["color"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop color=FF0000"],
+      "readback": "#RRGGBB uppercase",
+      "enforcement": "report"
+    },
+    "fill": {
+      "type": "color",
+      "description": "cell background fill color",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop fill=FFFF00"],
+      "readback": "#RRGGBB uppercase",
+      "enforcement": "report"
+    },
+    "strike": {
+      "type": "bool",
+      "description": "single strikethrough on the cell text.",
+      "aliases": ["strikethrough", "font.strike"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop strike=true"],
+      "readback": "true | false",
+      "enforcement": "report"
+    },
+    "underline": {
+      "type": "enum",
+      "values": ["single", "double", "singleAccounting", "doubleAccounting", "none"],
+      "description": "underline style on the cell text.",
+      "aliases": ["font.underline"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop underline=single"],
+      "readback": "underline style name",
+      "enforcement": "report"
+    },
+    "locked": {
+      "type": "bool",
+      "description": "cell protection: lock the cell against edits when the sheet is protected. Default Excel behavior is locked=true.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop locked=false"],
+      "readback": "true | false",
+      "enforcement": "report"
+    },
+    "alignment.horizontal": {
+      "type": "enum",
+      "values": ["left", "center", "right", "justify", "fill", "distributed"],
+      "aliases": ["halign"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop alignment.horizontal=center"],
+      "enforcement": "report"
+    },
+    "alignment.vertical": {
+      "type": "enum",
+      "values": ["top", "center", "bottom"],
+      "aliases": ["valign"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop alignment.vertical=center"],
+      "enforcement": "report"
+    },
+    "alignment.wrapText": {
+      "type": "bool",
+      "aliases": ["wrap", "wrapText"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop alignment.wrapText=true"],
+      "enforcement": "report"
+    },
+    "merge": {
+      "type": "string",
+      "description": "merge range applied post-cell-creation (parity with `set`). Accepts a single A1 range (A1:C3) or comma-separated ranges (A1:B1,A2:B2).",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop merge=A1:C3"],
+      "enforcement": "report"
+    },
+    "ref": {
+      "type": "string",
+      "description": "target A1 cell reference (alternative to encoding the address in the path tail).",
+      "aliases": ["address"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop ref=B2"],
+      "enforcement": "report"
+    },
+    "link": {
+      "type": "string",
+      "description": "hyperlink target attached to the cell. Accepts external URL (https://, http://, mailto:, file://, onenote:, tel:) or internal anchor (#Sheet!Cell, #NamedRange). Use link=none on Set to remove. Parity with Set.",
+      "add": true, "set": true, "get": true,
+      "examples": [
+        "--prop link=https://example.com",
+        "--prop link=mailto:user@example.com",
+        "--prop link=#Sheet2!A1"
+      ],
+      "readback": "URL string or internal anchor as stored",
+      "enforcement": "report"
+    },
+    "tooltip": {
+      "type": "string",
+      "description": "ScreenTip text shown on hover for an existing hyperlink. Pair with link= during Add, or apply to a cell that already has a hyperlink during Set.",
+      "aliases": ["screenTip", "screentip"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop link=https://example.com --prop tooltip=\"Open in browser\""],
+      "enforcement": "report"
+    },
+    "type": {
+      "type": "enum",
+      "values": ["string", "number", "boolean", "date", "richtext", "shared", "inline"],
+      "description": "force a cell type. Normally inferred from value/formula.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop value=01234 --prop type=string"],
+      "readback": "type token",
+      "enforcement": "report"
+    },
+    "runs": {
+      "type": "string",
+      "description": "rich-text runs as JSON array (e.g. '[{\"text\":\"Hello\",\"bold\":true}]'). Used when type=richtext.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop type=richtext --prop runs='[{\"text\":\"Bold\",\"bold\":true}]'"],
+      "readback": "n/a (decomposed into /run[N] subnodes)",
+      "enforcement": "report"
+    },
+    "clear": {
+      "type": "bool",
+      "description": "clear the cell value/formula before applying new content.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop clear=true"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "arrayformula": {
+      "type": "string",
+      "description": "dynamic-array formula spilled into ref range (without leading '=').",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop arrayformula=\"A1:A10*2\" --prop ref=B1:B10"],
+      "readback": "n/a",
+      "enforcement": "report"
+    }
+  }
+}

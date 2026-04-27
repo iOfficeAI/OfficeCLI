@@ -1,0 +1,50 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "ole",
+  "parent": "sheet",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/SheetName/ole[N]"]
+  },
+  "note": "Aliases: oleobject, object, embed. Binary package + preview image. Anchor accepts cell range (B2:F7) or x/y/width/height in cell units.",
+  "properties": {
+    "src": {
+      "type": "string",
+      "aliases": ["path"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop src=/path/to/data.docx"],
+      "readback": "object rel id",
+      "enforcement": "report"
+    },
+    "progId": {
+      "type": "string",
+      "aliases": ["progid"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop progId=Word.Document.12"],
+      "readback": "ProgID",
+      "enforcement": "report"
+    },
+    "preview": {
+      "type": "string",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop preview=/path/to/thumb.png"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "anchor": {
+      "type": "string",
+      "aliases": ["ref"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop anchor=B2:F7"],
+      "readback": "anchor descriptor",
+      "enforcement": "report"
+    }
+  }
+}

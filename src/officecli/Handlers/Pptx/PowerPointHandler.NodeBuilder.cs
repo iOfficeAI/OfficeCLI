@@ -73,6 +73,12 @@ public partial class PowerPointHandler
             if (grpXfrm?.Offset?.Y != null) grpNode.Format["y"] = FormatEmu(grpXfrm.Offset.Y.Value);
             if (grpXfrm?.Extents?.Cx != null) grpNode.Format["width"] = FormatEmu(grpXfrm.Extents.Cx.Value);
             if (grpXfrm?.Extents?.Cy != null) grpNode.Format["height"] = FormatEmu(grpXfrm.Extents.Cy.Value);
+            if (grpXfrm?.Rotation != null && grpXfrm.Rotation.Value != 0)
+                grpNode.Format["rotation"] = $"{grpXfrm.Rotation.Value / 60000.0:0.##}";
+            var grpFillColor = ReadColorFromFill(grp.GroupShapeProperties?.GetFirstChild<Drawing.SolidFill>());
+            if (grpFillColor != null) grpNode.Format["fill"] = grpFillColor;
+            else if (grp.GroupShapeProperties?.GetFirstChild<Drawing.NoFill>() != null) grpNode.Format["fill"] = "none";
+            else if (grp.GroupShapeProperties?.GetFirstChild<Drawing.GradientFill>() != null) grpNode.Format["fill"] = "gradient";
             var grpZIdx = contentElements.IndexOf(grp);
             if (grpZIdx >= 0) grpNode.Format["zorder"] = grpZIdx + 1;
             children.Add(grpNode);
@@ -448,6 +454,10 @@ public partial class PowerPointHandler
 
             if (firstRun.RunProperties.Bold?.HasValue == true) node.Format["bold"] = firstRun.RunProperties.Bold.Value;
             if (firstRun.RunProperties.Italic?.HasValue == true) node.Format["italic"] = firstRun.RunProperties.Italic.Value;
+            // CONSISTENCY(rPr-cap): mirror cap attribute readback so shape-level
+            // Get matches Set's allCaps/cap input (Set writes rPr cap="all"/"small").
+            if (firstRun.RunProperties.Capital?.HasValue == true && firstRun.RunProperties.Capital.Value != Drawing.TextCapsValues.None)
+                node.Format["cap"] = firstRun.RunProperties.Capital.InnerText;
             if (firstRun.RunProperties.Underline?.HasValue == true && firstRun.RunProperties.Underline.Value != Drawing.TextUnderlineValues.None)
             {
                 var ulInner = firstRun.RunProperties.Underline.InnerText;
@@ -483,6 +493,13 @@ public partial class PowerPointHandler
                 var linkUrl = ReadRunHyperlinkUrl(firstRun, part);
                 if (linkUrl != null) node.Format["link"] = linkUrl;
             }
+
+            // CONSISTENCY(rpr-attr-fallback / R21-fuzzer-1+2): surface long-tail
+            // rPr attributes (lang, kern, kumimoji, normalizeH, ...) at shape
+            // level too, mirroring BuildRunNode. Without this, shape-level Add
+            // can write `lang` to first-run rPr but shape-level Get cannot
+            // surface it unless the user descends to /shape[N]/r[1] explicitly.
+            FillUnknownRunProps(firstRun.RunProperties, node);
         }
 
         // Shape-level hyperlink (on NonVisualDrawingProperties)
@@ -509,8 +526,11 @@ public partial class PowerPointHandler
             var lineSolidFill = outline.GetFirstChild<Drawing.SolidFill>();
             var lineColor = ReadColorFromFill(lineSolidFill);
             if (lineColor != null) node.Format["line"] = lineColor;
-            if (outline.GetFirstChild<Drawing.NoFill>() != null) node.Format["line"] = "none";
-            if (outline.Width?.HasValue == true) node.Format["lineWidth"] = FormatLineWidth(outline.Width.Value);
+            var lineIsNone = outline.GetFirstChild<Drawing.NoFill>() != null;
+            if (lineIsNone) node.Format["line"] = "none";
+            // When line=none, suppress the residual width readback so users don't
+            // see a stale lineWidth from a prior color-set assignment.
+            if (!lineIsNone && outline.Width?.HasValue == true) node.Format["lineWidth"] = FormatLineWidth(outline.Width.Value);
             var dash = outline.GetFirstChild<Drawing.PresetDash>();
             if (dash?.Val?.HasValue == true)
             {
@@ -829,12 +849,71 @@ public partial class PowerPointHandler
                 var linkUrl = ReadRunHyperlinkUrl(run, part);
                 if (linkUrl != null) node.Format["link"] = linkUrl;
             }
+
+            // Long-tail OOXML fallback. drawingML rPr carries most properties
+            // as attributes on rPr itself (kern, spc, lang, dirty, smtClean,
+            // normalizeH, baseline, ...), with sub-elements for fills/fonts/
+            // hyperlinks. Symmetric with the run-context Set fallback in
+            // SetRunOrShapeProperties.
+            FillUnknownRunProps(run.RunProperties, node);
         }
 
         // Populate effective.* properties from slide layout/master inheritance
         PopulateEffectiveRunProperties(node, run, part);
 
         return node;
+    }
+
+    // OOXML attribute names already mapped to canonical Format keys by the
+    // curated run reader. Skip these in the long-tail fallback so we don't
+    // emit `b: "1"` alongside `bold: true`, `sz: "2400"` alongside `size: "24pt"`.
+    private static readonly System.Collections.Generic.HashSet<string> CuratedRunAttrs =
+        new(System.StringComparer.Ordinal)
+    {
+        "b", "i", "u", "strike", "sz", "spc", "baseline",
+    };
+
+    private static readonly System.Collections.Generic.HashSet<string> CuratedRunChildren =
+        new(System.StringComparer.Ordinal)
+    {
+        "latin", "ea", "cs", "solidFill", "gradFill", "hlinkClick",
+    };
+
+    private static void FillUnknownRunProps(Drawing.RunProperties? rPr, DocumentNode node)
+    {
+        if (rPr == null) return;
+
+        // Walk attributes on rPr itself.
+        foreach (var attr in rPr.GetAttributes())
+        {
+            var name = attr.LocalName;
+            if (string.IsNullOrEmpty(name)) continue;
+            if (CuratedRunAttrs.Contains(name)) continue;
+            if (node.Format.ContainsKey(name)) continue;
+            node.Format[name] = attr.Value;
+        }
+
+        // Walk leaf children that match the OOXML "child-with-val" or "toggle"
+        // pattern symmetric with TryCreateTypedChild's accepted shapes.
+        foreach (var child in rPr.ChildElements)
+        {
+            var name = child.LocalName;
+            if (string.IsNullOrEmpty(name)) continue;
+            if (CuratedRunChildren.Contains(name)) continue;
+            if (node.Format.ContainsKey(name)) continue;
+            if (child.ChildElements.Count > 0) continue;
+
+            string? valAttr = null;
+            int attrCount = 0;
+            foreach (var a in child.GetAttributes())
+            {
+                attrCount++;
+                if (a.LocalName.Equals("val", System.StringComparison.OrdinalIgnoreCase))
+                    valAttr = a.Value;
+            }
+            if (valAttr != null) node.Format[name] = valAttr;
+            else if (attrCount == 0) node.Format[name] = true;
+        }
     }
 
     private static DocumentNode PictureToNode(Picture pic, int slideNum, int picIdx, SlidePart? slidePart = null)
@@ -1036,10 +1115,12 @@ public partial class PowerPointHandler
 
         var geom = spPr?.GetFirstChild<Drawing.PresetGeometry>();
         if (geom?.Preset?.HasValue == true)
-            node.Format["preset"] = geom.Preset.InnerText;
+            // CONSISTENCY(canonical-key): canonical 'shape'; 'preset' was legacy key.
+            node.Format["shape"] = geom.Preset.InnerText;
 
         var ln = spPr?.GetFirstChild<Drawing.Outline>();
-        if (ln?.Width?.HasValue == true)
+        var lnIsNone = ln?.GetFirstChild<Drawing.NoFill>() != null;
+        if (!lnIsNone && ln?.Width?.HasValue == true)
             node.Format["lineWidth"] = FormatLineWidth(ln.Width.Value);
         var cxnDash = ln?.GetFirstChild<Drawing.PresetDash>();
         if (cxnDash?.Val?.HasValue == true)
@@ -1061,7 +1142,8 @@ public partial class PowerPointHandler
         var solidFill = ln?.GetFirstChild<Drawing.SolidFill>();
         var rgb = solidFill?.GetFirstChild<Drawing.RgbColorModelHex>();
         if (rgb?.Val?.HasValue == true)
-            node.Format["lineColor"] = ParseHelpers.FormatHexColor(rgb.Val.Value!);
+            // CONSISTENCY(canonical-key): canonical 'color'; 'lineColor' was legacy key.
+            node.Format["color"] = ParseHelpers.FormatHexColor(rgb.Val.Value!);
 
         // Line opacity
         var cxnColorEl = rgb as OpenXmlElement ?? solidFill?.GetFirstChild<Drawing.SchemeColor>();

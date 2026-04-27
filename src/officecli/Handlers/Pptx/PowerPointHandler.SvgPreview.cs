@@ -673,7 +673,7 @@ public partial class PowerPointHandler
 
             sb.Append($"<text x=\"{textAnchorX:0.##}\" y=\"{baselineY:0.##}\" text-anchor=\"{align}\"");
             sb.Append($" font-size=\"{fontSizePx:0.##}\"");
-            sb.Append($" font-family=\"Calibri, &apos;PingFang SC&apos;, &apos;Microsoft YaHei&apos;, sans-serif\"");
+            sb.Append($" font-family=\"{OfficeDefaultFonts.MinorLatin}, &apos;PingFang SC&apos;, &apos;Microsoft YaHei&apos;, sans-serif\"");
             sb.Append(">");
 
             // Bullet character
@@ -1276,6 +1276,14 @@ public partial class PowerPointHandler
                         var safe = CssSanitize(font);
                         if (!string.IsNullOrEmpty(safe))
                             styles.Add($"font-family:'{safe}'");
+                    }
+                    else
+                    {
+                        // CONSISTENCY(svg-default-font): when a run has no
+                        // explicit font, emit the same Office default chain
+                        // the title-text path uses (around L676) so SVG
+                        // matches PowerPoint's effective Calibri default.
+                        styles.Add($"font-family:'{OfficeDefaultFonts.MinorLatin}','PingFang SC','Microsoft YaHei',sans-serif");
                     }
 
                     // Size — resolve per-paragraph from placeholder inheritance chain

@@ -1,0 +1,60 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "row",
+  "parent": "sheet",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/SheetName/row[N]"]
+  },
+  "note": "Row index N is 1-based. Add creates the row element (optionally seeded with empty cells via 'cols'); all formatting props are currently Set-only — known Add/Set asymmetry.",
+  "properties": {
+    "cols": {
+      "type": "int",
+      "description": "number of empty cells to seed in the new row.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop cols=5"],
+      "readback": "n/a (structural only)",
+      "enforcement": "strict"
+    },
+    "height": {
+      "type": "length",
+      "description": "row height in points.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop height=24"],
+      "readback": "numeric points (raw double as stored)",
+      "enforcement": "strict"
+    },
+    "hidden": {
+      "type": "bool",
+      "description": "hide row.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop hidden=true"],
+      "readback": "true when hidden, key absent otherwise",
+      "enforcement": "strict"
+    },
+    "outline": {
+      "type": "int",
+      "description": "outline/group level 0-7. Currently Set-only. Aliases: outlineLevel, group.",
+      "aliases": ["outlinelevel", "group"],
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop outline=1"],
+      "readback": "not surfaced by Get",
+      "enforcement": "report"
+    },
+    "collapsed": {
+      "type": "bool",
+      "description": "collapse row group. Currently Set-only.",
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop collapsed=true"],
+      "readback": "not surfaced by Get",
+      "enforcement": "report"
+    }
+  }
+}

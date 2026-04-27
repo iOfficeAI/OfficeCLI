@@ -1,0 +1,45 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "placeholder",
+  "parent": "slide",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/slide[N]/placeholder[M]", "/slide[N]/shape[M]"]
+  },
+  "note": "Aliases: ph. Inserts a Shape with PlaceholderShape nonVisual properties — geometry comes from the slide layout. Add returns /slide[N]/shape[M] path (placeholder is a shape at the OOXML layer).",
+  "properties": {
+    "phType": {
+      "type": "enum",
+      "description": "placeholder type. Required.",
+      "values": ["title", "body", "subtitle", "date", "footer", "slidenum", "header", "picture", "chart", "table", "diagram", "media", "obj", "clipart"],
+      "aliases": ["phtype", "type"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop phType=title"],
+      "readback": "placeholder type string",
+      "enforcement": "report"
+    },
+    "name": {
+      "type": "string",
+      "description": "placeholder name. Defaults to '{type} Placeholder {id}'.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop name=\"Title 1\""],
+      "readback": "name string",
+      "enforcement": "report"
+    },
+    "text": {
+      "type": "string",
+      "description": "optional initial text content.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=\"Slide title\""],
+      "readback": "concatenated run text",
+      "enforcement": "report"
+    }
+  }
+}

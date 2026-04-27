@@ -1,0 +1,50 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "trackedchange",
+  "parent": "paragraph|run",
+  "operations": {
+    "add": false,
+    "set": false,
+    "get": true,
+    "query": true,
+    "remove": false
+  },
+  "paths": {
+    "positional": ["/body/p[N]/ins[M]", "/body/p[N]/del[M]"]
+  },
+  "note": "Raw revision element. Type selector routes to w:ins / w:del / w:moveTo / w:moveFrom. Tracked revisions are authored by Word itself (File -> Options -> Track Changes). CLI exposes read-only access: use `query revision` or `get /body/p[N]/ins[M]`. Handler also accepts bulk aliases (trackedchanges, acceptallchanges, rejectallchanges, acceptchanges, rejectchanges) for read/query.",
+  "properties": {
+    "type": {
+      "type": "enum",
+      "values": ["ins", "del", "moveTo", "moveFrom"],
+      "add": false, "set": false, "get": true,
+      "examples": ["--prop type=ins"],
+      "readback": "revision type (read-only)",
+      "enforcement": "report"
+    },
+    "text": {
+      "type": "string",
+      "description": "text content for ins / content marker for del (read-only).",
+      "add": false, "set": false, "get": true,
+      "examples": [],
+      "readback": "concatenated text (read-only)",
+      "enforcement": "report"
+    },
+    "author": {
+      "type": "string",
+      "add": false, "set": false, "get": true,
+      "examples": [],
+      "readback": "revision author (read-only)",
+      "enforcement": "report"
+    },
+    "date": {
+      "type": "string",
+      "description": "ISO-8601 timestamp (read-only).",
+      "add": false, "set": false, "get": true,
+      "examples": [],
+      "readback": "Date attribute (read-only)",
+      "enforcement": "report"
+    }
+  }
+}

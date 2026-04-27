@@ -175,12 +175,40 @@ public partial class ExcelHandler
         return "Number";
     }
 
+    // CONSISTENCY(cell-selector-alias): short attribute names in cell selectors
+    // map to their canonical DocumentNode.Format keys. Users write
+    // `cell[bold=true]` but Get stores `font.bold`.
+    private static readonly Dictionary<string, string> _cellSelectorAliases =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["bold"] = "font.bold",
+            ["italic"] = "font.italic",
+            ["underline"] = "font.underline",
+            ["strike"] = "font.strike",
+            ["font"] = "font.name",
+            ["size"] = "font.size",
+            ["color"] = "font.color",
+        };
+
+    private static string ResolveCellFormatKey(string key)
+        => _cellSelectorAliases.TryGetValue(key, out var canonical) ? canonical : key;
+
+    // CONSISTENCY(cell-selector-alias): exposed so the CLI query post-filter
+    // (AttributeFilter.ApplyWithWarnings) can normalize user-written keys like
+    // "bold" -> "font.bold" before matching against DocumentNode.Format. Without
+    // this, handler-level MatchesCellSelector would accept cell[bold=true] and
+    // return hits, then the CLI post-filter would drop them all because Format
+    // only has "font.bold".
+    public static string ResolveCellAttributeAlias(string key)
+        => _cellSelectorAliases.TryGetValue(key, out var canonical) ? canonical : key;
+
     private static bool MatchesFormatAttributes(DocumentNode node, CellSelector selector)
     {
         if (selector.FormatEquals != null)
         {
-            foreach (var (key, expected) in selector.FormatEquals)
+            foreach (var (rawKey, expected) in selector.FormatEquals)
             {
+                var key = ResolveCellFormatKey(rawKey);
                 var matchedKey = node.Format.Keys.FirstOrDefault(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase));
                 if (matchedKey == null) return false;
                 var actual = node.Format[matchedKey]?.ToString() ?? "";
@@ -190,8 +218,9 @@ public partial class ExcelHandler
         }
         if (selector.FormatNotEquals != null)
         {
-            foreach (var (key, expected) in selector.FormatNotEquals)
+            foreach (var (rawKey, expected) in selector.FormatNotEquals)
             {
+                var key = ResolveCellFormatKey(rawKey);
                 var matchedKey = node.Format.Keys.FirstOrDefault(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase));
                 var actual = matchedKey != null ? (node.Format[matchedKey]?.ToString() ?? "") : "";
                 if (ColorNormalizedEquals(actual, expected))

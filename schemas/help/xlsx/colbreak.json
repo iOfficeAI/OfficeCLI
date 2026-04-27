@@ -1,0 +1,28 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "colbreak",
+  "parent": "sheet",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/SheetName/colbreak[N]"]
+  },
+  "note": "Manual page break before the specified column. Accepts numeric index or column letter.",
+  "properties": {
+    "col": {
+      "type": "string",
+      "description": "column index or letter. Aliases: column, index.",
+      "aliases": ["column", "index"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop col=F"],
+      "readback": "column index",
+      "enforcement": "report"
+    }
+  }
+}

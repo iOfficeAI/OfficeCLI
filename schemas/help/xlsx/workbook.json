@@ -1,0 +1,63 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "workbook",
+  "container": true,
+  "operations": {
+    "add": false,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": false
+  },
+  "paths": {
+    "positional": ["/"]
+  },
+  "note": "Root container. Get returns sheet list and workbook-level metadata. Set exists for workbook-wide properties (defaultFont, defaultFontSize, calculation, author). Sheets are mutated via /SheetName paths.",
+  "properties": {
+    "defaultFont": {
+      "type": "string",
+      "description": "default font for all cells (fontname alias).",
+      "aliases": ["fontName", "fontname"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop defaultFont=Calibri"],
+      "readback": "font name",
+      "enforcement": "report"
+    },
+    "defaultFontSize": {
+      "type": "length",
+      "description": "default font size.",
+      "aliases": ["fontSize", "fontsize"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop defaultFontSize=11"],
+      "readback": "unit-qualified pt",
+      "enforcement": "report"
+    },
+    "author": {
+      "type": "string",
+      "description": "document author (core properties).",
+      "aliases": ["creator"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop author=\"Alice\""],
+      "readback": "author string",
+      "enforcement": "report"
+    },
+    "title": {
+      "type": "string",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop title=\"Q1 Report\""],
+      "readback": "title string",
+      "enforcement": "report"
+    },
+    "subject": {
+      "type": "string",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop subject=Finance"],
+      "readback": "subject string",
+      "enforcement": "report"
+    }
+  },
+  "children": [
+    { "element": "sheet", "pathSegment": "{SheetName}", "cardinality": "1..n" }
+  ]
+}

@@ -251,7 +251,14 @@ public partial class WordHandler
         else if (parent is Body bodyEl)
         {
             para = new Paragraph();
-            bodyEl.AppendChild(para);
+            // Honor index (ChildElements-based) and the Body's trailing sectPr
+            // — raw AppendChild put the paragraph AFTER sectPr, making the
+            // document schema-invalid.
+            InsertAtIndexOrAppend(bodyEl, para, index);
+            // index was consumed by the placement above; clear it so the
+            // later FormField re-threading (which also inspects index)
+            // doesn't try to rearrange runs inside the new paragraph.
+            index = null;
             var paraIdx = bodyEl.Elements<Paragraph>().ToList().IndexOf(para) + 1;
             parentPath = $"/body/{BuildParaPathSegment(para, paraIdx)}";
         }
@@ -263,7 +270,33 @@ public partial class WordHandler
         var ciProps = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
         var ffType = ciProps.GetValueOrDefault("formfieldtype",
             ciProps.GetValueOrDefault("type", "text")).ToLowerInvariant();
-        var name = ciProps.GetValueOrDefault("name", $"ff_{Guid.NewGuid():N}"[..12]);
+        // Treat explicit name="" the same as missing name: auto-generate.
+        // Empty bookmark names are addressable-invalid (predicate validator
+        // rejects bare empty values), and the validator below would crash
+        // on name[0] if we let "" through.
+        var name = ciProps.GetValueOrDefault("name", "");
+        if (string.IsNullOrEmpty(name))
+            name = $"ff_{Guid.NewGuid():N}"[..12];
+        if (name.Any(c => c == '/' || c == '[' || c == ']'))
+            throw new ArgumentException(
+                $"Form field name '{name}' contains path-special characters " +
+                "('/', '[', ']'). These characters prevent later addressing via " +
+                "selectors. Use only letters, digits, '.', '_', '-' in form field names.");
+        // Form fields embed a BookmarkStart/End with the same name, so they
+        // must obey the same addressability rules as bookmarks (R18): no
+        // whitespace, no leading '@'/'\'', no embedded '"', and no duplicate
+        // names anywhere in the document.
+        if (name.Any(char.IsWhiteSpace) || name[0] == '@' || name[0] == '\'' || name.Contains('"'))
+            throw new ArgumentException(
+                $"Form field name '{name}' contains whitespace or quote/@ chars " +
+                "that prevent later addressing via bare attribute selectors. " +
+                "Use only letters, digits, '.', '_', '-' in form field names.");
+        if (body.Descendants<BookmarkStart>()
+                .Any(b => string.Equals(b.Name?.Value, name, StringComparison.Ordinal)))
+        {
+            throw new ArgumentException(
+                $"form field name '{name}' already exists as a bookmark; pick a unique name.");
+        }
         var text = ciProps.GetValueOrDefault("text", ciProps.GetValueOrDefault("value", ""));
 
         // Generate unique bookmark ID
@@ -369,6 +402,30 @@ public partial class WordHandler
         // BookmarkEnd
         var bookmarkEnd = new BookmarkEnd { Id = bkId };
         para.AppendChild(bookmarkEnd);
+
+        // CONSISTENCY(add-index): honor --index / --after / --before (#76).
+        // When an anchor/index was supplied, re-thread the 7 appended elements
+        // into the requested child-element position. Simpler than restructuring
+        // the construction path above.
+        if (index.HasValue)
+        {
+            // Snapshot: the 7 elements we just appended, in order.
+            var ffElements = para.ChildElements
+                .Reverse().Take(7).Reverse().ToList();
+            // The anchor position was computed against the children BEFORE we
+            // appended the 7 elements. Subtract those 7 from the current count
+            // to get the original anchor child.
+            var origChildCount = para.ChildElements.Count - ffElements.Count;
+            if (index.Value < origChildCount)
+            {
+                var anchor = para.ChildElements[index.Value];
+                foreach (var el in ffElements) el.Remove();
+                para.InsertBefore(ffElements[0], anchor);
+                for (int ffI = 1; ffI < ffElements.Count; ffI++)
+                    para.InsertAfter(ffElements[ffI], ffElements[ffI - 1]);
+            }
+            // else: index is at or past the end — current append position is correct.
+        }
 
         _doc.MainDocumentPart?.Document?.Save();
 

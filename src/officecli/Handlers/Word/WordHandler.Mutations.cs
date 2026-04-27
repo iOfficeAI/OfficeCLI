@@ -18,6 +18,25 @@ public partial class WordHandler
 {
     public string? Remove(string path)
     {
+        // CONSISTENCY(container-remove-guard): reject removal of required
+        // structural container elements up front. Without this guard,
+        // `remove /body` / `remove /styles` etc. fall through to
+        // NavigateToElement + element.Remove() and permanently corrupt
+        // the document (body cleared, styles/numbering NRE). AI agents
+        // mis-dispatching a remove command should never be able to nuke
+        // the file.
+        if (IsProtectedContainerPath(path))
+            throw new ArgumentException(
+                $"Cannot remove container element '{path}': it is a required structural element of the document.");
+
+        // CONSISTENCY(container-remove-guard): the last <w:sectPr> inside
+        // <w:body> is required by the OOXML schema — removing it corrupts the
+        // document so that Word refuses to open it on next launch. Matches
+        // `/body/sectPr` and the indexed form `/body/sectPr[N]`.
+        if (IsProtectedSectPrPath(path))
+            throw new ArgumentException(
+                "Cannot remove '/body/sectPr': it is required by the Word document body (last section properties). Removing it corrupts the document.");
+
         // Handle /watermark removal
         if (path.Equals("/watermark", StringComparison.OrdinalIgnoreCase))
         {
@@ -274,6 +293,37 @@ public partial class WordHandler
             }
         }
 
+        // CONSISTENCY(ref-cleanup): mirror Comment cleanup above — removing a
+        // NumberingInstance must clear dangling numId references from any
+        // paragraph numPr in body/headers/footers/footnotes/endnotes.
+        if (element is NumberingInstance numInst && numInst.NumberID?.Value is int removedNumId)
+        {
+            var mainPart3 = _doc.MainDocumentPart;
+            if (mainPart3 != null)
+            {
+                IEnumerable<OpenXmlElement> roots = new OpenXmlElement?[]
+                {
+                    mainPart3.Document?.Body,
+                    mainPart3.FootnotesPart?.Footnotes,
+                    mainPart3.EndnotesPart?.Endnotes,
+                }
+                .Concat(mainPart3.HeaderParts.Select(h => (OpenXmlElement?)h.Header))
+                .Concat(mainPart3.FooterParts.Select(f => (OpenXmlElement?)f.Footer))
+                .Where(e => e != null)!;
+
+                foreach (var root in roots)
+                {
+                    foreach (var numPr in root.Descendants<NumberingProperties>().ToList())
+                    {
+                        if (numPr.NumberingId?.Val?.Value == removedNumId)
+                        {
+                            numPr.Remove();
+                        }
+                    }
+                }
+            }
+        }
+
         // If removing an oMathPara (M.Paragraph) whose parent w:p has no other
         // meaningful content, remove the wrapper w:p too to avoid zombie paragraphs.
         var wrapperPara = (element is M.Paragraph && element.Parent is Paragraph wp
@@ -303,6 +353,41 @@ public partial class WordHandler
                 fp.Footer?.Save();
         }
         return null;
+    }
+
+    // CONSISTENCY(container-remove-guard): hardcoded list of root-level
+    // container paths that must never be removed. Kept in sync (in spirit)
+    // with schema entries marked `"container": true` under
+    // schemas/help/docx/*.json (document, body, styles, numbering). /settings
+    // is also blocked: docSettings are part of the main document part and
+    // removing that part destroys the document.
+    private static readonly HashSet<string> ProtectedContainerPaths = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "/body",
+        "/document",
+        "/styles",
+        "/numbering",
+        "/settings",
+    };
+
+    private static bool IsProtectedContainerPath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return false;
+        return ProtectedContainerPaths.Contains(path.TrimEnd('/'));
+    }
+
+    // CONSISTENCY(container-remove-guard): /body/sectPr needs regex match
+    // because it commonly appears with an index (e.g. /body/sectPr[1]). The
+    // flat HashSet in ProtectedContainerPaths would require enumerating every
+    // index variant, so this is kept as its own predicate.
+    private static readonly Regex ProtectedSectPrRegex = new(
+        @"^/body/sectPr(?:\[\d+\])?/?$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static bool IsProtectedSectPrPath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return false;
+        return ProtectedSectPrRegex.IsMatch(path);
     }
 
     /// <summary>
@@ -457,10 +542,95 @@ public partial class WordHandler
 
     public string CopyFrom(string sourcePath, string targetParentPath, InsertPosition? position)
     {
-        var index = position?.Index;
         var srcParts = ParsePath(sourcePath);
         var element = NavigateToElement(srcParts)
             ?? throw new ArgumentException($"Source not found: {sourcePath}");
+
+        // Bookmarks are a start/end pair spanning arbitrary content; the
+        // virtual `/bookmark[@name=X]` selector (and any bare bookmarkStart/
+        // bookmarkEnd path) points at one marker only, so a naive clone
+        // produces a never-closed bookmark. Reject with a direction to clone
+        // the containing paragraph or range instead.
+        if (element is BookmarkStart or BookmarkEnd)
+        {
+            throw new ArgumentException(
+                $"Cannot clone '{sourcePath}': bookmarks span content via a start/end pair. Clone the containing paragraph (or a range) instead.");
+        }
+
+        // Part-scoped elements: <w:footnote>, <w:endnote>, <w:comment> live
+        // in their own XML parts. Cloning the raw element into main-document
+        // body produces schema-invalid OOXML (body can only reference these
+        // via <w:footnoteReference>, <w:endnoteReference>, <w:commentReference>
+        // and commentRangeStart/End). This rejection is clone-specific — the
+        // legitimate `add --type footnote/endnote/comment --prop text=...`
+        // path uses dedicated helpers that insert a reference at the target
+        // and append the content to the correct part.
+        if (element is Footnote)
+        {
+            throw new ArgumentException(
+                $"Cannot clone '{sourcePath}': <w:footnote> belongs in /word/footnotes.xml. Use `add --type footnote --prop text=...` to create a new footnote, or clone a paragraph containing a footnoteReference.");
+        }
+        if (element is Endnote)
+        {
+            throw new ArgumentException(
+                $"Cannot clone '{sourcePath}': <w:endnote> belongs in /word/endnotes.xml. Use `add --type endnote --prop text=...` to create a new endnote, or clone a paragraph containing an endnoteReference.");
+        }
+        if (element is Comment)
+        {
+            throw new ArgumentException(
+                $"Cannot clone '{sourcePath}': <w:comment> belongs in /word/comments.xml. Use `add --type comment --prop text=...` to create a new comment, or clone a paragraph containing commentRangeStart/End.");
+        }
+        // Equation content (<m:oMathPara>, <m:oMath>) lives inside a <w:p>
+        // (paragraph) and is not itself a valid direct child of <w:body>.
+        // Cloning a bare oMathPara/oMath into /body produces schema-invalid
+        // OOXML. Direct users to clone the containing paragraph instead.
+        if (element is DocumentFormat.OpenXml.Math.Paragraph)
+        {
+            throw new ArgumentException(
+                $"Cannot clone '{sourcePath}': equation content lives inside a paragraph; clone /body/p[N] instead.");
+        }
+        if (element is DocumentFormat.OpenXml.Math.OfficeMath)
+        {
+            throw new ArgumentException(
+                $"Cannot clone '{sourcePath}': equation content lives inside a paragraph; clone /body/p[N] instead.");
+        }
+
+        OpenXmlElement targetParent;
+        if (targetParentPath is "/" or "" or "/body")
+        {
+            targetParent = _doc.MainDocumentPart!.Document!.Body!;
+            targetParentPath = "/body";
+        }
+        else if (targetParentPath == "/styles")
+        {
+            var stylesPart = _doc.MainDocumentPart!.StyleDefinitionsPart
+                ?? throw new ArgumentException("Target parent not found: /styles");
+            targetParent = stylesPart.Styles
+                ?? throw new ArgumentException("Target parent not found: /styles");
+        }
+        else
+        {
+            var tgtParts = ParsePath(targetParentPath);
+            targetParent = NavigateToElement(tgtParts)
+                ?? throw new ArgumentException($"Target parent not found: {targetParentPath}");
+        }
+
+        // Reject self-clone (source == targetParent) and
+        // ancestor-into-descendant (cloning /body into /body/... would stack
+        // the body inside itself). The node-level check here complements the
+        // LocalName-based ValidateParentChild below, catching cases where the
+        // shapes would nominally match but the operation is still degenerate.
+        if (ReferenceEquals(element, targetParent))
+            throw new ArgumentException(
+                $"Cannot clone '{sourcePath}' into itself.");
+        if (targetParent.Ancestors().Contains(element))
+            throw new ArgumentException(
+                $"Cannot clone '{sourcePath}' into one of its own descendants ('{targetParentPath}').");
+
+        // Map OOXML local name to the type token ValidateParentChild expects
+        // (mirrors the dispatcher in Add.cs).
+        var typeToken = MapLocalNameToAddType(element.LocalName);
+        ValidateParentChild(targetParent, targetParentPath, typeToken);
 
         var clone = element.CloneNode(true);
 
@@ -474,15 +644,176 @@ public partial class WordHandler
             p.TextId = GenerateParaId();
         }
 
-        OpenXmlElement targetParent;
-        if (targetParentPath is "/" or "" or "/body")
-            targetParent = _doc.MainDocumentPart!.Document!.Body!;
-        else
+        // Regenerate bookmark ids/names so a cloned paragraph containing
+        // <w:bookmarkStart>/<w:bookmarkEnd> doesn't introduce duplicate
+        // numeric ids or duplicate names (the latter silently breaks
+        // hyperlink/ref resolution, the former is a schema violation).
+        var docBody = _doc.MainDocumentPart?.Document?.Body;
+        if (docBody != null)
         {
-            var tgtParts = ParsePath(targetParentPath);
-            targetParent = NavigateToElement(tgtParts)
-                ?? throw new ArgumentException($"Target parent not found: {targetParentPath}");
+            var existingIds = docBody.Descendants<BookmarkStart>()
+                .Where(b => !ReferenceEquals(b, clone) && !b.Ancestors().Contains(clone))
+                .Select(b => int.TryParse(b.Id?.Value, out var id) ? id : 0);
+            var existingNames = new HashSet<string>(
+                docBody.Descendants<BookmarkStart>()
+                    .Where(b => !ReferenceEquals(b, clone) && !b.Ancestors().Contains(clone))
+                    .Select(b => b.Name?.Value ?? "")
+                    .Where(n => n.Length > 0));
+            var nextId = existingIds.Any() ? existingIds.Max() + 1 : 1;
+
+            // Collect pairs inside the clone (by matching old Id).
+            var startsInClone = clone is BookmarkStart bsSelf
+                ? new[] { bsSelf }
+                : clone.Descendants<BookmarkStart>().ToArray();
+            var endsInClone = clone is BookmarkEnd beSelf
+                ? new[] { beSelf }
+                : clone.Descendants<BookmarkEnd>().ToArray();
+
+            foreach (var bs in startsInClone)
+            {
+                var oldId = bs.Id?.Value;
+                var newId = nextId++.ToString();
+                bs.Id = newId;
+                var name = bs.Name?.Value ?? "";
+                if (string.IsNullOrEmpty(name) || existingNames.Contains(name))
+                {
+                    var baseName = string.IsNullOrEmpty(name) ? "bm" : name;
+                    var candidate = $"{baseName}_{newId}";
+                    while (existingNames.Contains(candidate))
+                        candidate = $"{baseName}_{nextId++}";
+                    bs.Name = candidate;
+                    existingNames.Add(candidate);
+                }
+                else
+                {
+                    existingNames.Add(name);
+                }
+                // Retarget matching ends.
+                if (oldId != null)
+                {
+                    foreach (var be in endsInClone)
+                    {
+                        if (be.Id?.Value == oldId)
+                            be.Id = newId;
+                    }
+                }
+            }
         }
+
+        // Regenerate revision ids on cloned <w:ins>/<w:del> elements so the
+        // clone doesn't collide with the source (or any other in-doc) w:id.
+        // Semantic validators reject duplicate ins/del ids and Word treats
+        // two elements with the same id as a single tracked change.
+        if (docBody != null)
+        {
+            var existingRevIds = new HashSet<int>(
+                docBody.Descendants<InsertedRun>()
+                    .Where(e => !ReferenceEquals(e, clone) && !e.Ancestors().Contains(clone))
+                    .Select(e => int.TryParse(e.Id?.Value, out var i) ? i : -1)
+                    .Where(i => i >= 0));
+            foreach (var i in docBody.Descendants<DeletedRun>()
+                .Where(e => !ReferenceEquals(e, clone) && !e.Ancestors().Contains(clone))
+                .Select(e => int.TryParse(e.Id?.Value, out var i) ? i : -1)
+                .Where(i => i >= 0))
+            {
+                existingRevIds.Add(i);
+            }
+            var nextRevId = existingRevIds.Count > 0 ? existingRevIds.Max() + 1 : 1;
+
+            var insInClone = clone is InsertedRun irSelf
+                ? new[] { irSelf }
+                : clone.Descendants<InsertedRun>().ToArray();
+            var delInClone = clone is DeletedRun drSelf
+                ? new[] { drSelf }
+                : clone.Descendants<DeletedRun>().ToArray();
+            foreach (var ir in insInClone)
+            {
+                ir.Id = (nextRevId++).ToString();
+            }
+            foreach (var dr in delInClone)
+            {
+                dr.Id = (nextRevId++).ToString();
+            }
+        }
+
+        // Regenerate wp:docPr/@id on cloned drawings. <wp:docPr> requires
+        // document-unique numeric ids; cloning a paragraph containing a
+        // chart/picture/shape duplicates the id and fails validation.
+        // Matching pic:cNvPr (inside DrawingML picture) carries the same id
+        // by convention (see CreateImageRun / AddChart), so keep them in sync.
+        {
+            var docPrInClone = clone is DW.DocProperties dpSelf
+                ? new[] { dpSelf }
+                : clone.Descendants<DW.DocProperties>().ToArray();
+            var nextDocPrId = NextDocPropId();
+            foreach (var dp in docPrInClone)
+            {
+                var oldId = dp.Id?.Value;
+                var newId = nextDocPrId++;
+                dp.Id = newId;
+
+                // Update matching pic:cNvPr ids within the same drawing subtree.
+                var drawingAncestor = (OpenXmlElement?)dp.Parent;
+                while (drawingAncestor != null && drawingAncestor is not Drawing)
+                    drawingAncestor = drawingAncestor.Parent;
+                var scope = (OpenXmlElement?)drawingAncestor ?? dp.Parent ?? clone;
+                if (scope != null)
+                {
+                    foreach (var picCnv in scope.Descendants<DocumentFormat.OpenXml.Drawing.Pictures.NonVisualDrawingProperties>())
+                    {
+                        if (oldId == null || picCnv.Id?.Value == oldId)
+                            picCnv.Id = newId;
+                    }
+                    foreach (var wpsCnv in scope.Descendants<DocumentFormat.OpenXml.Office2010.Word.DrawingShape.WordprocessingShape>()
+                        .SelectMany(s => s.Descendants<DocumentFormat.OpenXml.Drawing.NonVisualDrawingProperties>()))
+                    {
+                        if (oldId == null || wpsCnv.Id?.Value == oldId)
+                            wpsCnv.Id = newId;
+                    }
+                }
+            }
+        }
+
+        // Handle find: anchor sentinel up front — Add() uses AddAtFindPosition
+        // to split the paragraph at a text-match point, but CopyFrom has no
+        // analogous split-based insertion path. The common case (e.g. cloning
+        // a paragraph before/after a find: anchor) is well served by
+        // resolving the anchor to the containing paragraph at the targetParent
+        // level and inserting the clone as that paragraph's before/after
+        // sibling.
+        if (position != null)
+        {
+            var anchorPath = position.After ?? position.Before;
+            if (anchorPath != null && anchorPath.StartsWith("find:", StringComparison.OrdinalIgnoreCase))
+            {
+                var findValue = anchorPath["find:".Length..];
+                var (pattern, isRegex) = ParseFindPattern(findValue);
+                if (string.IsNullOrEmpty(pattern))
+                    throw new ArgumentException("find: pattern must not be empty.");
+                var hit = FindParagraphContainingText(targetParent, targetParentPath, pattern, isRegex)
+                    ?? throw new ArgumentException(
+                        $"Text '{findValue}' not found in any paragraph under {targetParentPath}.");
+                var paragraphs = targetParent.Elements<Paragraph>().ToList();
+                var anchorIdx = paragraphs.IndexOf(hit.Para);
+                if (anchorIdx < 0)
+                    throw new ArgumentException($"find: anchor resolved outside {targetParentPath}.");
+
+                if (position.After != null)
+                    hit.Para.InsertAfterSelf(clone);
+                else
+                    hit.Para.InsertBeforeSelf(clone);
+
+                _doc.MainDocumentPart?.Document?.Save();
+                var fSiblings = targetParent.ChildElements.Where(e => e.LocalName == clone.LocalName).ToList();
+                var fNewIdx = fSiblings.IndexOf(clone) + 1;
+                return $"{targetParentPath}/{clone.LocalName}[{fNewIdx}]";
+            }
+        }
+
+        // Resolve --after/--before to a concrete int index in targetParent,
+        // mirroring what Add() does. Without this, CopyFrom silently ignored
+        // anchor-based positions and always appended.
+        var index = ResolveAnchorPosition(targetParent, targetParentPath, position);
 
         InsertAtPosition(targetParent, clone, index);
 
@@ -493,8 +824,50 @@ public partial class WordHandler
         return $"{targetParentPath}/{clone.LocalName}[{newIdx}]";
     }
 
+    /// <summary>
+    /// Map an OpenXML LocalName to the type token ValidateParentChild expects
+    /// (the same tokens the Add() dispatcher uses). Unknown names fall
+    /// through to the local name itself, which produces no special rejection
+    /// in ValidateParentChild — matching pre-fix behaviour for exotic types.
+    /// </summary>
+    private static string MapLocalNameToAddType(string localName) =>
+        localName.ToLowerInvariant() switch
+        {
+            "p" => "paragraph",
+            "tbl" => "table",
+            "tr" => "row",
+            "tc" => "cell",
+            "r" => "run",
+            "body" => "body",
+            // Keep "sectpr" distinct from "section": the former represents a raw
+            // <w:sectPr> element being cloned (only valid as body-level singleton)
+            // and is rejected by ValidateParentChild; the latter is the user-level
+            // Add verb that creates a paragraph carrying a section break.
+            "sectpr" => "sectpr",
+            "sdt" => "sdt",
+            "hyperlink" => "hyperlink",
+            "bookmarkstart" or "bookmarkend" => "bookmark",
+            // Part-scoped elements — ValidateParentChild rejects these wholesale
+            // when the target parent is body/paragraph/cell, preventing raw
+            // <w:footnote>/<w:endnote>/<w:comment> from being cloned into
+            // main-document content.
+            "footnote" => "footnote",
+            "endnote" => "endnote",
+            "comment" => "comment",
+            _ => localName.ToLowerInvariant()
+        };
+
     private static void InsertAtPosition(OpenXmlElement parent, OpenXmlElement element, int? index)
     {
+        // Paragraphs require pPr-aware insertion so an index 0 (which resolves
+        // to the <w:pPr> child when present) does not shove content in front
+        // of the paragraph properties.
+        if (parent is Paragraph para)
+        {
+            InsertIntoParagraph(para, element, index);
+            return;
+        }
+
         if (index.HasValue)
         {
             var children = parent.ChildElements.ToList();

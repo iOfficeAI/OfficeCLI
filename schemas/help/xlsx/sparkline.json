@@ -1,0 +1,169 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "sparkline",
+  "parent": "sheet",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/SheetName/sparkline[N]"]
+  },
+  "note": "SparklineGroup stored under x14 extension list. Renders tiny inline chart in a target cell.",
+  "properties": {
+    "type": {
+      "type": "enum",
+      "values": ["line", "column", "stacked", "winloss", "win-loss"],
+      "description": "sparkline chart kind. 'stacked'/'winloss' both map to OOXML stacked.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop type=line"],
+      "readback": "sparkline type",
+      "enforcement": "report"
+    },
+    "dataRange": {
+      "type": "string",
+      "description": "source data range (e.g. A1:A10).",
+      "aliases": ["datarange", "range", "data"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop dataRange=A1:A10"],
+      "readback": "range reference",
+      "enforcement": "report"
+    },
+    "location": {
+      "type": "string",
+      "description": "target cell address.",
+      "aliases": ["cell", "ref"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop location=B1"],
+      "readback": "target cell",
+      "enforcement": "report"
+    },
+    "color": {
+      "type": "color",
+      "description": "series line/column color. Defaults to #4472C4.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop color=#FF0000"],
+      "readback": "#RRGGBB",
+      "enforcement": "report"
+    },
+    "negativeColor": {
+      "type": "color",
+      "description": "color used when 'negative' flag is on (winLoss/highlight negative points).",
+      "aliases": ["negativecolor"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop negativeColor=#FF0000"],
+      "readback": "#RRGGBB",
+      "enforcement": "report"
+    },
+    "markers": {
+      "type": "bool",
+      "description": "show data-point markers (line sparklines only).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop markers=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "highPoint": {
+      "type": "bool",
+      "description": "highlight the maximum point.",
+      "aliases": ["highpoint"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop highPoint=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "lowPoint": {
+      "type": "bool",
+      "description": "highlight the minimum point.",
+      "aliases": ["lowpoint"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop lowPoint=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "firstPoint": {
+      "type": "bool",
+      "description": "highlight the first point.",
+      "aliases": ["firstpoint"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop firstPoint=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "lastPoint": {
+      "type": "bool",
+      "description": "highlight the last point.",
+      "aliases": ["lastpoint"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop lastPoint=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "negative": {
+      "type": "bool",
+      "description": "highlight negative points using negativeColor.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop negative=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "highMarkerColor": {
+      "type": "color",
+      "description": "marker color for the high point. Add-only; not modifiable via Set.",
+      "aliases": ["highmarkercolor"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop highMarkerColor=#00B050"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "lowMarkerColor": {
+      "type": "color",
+      "description": "marker color for the low point. Add-only.",
+      "aliases": ["lowmarkercolor"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop lowMarkerColor=#FF0000"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "firstMarkerColor": {
+      "type": "color",
+      "description": "marker color for the first point. Add-only.",
+      "aliases": ["firstmarkercolor"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop firstMarkerColor=#4472C4"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "lastMarkerColor": {
+      "type": "color",
+      "description": "marker color for the last point. Add-only.",
+      "aliases": ["lastmarkercolor"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop lastMarkerColor=#4472C4"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "markersColor": {
+      "type": "color",
+      "description": "marker color for all non-extreme points. Add-only.",
+      "aliases": ["markerscolor"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop markersColor=#808080"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "lineWeight": {
+      "type": "number",
+      "description": "line stroke weight in points (line sparklines only).",
+      "aliases": ["lineweight"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop lineWeight=1.5"],
+      "readback": "number",
+      "enforcement": "report"
+    }
+  }
+}

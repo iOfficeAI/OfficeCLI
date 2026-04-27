@@ -1,0 +1,27 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "pagebreak",
+  "parent": "paragraph|body",
+  "operations": {
+    "add": true,
+    "set": false,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/body/p[N]/r[M]"]
+  },
+  "note": "Aliases: columnbreak, break. Inserts a w:br element inside a run. type=column produces a column break, type=page (default) a page break.",
+  "properties": {
+    "type": {
+      "type": "enum",
+      "values": ["page", "column", "textWrapping"],
+      "add": true, "set": false, "get": true,
+      "examples": ["--prop type=page"],
+      "readback": "br type",
+      "enforcement": "report"
+    }
+  }
+}

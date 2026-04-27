@@ -117,7 +117,7 @@ internal static class ParseHelpers
     public static bool IsTruthy(string? value)
     {
         if (value == null) return false;
-        return value.ToLowerInvariant() switch
+        return TrimInvisible(value).ToLowerInvariant() switch
         {
             "true" or "1" or "yes" or "on" => true,
             "false" or "0" or "no" or "off" or "" => false,
@@ -125,6 +125,25 @@ internal static class ParseHelpers
                 $"Invalid boolean value: '{value}'. Expected true/false, yes/no, 1/0, or on/off.")
         };
     }
+
+    // R10: BOM (U+FEFF) and other zero-width / format chars are NOT in
+    // char.IsWhiteSpace, so a plain Trim() leaves them in place. R8 added
+    // Trim() but tests with `"﻿true"` still threw. Use a stricter
+    // predicate that also drops format/control chars.
+    private static string TrimInvisible(string s)
+    {
+        return s.Trim().Trim(s_invisibleChars);
+    }
+
+    private static readonly char[] s_invisibleChars =
+    {
+        '﻿', // BOM / zero-width no-break space
+        '​', // zero-width space
+        '‌', // zero-width non-joiner
+        '‍', // zero-width joiner
+        '⁠', // word joiner
+        ' ', // non-breaking space (technically whitespace category in some configs but be explicit)
+    };
 
     /// <summary>
     /// Returns true if the value is a recognized truthy string.
@@ -134,7 +153,7 @@ internal static class ParseHelpers
     public static bool IsTruthySafe(string? value)
     {
         if (value == null) return false;
-        return value.ToLowerInvariant() is "true" or "1" or "yes" or "on";
+        return TrimInvisible(value).ToLowerInvariant() is "true" or "1" or "yes" or "on";
     }
 
     /// <summary>
@@ -142,8 +161,8 @@ internal static class ParseHelpers
     /// Returns false for null, empty, or non-boolean values (no exception thrown).
     /// </summary>
     public static bool IsValidBooleanString(string? value) =>
-        value != null && value.ToLowerInvariant() is "true" or "1" or "yes" or "on"
-                                                  or "false" or "0" or "no" or "off";
+        value != null && TrimInvisible(value).ToLowerInvariant() is "true" or "1" or "yes" or "on"
+                                                                 or "false" or "0" or "no" or "off";
 
     /// <summary>
     /// Parse a font size string, stripping optional "pt" suffix.

@@ -1,0 +1,59 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "ole",
+  "parent": "paragraph|body",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/body/p[N]/ole[M]", "/header[N]/ole[M]", "/footer[N]/ole[M]"]
+  },
+  "note": "Aliases: oleobject, object, embed. Embeds a binary package plus a preview image. Source accepted as file path, URL, or data-URI.",
+  "properties": {
+    "src": {
+      "type": "string",
+      "description": "embedded object source. Alias: path.",
+      "aliases": ["path"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop src=/path/to/data.xlsx"],
+      "readback": "object rel id",
+      "enforcement": "report"
+    },
+    "progId": {
+      "type": "string",
+      "description": "OLE ProgID (e.g. 'Excel.Sheet.12'). Usually inferred from src extension.",
+      "aliases": ["progid"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop progId=Excel.Sheet.12"],
+      "readback": "ProgID string",
+      "enforcement": "report"
+    },
+    "preview": {
+      "type": "string",
+      "description": "preview image path. Auto-generated from ext if omitted.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop preview=/path/to/thumb.png"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "width": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop width=3in"],
+      "readback": "EMU / unit-qualified",
+      "enforcement": "report"
+    },
+    "height": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop height=2in"],
+      "readback": "EMU / unit-qualified",
+      "enforcement": "report"
+    }
+  }
+}

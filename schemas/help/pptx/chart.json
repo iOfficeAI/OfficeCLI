@@ -1,0 +1,225 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "chart",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "stable":     ["/slide[N]/chart[@id=ID]"],
+    "positional": ["/slide[N]/chart[N]"]
+  },
+  "note": "source of truth: Core/Chart/ChartHelper.cs ParseChartType() for the classic (c:chart) family, Core/Chart/ChartExBuilder.cs IsExtendedChartType() for the extended (cx:chart) family. Adding a new chartType value MUST update both the handler and this file in the same PR — contract tests enforce equivalence.",
+  "properties": {
+    "chartType": {
+      "type": "enum",
+      "values": [
+        "bar", "column", "line", "pie", "doughnut", "area",
+        "scatter", "bubble", "radar", "stock", "combo",
+        "waterfall", "funnel", "treemap", "sunburst",
+        "boxWhisker", "histogram", "pareto"
+      ],
+      "modifiers": {
+        "3d":             { "suffix": "3d", "example": "column3d",         "appliesWhen": { "chartType": ["bar","column","line","pie","area"] } },
+        "stacked":        { "prefix": "stacked", "example": "stackedBar",  "appliesWhen": { "chartType": ["bar","column","line","area"] } },
+        "percentStacked": { "prefix": "percentStacked", "example": "percentStackedBar", "appliesWhen": { "chartType": ["bar","column","line","area"] } }
+      },
+      "aliases": { "col": "column", "donut": "doughnut", "xy": "scatter", "spider": "radar", "ohlc": "stock", "wf": "waterfall" },
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop chartType=column",
+        "--prop chartType=stackedBar",
+        "--prop chartType=percentStackedColumn",
+        "--prop chartType=column3d",
+        "--prop chartType=waterfall"
+      ],
+      "readback": "normalized chartType string without modifiers (modifiers surface as separate flags in later iterations)",
+      "enforcement": "strict"
+    },
+    "title": {
+      "type": "string",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop title=\"2024 Sales\""],
+      "readback": "plain text of chart title",
+      "enforcement": "strict"
+    },
+    "x":      { "type": "length", "add": true, "set": true, "get": true, "examples": ["--prop x=2cm"], "readback": "length in cm", "enforcement": "strict" },
+    "y":      { "type": "length", "add": true, "set": true, "get": true, "examples": ["--prop y=3cm"], "readback": "length in cm", "enforcement": "strict" },
+    "width":  { "type": "length", "add": true, "set": true, "get": true, "examples": ["--prop width=18cm"], "readback": "length in cm", "enforcement": "strict" },
+    "height": { "type": "length", "add": true, "set": true, "get": true, "examples": ["--prop height=10cm"], "readback": "length in cm", "enforcement": "strict" },
+    "categories": {
+      "type": "string",
+      "description": "comma-separated category labels, OR a cell range reference (e.g. Sheet1!A2:A5)",
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop categories=\"Q1,Q2,Q3,Q4\"",
+        "--prop categories=\"Sheet1!$A$2:$A$5\""
+      ],
+      "enforcement": "strict"
+    },
+    "data": {
+      "type": "string",
+      "description": "legacy compact series syntax. Prefer per-series keys (see chart-series). Format: 'Name:1,2,3' or 'Name1:1,2,3;Name2:4,5,6'",
+      "add": true,
+      "set": false,
+      "get": false,
+      "examples": ["--prop data=\"Sales:10,20,30;Cost:5,8,12\""],
+      "enforcement": "strict"
+    },
+    "colors": {
+      "type": "string",
+      "description": "comma-separated series fill colors, positional (1st color → series 1). Per-series dotted keys (series1.color=...) override positions.",
+      "add": true,
+      "set": false,
+      "get": false,
+      "examples": ["--prop colors=\"4472C4,ED7D31,A5A5A5\""],
+      "enforcement": "strict"
+    },
+    "holeSize": {
+      "type": "number",
+      "description": "doughnut hole size (10-90)",
+      "appliesWhen": { "chartType": ["doughnut"] },
+      "set": true,
+      "get": true,
+      "examples": ["--prop holeSize=50"],
+      "enforcement": "strict"
+    },
+    "smooth": {
+      "type": "bool",
+      "description": "smooth line rendering",
+      "appliesWhen": { "chartType": ["line", "scatter"] },
+      "set": true,
+      "get": true,
+      "examples": ["--prop smooth=true"],
+      "enforcement": "strict"
+    },
+
+    "preset":         { "type": "string", "aliases": ["theme", "style.preset"], "add": true, "set": true, "get": false },
+    "style":          { "type": "number", "aliases": ["styleid"], "add": true, "set": true, "get": false },
+    "anchor":         { "type": "string", "add": true, "set": true, "get": false },
+    "dataRange":      { "type": "string", "aliases": ["datarange", "range"], "add": true, "set": false, "get": false },
+
+    "legend":         { "type": "string", "add": true, "set": true, "get": true },
+    "legendfont":     { "type": "string", "aliases": ["legend.font"], "add": true, "set": true, "get": false },
+    "legendoverlay":  { "type": "bool", "aliases": ["legend.overlay"], "add": true, "set": true, "get": false },
+
+    "datalabels":     { "type": "string", "aliases": ["labels"], "add": true, "set": true, "get": false },
+    "labelpos":       { "type": "string", "aliases": ["labelposition"], "add": true, "set": true, "get": false },
+    "labelfont":      { "type": "string", "add": true, "set": true, "get": false },
+    "labeloffset":    { "type": "number", "add": true, "set": true, "get": false },
+    "labelrotation":  { "type": "number", "aliases": ["xaxis.labelrotation", "valaxis.labelrotation", "yaxis.labelrotation", "xaxislabelrotation", "valaxislabelrotation", "yaxislabelrotation"], "add": true, "set": true, "get": false },
+    "leaderlines":    { "type": "bool", "aliases": ["showleaderlines"], "add": true, "set": true, "get": false },
+
+    "axistitle":      { "type": "string", "aliases": ["vtitle"], "add": true, "set": true, "get": false },
+    "cattitle":       { "type": "string", "aliases": ["htitle"], "add": true, "set": true, "get": false },
+    "axismin":        { "type": "number", "aliases": ["min"], "add": true, "set": true, "get": false },
+    "axismax":        { "type": "number", "aliases": ["max"], "add": true, "set": true, "get": false },
+    "majorunit":      { "type": "number", "add": true, "set": true, "get": false },
+    "minorunit":      { "type": "number", "add": true, "set": true, "get": false },
+    "axisnumfmt":     { "type": "string", "aliases": ["axisnumberformat"], "add": true, "set": true, "get": false },
+    "axisfont":       { "type": "string", "aliases": ["axis.font"], "add": true, "set": true, "get": false },
+    "majortickmark":  { "type": "string", "aliases": ["majortick"], "add": true, "set": true, "get": false },
+    "minortickmark":  { "type": "string", "aliases": ["minortick"], "add": true, "set": true, "get": false },
+    "ticklabelpos":   { "type": "string", "aliases": ["ticklabelposition"], "add": true, "set": true, "get": false },
+    "ticklabelskip":  { "type": "number", "aliases": ["tickskip"], "add": true, "set": true, "get": false },
+    "axisposition":   { "type": "string", "aliases": ["axispos"], "add": true, "set": true, "get": false },
+    "axisorientation":{ "type": "string", "aliases": ["axisreverse"], "add": true, "set": true, "get": false },
+    "axisline":       { "type": "string", "aliases": ["axis.line"], "add": true, "set": true, "get": false },
+    "cataxisline":    { "type": "string", "aliases": ["cataxis.line"], "add": true, "set": true, "get": false },
+    "valaxisline":    { "type": "string", "aliases": ["valaxis.line"], "add": true, "set": true, "get": false },
+    "axisvisible":    { "type": "bool", "aliases": ["axis.delete", "axis.visible"], "add": true, "set": true, "get": false },
+    "cataxisvisible": { "type": "bool", "aliases": ["cataxis.visible"], "add": true, "set": true, "get": false },
+    "valaxisvisible": { "type": "bool", "aliases": ["valaxis.visible"], "add": true, "set": true, "get": false },
+    "logbase":        { "type": "number", "aliases": ["logscale", "yaxisscale"], "add": true, "set": true, "get": false },
+    "crosses":        { "type": "string", "add": true, "set": true, "get": false },
+    "crossesat":      { "type": "number", "add": true, "set": true, "get": false },
+    "crossbetween":   { "type": "string", "add": true, "set": true, "get": false },
+    "dispunits":      { "type": "string", "aliases": ["displayunits"], "add": true, "set": true, "get": false },
+
+    "gridlines":      { "type": "bool", "aliases": ["majorgridlines"], "add": true, "set": true, "get": false },
+    "minorgridlines": { "type": "bool", "add": true, "set": true, "get": false },
+
+    "plotareafill":   { "type": "string", "aliases": ["plotfill"], "add": true, "set": true, "get": false },
+    "chartareafill":  { "type": "string", "aliases": ["chartfill"], "add": true, "set": true, "get": false },
+    "plotborder":     { "type": "string", "aliases": ["plotarea.border"], "add": true, "set": true, "get": false },
+    "chartborder":    { "type": "string", "aliases": ["chartarea.border"], "add": true, "set": true, "get": false },
+    "areafill":       { "type": "string", "aliases": ["area.fill"], "add": true, "set": true, "get": false },
+
+    "linewidth":      { "type": "number", "add": true, "set": true, "get": false },
+    "linedash":       { "type": "string", "aliases": ["dash"], "add": true, "set": true, "get": false },
+    "marker":         { "type": "string", "aliases": ["markers"], "add": true, "set": true, "get": false },
+    "markersize":     { "type": "number", "add": true, "set": true, "get": false },
+    "showmarker":     { "type": "bool", "aliases": ["showmarkers"], "add": true, "set": true, "get": false },
+
+    "transparency":   { "type": "number", "aliases": ["opacity", "alpha"], "add": true, "set": true, "get": false },
+    "gradient":       { "type": "string", "aliases": ["gradientfill"], "add": true, "set": true, "get": false },
+    "gradients":      { "type": "string", "add": true, "set": true, "get": false },
+    "view3d":         { "type": "string", "aliases": ["camera", "perspective"], "add": true, "set": true, "get": false },
+    "rotation":       { "type": "string", "add": true, "set": true, "get": false },
+
+    "trendline":      { "type": "string", "add": true, "set": true, "get": false },
+    "secondaryaxis":  { "type": "string", "aliases": ["secondary"], "add": true, "set": true, "get": false },
+    "referenceline":  { "type": "string", "aliases": ["refline", "targetline"], "add": true, "set": true, "get": false },
+    "colorrule":      { "type": "string", "aliases": ["conditionalcolor", "colorRule"], "add": true, "set": true, "get": false },
+    "combotypes":     { "type": "string", "aliases": ["combo.types"], "add": true, "set": true, "get": false },
+
+    "scatterstyle":   { "type": "string", "add": true, "set": true, "get": false },
+    "radarstyle":     { "type": "string", "add": true, "set": true, "get": false },
+    "varycolors":     { "type": "bool",   "add": true, "set": true, "get": false },
+    "dispblanksas":   { "type": "string", "aliases": ["blanksas"], "add": true, "set": true, "get": false },
+    "roundedcorners": { "type": "bool",   "add": true, "set": true, "get": false },
+    "autotitledeleted":{ "type": "bool",  "add": true, "set": true, "get": false },
+    "plotvisonly":    { "type": "bool", "aliases": ["plotvisibleonly"], "add": true, "set": true, "get": false },
+
+    "gapwidth":       { "type": "number", "aliases": ["gap"], "add": true, "set": true, "get": false },
+    "overlap":        { "type": "number", "add": true, "set": true, "get": false },
+    "gapdepth":       { "type": "number", "add": true, "set": true, "get": false },
+    "shape":          { "type": "string", "aliases": ["barshape"], "add": true, "set": true, "get": false },
+
+    "explosion":      { "type": "number", "aliases": ["explode"], "add": true, "set": true, "get": false },
+    "invertifneg":    { "type": "bool",   "aliases": ["invertifnegative"], "add": true, "set": true, "get": false },
+    "errbars":        { "type": "string", "aliases": ["errorbars"], "add": true, "set": true, "get": false },
+    "seriesshadow":   { "type": "string", "aliases": ["series.shadow"], "add": true, "set": true, "get": false },
+    "seriesoutline":  { "type": "string", "aliases": ["series.outline"], "add": true, "set": true, "get": false },
+
+    "firstsliceangle":{ "type": "number", "aliases": ["sliceangle"], "add": true, "set": true, "get": false },
+    "bubblescale":    { "type": "number", "add": true, "set": true, "get": false },
+    "shownegbubbles": { "type": "bool",   "add": true, "set": true, "get": false },
+    "sizerepresents": { "type": "string", "add": true, "set": true, "get": false },
+
+    "datatable":      { "type": "bool",   "add": true, "set": true, "get": false },
+    "droplines":      { "type": "string", "add": true, "set": true, "get": false },
+    "hilowlines":     { "type": "string", "add": true, "set": true, "get": false },
+    "updownbars":     { "type": "string", "add": true, "set": true, "get": false },
+    "serlines":       { "type": "string", "aliases": ["serieslines"], "add": true, "set": true, "get": false },
+
+    "increaseColor":  { "type": "color", "add": true, "set": false, "get": false },
+    "decreaseColor":  { "type": "color", "add": true, "set": false, "get": false },
+    "totalColor":     { "type": "color", "add": true, "set": false, "get": false },
+    "combosplit":     { "type": "number", "add": true, "set": false, "get": false }
+  },
+  "children": [
+    { "element": "chart-title",    "pathSegment": "title",    "cardinality": "0..1" },
+    { "element": "chart-legend",   "pathSegment": "legend",   "cardinality": "0..1" },
+    { "element": "chart-plotArea", "pathSegment": "plotArea", "cardinality": "0..1" },
+    {
+      "element": "chart-axis",
+      "pathSegment": "axis",
+      "cardinality": "0..n",
+      "key": "role",
+      "keyValues": ["category", "value", "value2", "series"],
+      "appliesWhen": { "chartType": ["bar", "column", "line", "area", "scatter", "bubble", "radar", "stock", "combo"] }
+    },
+    { "element": "chart-series",   "pathSegment": "series",   "cardinality": "1..n" }
+  ]
+}

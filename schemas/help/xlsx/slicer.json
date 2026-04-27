@@ -1,0 +1,53 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "slicer",
+  "parent": "sheet",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/SheetName/slicer[N]"]
+  },
+  "note": "Slicers require an existing pivot table target. 'field' must match an existing cacheField name in the pivot's cache.",
+  "properties": {
+    "pivotTable": {
+      "type": "string",
+      "description": "path or reference to an existing pivot table. Bare names resolve against the host sheet's pivots.",
+      "aliases": ["pivot", "source", "tableName"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop pivotTable=/Sheet1/pivottable[1]", "--prop tableName=Pivot1"],
+      "readback": "pivot reference",
+      "enforcement": "report"
+    },
+    "field": {
+      "type": "string",
+      "description": "pivot field name. Must match an existing cacheField (case-insensitive).",
+      "aliases": ["column"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop field=Region", "--prop column=Region"],
+      "readback": "field name",
+      "enforcement": "report"
+    },
+    "caption": {
+      "type": "string",
+      "description": "user-facing caption shown in the slicer header. Defaults to the field name.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop caption='Filter by Region'"],
+      "readback": "caption",
+      "enforcement": "report"
+    },
+    "name": {
+      "type": "string",
+      "description": "slicer name. Sanitized; defaults to 'Slicer_<fieldName>'.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop name=RegionSlicer"],
+      "readback": "slicer name",
+      "enforcement": "report"
+    }
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "run",
+  "parent": "cell",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/SheetName/CellRef/r[N]"]
+  },
+  "note": "Rich-text run inside an inline-string cell. Adds an rPh/r element with font properties on the run.",
+  "properties": {
+    "text": {
+      "type": "string",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=\"bold word\""],
+      "readback": "run text",
+      "enforcement": "report"
+    },
+    "font": {
+      "type": "string",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop font=Calibri"],
+      "readback": "font name",
+      "enforcement": "report"
+    },
+    "size": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop size=11"],
+      "readback": "unit-qualified pt",
+      "enforcement": "report"
+    },
+    "bold": {
+      "type": "bool",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop bold=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "italic": {
+      "type": "bool",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop italic=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "color": {
+      "type": "color",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop color=#FF0000"],
+      "readback": "#-prefixed uppercase hex",
+      "enforcement": "report"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "numbering",
+  "parent": "document",
+  "container": true,
+  "operations": {
+    "add": false,
+    "set": false,
+    "get": true,
+    "query": true,
+    "remove": false
+  },
+  "paths": {
+    "positional": ["/numbering"]
+  },
+  "note": "NumberingDefinitionsPart container — bullet / numbered list definitions. Currently read-only; lists are applied at paragraph level via the 'numid' / 'ilvl' / 'liststyle' props (see docx/paragraph.json).",
+  "children": [
+    { "element": "abstractNum", "pathSegment": "abstractNum", "cardinality": "0..n" },
+    { "element": "num",         "pathSegment": "num",         "cardinality": "0..n" }
+  ]
+}

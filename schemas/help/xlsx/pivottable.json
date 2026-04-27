@@ -1,0 +1,287 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "pivottable",
+  "parent": "sheet",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/SheetName/pivottable[N]"]
+  },
+  "note": "Aliases: pivot. 'source' required (e.g. Sheet1!A1:D100). External workbook refs rejected. Position auto-placed after source if omitted. Field axes (rows/cols/filters/values) take comma-separated field names; values use 'Field:agg' tuples.",
+  "properties": {
+    "source": {
+      "type": "string",
+      "description": "source range. Alias: src. External workbook refs rejected.",
+      "aliases": ["src"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop source=Sheet1!A1:D100"],
+      "readback": "source reference",
+      "enforcement": "report"
+    },
+    "position": {
+      "type": "string",
+      "description": "anchor cell (e.g. H1). Alias: pos. Auto-placed after source if omitted.",
+      "aliases": ["pos"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop position=H1"],
+      "readback": "anchor cell",
+      "enforcement": "report"
+    },
+    "name": {
+      "type": "string",
+      "description": "pivot table name (identifier).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop name=RevenueByRegion"],
+      "readback": "pivot name",
+      "enforcement": "report"
+    },
+    "style": {
+      "type": "string",
+      "description": "built-in or workbook custom pivot style name (e.g. PivotStyleMedium9).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop style=PivotStyleMedium9"],
+      "readback": "style name",
+      "enforcement": "report"
+    },
+    "rows": {
+      "type": "string",
+      "description": "row-axis field names, comma-separated (e.g. 'Region,Category'). Aliases: row, rowField, rowFields.",
+      "aliases": ["row", "rowField", "rowFields"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop rows=Region,Category"],
+      "readback": "comma-separated field names",
+      "enforcement": "report"
+    },
+    "cols": {
+      "type": "string",
+      "description": "column-axis field names, comma-separated. Aliases: col, column, columns, colField, colFields, columnField, columnFields.",
+      "aliases": ["col", "column", "columns", "colField", "colFields", "columnField", "columnFields"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop cols=Date"],
+      "readback": "comma-separated field names",
+      "enforcement": "report"
+    },
+    "filters": {
+      "type": "string",
+      "description": "page/filter-axis field names, comma-separated. Aliases: filter, filterField, filterFields.",
+      "aliases": ["filter", "filterField", "filterFields"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop filters=Year"],
+      "readback": "comma-separated field names",
+      "enforcement": "report"
+    },
+    "values": {
+      "type": "string",
+      "description": "value-axis fields as 'Field:agg' tuples, comma-separated (e.g. 'Sales:sum,Qty:avg'). agg one of sum, avg, count, max, min, product, stdev, stdevp, var, varp, countNums. Aliases: value, valueField, valueFields.",
+      "aliases": ["value", "valueField", "valueFields"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop values=Sales:sum,Qty:avg"],
+      "readback": "value field tuples",
+      "enforcement": "report"
+    },
+    "aggregate": {
+      "type": "string",
+      "description": "default aggregate for value fields when omitted from --prop values. One of sum, avg, count, max, min, product, stdev, stdevp, var, varp, countNums.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop aggregate=avg"],
+      "readback": "n/a (per-value override)",
+      "enforcement": "report"
+    },
+    "showDataAs": {
+      "type": "string",
+      "description": "value-field display mode: normal, percentOfTotal, percentOfRow, percentOfCol, percentOfParent, runningTotal, rankAscending, rankDescending, index, difference, percentDifference.",
+      "aliases": ["showdataas"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop showDataAs=percentOfTotal"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "topN": {
+      "type": "string",
+      "description": "keep only top-N row keys ranked by first value field's aggregate. Integer >= 1; filter applied to source rows pre-cache.",
+      "aliases": ["topn"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop topN=10"],
+      "readback": "n/a (filters source rows)",
+      "enforcement": "report"
+    },
+    "sort": {
+      "type": "enum",
+      "values": ["asc", "desc", "locale", "locale-desc", "none"],
+      "description": "axis-label sort. 'none' (or empty) clears sort.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop sort=desc"],
+      "readback": "n/a (label order in axis)",
+      "enforcement": "report"
+    },
+    "layout": {
+      "type": "enum",
+      "values": ["compact", "outline", "tabular"],
+      "description": "report layout mode. Default: compact.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop layout=tabular"],
+      "readback": "layout name",
+      "enforcement": "report"
+    },
+    "labelFilter": {
+      "type": "string",
+      "description": "row-level pre-cache label filter as 'field:type:value' (e.g. 'Region:beginsWith:N'). Type one of equals, notEquals, beginsWith, endsWith, contains, notContains, greaterThan, greaterThanEqual, lessThan, lessThanEqual, between, notBetween.",
+      "aliases": ["labelfilter"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop labelFilter=Region:beginsWith:N"],
+      "readback": "n/a (filters source rows)",
+      "enforcement": "report"
+    },
+    "calculatedField": {
+      "type": "string",
+      "description": "user-defined formula field as 'Name:=Formula' (e.g. 'Margin:=Sales-Cost'). Use calculatedField1, calculatedField2, ... for multiple. Alias: calculatedFields.",
+      "aliases": ["calculatedfield", "calculatedfields"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop calculatedField=Margin:=Sales-Cost", "--prop calculatedField1=Margin:=Sales-Cost --prop calculatedField2=Tax:=Sales*0.1"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "repeatLabels": {
+      "type": "bool",
+      "description": "repeat outer-axis item labels on every row (fillDown). Aliases: repeatItemLabels, repeatAllLabels, fillDownLabels.",
+      "aliases": ["repeatlabels", "repeatItemLabels", "repeatAllLabels", "fillDownLabels"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop repeatLabels=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "blankRows": {
+      "type": "bool",
+      "description": "insert a blank row after each outer item group. Aliases: insertBlankRow, insertBlankRows, blankRow, blankLine, blankLines.",
+      "aliases": ["blankrows", "insertBlankRow", "insertBlankRows", "blankRow", "blankLine", "blankLines"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop blankRows=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "grandTotals": {
+      "type": "enum",
+      "values": ["both", "none", "rows", "cols", "on", "off", "true", "false"],
+      "description": "grand-total visibility. 'rows' = show grand-total row only; 'cols' = show grand-total column only; 'both'/'on'/'true' = both; 'none'/'off'/'false' = neither.",
+      "aliases": ["grandtotals"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop grandTotals=both"],
+      "readback": "n/a (use rowGrandTotals/colGrandTotals on get)",
+      "enforcement": "report"
+    },
+    "rowGrandTotals": {
+      "type": "bool",
+      "description": "show row-axis grand totals. Independent of colGrandTotals.",
+      "aliases": ["rowgrandtotals"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop rowGrandTotals=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "colGrandTotals": {
+      "type": "bool",
+      "description": "show column-axis grand totals. Alias: columnGrandTotals.",
+      "aliases": ["colgrandtotals", "columnGrandTotals"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop colGrandTotals=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "grandTotalCaption": {
+      "type": "string",
+      "description": "label text for the Grand Total row/column (default 'Grand Total').",
+      "aliases": ["grandtotalcaption"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop grandTotalCaption=\"Total\""],
+      "readback": "caption text",
+      "enforcement": "report"
+    },
+    "subtotals": {
+      "type": "enum",
+      "values": ["on", "off", "true", "false", "show", "hide", "yes", "no", "1", "0"],
+      "description": "show/hide outer-level subtotal rows.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop subtotals=off"],
+      "readback": "on/off",
+      "enforcement": "report"
+    },
+    "defaultSubtotal": {
+      "type": "bool",
+      "description": "default-subtotal flag for new pivot fields (per-field <pivotField defaultSubtotal=...>).",
+      "aliases": ["defaultsubtotal"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop defaultSubtotal=true"],
+      "readback": "n/a (per-field)",
+      "enforcement": "report"
+    },
+    "showRowStripes": {
+      "type": "bool",
+      "description": "banded-row striping in the pivot style. Alias: bandedRows.",
+      "aliases": ["showrowstripes", "bandedRows"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop showRowStripes=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "showColStripes": {
+      "type": "bool",
+      "description": "banded-column striping in the pivot style. Aliases: showColumnStripes, bandedCols, bandedColumns.",
+      "aliases": ["showcolstripes", "showColumnStripes", "bandedCols", "bandedColumns"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop showColStripes=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "showRowHeaders": {
+      "type": "bool",
+      "description": "show row-axis header formatting (pivotTableStyleInfo).",
+      "aliases": ["showrowheaders"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop showRowHeaders=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "showColHeaders": {
+      "type": "bool",
+      "description": "show column-axis header formatting. Alias: showColumnHeaders.",
+      "aliases": ["showcolheaders", "showColumnHeaders"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop showColHeaders=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "showLastColumn": {
+      "type": "bool",
+      "description": "highlight the last column in the pivot style.",
+      "aliases": ["showlastcolumn"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop showLastColumn=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "showDrill": {
+      "type": "bool",
+      "description": "show expand/collapse (+/-) buttons on every pivot field.",
+      "aliases": ["showdrill"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop showDrill=false"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "mergeLabels": {
+      "type": "bool",
+      "description": "merge+center repeated outer-axis item cells (<pivotTableDefinition mergeItem='1'>).",
+      "aliases": ["mergelabels"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop mergeLabels=true"],
+      "readback": "n/a",
+      "enforcement": "report"
+    }
+  }
+}

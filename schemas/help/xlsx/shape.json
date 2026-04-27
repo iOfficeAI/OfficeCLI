@@ -1,0 +1,234 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "shape",
+  "parent": "sheet",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/SheetName/shape[N]"]
+  },
+  "note": "Aliases: textbox. Anchor: 'anchor=B2:F7' (cell range) or x/y/width/height in cell units. 'ref=B2' expands to a 1x1 cell rectangle. Font/text props accept either bare ('size', 'bold', 'color', 'font') or dotted ('font.size', 'font.bold', 'font.color', 'font.name') forms.",
+  "properties": {
+    "anchor": {
+      "type": "string",
+      "description": "cell range anchor (e.g. B2:F7) — Add-only. Set uses x/y/width/height; Get readback emits x/y/width/height instead of cell-range form (round-trip via numeric position, not anchor string).",
+      "aliases": ["ref"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop anchor=B2:F7"],
+      "readback": "x/y/width/height (numeric)",
+      "enforcement": "report"
+    },
+    "text": {
+      "type": "string",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=\"Note\""],
+      "readback": "concatenated run text",
+      "enforcement": "report"
+    },
+    "name": {
+      "type": "string",
+      "description": "Override the auto-generated 'Shape {id}' label on cNvPr @name.",
+      "add": true, "set": true,
+      "examples": ["--prop name=\"banner\""],
+      "enforcement": "report"
+    },
+    "fill": {
+      "type": "color",
+      "description": "Solid fill color, or 'none' for no fill (text-only shapes route effects to text-level rPr).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop fill=#FFFF00", "--prop fill=none"],
+      "readback": "#-prefixed uppercase hex",
+      "enforcement": "report"
+    },
+    "gradientFill": {
+      "type": "string",
+      "description": "Two/three-stop linear gradient, e.g. 'C1-C2[-C3][:angle]'. Mutually exclusive with fill (gradientFill wins).",
+      "add": true, "set": false,
+      "examples": ["--prop gradientFill=FF0000-0000FF:90"],
+      "enforcement": "report"
+    },
+    "line": {
+      "type": "string",
+      "description": "Outline color (or 'none'). Form: 'color[:width[:style]]', e.g. 'FF0000:1.5:dash'. width in points; style: solid|dash|dot|dashdot|longdash.",
+      "aliases": ["border"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop line=#000000", "--prop line=FF0000:1.5", "--prop line=none"],
+      "readback": "color or color:width",
+      "enforcement": "report"
+    },
+    "preset": {
+      "type": "string",
+      "description": "geometry preset name (rect, ellipse, roundRect, triangle, rightArrow, etc.). Unknown presets fall back to rect with a stderr warning. Set replaces the existing PresetGeometry preserving fill/line/effects.",
+      "aliases": ["shape"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop preset=ellipse"],
+      "enforcement": "report"
+    },
+    "x": {
+      "type": "string",
+      "description": "anchor x position in cell units (or unit-qualified size).",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop x=2"],
+      "enforcement": "report"
+    },
+    "y": {
+      "type": "string",
+      "description": "anchor y position in cell units (or unit-qualified size).",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop y=3"],
+      "enforcement": "report"
+    },
+    "width": {
+      "type": "string",
+      "description": "shape width in cell units (or unit-qualified size like 6cm).",
+      "add": true, "set": true, "get": false,
+      "aliases": ["w"],
+      "examples": ["--prop width=4", "--prop width=6cm"],
+      "enforcement": "report"
+    },
+    "height": {
+      "type": "string",
+      "description": "shape height in cell units (or unit-qualified size).",
+      "add": true, "set": true, "get": false,
+      "aliases": ["h"],
+      "examples": ["--prop height=3"],
+      "enforcement": "report"
+    },
+    "rotation": {
+      "type": "string",
+      "description": "Rotation in degrees (positive = clockwise). Stored OOXML-internal as 60000ths of a degree on Transform2D @rot.",
+      "aliases": ["rot"],
+      "add": true, "set": true,
+      "examples": ["--prop rotation=45"],
+      "enforcement": "report"
+    },
+    "flip": {
+      "type": "string",
+      "description": "Compact flip token: 'h' / 'v' / 'both' / 'hv' / 'vh' / 'none'.",
+      "add": true, "set": true,
+      "examples": ["--prop flip=h", "--prop flip=both"],
+      "enforcement": "report"
+    },
+    "flipH": {
+      "type": "bool",
+      "aliases": ["flipHorizontal"],
+      "description": "Flip horizontally (Office-API alias of flip=h).",
+      "add": true, "set": true,
+      "examples": ["--prop flipH=true"],
+      "enforcement": "report"
+    },
+    "flipV": {
+      "type": "bool",
+      "aliases": ["flipVertical"],
+      "description": "Flip vertically (Office-API alias of flip=v).",
+      "add": true, "set": true,
+      "examples": ["--prop flipV=true"],
+      "enforcement": "report"
+    },
+    "flipBoth": {
+      "type": "bool",
+      "description": "Flip both axes.",
+      "add": true, "set": true,
+      "examples": ["--prop flipBoth=true"],
+      "enforcement": "report"
+    },
+    "shadow": {
+      "type": "string",
+      "description": "Outer shadow color/spec, or 'none' to clear. For fill=none shapes, applied to text runs instead.",
+      "add": true, "set": true,
+      "examples": ["--prop shadow=#808080", "--prop shadow=none"],
+      "enforcement": "report"
+    },
+    "glow": {
+      "type": "string",
+      "description": "Glow color/spec, or 'none' to clear. For fill=none shapes, applied to text runs instead.",
+      "add": true, "set": true,
+      "examples": ["--prop glow=#4472C4"],
+      "enforcement": "report"
+    },
+    "reflection": {
+      "type": "string",
+      "description": "Reflection effect, or 'none' to clear.",
+      "add": true, "set": true,
+      "examples": ["--prop reflection=true"],
+      "enforcement": "report"
+    },
+    "softEdge": {
+      "type": "string",
+      "aliases": ["softedge"],
+      "description": "Soft edge radius, or 'none' to clear.",
+      "add": true, "set": true,
+      "examples": ["--prop softEdge=5"],
+      "enforcement": "report"
+    },
+    "margin": {
+      "type": "string",
+      "description": "Inset for all four sides of the text body (points).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop margin=4"],
+      "enforcement": "report"
+    },
+    "size": {
+      "type": "font-size",
+      "description": "Font size (points). Bare alias of font.size.",
+      "add": true, "set": true,
+      "examples": ["--prop size=14"],
+      "enforcement": "report"
+    },
+    "bold": {
+      "type": "bool",
+      "description": "Bold runs. Bare alias of font.bold.",
+      "add": true, "set": true,
+      "examples": ["--prop bold=true"],
+      "enforcement": "report"
+    },
+    "italic": {
+      "type": "bool",
+      "description": "Italic runs. Bare alias of font.italic.",
+      "add": true, "set": true,
+      "examples": ["--prop italic=true"],
+      "enforcement": "report"
+    },
+    "underline": {
+      "type": "string",
+      "description": "Underline style: 'true'/'single'/'sng', 'double'/'dbl', 'none'/'false'. Bare alias of font.underline.",
+      "add": true, "set": true,
+      "examples": ["--prop underline=single"],
+      "enforcement": "report"
+    },
+    "color": {
+      "type": "color",
+      "description": "Text color. Bare alias of font.color.",
+      "add": true, "set": true,
+      "examples": ["--prop color=#FF0000"],
+      "enforcement": "report"
+    },
+    "font": {
+      "type": "string",
+      "description": "Font family. Bare alias of font.name.",
+      "add": true, "set": true,
+      "examples": ["--prop font=Arial"],
+      "enforcement": "report"
+    },
+    "align": {
+      "type": "string",
+      "description": "Paragraph alignment: 'left' / 'center' (c/ctr) / 'right' (r) / 'justify'.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop align=center"],
+      "enforcement": "report"
+    },
+    "valign": {
+      "type": "string",
+      "description": "Vertical anchor: 'top' (t) / 'center' (ctr/middle/c/m) / 'bottom' (b).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop valign=middle"],
+      "enforcement": "report"
+    }
+  }
+}

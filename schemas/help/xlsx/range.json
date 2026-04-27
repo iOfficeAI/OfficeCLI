@@ -1,0 +1,65 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "range",
+  "parent": "sheet",
+  "container": true,
+  "operations": {
+    "add": false,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": false
+  },
+  "paths": {
+    "positional": ["/SheetName/A1:C10"]
+  },
+  "note": "Read-through container for cell ranges. Get returns a range node with cell list / aggregate preview. Set broadcasts formatting props to every cell in the range (font/color/numberformat/alignment/fill). Not an Add target — cells exist implicitly.",
+  "properties": {
+    "merge": {
+      "type": "bool",
+      "description": "merge all cells in the range into a single cell.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop merge=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "font.bold": {
+      "type": "bool",
+      "description": "broadcast bold to every cell.",
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop font.bold=true"],
+      "readback": "n/a (broadcast)",
+      "enforcement": "report"
+    },
+    "fill": {
+      "type": "color",
+      "description": "broadcast fill color.",
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop fill=#FFFF00"],
+      "readback": "n/a (broadcast)",
+      "enforcement": "report"
+    },
+    "numberformat": {
+      "type": "string",
+      "description": "broadcast number format code.",
+      "aliases": ["format"],
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop numberformat=\"#,##0.00\""],
+      "readback": "n/a (broadcast)",
+      "enforcement": "report"
+    },
+    "alignment.horizontal": {
+      "type": "enum",
+      "values": ["left", "center", "right", "justify", "general", "fill", "centerContinuous"],
+      "aliases": ["halign"],
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop alignment.horizontal=center"],
+      "readback": "n/a (broadcast)",
+      "enforcement": "report"
+    }
+  },
+  "children": [
+    { "element": "cell", "pathSegment": "{CellRef}", "cardinality": "1..n" }
+  ]
+}

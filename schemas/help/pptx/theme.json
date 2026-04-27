@@ -1,0 +1,56 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "theme",
+  "parent": "presentation",
+  "container": true,
+  "operations": {
+    "add": false,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": false
+  },
+  "paths": {
+    "positional": ["/theme"]
+  },
+  "note": "Presentation theme part — fonts and color scheme. Set accepts a limited subset (color scheme entries, major/minor font); full theme replacement is not supported.",
+  "properties": {
+    "majorFont": {
+      "type": "string",
+      "description": "major (heading) Latin typeface.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop majorFont=\"Calibri Light\""],
+      "readback": "font name",
+      "enforcement": "report"
+    },
+    "minorFont": {
+      "type": "string",
+      "description": "minor (body) Latin typeface.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop minorFont=Calibri"],
+      "readback": "font name",
+      "enforcement": "report"
+    },
+    "accent1": {
+      "type": "color",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop accent1=#4472C4"],
+      "readback": "#-prefixed uppercase hex",
+      "enforcement": "report"
+    },
+    "accent2": { "type": "color", "add": false, "set": true, "get": true, "examples": ["--prop accent2=#ED7D31"], "enforcement": "report" },
+    "accent3": { "type": "color", "add": false, "set": true, "get": true, "examples": ["--prop accent3=#A5A5A5"], "enforcement": "report" },
+    "accent4": { "type": "color", "add": false, "set": true, "get": true, "examples": ["--prop accent4=#FFC000"], "enforcement": "report" },
+    "accent5": { "type": "color", "add": false, "set": true, "get": true, "examples": ["--prop accent5=#5B9BD5"], "enforcement": "report" },
+    "accent6": { "type": "color", "add": false, "set": true, "get": true, "examples": ["--prop accent6=#70AD47"], "enforcement": "report" },
+    "hyperlink": {
+      "type": "color",
+      "description": "theme hyperlink color.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop hyperlink=#0563C1"],
+      "readback": "#-prefixed uppercase hex",
+      "enforcement": "report"
+    }
+  }
+}

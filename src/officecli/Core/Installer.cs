@@ -36,18 +36,39 @@ internal static class Installer
         InstallBinary();
 
         var target = args.Length >= 1 ? args[0] : "all";
-        var skilledTools = SkillInstaller.Install(target);
+
+        // Skip the skill phase when the target is MCP-only (vscode, lms).
+        // SkillInstaller has no equivalent agent for these and would otherwise
+        // print a misleading 'Unknown target' to stderr before InstallMcpFallback
+        // succeeds. The skill/MCP target namespaces are deliberately allowed to
+        // diverge — McpTargets with empty SkillAliases is the source of truth
+        // for "no skill phase needed".
+        var isMcpOnly = McpTargets.Any(t =>
+            t.SkillAliases.Length == 0 &&
+            t.McpTarget.Equals(target, StringComparison.OrdinalIgnoreCase));
+        var skilledTools = isMcpOnly
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : SkillInstaller.Install(target);
 
         // Install MCP for tools that didn't get a skill
-        InstallMcpFallback(skilledTools, target);
+        var mcpInstalled = InstallMcpFallback(skilledTools, target);
 
+        // Exit 1 when a specific target was named but neither skills nor MCP
+        // recognized it. 'all' (default) is always success because there's
+        // nothing to mistype. Without this, `officecli install bogus` would
+        // exit 0 after only printing 'Unknown target' to stderr — automation
+        // can't distinguish a typo from a successful install.
+        var isAll = target.Equals("all", StringComparison.OrdinalIgnoreCase);
+        if (!isAll && skilledTools.Count == 0 && !mcpInstalled)
+            return 1;
         return 0;
     }
 
-    private static void InstallMcpFallback(HashSet<string> skilledTools, string target)
+    private static bool InstallMcpFallback(HashSet<string> skilledTools, string target)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var isAll = target.Equals("all", StringComparison.OrdinalIgnoreCase);
+        var anyInstalled = false;
 
         foreach (var (mcpTarget, detectDir, skillAliases) in McpTargets)
         {
@@ -61,8 +82,13 @@ internal static class Installer
 
             // Only install if the tool's directory exists
             if (Directory.Exists(Path.Combine(home, detectDir)))
-                McpInstaller.Install(mcpTarget);
+            {
+                if (McpInstaller.Install(mcpTarget))
+                    anyInstalled = true;
+            }
         }
+
+        return anyInstalled;
     }
 
     internal static bool InstallBinary(bool quiet = false)

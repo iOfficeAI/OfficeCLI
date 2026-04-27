@@ -1,0 +1,62 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "sheet",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "stable":     ["/<sheetName>"],
+    "positional": ["/Sheet1", "/Sheet2"]
+  },
+  "note": "Add only processes `name` and `position` today; other properties are set-only on an existing sheet. Those are marked enforcement=report until Add gains parity or the schema locks set-only explicitly.",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "sheet tab name. Returned path is /<name>; readback goes through DocumentNode.Path / .Preview rather than Format[].",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop name=Summary"],
+      "enforcement": "report"
+    },
+    "autoFilter": {
+      "type": "string",
+      "description": "range to apply AutoFilter on (e.g. A1:D10). `true` enables on used range. Note: currently Set-only on existing sheets, not consumed by Add.",
+      "aliases": ["autofilter"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop autoFilter=A1:D10"],
+      "readback": "range string as stored, or boolean true",
+      "enforcement": "report"
+    },
+    "tabColor": {
+      "type": "color",
+      "description": "sheet tab color. Set-only on existing sheets.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop tabColor=4472C4"],
+      "readback": "#RRGGBB uppercase",
+      "enforcement": "report"
+    },
+    "hidden": {
+      "type": "bool",
+      "description": "hide the sheet. Set-only on existing sheets.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop hidden=true"],
+      "enforcement": "report"
+    },
+    "freeze": {
+      "type": "string",
+      "description": "freeze panes anchor (cell ref). A2 freezes row 1; B1 freezes column A; B2 freezes row 1 + column A. `none` / `false` / empty removes the freeze. Set-only on existing sheets.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop freeze=A2", "--prop freeze=B2", "--prop freeze=none"],
+      "readback": "top-left cell ref of frozen pane (e.g. A2); absent when no freeze",
+      "enforcement": "report"
+    }
+  },
+  "children": [
+    { "element": "cell",  "pathSegment": "<A1Ref>", "cardinality": "0..n" },
+    { "element": "chart", "pathSegment": "chart",   "cardinality": "0..n" }
+  ]
+}

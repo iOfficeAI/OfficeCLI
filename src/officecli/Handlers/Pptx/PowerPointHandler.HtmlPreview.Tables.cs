@@ -314,8 +314,8 @@ public partial class PowerPointHandler
         static string ThemeHex(Dictionary<string, string> tc, string key, string fallback)
             => tc.TryGetValue(key, out var v) ? v : fallback;
 
-        var dk1 = ThemeHex(themeColors, "dk1", "000000");
-        var accent1 = ThemeHex(themeColors, "accent1", "4472C4");
+        var dk1 = ThemeHex(themeColors, "dk1", OfficeDefaultThemeColors.Dark1);
+        var accent1 = ThemeHex(themeColors, "accent1", OfficeDefaultThemeColors.Accent1);
 
         return styleName switch
         {

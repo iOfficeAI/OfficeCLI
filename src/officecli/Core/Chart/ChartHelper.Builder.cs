@@ -261,18 +261,23 @@ internal static partial class ChartHelper
         chart.AppendChild(plotArea);
 
         var showLegend = properties.GetValueOrDefault("legend", "true");
+        // CONSISTENCY(legend-hide-alias / R34-1): accept hide=true / hidden=true
+        // as aliases for legend=none so users with a "hide it" mental model
+        // don't reach for legend=hidden (which is now rejected).
+        if ((properties.TryGetValue("hide", out var hideVal) && ParseHelpers.IsTruthy(hideVal)) ||
+            (properties.TryGetValue("hidden", out var hiddenVal) && ParseHelpers.IsTruthy(hiddenVal)))
+        {
+            showLegend = "none";
+        }
+        // Bare "true" keeps the documented default of bottom.
+        if (showLegend.Equals("true", StringComparison.OrdinalIgnoreCase))
+            showLegend = "bottom";
         if (!showLegend.Equals("false", StringComparison.OrdinalIgnoreCase) &&
             !showLegend.Equals("none", StringComparison.OrdinalIgnoreCase))
         {
-            var legendPos = showLegend.ToLowerInvariant() switch
-            {
-                "top" or "t" => C.LegendPositionValues.Top,
-                "left" or "l" => C.LegendPositionValues.Left,
-                "right" or "r" => C.LegendPositionValues.Right,
-                "bottom" or "b" => C.LegendPositionValues.Bottom,
-                "topright" or "tr" or "top-right" => C.LegendPositionValues.TopRight,
-                _ => C.LegendPositionValues.Bottom
-            };
+            // CONSISTENCY(strict-enums / R34-1): shared helper rejects
+            // unknown positions with the documented valid set.
+            var legendPos = ParseLegendPosition(showLegend);
             chart.AppendChild(new C.Legend(
                 new C.LegendPosition { Val = legendPos },
                 new C.Overlay { Val = false }
@@ -307,15 +312,18 @@ internal static partial class ChartHelper
                 if (IsCellReference(extSeries[i].Name)) { hasNameRef = true; break; }
             }
         }
+        // R28-B3 — top-level `categories=Sheet1!A1:A3` must rewrite the
+        // existing strLit cat to a strRef even when no per-series dotted
+        // refs were supplied (extSeries==null). Mirrors R17/R18 series.name
+        // and chart-title fixes.
+        var topCatRefForBail = ParseCategoriesRef(properties);
         if (extSeries == null || extSeries.Count == 0)
         {
-            if (!hasNameRef) return;
+            if (!hasNameRef && topCatRefForBail == null) return;
         }
         if (extSeries != null && !extSeries.Any(s => s.ValuesRef != null || s.CategoriesRef != null) && !hasNameRef)
         {
-            // Also check top-level categories ref
-            var topCatRef = ParseCategoriesRef(properties);
-            if (topCatRef == null) return;
+            if (topCatRefForBail == null) return;
         }
 
         var allSer = plotArea.Descendants<OpenXmlCompositeElement>()
@@ -324,9 +332,25 @@ internal static partial class ChartHelper
         // Top-level categories reference applies to all series
         var topCategoriesRef = ParseCategoriesRef(properties);
 
-        for (int i = 0; i < Math.Min(extSeries!.Count, allSer.Count); i++)
+        // R20-03: when dispBlanksAs=gap, blank source cells must be omitted
+        // from the numCache so Excel renders a gap instead of dropping to 0.
+        // ParseDataRangeForChart forwards per-series blank index lists in
+        // properties[$"series{N}._blankIndexes"] = "1,4,...".
+        bool dispBlanksGap = false;
+        if (properties.TryGetValue("dispblanksas", out var dba)
+            || properties.TryGetValue("dispBlanksAs", out dba)
+            || properties.TryGetValue("blanksas", out dba))
         {
-            var info = extSeries[i];
+            dispBlanksGap = string.Equals(dba?.Trim(), "gap", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // R28-B3 — extSeries may be null when the user only set top-level
+        // categories=<range> (no series.* dotted keys). Walk all series with
+        // an empty info so the topCategoriesRef strRef rewrite still runs.
+        int loopCount = extSeries != null ? Math.Min(extSeries.Count, allSer.Count) : allSer.Count;
+        for (int i = 0; i < loopCount; i++)
+        {
+            var info = extSeries != null ? extSeries[i] : new SeriesInfo();
             var ser = allSer[i];
 
             // Rewrite SeriesText as strRef when the name is a cell reference
@@ -337,13 +361,28 @@ internal static partial class ChartHelper
                 RewriteSeriesTextAsRef(ser, NormalizeCellReference(info.Name), cachedValue: null);
             }
 
-            // Replace Values with NumberReference (preserving literal data as cache)
+            // Replace Values (or YValues for scatter/bubble) with NumberReference
+            // (preserving literal data as cache).
             if (!string.IsNullOrEmpty(info.ValuesRef))
             {
-                var valEl = ser.GetFirstChild<C.Values>();
+                HashSet<int>? blanks = null;
+                if (dispBlanksGap
+                    && properties.TryGetValue($"series{i + 1}._blankIndexes", out var blanksStr)
+                    && !string.IsNullOrWhiteSpace(blanksStr))
+                {
+                    blanks = new HashSet<int>(blanksStr
+                        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .Select(s => int.TryParse(s, out var n) ? n : -1)
+                        .Where(n => n >= 0));
+                }
+                // CONSISTENCY(scatter-bubble-no-cat / R21-bt2): scatter and
+                // bubble carry y-data in <c:yVal>, not <c:val>.
+                OpenXmlCompositeElement? valEl = ser.GetFirstChild<C.Values>()
+                    ?? (OpenXmlCompositeElement?)ser.GetFirstChild<C.YValues>();
                 if (valEl != null)
                 {
-                    var numCache = BuildNumberingCacheFromLiteral(valEl.GetFirstChild<C.NumberLiteral>());
+                    var numCache = BuildNumberingCacheFromLiteral(
+                        valEl.GetFirstChild<C.NumberLiteral>(), blanks);
                     valEl.RemoveAllChildren();
                     var numRef = new C.NumberReference(new C.Formula(info.ValuesRef));
                     if (numCache != null)
@@ -356,25 +395,51 @@ internal static partial class ChartHelper
             var catRef = info.CategoriesRef ?? topCategoriesRef;
             if (!string.IsNullOrEmpty(catRef))
             {
-                var catEl = ser.GetFirstChild<C.CategoryAxisData>();
-                if (catEl != null)
+                // CONSISTENCY(scatter-bubble-no-cat / R21-bt2): scatter and
+                // bubble series use <c:xVal>/<c:yVal>, not <c:cat>/<c:val>.
+                // Inserting a <c:cat> on a ScatterChartSeries fails OOXML
+                // schema validation (CT_ScatterSer has no cat slot). For these
+                // series, rewrite the existing <c:xVal> literal to a number
+                // reference so the X axis still tracks the source range.
+                bool isScatterOrBubble = ser is C.ScatterChartSeries or C.BubbleChartSeries;
+                if (isScatterOrBubble)
                 {
-                    var strCache = BuildStringCacheFromLiteral(catEl.GetFirstChild<C.StringLiteral>());
-                    catEl.RemoveAllChildren();
-                    var strRef = new C.StringReference(new C.Formula(catRef));
-                    if (strCache != null)
-                        strRef.AppendChild(strCache);
-                    catEl.AppendChild(strRef);
+                    var xValEl = ser.GetFirstChild<C.XValues>();
+                    if (xValEl != null)
+                    {
+                        var numCache = BuildNumberingCacheFromLiteral(
+                            xValEl.GetFirstChild<C.NumberLiteral>(), null);
+                        xValEl.RemoveAllChildren();
+                        var numRef = new C.NumberReference(new C.Formula(catRef));
+                        if (numCache != null)
+                            numRef.AppendChild(numCache);
+                        xValEl.AppendChild(numRef);
+                    }
+                    // No cat element to fall back to — for scatter/bubble the
+                    // x-data IS the "categories", so silently skip if no xVal.
                 }
                 else
                 {
-                    // Insert CategoryAxisData before Values
-                    var valEl = ser.GetFirstChild<C.Values>();
-                    var newCat = new C.CategoryAxisData(new C.StringReference(new C.Formula(catRef)));
-                    if (valEl != null)
-                        valEl.InsertBeforeSelf(newCat);
+                    var catEl = ser.GetFirstChild<C.CategoryAxisData>();
+                    if (catEl != null)
+                    {
+                        var strCache = BuildStringCacheFromLiteral(catEl.GetFirstChild<C.StringLiteral>());
+                        catEl.RemoveAllChildren();
+                        var strRef = new C.StringReference(new C.Formula(catRef));
+                        if (strCache != null)
+                            strRef.AppendChild(strCache);
+                        catEl.AppendChild(strRef);
+                    }
                     else
-                        ser.AppendChild(newCat);
+                    {
+                        // Insert CategoryAxisData before Values
+                        var valEl = ser.GetFirstChild<C.Values>();
+                        var newCat = new C.CategoryAxisData(new C.StringReference(new C.Formula(catRef)));
+                        if (valEl != null)
+                            valEl.InsertBeforeSelf(newCat);
+                        else
+                            ser.AppendChild(newCat);
+                    }
                 }
             }
         }
@@ -441,6 +506,12 @@ internal static partial class ChartHelper
         "datalabels.showcatname", "datalabels.showcategoryname", "datalabels.showcategory",
         "datalabels.showsername", "datalabels.showseriesname", "datalabels.showseries",
         "datalabels.showlegendkey",
+        // R28-B1 — top-level aliases for the dotted datalabels.show* keys above.
+        "showvalue", "showval",
+        "showpercent", "showpct",
+        "showcatname", "showcategoryname", "showcategory",
+        "showsername", "showseriesname", "showseries",
+        "showlegendkey",
         "axisfont", "axis.font", "legendfont", "legend.font",
         // R15-4: rotate tick labels on cat/val axis. Degrees (e.g. -45).
         "labelrotation", "xaxis.labelrotation", "xaxislabelrotation",
@@ -820,11 +891,11 @@ internal static partial class ChartHelper
 
     // ==================== Default Series Colors ====================
 
+    // CONSISTENCY(chart-default-palette): canonical source is
+    // OfficeDefaultThemeColors.DefaultChartSeriesPalette so the OOXML
+    // builder and the SVG preview renderer cannot drift apart.
     internal static readonly string[] DefaultSeriesColors =
-    {
-        "4472C4", "ED7D31", "A5A5A5", "FFC000", "5B9BD5", "70AD47",
-        "264478", "9B4A22", "636363", "BF8F00", "3A75A8", "4E8538"
-    };
+        OfficeDefaultThemeColors.DefaultChartSeriesPalette;
 
     // ==================== Series Color ====================
 
@@ -1223,7 +1294,8 @@ internal static partial class ChartHelper
     /// Convert a NumberLiteral to a NumberingCache so chart viewers can display
     /// cached values without recalculating cell references.
     /// </summary>
-    private static C.NumberingCache? BuildNumberingCacheFromLiteral(C.NumberLiteral? literal)
+    private static C.NumberingCache? BuildNumberingCacheFromLiteral(
+        C.NumberLiteral? literal, HashSet<int>? skipIndexes = null)
     {
         if (literal == null) return null;
         var points = literal.Elements<C.NumericPoint>().ToList();
@@ -1235,7 +1307,13 @@ internal static partial class ChartHelper
         if (ptCount != null)
             cache.AppendChild(new C.PointCount { Val = ptCount.Val });
         foreach (var pt in points)
+        {
+            // R20-03: under dispBlanksAs=gap, omit points at blank source
+            // indexes so Excel renders a gap (line break) instead of 0.
+            if (skipIndexes != null && pt.Index?.Value is uint idx && skipIndexes.Contains((int)idx))
+                continue;
             cache.AppendChild((C.NumericPoint)pt.CloneNode(true));
+        }
         return cache;
     }
 

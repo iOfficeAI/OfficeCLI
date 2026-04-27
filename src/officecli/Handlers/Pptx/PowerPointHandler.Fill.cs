@@ -89,8 +89,8 @@ public partial class PowerPointHandler
     internal static string? ReadColorFromFill(Drawing.SolidFill? solidFill)
     {
         if (solidFill == null) return null;
-        var rgb = solidFill.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
-        if (rgb != null) return ParseHelpers.FormatHexColor(rgb);
+        var rgbEl = solidFill.GetFirstChild<Drawing.RgbColorModelHex>();
+        if (rgbEl?.Val?.Value != null) return FormatHexWithAlpha(rgbEl);
         var scheme = solidFill.GetFirstChild<Drawing.SchemeColor>()?.Val;
         if (scheme?.HasValue == true) return scheme.InnerText;
         return null;
@@ -102,11 +102,28 @@ public partial class PowerPointHandler
     internal static string? ReadColorFromElement(OpenXmlElement? parent)
     {
         if (parent == null) return null;
-        var rgb = parent.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
-        if (rgb != null) return ParseHelpers.FormatHexColor(rgb);
+        var rgbEl = parent.GetFirstChild<Drawing.RgbColorModelHex>();
+        if (rgbEl?.Val?.Value != null) return FormatHexWithAlpha(rgbEl);
         var scheme = parent.GetFirstChild<Drawing.SchemeColor>()?.Val;
         if (scheme?.HasValue == true) return scheme.InnerText;
         return null;
+    }
+
+    /// <summary>
+    /// Format srgbClr hex, prefixing an AA byte when an a:alpha child is present and non-opaque.
+    /// Alpha units are 0..100000 (100000 = opaque, matches OOXML ST_PositiveFixedPercentage).
+    /// </summary>
+    private static string FormatHexWithAlpha(Drawing.RgbColorModelHex rgbEl)
+    {
+        var hex = ParseHelpers.FormatHexColor(rgbEl.Val!.Value!);
+        var alphaVal = rgbEl.GetFirstChild<Drawing.Alpha>()?.Val?.Value;
+        if (alphaVal == null || alphaVal >= 100000) return hex;
+        var alphaByte = (int)Math.Round(alphaVal.Value / 100000.0 * 255);
+        alphaByte = Math.Clamp(alphaByte, 0, 255);
+        // FormatHexColor returns "#RRGGBB"; splice AA in after the '#'.
+        return hex.StartsWith('#')
+            ? $"#{alphaByte:X2}{hex[1..]}"
+            : $"{alphaByte:X2}{hex}";
     }
 
     private static void ApplyShapeFill(ShapeProperties spPr, string value)

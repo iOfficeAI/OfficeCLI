@@ -229,8 +229,10 @@ public partial class WordHandler
             node.Format["effective.size"] = $"{sz:0.##}pt";
         }
 
-        // font.name
-        if (!node.Format.ContainsKey("font"))
+        // font.name — CONSISTENCY(canonical-keys): check per-script slot keys, not legacy "font".
+        if (!node.Format.ContainsKey("font.ascii") && !node.Format.ContainsKey("font.eastAsia")
+            && !node.Format.ContainsKey("font.hAnsi") && !node.Format.ContainsKey("font.cs")
+            && !node.Format.ContainsKey("font"))
         {
             var font = effective.RunFonts?.Ascii?.Value ?? effective.RunFonts?.HighAnsi?.Value
                 ?? effective.RunFonts?.EastAsia?.Value;
@@ -276,7 +278,10 @@ public partial class WordHandler
             node.Format["effective.size"] = $"{sz:0.##}pt";
         }
 
-        if (!node.Format.ContainsKey("font"))
+        // CONSISTENCY(canonical-keys): check per-script slot keys, not legacy "font".
+        if (!node.Format.ContainsKey("font.ascii") && !node.Format.ContainsKey("font.eastAsia")
+            && !node.Format.ContainsKey("font.hAnsi") && !node.Format.ContainsKey("font.cs")
+            && !node.Format.ContainsKey("font"))
         {
             var font = effective.RunFonts?.Ascii?.Value ?? effective.RunFonts?.HighAnsi?.Value
                 ?? effective.RunFonts?.EastAsia?.Value;
@@ -427,13 +432,37 @@ public partial class WordHandler
 
     private string? GetParagraphListStyle(Paragraph para)
     {
-        var numProps = para.ParagraphProperties?.NumberingProperties;
-        if (numProps == null) return null;
-        var numId = numProps.NumberingId?.Val?.Value;
-        if (numId == null || numId == 0) return null;
-        var ilvl = numProps.NumberingLevelReference?.Val?.Value ?? 0;
-        var numFmt = GetNumberingFormat(numId.Value, ilvl);
-        return numFmt.ToLowerInvariant() == "bullet" ? "bullet" : "ordered";
+        if (IsNumberingSuppressed(para)) return null;
+
+        // Direct numPr always wins — paragraph is a list item.
+        var directNumPr = para.ParagraphProperties?.NumberingProperties;
+        var directNid = directNumPr?.NumberingId?.Val?.Value;
+        if (directNid != null && directNid != 0)
+        {
+            var ilvl = directNumPr!.NumberingLevelReference?.Val?.Value ?? 0;
+            var numFmt = GetNumberingFormat(directNid.Value, ilvl);
+            return numFmt.ToLowerInvariant() == "bullet" ? "bullet" : "ordered";
+        }
+
+        // Style-inherited numPr: skip when the paragraph is itself a heading
+        // (Heading1..9 / Title / Subtitle). Headings with style-borne numPr
+        // render via the heading path with a heading-num span (existing
+        // behavior); treating them as <li> would double-count and break the
+        // expected <h1>/<h2> output.
+        var styleName = GetStyleName(para);
+        if (!string.IsNullOrEmpty(styleName))
+        {
+            if (styleName.Contains("Heading") || styleName.Contains("标题")
+                || styleName.StartsWith("heading", StringComparison.OrdinalIgnoreCase)
+                || styleName == "Title" || styleName == "Subtitle")
+                return null;
+        }
+        var resolved = ResolveNumPrFromStyle(para);
+        if (resolved == null) return null;
+        var (numId, ilvlR) = resolved.Value;
+        if (numId == 0) return null;
+        var numFmtR = GetNumberingFormat(numId, ilvlR);
+        return numFmtR.ToLowerInvariant() == "bullet" ? "bullet" : "ordered";
     }
 
     private string GetListPrefix(Paragraph para)

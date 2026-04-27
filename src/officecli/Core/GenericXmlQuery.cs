@@ -312,6 +312,8 @@ internal static class GenericXmlQuery
     /// Uses the SDK's XML parsing to validate: clones the parent (empty), injects
     /// a child XML fragment, checks if the SDK recognizes it as a typed element with Val property.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075",
+        Justification = "Probing for a SDK-generated 'Val' property by name. OpenXml typed-element classes are referenced elsewhere and preserved by the trimmer; if trimmed away, the probe simply returns null and the caller falls through.")]
     public static bool TryCreateTypedChild(OpenXmlElement parent, string key, string value)
     {
         var nsUri = parent.NamespaceUri;
@@ -321,28 +323,44 @@ internal static class GenericXmlQuery
 
         try
         {
-            var existing = parent.ChildElements.FirstOrDefault(e => e.LocalName == key);
-            existing?.Remove();
-
             var escapedVal = System.Security.SecurityElement.Escape(value);
             var tempElement = parent.CloneNode(false);
             tempElement.InnerXml = $"<{prefix}:{key} xmlns:{prefix}=\"{nsUri}\" {prefix}:val=\"{escapedVal}\"/>";
 
             var newChild = tempElement.FirstChild?.CloneNode(true);
-            if (newChild == null || newChild is OpenXmlUnknownElement
-                || !newChild.GetAttributes().Any(a => a.LocalName == "val"))
+            if (newChild == null || newChild is OpenXmlUnknownElement)
                 return false;
 
-            // Use schema-aware AddChild for correct element ordering
+            // Schema check: only accept "scalar val" typed elements — those that
+            // expose a typed Val property on their generated SDK class. Composite
+            // types (w:tabs, w:rFonts, w:ind, w:spacing, w:numPr, ...) have no
+            // Val property; they'd otherwise accept the fabricated val= as an
+            // unknown extension attribute and silently produce invalid XML
+            // (e.g. <w:tabs w:val="9360:right"/> instead of nested <w:tab>).
+            if (newChild.GetType().GetProperty("Val") == null)
+                return false;
+
+            // Schema-aware AddChild rejects elements that don't belong in this
+            // parent (e.g. w:snapToGrid in rPr — it's pPr-only). On rejection,
+            // return false so the caller can try a different container; do NOT
+            // fall back to AppendChild, which bypasses schema and produces
+            // invalid XML in the wrong parent.
             if (parent is OpenXmlCompositeElement composite)
             {
                 if (!composite.AddChild(newChild, throwOnError: false))
-                    parent.AppendChild(newChild);
+                    return false;
             }
             else
             {
                 parent.AppendChild(newChild);
             }
+
+            // Only after AddChild succeeded: remove any older instance the
+            // curated reader didn't notice. Doing this earlier would damage
+            // existing data on a probe that ultimately fails.
+            var existing = parent.ChildElements.FirstOrDefault(e =>
+                e.LocalName == key && !ReferenceEquals(e, newChild));
+            existing?.Remove();
             return true;
         }
         catch

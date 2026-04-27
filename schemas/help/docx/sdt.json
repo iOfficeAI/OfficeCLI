@@ -1,0 +1,52 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "sdt",
+  "parent": "body|paragraph",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/sdt[N]", "/body/p[N]/sdt[M]"]
+  },
+  "note": "Aliases: contentcontrol. Structured document tags — inline or block. Block-level SDT wraps paragraphs; inline SDT wraps runs.",
+  "properties": {
+    "type": {
+      "type": "enum",
+      "description": "SDT variant. Only text/richtext/dropdown/combobox/date are supported at add-time. picture/checkbox are not implemented — create those in Word and edit via CLI. Type cannot be changed after creation.",
+      "values": ["text", "richtext", "dropdown", "combobox", "date"],
+      "add": true, "set": false, "get": true,
+      "examples": ["--prop type=text", "--prop type=dropdown"],
+      "readback": "type descriptor",
+      "enforcement": "report"
+    },
+    "tag": {
+      "type": "string",
+      "description": "machine-readable tag for data-binding.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop tag=customerName"],
+      "readback": "Tag attribute",
+      "enforcement": "report"
+    },
+    "alias": {
+      "type": "string",
+      "description": "human-readable display name shown in Word.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop alias=\"Customer Name\""],
+      "readback": "Alias attribute",
+      "enforcement": "report"
+    },
+    "text": {
+      "type": "string",
+      "description": "placeholder/initial content.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=\"[Enter name]\""],
+      "readback": "concatenated text",
+      "enforcement": "report"
+    }
+  }
+}

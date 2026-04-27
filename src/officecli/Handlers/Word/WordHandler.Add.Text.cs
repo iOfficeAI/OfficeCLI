@@ -1,14 +1,9 @@
 // Copyright 2025 OfficeCli (officecli.ai)
 // SPDX-License-Identifier: Apache-2.0
 
-using System.Text;
 using DocumentFormat.OpenXml;
-using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using OfficeCli.Core;
-using A = DocumentFormat.OpenXml.Drawing;
-using C = DocumentFormat.OpenXml.Drawing.Charts;
-using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
 using M = DocumentFormat.OpenXml.Math;
 
 namespace OfficeCli.Handlers;
@@ -55,14 +50,40 @@ public partial class WordHandler
             spacing.Line = twips.ToString();
             spacing.LineRule = isMultiplier ? LineSpacingRuleValues.Auto : LineSpacingRuleValues.Exact;
         }
-        if (properties.TryGetValue("numid", out var numId))
+        // Numbering properties. Parallel branches so `ilvl` alone still
+        // emits <w:ilvl> (matching `set --prop ilvl=N` behaviour); both
+        // inputs are range-checked so schema-invalid values never reach XML.
+        if (properties.TryGetValue("numid", out var numId) || properties.TryGetValue("numId", out numId))
         {
-            var numPr = pProps.NumberingProperties ?? (pProps.NumberingProperties = new NumberingProperties());
-            numPr.NumberingId = new NumberingId { Val = ParseHelpers.SafeParseInt(numId, "numid") };
-            if (properties.TryGetValue("numlevel", out var numLevel))
+            var numIdVal = ParseHelpers.SafeParseInt(numId, "numid");
+            if (numIdVal < 0)
+                throw new ArgumentException($"numId must be >= 0 (got {numIdVal}).");
+            // numId=0 is OOXML's way of saying "remove numbering" (no-list sentinel).
+            // Positive numIds must reference an existing <w:num> to avoid silent dangling
+            // references — Word renders such paragraphs without any list marker.
+            if (numIdVal > 0)
             {
-                numPr.NumberingLevelReference = new NumberingLevelReference { Val = ParseHelpers.SafeParseInt(numLevel, "numlevel") };
+                var numbering = _doc.MainDocumentPart?.NumberingDefinitionsPart?.Numbering;
+                var numExists = numbering?.Elements<NumberingInstance>()
+                    .Any(n => n.NumberID?.Value == numIdVal) ?? false;
+                if (!numExists)
+                    throw new ArgumentException(
+                        $"numId={numIdVal} not found in /numbering. " +
+                        "Create the num first (add /numbering --type num), or use numId=0 to remove numbering.");
             }
+            var numPr = pProps.NumberingProperties ?? (pProps.NumberingProperties = new NumberingProperties());
+            numPr.NumberingId = new NumberingId { Val = numIdVal };
+        }
+        // Accept both "numlevel" and "ilvl" (the OOXML name); works with or
+        // without numId to stay in sync with `set --prop ilvl=N`.
+        if (properties.TryGetValue("numlevel", out var numLevel)
+            || properties.TryGetValue("ilvl", out numLevel))
+        {
+            var ilvlVal = ParseHelpers.SafeParseInt(numLevel, "ilvl");
+            if (ilvlVal < 0 || ilvlVal > 8)
+                throw new ArgumentException($"ilvl must be in range 0..8 (got {ilvlVal}).");
+            var numPr = pProps.NumberingProperties ?? (pProps.NumberingProperties = new NumberingProperties());
+            numPr.NumberingLevelReference = new NumberingLevelReference { Val = ilvlVal };
         }
         if (properties.TryGetValue("shd", out var pShdVal) || properties.TryGetValue("shading", out pShdVal))
         {
@@ -96,17 +117,21 @@ public partial class WordHandler
         if (properties.TryGetValue("leftindent", out var addLI) || properties.TryGetValue("leftIndent", out addLI) || properties.TryGetValue("indentleft", out addLI) || properties.TryGetValue("indent", out addLI))
         {
             var ind = pProps.Indentation ?? (pProps.Indentation = new Indentation());
-            ind.Left = ParseHelpers.SafeParseUint(addLI, "leftindent").ToString();
+            // CONSISTENCY(lenient-spacing): route through SpacingConverter so indent accepts
+            // "2cm"/"0.5in"/"24pt"/bare twips — parity with spaceBefore/spaceAfter/lineSpacing.
+            ind.Left = SpacingConverter.ParseWordSpacing(addLI).ToString();
         }
         if (properties.TryGetValue("rightindent", out var addRI) || properties.TryGetValue("rightIndent", out addRI) || properties.TryGetValue("indentright", out addRI))
         {
             var ind = pProps.Indentation ?? (pProps.Indentation = new Indentation());
-            ind.Right = ParseHelpers.SafeParseUint(addRI, "rightindent").ToString();
+            // CONSISTENCY(lenient-spacing): see leftindent above.
+            ind.Right = SpacingConverter.ParseWordSpacing(addRI).ToString();
         }
         if (properties.TryGetValue("hangingindent", out var addHI) || properties.TryGetValue("hangingIndent", out addHI) || properties.TryGetValue("hanging", out addHI))
         {
             var ind = pProps.Indentation ?? (pProps.Indentation = new Indentation());
-            ind.Hanging = ParseHelpers.SafeParseUint(addHI, "hangingindent").ToString();
+            // CONSISTENCY(lenient-spacing): see leftindent above.
+            ind.Hanging = SpacingConverter.ParseWordSpacing(addHI).ToString();
             ind.FirstLine = null;
         }
         // firstlineindent already handled above (line ~66-74) with × 480 conversion
@@ -123,6 +148,12 @@ public partial class WordHandler
             else
                 pProps.WidowControl = new WidowControl { Val = false };
         }
+        // CONSISTENCY(add-set-symmetry): Set supports contextualSpacing (WordHandler.Set.cs:529);
+        // Add must accept the same prop so the "Add then Get" lifecycle test pattern works
+        // without falling back to a separate Set call. Mirrors keepNext/keepLines toggle
+        // semantics: false omits the element (matches Set which sets it to null on false).
+        if ((properties.TryGetValue("contextualspacing", out var addCS) || properties.TryGetValue("contextualSpacing", out addCS)) && IsTruthy(addCS))
+            pProps.ContextualSpacing = new ContextualSpacing();
         foreach (var (pk, pv) in properties)
         {
             if (pk.StartsWith("pbdr", StringComparison.OrdinalIgnoreCase))
@@ -149,30 +180,37 @@ public partial class WordHandler
         {
             var run = new Run();
             var rProps = new RunProperties();
-            if (properties.TryGetValue("font", out var font))
+            if (properties.TryGetValue("font", out var font) || properties.TryGetValue("font.name", out font))
             {
                 rProps.AppendChild(new RunFonts { Ascii = font, HighAnsi = font, EastAsia = font });
             }
-            if (properties.TryGetValue("size", out var size))
+            if (properties.TryGetValue("size", out var size) || properties.TryGetValue("font.size", out size))
             {
                 rProps.AppendChild(new FontSize { Val = ((int)Math.Round(ParseFontSize(size) * 2, MidpointRounding.AwayFromZero)).ToString() });
             }
-            if (properties.TryGetValue("bold", out var bold) && IsTruthy(bold))
+            if ((properties.TryGetValue("bold", out var bold) || properties.TryGetValue("font.bold", out bold)) && IsTruthy(bold))
                 rProps.Bold = new Bold();
-            if (properties.TryGetValue("italic", out var pItalic) && IsTruthy(pItalic))
+            if ((properties.TryGetValue("italic", out var pItalic) || properties.TryGetValue("font.italic", out pItalic)) && IsTruthy(pItalic))
                 rProps.Italic = new Italic();
-            if (properties.TryGetValue("color", out var pColor))
+            if (properties.TryGetValue("color", out var pColor) || properties.TryGetValue("font.color", out pColor))
                 rProps.Color = new Color { Val = SanitizeHex(pColor) };
-            if (properties.TryGetValue("underline", out var pUnderline))
+            if (properties.TryGetValue("underline", out var pUnderline) || properties.TryGetValue("font.underline", out pUnderline))
             {
                 var ulVal = NormalizeUnderlineValue(pUnderline);
                 rProps.Underline = new Underline { Val = new UnderlineValues(ulVal) };
             }
-            if ((properties.TryGetValue("strike", out var pStrike) || properties.TryGetValue("strikethrough", out pStrike)) && IsTruthy(pStrike))
+            if ((properties.TryGetValue("strike", out var pStrike)
+                    || properties.TryGetValue("strikethrough", out pStrike)
+                    || properties.TryGetValue("font.strike", out pStrike)
+                    || properties.TryGetValue("font.strikethrough", out pStrike))
+                && IsTruthy(pStrike))
                 rProps.Strike = new Strike();
             if (properties.TryGetValue("highlight", out var pHighlight))
                 rProps.Highlight = new Highlight { Val = ParseHighlightColor(pHighlight) };
-            if (properties.TryGetValue("caps", out var pCaps) && IsTruthy(pCaps))
+            if ((properties.TryGetValue("caps", out var pCaps)
+                    || properties.TryGetValue("allcaps", out pCaps)
+                    || properties.TryGetValue("allCaps", out pCaps))
+                && IsTruthy(pCaps))
                 rProps.Caps = new Caps();
             if (properties.TryGetValue("smallcaps", out var pSmallCaps) || properties.TryGetValue("smallCaps", out pSmallCaps))
             {
@@ -247,8 +285,45 @@ public partial class WordHandler
             }
 
             run.AppendChild(rProps);
-            run.AppendChild(new Text(text) { Space = SpaceProcessingModeValues.Preserve });
+            AppendTextWithBreaks(run, text);
             para.AppendChild(run);
+        }
+
+        // Dotted-key fallback: any "element.attr=value" prop the hand-rolled
+        // blocks above did not consume goes through the same generic helper
+        // wired into Set. Pre-existing dotted prefixes already handled
+        // upstream (pbdr.*) are skipped to avoid double application.
+        // Anything still unconsumed is recorded as silent-drop so the CLI
+        // layer can surface a WARNING. CONSISTENCY(add-set-symmetry).
+        var rPropsForFallback = para.Descendants<RunProperties>().FirstOrDefault();
+        foreach (var (key, value) in properties)
+        {
+            if (!key.Contains('.')) continue;
+            if (key.StartsWith("pbdr", StringComparison.OrdinalIgnoreCase)) continue;
+            // CONSISTENCY(font-dotted-alias): same skip-list as run-add.
+            switch (key.ToLowerInvariant())
+            {
+                case "font.name":
+                case "font.size":
+                case "font.bold":
+                case "font.italic":
+                case "font.color":
+                case "font.underline":
+                case "font.strike":
+                case "font.strikethrough":
+                    continue;
+            }
+            if (Core.TypedAttributeFallback.TrySet(pProps, key, value)) continue;
+            if (rPropsForFallback != null
+                && Core.TypedAttributeFallback.TrySet(rPropsForFallback, key, value)) continue;
+            // No text run on this paragraph yet; route run-level attrs to
+            // the paragraph mark rPr (where they apply to the paragraph
+            // mark glyph + inherited by future runs).
+            var paraMarkRPr = pProps.GetFirstChild<ParagraphMarkRunProperties>()
+                ?? pProps.AppendChild(new ParagraphMarkRunProperties());
+            if (Core.TypedAttributeFallback.TrySet(paraMarkRPr, key, value)) continue;
+            if (paraMarkRPr.ChildElements.Count == 0) paraMarkRPr.Remove();
+            LastAddUnsupportedProps.Add(key);
         }
 
         // Use ChildElements for index lookup so that tables and sectPr
@@ -336,9 +411,26 @@ public partial class WordHandler
                 {
                     AppendToParent(insertTarget, wrapPara);
                 }
-                var mathParaCount = insertTarget.Descendants<M.Paragraph>().Count();
+                // Compute doc-order index matching NavigateToElement's /body/oMathPara[N]
+                // resolution: enumerate bare M.Paragraph and pure oMathPara wrapper w:p's.
+                var oMathParaOrdinal = 0;
+                var found = 0;
+                foreach (var el in insertTarget.ChildElements)
+                {
+                    if (el is M.Paragraph)
+                    {
+                        oMathParaOrdinal++;
+                        if (ReferenceEquals(el, mathPara)) { found = oMathParaOrdinal; break; }
+                    }
+                    else if (el is Paragraph wp && IsOMathParaWrapperParagraph(wp))
+                    {
+                        oMathParaOrdinal++;
+                        if (ReferenceEquals(el, wrapPara)) { found = oMathParaOrdinal; break; }
+                    }
+                }
+                if (found == 0) found = oMathParaOrdinal; // fallback
                 var bodyPath = insertAfter != null ? parentPath.Substring(0, parentPath.LastIndexOf('/')) : parentPath;
-                resultPath = $"{bodyPath}/oMathPara[{mathParaCount}]";
+                resultPath = $"{bodyPath}/oMathPara[{found}]";
             }
             else
             {
@@ -359,26 +451,33 @@ public partial class WordHandler
 
         var newRun = new Run();
         var newRProps = new RunProperties();
-        if (properties.TryGetValue("font", out var rFont))
+        if (properties.TryGetValue("font", out var rFont) || properties.TryGetValue("font.name", out rFont))
             newRProps.AppendChild(new RunFonts { Ascii = rFont, HighAnsi = rFont, EastAsia = rFont });
-        if (properties.TryGetValue("size", out var rSize))
+        if (properties.TryGetValue("size", out var rSize) || properties.TryGetValue("font.size", out rSize))
             newRProps.AppendChild(new FontSize { Val = ((int)Math.Round(ParseFontSize(rSize) * 2, MidpointRounding.AwayFromZero)).ToString() });
-        if (properties.TryGetValue("bold", out var rBold) && IsTruthy(rBold))
+        if ((properties.TryGetValue("bold", out var rBold) || properties.TryGetValue("font.bold", out rBold)) && IsTruthy(rBold))
             newRProps.Bold = new Bold();
-        if (properties.TryGetValue("italic", out var rItalic) && IsTruthy(rItalic))
+        if ((properties.TryGetValue("italic", out var rItalic) || properties.TryGetValue("font.italic", out rItalic)) && IsTruthy(rItalic))
             newRProps.Italic = new Italic();
-        if (properties.TryGetValue("color", out var rColor))
+        if (properties.TryGetValue("color", out var rColor) || properties.TryGetValue("font.color", out rColor))
             newRProps.Color = new Color { Val = SanitizeHex(rColor) };
-        if (properties.TryGetValue("underline", out var rUnderline))
+        if (properties.TryGetValue("underline", out var rUnderline) || properties.TryGetValue("font.underline", out rUnderline))
         {
             var ulVal = NormalizeUnderlineValue(rUnderline);
             newRProps.Underline = new Underline { Val = new UnderlineValues(ulVal) };
         }
-        if ((properties.TryGetValue("strike", out var rStrike) || properties.TryGetValue("strikethrough", out rStrike)) && IsTruthy(rStrike))
+        if ((properties.TryGetValue("strike", out var rStrike)
+                || properties.TryGetValue("strikethrough", out rStrike)
+                || properties.TryGetValue("font.strike", out rStrike)
+                || properties.TryGetValue("font.strikethrough", out rStrike))
+            && IsTruthy(rStrike))
             newRProps.Strike = new Strike();
         if (properties.TryGetValue("highlight", out var rHighlight))
             newRProps.Highlight = new Highlight { Val = ParseHighlightColor(rHighlight) };
-        if (properties.TryGetValue("caps", out var rCaps) && IsTruthy(rCaps))
+        if ((properties.TryGetValue("caps", out var rCaps)
+                || properties.TryGetValue("allcaps", out rCaps)
+                || properties.TryGetValue("allCaps", out rCaps))
+            && IsTruthy(rCaps))
             newRProps.Caps = new Caps();
         if (properties.TryGetValue("smallcaps", out var rSmallCaps) || properties.TryGetValue("smallCaps", out rSmallCaps))
         {
@@ -482,24 +581,174 @@ public partial class WordHandler
 
         newRun.AppendChild(newRProps);
         var runText = properties.GetValueOrDefault("text", "");
-        newRun.AppendChild(new Text(runText) { Space = SpaceProcessingModeValues.Preserve });
+        AppendTextWithBreaks(newRun, runText);
 
-        var runCount = targetPara.Elements<Run>().Count();
-        if (index.HasValue && index.Value < runCount)
+        // Dotted-key fallback: same generic helper as Set's run path.
+        // Anything still unconsumed after the hand-rolled blocks above
+        // gets routed through TypedAttributeFallback; failures land in
+        // LastAddUnsupportedProps so the CLI surfaces a WARNING instead
+        // of silently dropping. CONSISTENCY(add-set-symmetry).
+        foreach (var (key, value) in properties)
         {
-            var refRun = targetPara.Elements<Run>().ElementAt(index.Value);
-            targetPara.InsertBefore(newRun, refRun);
-            resultPath = $"{parentPath}/r[{index.Value + 1}]";
+            if (!key.Contains('.')) continue;
+            // CONSISTENCY(font-dotted-alias): font.name/font.bold/font.size/
+            // font.italic/font.color/font.underline/font.strike are consumed
+            // above by the curated alias blocks; skip the typed-attr fallback
+            // so they don't get re-flagged as UNSUPPORTED.
+            switch (key.ToLowerInvariant())
+            {
+                case "font.name":
+                case "font.size":
+                case "font.bold":
+                case "font.italic":
+                case "font.color":
+                case "font.underline":
+                case "font.strike":
+                case "font.strikethrough":
+                    continue;
+            }
+            if (Core.TypedAttributeFallback.TrySet(newRProps, key, value)) continue;
+            LastAddUnsupportedProps.Add(key);
+        }
+
+        // Use ChildElements for index lookup so ResolveAnchorPosition's
+        // childElement-indexed result lines up. If index points at
+        // ParagraphProperties, clamp forward so pPr stays first.
+        var allChildren = targetPara.ChildElements.ToList();
+        if (index.HasValue && index.Value < allChildren.Count)
+        {
+            var refElement = allChildren[index.Value];
+            if (refElement is ParagraphProperties)
+            {
+                // insert after pPr — i.e. before whatever sits at index+1, else append
+                if (index.Value + 1 < allChildren.Count)
+                    targetPara.InsertBefore(newRun, allChildren[index.Value + 1]);
+                else
+                    targetPara.AppendChild(newRun);
+            }
+            else
+            {
+                targetPara.InsertBefore(newRun, refElement);
+            }
+            var runPosIdx = targetPara.Elements<Run>().ToList().IndexOf(newRun) + 1;
+            resultPath = $"{parentPath}/r[{runPosIdx}]";
         }
         else
         {
             targetPara.AppendChild(newRun);
-            resultPath = $"{parentPath}/r[{runCount + 1}]";
+            var runCount = targetPara.Elements<Run>().Count();
+            resultPath = $"{parentPath}/r[{runCount}]";
         }
 
         // Refresh textId since paragraph content changed
         targetPara.TextId = GenerateParaId();
 
         return resultPath;
+    }
+
+    /// <summary>
+    /// Append <paramref name="text"/> to <paramref name="run"/>, tokenizing on
+    /// '\n' (w:br) and '\t' (w:tab) so the user-visible line breaks and tabs
+    /// round-trip through Word instead of being collapsed to a single space.
+    /// CRLF/CR are normalized to LF first.
+    /// </summary>
+    internal static void AppendTextWithBreaks(Run run, string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            run.AppendChild(new Text("") { Space = SpaceProcessingModeValues.Preserve });
+            return;
+        }
+        var s = text.Replace("\r\n", "\n").Replace("\r", "\n");
+        int start = 0;
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (c == '\n' || c == '\t')
+            {
+                if (i > start)
+                    run.AppendChild(new Text(s.Substring(start, i - start)) { Space = SpaceProcessingModeValues.Preserve });
+                if (c == '\n') run.AppendChild(new Break());
+                else run.AppendChild(new TabChar());
+                start = i + 1;
+            }
+        }
+        if (start < s.Length)
+            run.AppendChild(new Text(s.Substring(start)) { Space = SpaceProcessingModeValues.Preserve });
+        else if (start == 0)
+            run.AppendChild(new Text("") { Space = SpaceProcessingModeValues.Preserve });
+    }
+
+    // Add a tab stop. Parent must be a Paragraph or a paragraph/table-typed
+    // Style; the helper finds or creates the pPr/Tabs container and appends
+    // a TabStop. `pos` is required (twips, or any unit accepted by
+    // SpacingConverter.ParseWordSpacing). `val` defaults to "left";
+    // `leader` is optional. Returns the new tab's path under the
+    // conventional /<parent>/tab[N] form — Navigation descends through
+    // pPr/tabs (paragraph) or StyleParagraphProperties/tabs (style)
+    // transparently for this segment shape.
+    private string AddTab(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
+    {
+        if (!properties.TryGetValue("pos", out var posStr) || string.IsNullOrWhiteSpace(posStr))
+            throw new ArgumentException("tab requires 'pos' property (e.g. --prop pos=9360 or --prop pos=6cm)");
+
+        var posTwips = (int)SpacingConverter.ParseWordSpacing(posStr);
+
+        var tabStop = new TabStop { Position = posTwips };
+        if (properties.TryGetValue("val", out var valStr) && !string.IsNullOrEmpty(valStr))
+        {
+            var tabValNorm = valStr.ToLowerInvariant();
+            // Validate before constructing the enum — an invalid string throws
+            // ArgumentOutOfRangeException which the outer dispatcher catches and
+            // surfaces as a misleading "Invalid index or anchor" error.
+            var knownTabVals = new[] { "left", "center", "right", "decimal", "bar", "clear", "num", "start", "end" };
+            if (!knownTabVals.Contains(tabValNorm))
+                throw new ArgumentException($"Invalid tab val '{valStr}'. Valid: {string.Join(", ", knownTabVals)}.");
+            tabStop.Val = new EnumValue<TabStopValues>(new TabStopValues(tabValNorm));
+        }
+        else
+            tabStop.Val = TabStopValues.Left;
+        if (properties.TryGetValue("leader", out var leaderStr) && !string.IsNullOrEmpty(leaderStr))
+        {
+            var leaderNorm = leaderStr.ToLowerInvariant();
+            var knownLeaders = new[] { "none", "dot", "heavy", "hyphen", "middledot", "underscore" };
+            if (!knownLeaders.Contains(leaderNorm))
+                throw new ArgumentException($"Invalid tab leader '{leaderStr}'. Valid: {string.Join(", ", knownLeaders)}.");
+            tabStop.Leader = new EnumValue<TabStopLeaderCharValues>(new TabStopLeaderCharValues(leaderNorm));
+        }
+
+        // pPr children have schema order; Tabs sits early. PrependChild
+        // is conservative — Word accepts Tabs at the start of pPr and
+        // we don't want to interleave with later siblings (numPr, ind, ...)
+        // that have stricter ordering constraints.
+        Tabs tabs;
+        if (parent is Paragraph para)
+        {
+            // pPr must come first inside <w:p> per CT_P schema
+            var pProps = para.ParagraphProperties ?? para.PrependChild(new ParagraphProperties());
+            tabs = pProps.GetFirstChild<Tabs>() ?? pProps.PrependChild(new Tabs());
+        }
+        else if (parent is Style style)
+        {
+            // Type guard already enforced in Add.cs (paragraph/table only).
+            // EnsureStyleParagraphProperties handles schema-correct insertion
+            // before StyleRunProperties.
+            var spProps = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+            tabs = spProps.GetFirstChild<Tabs>() ?? spProps.PrependChild(new Tabs());
+        }
+        else
+        {
+            throw new ArgumentException(
+                $"Cannot add 'tab' under {parentPath}: tab stops belong inside a paragraph or a paragraph-typed style.");
+        }
+
+        var existing = tabs.Elements<TabStop>().ToList();
+        if (index.HasValue && index.Value >= 0 && index.Value < existing.Count)
+            tabs.InsertBefore(tabStop, existing[index.Value]);
+        else
+            tabs.AppendChild(tabStop);
+
+        var newIdx = tabs.Elements<TabStop>().ToList().IndexOf(tabStop) + 1;
+        return $"{parentPath}/tab[{newIdx}]";
     }
 }

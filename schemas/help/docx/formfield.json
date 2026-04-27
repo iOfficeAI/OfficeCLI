@@ -1,0 +1,56 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "formfield",
+  "parent": "paragraph|body",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "stable":     ["/formfield[@name=NAME]"],
+    "positional": ["/formfield[N]"]
+  },
+  "note": "Form fields embed a BookmarkStart/End so names share the bookmark namespace and validation rules. Three kinds: text (default), checkbox, dropdown.",
+  "properties": {
+    "type": {
+      "type": "enum",
+      "description": "form field type.",
+      "values": ["text", "checkbox", "check", "dropdown"],
+      "aliases": ["formfieldtype"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop type=text"],
+      "readback": "one of values",
+      "enforcement": "report"
+    },
+    "name": {
+      "type": "string",
+      "description": "form field name (required for stable addressing). Same constraints as bookmark name.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop name=email"],
+      "readback": "name as stored",
+      "enforcement": "strict"
+    },
+    "text": {
+      "type": "string",
+      "description": "initial text value (text fields only). Alias: value.",
+      "aliases": ["value"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=default"],
+      "readback": "initial text for text type",
+      "enforcement": "report"
+    },
+    "checked": {
+      "type": "bool",
+      "description": "default state (checkbox only).",
+      "add": true, "set": true, "get": true,
+      "appliesWhen": { "type": ["checkbox", "check"] },
+      "examples": ["--prop checked=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    }
+  }
+}

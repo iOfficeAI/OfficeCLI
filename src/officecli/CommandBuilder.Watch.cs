@@ -15,7 +15,7 @@ static partial class CommandBuilder
         var watchPortOpt = new Option<int>("--port") { Description = "HTTP port for preview server" };
         watchPortOpt.DefaultValueFactory = _ => 18080;
 
-        var watchCommand = new Command("watch", "Start a live preview server that auto-refreshes when the document changes");
+        var watchCommand = new Command("watch", "Start a live preview server that refreshes when officecli modifies the document (external edits are not detected)");
         watchCommand.Add(watchFileArg);
         watchCommand.Add(watchPortOpt);
 

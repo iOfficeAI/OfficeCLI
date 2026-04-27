@@ -1,0 +1,27 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "cell",
+  "parent": "row",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/slide[N]/table[M]/tr[R]/tc[C]"]
+  },
+  "note": "Appending a cell to a row is unusual — normally cells are seeded at row-Add time. This op exists for completeness.",
+  "properties": {
+    "text": {
+      "type": "string",
+      "description": "cell text content (single run).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=\"Hello\""],
+      "readback": "concatenated run text",
+      "enforcement": "strict"
+    }
+  }
+}

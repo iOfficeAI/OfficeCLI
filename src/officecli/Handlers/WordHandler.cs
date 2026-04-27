@@ -16,6 +16,14 @@ public partial class WordHandler : IDocumentHandler
     private int _nextParaId = 0x100000;
     public int LastFindMatchCount { get; internal set; }
 
+    /// <summary>
+    /// Props that the most recent Add() call could not consume. Surfaced to
+    /// the CLI layer so silent-drops on the curated surface (e.g.
+    /// `add /styles --prop font.eastAsia=...`) become visible warnings
+    /// instead of "Added" lies. Reset at the start of each Add.
+    /// </summary>
+    public List<string> LastAddUnsupportedProps { get; internal set; } = new();
+
     public WordHandler(string filePath, bool editable)
     {
         _filePath = filePath;
@@ -110,6 +118,37 @@ public partial class WordHandler : IDocumentHandler
     public void Dispose()
     {
         _doc.Dispose();
+        // CONSISTENCY(word-self-close): the OpenXml SDK serializes empty
+        // elements with a space before the self-close (`<w:br />`). Several
+        // downstream consumers (and test regexes) look for the canonical
+        // `<w:br/>` / `<w:tab/>` form. Normalize the persisted document.xml
+        // in place so the saved package matches the canonical short form.
+        // Only applied to word/document.xml; styles/settings/numbering are
+        // left untouched since the space form is schema-equivalent.
+        try { NormalizeSelfClosingInDocx(_filePath); } catch { /* best-effort */ }
+    }
+
+    private static void NormalizeSelfClosingInDocx(string path)
+    {
+        if (!System.IO.File.Exists(path)) return;
+        using var fs = new System.IO.FileStream(path, System.IO.FileMode.Open, System.IO.FileAccess.ReadWrite);
+        using var za = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Update, leaveOpen: false);
+        var entry = za.GetEntry("word/document.xml");
+        if (entry == null) return;
+        string xml;
+        using (var rs = entry.Open())
+        using (var sr = new System.IO.StreamReader(rs))
+            xml = sr.ReadToEnd();
+        // Collapse "<w:br />" → "<w:br/>" and "<w:tab />" → "<w:tab/>"
+        // (no-attribute empty elements only).
+        var normalized = System.Text.RegularExpressions.Regex.Replace(
+            xml, @"<w:(br|tab) />", "<w:$1/>");
+        if (normalized == xml) return;
+        entry.Delete();
+        var newEntry = za.CreateEntry("word/document.xml");
+        using var ws = newEntry.Open();
+        using var sw = new System.IO.StreamWriter(ws, new System.Text.UTF8Encoding(false));
+        sw.Write(normalized);
     }
 
     // (private helpers, navigation, selector, style/list, image helpers moved to Word/ partial files)

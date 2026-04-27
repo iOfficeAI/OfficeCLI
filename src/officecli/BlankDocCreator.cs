@@ -6,6 +6,7 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using DocumentFormat.OpenXml.Wordprocessing;
 using DocumentFormat.OpenXml.Presentation;
+using OfficeCli.Core;
 
 namespace OfficeCli;
 
@@ -53,7 +54,7 @@ public static class BlankDocCreator
 
         // Section with A4 page size, standard margins, and no docGrid snap
         var sectPr = new SectionProperties(
-            new PageSize { Width = 11906, Height = 16838 },
+            new PageSize { Width = WordPageDefaults.A4WidthTwips, Height = WordPageDefaults.A4HeightTwips },
             new PageMargin { Top = 1440, Right = 1800U, Bottom = 1440, Left = 1800U },
             new DocGrid { Type = DocGridValues.Default }
         );
@@ -123,25 +124,25 @@ public static class BlankDocCreator
                 new DocumentFormat.OpenXml.Drawing.ColorScheme(
                     new DocumentFormat.OpenXml.Drawing.Dark1Color(new DocumentFormat.OpenXml.Drawing.SystemColor { Val = DocumentFormat.OpenXml.Drawing.SystemColorValues.WindowText, LastColor = "000000" }),
                     new DocumentFormat.OpenXml.Drawing.Light1Color(new DocumentFormat.OpenXml.Drawing.SystemColor { Val = DocumentFormat.OpenXml.Drawing.SystemColorValues.Window, LastColor = "FFFFFF" }),
-                    new DocumentFormat.OpenXml.Drawing.Dark2Color(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = "44546A" }),
-                    new DocumentFormat.OpenXml.Drawing.Light2Color(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = "E7E6E6" }),
-                    new DocumentFormat.OpenXml.Drawing.Accent1Color(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = "4472C4" }),
-                    new DocumentFormat.OpenXml.Drawing.Accent2Color(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = "ED7D31" }),
-                    new DocumentFormat.OpenXml.Drawing.Accent3Color(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = "A5A5A5" }),
-                    new DocumentFormat.OpenXml.Drawing.Accent4Color(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = "FFC000" }),
-                    new DocumentFormat.OpenXml.Drawing.Accent5Color(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = "5B9BD5" }),
-                    new DocumentFormat.OpenXml.Drawing.Accent6Color(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = "70AD47" }),
-                    new DocumentFormat.OpenXml.Drawing.Hyperlink(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = "0563C1" }),
-                    new DocumentFormat.OpenXml.Drawing.FollowedHyperlinkColor(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = "954F72" })
+                    new DocumentFormat.OpenXml.Drawing.Dark2Color(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = OfficeDefaultThemeColors.Dark2 }),
+                    new DocumentFormat.OpenXml.Drawing.Light2Color(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = OfficeDefaultThemeColors.Light2 }),
+                    new DocumentFormat.OpenXml.Drawing.Accent1Color(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = OfficeDefaultThemeColors.Accent1 }),
+                    new DocumentFormat.OpenXml.Drawing.Accent2Color(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = OfficeDefaultThemeColors.Accent2 }),
+                    new DocumentFormat.OpenXml.Drawing.Accent3Color(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = OfficeDefaultThemeColors.Accent3 }),
+                    new DocumentFormat.OpenXml.Drawing.Accent4Color(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = OfficeDefaultThemeColors.Accent4 }),
+                    new DocumentFormat.OpenXml.Drawing.Accent5Color(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = OfficeDefaultThemeColors.Accent5 }),
+                    new DocumentFormat.OpenXml.Drawing.Accent6Color(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = OfficeDefaultThemeColors.Accent6 }),
+                    new DocumentFormat.OpenXml.Drawing.Hyperlink(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = OfficeDefaultThemeColors.Hyperlink }),
+                    new DocumentFormat.OpenXml.Drawing.FollowedHyperlinkColor(new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = OfficeDefaultThemeColors.FollowedHyperlink })
                 ) { Name = "Office" },
                 new DocumentFormat.OpenXml.Drawing.FontScheme(
                     new DocumentFormat.OpenXml.Drawing.MajorFont(
-                        new DocumentFormat.OpenXml.Drawing.LatinFont { Typeface = "Calibri Light" },
+                        new DocumentFormat.OpenXml.Drawing.LatinFont { Typeface = OfficeDefaultFonts.MajorLatin },
                         new DocumentFormat.OpenXml.Drawing.EastAsianFont { Typeface = "" },
                         new DocumentFormat.OpenXml.Drawing.ComplexScriptFont { Typeface = "" }
                     ),
                     new DocumentFormat.OpenXml.Drawing.MinorFont(
-                        new DocumentFormat.OpenXml.Drawing.LatinFont { Typeface = "Calibri" },
+                        new DocumentFormat.OpenXml.Drawing.LatinFont { Typeface = OfficeDefaultFonts.MinorLatin },
                         new DocumentFormat.OpenXml.Drawing.EastAsianFont { Typeface = "" },
                         new DocumentFormat.OpenXml.Drawing.ComplexScriptFont { Typeface = "" }
                     )
@@ -305,8 +306,8 @@ public static class BlankDocCreator
                 new DocumentFormat.OpenXml.Presentation.SlideMasterId { Id = 2147483648, RelationshipId = "rId1" }
             ),
             new SlideIdList(),
-            new SlideSize { Cx = 12192000, Cy = 6858000 },
-            new NotesSize { Cx = 6858000, Cy = 9144000 }
+            new SlideSize { Cx = (int)SlideSizeDefaults.Widescreen16x9Cx, Cy = (int)SlideSizeDefaults.Widescreen16x9Cy },
+            new NotesSize { Cx = SlideSizeDefaults.NotesPortraitCx, Cy = SlideSizeDefaults.NotesPortraitCy }
         );
         presentationPart.Presentation.Save();
     }

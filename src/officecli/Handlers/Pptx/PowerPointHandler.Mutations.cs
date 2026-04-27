@@ -15,6 +15,12 @@ public partial class PowerPointHandler
 {
     public string? Remove(string path)
     {
+        // CONSISTENCY(container-remove-guard): reject removal of required
+        // structural container paths. Matches the Word/Excel guards.
+        if (IsProtectedPptxContainerPath(path))
+            throw new ArgumentException(
+                $"Cannot remove container element '{path}': it is a required structural element of the document.");
+
         path = NormalizeCellPath(path);
         path = ResolveIdPath(path);
 
@@ -1019,5 +1025,24 @@ public partial class PowerPointHandler
                 .ToList().IndexOf(element) + 1;
         }
         return $"{parentPath}/{BuildElementPathSegment(typeName, element, typeIdx)}";
+    }
+
+    // CONSISTENCY(container-remove-guard): hardcoded list of pptx container
+    // paths that must never be removed. Mirrors schema entries marked
+    // `"container": true` under schemas/help/pptx/*.json (presentation,
+    // theme, slidemaster, slidelayout). Removing the backing part of any
+    // of these breaks the deck beyond recovery.
+    private static readonly HashSet<string> ProtectedPptxContainerPaths = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "/presentation",
+        "/slidemaster",
+        "/slidelayout",
+        "/theme",
+    };
+
+    private static bool IsProtectedPptxContainerPath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return false;
+        return ProtectedPptxContainerPaths.Contains(path.TrimEnd('/'));
     }
 }

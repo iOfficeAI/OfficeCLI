@@ -51,6 +51,21 @@ static partial class CommandBuilder
             using var handler = DocumentHandlerFactory.Open(file.FullName);
             var node = handler.Get(path, depth);
 
+            // CONSISTENCY(get-not-found-exit): some handler Get paths surface
+            // "not found" via DocumentNode { Type = "error" } instead of
+            // throwing (e.g. /numbering/abstractNum[@id=999]). Other paths
+            // throw and exit 1 via SafeRun. Treat error-type nodes the same
+            // way so callers get a consistent non-zero exit on missing paths.
+            if (string.Equals(node.Type, "error", StringComparison.Ordinal))
+            {
+                var err = node.Text ?? $"Path not found: {path}";
+                if (json)
+                    Console.WriteLine(OutputFormatter.WrapEnvelopeError(err));
+                else
+                    Console.Error.WriteLine($"Error: {err}");
+                return 1;
+            }
+
             // --save <path>: extract the binary payload backing an OLE /
             // picture / media node to disk. The handler exposes this via
             // TryExtractBinary which looks up the node's relId and copies
@@ -171,6 +186,16 @@ static partial class CommandBuilder
 
             using var handler = DocumentHandlerFactory.Open(file.FullName);
             var filters = OfficeCli.Core.AttributeFilter.Parse(selector);
+            // CONSISTENCY(cell-selector-alias): the Excel cell selector accepts short
+            // aliases (bold -> font.bold, size -> font.size, ...) via the handler's
+            // MatchesCellSelector alias map. The CLI-level AttributeFilter post-filter
+            // must apply the same normalization or it silently drops every hit.
+            if (handler is OfficeCli.Handlers.ExcelHandler
+                && selector.TrimStart().StartsWith("cell", StringComparison.OrdinalIgnoreCase))
+            {
+                filters = OfficeCli.Core.AttributeFilter.NormalizeKeys(
+                    filters, OfficeCli.Handlers.ExcelHandler.ResolveCellAttributeAlias);
+            }
             var (results, warnings) = OfficeCli.Core.AttributeFilter.ApplyWithWarnings(handler.Query(selector), filters);
             if (!string.IsNullOrEmpty(textFilter))
                 results = results.Where(n => n.Text != null && n.Text.Contains(textFilter, StringComparison.OrdinalIgnoreCase)).ToList();

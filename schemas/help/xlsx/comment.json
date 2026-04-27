@@ -1,0 +1,42 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "comment",
+  "parent": "sheet|cell",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/SheetName/comment[N]", "/SheetName/CellRef/comment"]
+  },
+  "note": "Aliases: note. Anchored to a cell via 'ref' (or path tail). Modern Excel also supports threaded comments; this handler emits classic comments.",
+  "properties": {
+    "text": {
+      "type": "string",
+      "description": "comment body. Required.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=\"Check formula\""],
+      "readback": "concatenated text",
+      "enforcement": "report"
+    },
+    "ref": {
+      "type": "string",
+      "description": "target cell address (e.g. B2).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop ref=B2"],
+      "readback": "cell reference",
+      "enforcement": "report"
+    },
+    "author": {
+      "type": "string",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop author=\"Alice\""],
+      "readback": "author string",
+      "enforcement": "report"
+    }
+  }
+}

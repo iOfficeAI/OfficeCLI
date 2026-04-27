@@ -24,6 +24,10 @@ internal static class CellPropHints
         // the user might intuitively expect background color. Force them to
         // pick: `font.color` (text) or `fill` (background).
         ["color"] = "ambiguous in cell context — use 'font.color' for text color or 'fill' for background color",
+        // R17 bt-3: `path=` looks plausible (path-like keys exist for picture/ole)
+        // but cell uses `ref=` (or `address=`) for the target address. Silently
+        // dropping `path` writes the value to the wrong cell — fail loudly.
+        ["path"] = "not a cell property — use 'ref' (or 'address') for the cell address, e.g. --prop ref=D5",
     };
 
     /// <summary>

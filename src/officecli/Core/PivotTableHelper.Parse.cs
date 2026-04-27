@@ -153,6 +153,36 @@ internal static partial class PivotTableHelper
             string fieldName;
             string func = "sum";
             string showAs = "normal";
+            // R34-3: optional custom display name. When non-null, overrides
+            // the auto-generated "Sum of <Header>" displayName below. Valid
+            // forms (right-to-left, all backwards-compatible):
+            //   Field:Func:ShowAs:Name           ← 4-seg, both known tokens
+            //   Field:Func:Name                  ← 3-seg, last is non-token
+            //   Field:Func=name=Name             ← (not supported here)
+            // The 1/2/3-seg cases with known trailing tokens are unchanged.
+            string? customName = null;
+            // R34-3: an explicit name= segment unambiguously marks the
+            // custom DataField.Name slot, sidestepping the ambiguity that
+            // makes a bare 3rd unknown token impossible to distinguish
+            // from a typo in showAs (which existing strict-enum tests rely
+            // on rejecting). Strip it before the walker runs so the
+            // remaining 1/2/3-seg cases parse exactly as before.
+            //   Sales:Sum:name=TotalSales
+            //   Sales:Sum:percent_of_total:name=SalesShare
+            for (int p = parts.Length - 1; p >= 1; p--)
+            {
+                var trimmed = parts[p].Trim();
+                if (trimmed.StartsWith("name=", StringComparison.OrdinalIgnoreCase))
+                {
+                    customName = trimmed.Substring("name=".Length).Trim();
+                    var next = new string[parts.Length - 1];
+                    Array.Copy(parts, 0, next, 0, p);
+                    if (p < parts.Length - 1)
+                        Array.Copy(parts, p + 1, next, p, parts.Length - p - 1);
+                    parts = next;
+                    break;
+                }
+            }
             if (parts.Length == 1)
             {
                 fieldName = parts[0].Trim();
@@ -161,6 +191,28 @@ internal static partial class PivotTableHelper
             {
                 int consumed = 0;
                 var last = parts[parts.Length - 1].Trim().ToLowerInvariant();
+                // R34-3: 4-segment Field:Func:ShowAs:Name form. The 4th
+                // slot is treated as a custom DataField.Name only when
+                // slot 3 is a recognized showAs token AND slot 2 is a
+                // recognized aggregate — i.e. unambiguously past the
+                // walker's known-token zone. Bare 3-segment unknowns
+                // ("Sales:sum:bogus") deliberately keep flowing to the
+                // strict "invalid showDataAs" rejection so typos still
+                // surface (CONSISTENCY(strict-enums)).
+                if (customName == null
+                    && parts.Length >= 4
+                    && !IsKnownShowAsToken(last)
+                    && !IsKnownAggregateToken(last))
+                {
+                    var slot3 = parts[parts.Length - 2].Trim().ToLowerInvariant();
+                    var slot2 = parts[parts.Length - 3].Trim().ToLowerInvariant();
+                    if (IsKnownShowAsToken(slot3) && IsKnownAggregateToken(slot2))
+                    {
+                        customName = parts[parts.Length - 1].Trim();
+                        Array.Resize(ref parts, parts.Length - 1);
+                        last = parts[parts.Length - 1].Trim().ToLowerInvariant();
+                    }
+                }
                 if (parts.Length >= 2 && IsKnownShowAsToken(last))
                 {
                     showAs = last;
@@ -294,7 +346,14 @@ internal static partial class PivotTableHelper
 
             if (fieldIdx >= 0 && fieldIdx < headers.Length)
             {
-                var displayName = $"{char.ToUpper(func[0])}{func[1..]} of {headers[fieldIdx]}";
+                // R34-3: a user-supplied 4th (or 3rd-when-no-showAs) segment
+                // becomes the DataField.Name (the column header rendered in
+                // the pivot output). Falls back to "{Func} of {Header}" when
+                // absent — matches Excel's default and preserves the
+                // round-trip shape the existing prefix-strip relies on.
+                var displayName = !string.IsNullOrEmpty(customName)
+                    ? customName!
+                    : $"{char.ToUpper(func[0])}{func[1..]} of {headers[fieldIdx]}";
                 result.Add((fieldIdx, func, showAs, displayName));
             }
         }

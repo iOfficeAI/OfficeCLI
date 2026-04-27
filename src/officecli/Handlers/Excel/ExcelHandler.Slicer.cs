@@ -72,13 +72,32 @@ public partial class ExcelHandler
             ?? throw SheetNotFoundException(sheetName);
 
         // 1. Resolve pivot table reference ---------------------------------
+        // R26-3: also accept `tableName=` as a user-friendly alias — when the
+        // value isn't a path, resolve it as a pivot-table name on the host sheet.
         if (!properties.TryGetValue("pivotTable", out var pivotRef)
             && !properties.TryGetValue("pivot", out pivotRef)
-            && !properties.TryGetValue("source", out pivotRef))
+            && !properties.TryGetValue("source", out pivotRef)
+            && !properties.TryGetValue("tableName", out pivotRef))
         {
             throw new ArgumentException(
                 "slicer requires 'pivotTable' property pointing to an existing pivot table " +
                 "(e.g. pivotTable=/Sheet1/pivottable[1])");
+        }
+        if (!pivotRef.Contains('/') && !pivotRef.Contains('!') && !pivotRef.Contains('['))
+        {
+            // Bare name → search host sheet's pivot tables for a matching name.
+            var hostPivots = hostWorksheet.PivotTableParts.ToList();
+            int matchIdx = -1;
+            for (int pi = 0; pi < hostPivots.Count; pi++)
+            {
+                var pn = hostPivots[pi].PivotTableDefinition?.Name?.Value;
+                if (string.Equals(pn, pivotRef, StringComparison.OrdinalIgnoreCase))
+                { matchIdx = pi; break; }
+            }
+            if (matchIdx < 0)
+                throw new ArgumentException(
+                    $"Pivot table named '{pivotRef}' not found on sheet '{sheetName}'.");
+            pivotRef = $"/{sheetName}/pivottable[{matchIdx + 1}]";
         }
 
         var (pivotPart, pivotWorksheet, pivotSheetName) = ResolvePivotReference(pivotRef);
@@ -90,7 +109,11 @@ public partial class ExcelHandler
             ?? throw new ArgumentException($"Pivot table at '{pivotRef}' has no cache definition");
 
         // 2. Resolve field name → cacheField index -------------------------
-        if (!properties.TryGetValue("field", out var fieldName) || string.IsNullOrWhiteSpace(fieldName))
+        // R26-3: accept `column=` as an alias for `field=` (matches the
+        // user-facing "filter by column" mental model).
+        if ((!properties.TryGetValue("field", out var fieldName)
+                && !properties.TryGetValue("column", out fieldName))
+            || string.IsNullOrWhiteSpace(fieldName))
             throw new ArgumentException("slicer requires 'field' property naming a pivot field");
 
         var cacheFields = pivotCacheDef.GetFirstChild<CacheFields>()
@@ -222,6 +245,10 @@ public partial class ExcelHandler
         var rowHeight = properties.TryGetValue("rowHeight", out var rhStr)
             && uint.TryParse(rhStr, out var rh) ? rh : 225425U;
         var caption = properties.GetValueOrDefault("caption") ?? sourceName;
+        // Strip XML control chars (\x00-\x08, \x0B-\x0C, \x0E-\x1F) — OOXML
+        // rejects these in attribute values and Dispose() throws ArgumentException
+        // on serialization. Keep the rest of the string verbatim.
+        caption = StripXmlInvalidChars(caption);
         var slicerElement = new X14.Slicer
         {
             Name = slicerName,
@@ -802,12 +829,26 @@ public partial class ExcelHandler
         if (cacheDef?.SourceName?.Value is { } src) node.Format["field"] = src;
         var pivotTable = cacheDef?.SlicerCachePivotTables?
             .Elements<X14.SlicerCachePivotTable>().FirstOrDefault();
-        if (pivotTable?.Name?.Value is { } pt) node.Format["pivotTableName"] = pt;
+        // Schema canonical key is `pivotTable` (not `pivotTableName`).
+        if (pivotTable?.Name?.Value is { } pt) node.Format["pivotTable"] = pt;
         var tabular = cacheDef?.SlicerCacheData?.GetFirstChild<X14.TabularSlicerCache>();
         if (tabular?.PivotCacheId?.HasValue == true)
             node.Format["pivotCacheId"] = tabular.PivotCacheId.Value;
         if (tabular?.TabularSlicerCacheItems != null)
             node.Format["itemCount"] = tabular.TabularSlicerCacheItems
                 .Elements<X14.TabularSlicerCacheItem>().Count();
+    }
+
+    // Drop XML 1.0 illegal characters (\x00-\x08, \x0B-\x0C, \x0E-\x1F)
+    // before assigning to OOXML attributes. Without this filter the value
+    // round-trips through DOM but throws ArgumentException at serialize time
+    // (Dispose), which surfaces as a confusing post-hoc crash.
+    private static string StripXmlInvalidChars(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        var sb = new System.Text.StringBuilder(value.Length);
+        foreach (var ch in value)
+            if (System.Xml.XmlConvert.IsXmlChar(ch)) sb.Append(ch);
+        return sb.ToString();
     }
 }

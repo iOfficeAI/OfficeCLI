@@ -1,0 +1,115 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "section",
+  "parent": "body",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/section[N]", "/body/sectPr[N]"]
+  },
+  "note": "Sections are section-break paragraphs carrying SectionProperties. Canonical length readback is cm (via FormatTwipsToCm). Lenient length input (twips int, or 2cm/0.5in/24pt via ParseTwips).",
+  "properties": {
+    "type": {
+      "type": "enum",
+      "description": "section break type",
+      "values": ["nextPage", "continuous", "evenPage", "oddPage"],
+      "aliases": {
+        "nextPage": ["next", "nextpage"],
+        "evenPage": ["even", "evenpage"],
+        "oddPage":  ["odd",  "oddpage"]
+      },
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop type=nextPage"],
+      "readback": "one of values (innerText)",
+      "enforcement": "strict"
+    },
+    "pageWidth": {
+      "type": "length",
+      "aliases": ["pagewidth", "width"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop pageWidth=21cm"],
+      "readback": "unit-qualified cm (e.g. \"21cm\")",
+      "enforcement": "strict"
+    },
+    "pageHeight": {
+      "type": "length",
+      "aliases": ["pageheight", "height"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop pageHeight=29.7cm"],
+      "readback": "unit-qualified cm (e.g. \"29.7cm\")",
+      "enforcement": "strict"
+    },
+    "orientation": {
+      "type": "enum",
+      "values": ["portrait", "landscape"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop orientation=landscape"],
+      "readback": "innerText of PageOrientationValues",
+      "enforcement": "strict"
+    },
+    "marginTop": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop marginTop=2.5cm"],
+      "readback": "unit-qualified cm",
+      "enforcement": "strict"
+    },
+    "marginBottom": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop marginBottom=2.5cm"],
+      "readback": "unit-qualified cm",
+      "enforcement": "strict"
+    },
+    "marginLeft": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop marginLeft=3cm"],
+      "readback": "unit-qualified cm",
+      "enforcement": "strict"
+    },
+    "marginRight": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop marginRight=3cm"],
+      "readback": "unit-qualified cm",
+      "enforcement": "strict"
+    },
+    "columns": {
+      "type": "int",
+      "description": "number of text columns. Add accepts combined form \"N\" or \"N,SPACE\" (e.g. \"2,1cm\"); separate space override via alias \"columns.space\".",
+      "aliases": ["columns.count"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop columns=2", "--prop columns=2,1cm"],
+      "readback": "integer column count",
+      "enforcement": "strict"
+    },
+    "columnSpace": {
+      "type": "length",
+      "description": "space between columns. Canonical key. Legacy alias 'columns.space' still accepted on Add/Set.",
+      "aliases": ["columns.space"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop columnSpace=1cm"],
+      "readback": "unit-qualified cm",
+      "enforcement": "strict"
+    },
+    "lineNumbers": {
+      "type": "enum",
+      "values": ["continuous", "restartPage", "restartSection"],
+      "aliases": {
+        "restartPage": ["page"],
+        "restartSection": ["section"]
+      },
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop lineNumbers=continuous"],
+      "readback": "one of values",
+      "enforcement": "strict"
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "field",
+  "parent": "paragraph|body",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/body/p[N]/r[M]"]
+  },
+  "note": "Complex field (fldChar: begin/instr/separate/result/end). Field instruction selected by 'fieldType' or the element-type alias (pagenum, numpages, date, author, title, time, filename, section, sectionpages, mergefield, ref).",
+  "properties": {
+    "fieldType": {
+      "type": "enum",
+      "values": ["page", "pagenum", "pagenumber", "numpages", "date", "author", "title", "time", "filename", "section", "sectionpages", "mergefield", "ref"],
+      "aliases": ["fieldtype", "type"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop fieldType=page"],
+      "readback": "resolved instruction",
+      "enforcement": "report"
+    },
+    "name": {
+      "type": "string",
+      "description": "merge-field name (mergefield only) or target bookmark (ref only).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop name=CustomerName"],
+      "readback": "n/a (embedded in instruction)",
+      "enforcement": "report"
+    },
+    "format": {
+      "type": "string",
+      "description": "switch-style format (e.g. '\\@ \"yyyy-MM-dd\"' for date).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop format=\"yyyy-MM-dd\""],
+      "readback": "instruction switches",
+      "enforcement": "report"
+    }
+  }
+}

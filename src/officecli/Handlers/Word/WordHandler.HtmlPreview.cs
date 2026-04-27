@@ -117,6 +117,19 @@ public partial class WordHandler
         sb.AppendLine("<style>");
         sb.AppendLine(GenerateWordCss(pgLayout, docDef));
         sb.AppendLine("</style>");
+
+        // Per-(numId, ilvl) marker CSS — picks up abstractNum level rPr
+        // (color/font/size/bold/italic) and the actual lvlText glyph for
+        // bullets. Without this every list marker rendered in the preview is
+        // black, normal, and uses CSS's default disc/decimal — diverging from
+        // what real Word renders.
+        var markerCss = BuildListMarkerCss(body);
+        if (!string.IsNullOrEmpty(markerCss))
+        {
+            sb.AppendLine("<style>");
+            sb.AppendLine(markerCss);
+            sb.AppendLine("</style>");
+        }
         // Load document fonts: @font-face with metric overrides for all fonts,
         // Google Fonts only for non-system fonts.
         var docFonts = CollectDocumentFonts();
@@ -142,12 +155,19 @@ public partial class WordHandler
                     .Select(SanitizeFontName)
                     .Where(f => !string.IsNullOrEmpty(f))
                     .Select(f => $"family={f.Replace(' ', '+')}:ital,wght@0,400;0,700;1,400;1,700"));
-                sb.AppendLine($"<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?{families}&display=swap\" onerror=\"this.remove()\">");
+                // media=print + onload swap → load asynchronously without blocking first paint
+                // (Google Fonts is unreachable in many networks and would otherwise stall render until TCP timeout).
+                sb.AppendLine($"<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?{families}&display=swap\" media=\"print\" onload=\"this.media='all'\" onerror=\"this.remove()\">");
             }
         }
-        // KaTeX for math rendering (graceful degradation: shows raw LaTeX when offline)
-        sb.AppendLine("<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css\" onerror=\"this.remove()\">");
-        sb.AppendLine("<script defer src=\"https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js\" onerror=\"document.querySelectorAll('.katex-formula').forEach(function(el){el.textContent=el.dataset.formula;el.style.fontFamily='monospace';el.style.color='#666'})\"></script>");
+        // KaTeX for math rendering — only include when the document actually has formulas.
+        // Same non-blocking load trick so KaTeX CSS can never stall first paint.
+        bool hasMathFormulas = body.Descendants<M.OfficeMath>().Any();
+        if (hasMathFormulas)
+        {
+            sb.AppendLine("<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css\" media=\"print\" onload=\"this.media='all'\" onerror=\"this.remove()\">");
+            sb.AppendLine("<script defer src=\"https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js\" onerror=\"document.querySelectorAll('.katex-formula').forEach(function(el){el.textContent=el.dataset.formula;el.style.fontFamily='monospace';el.style.color='#666'})\"></script>");
+        }
         sb.AppendLine("</head>");
         sb.AppendLine("<body>");
 
@@ -721,12 +741,27 @@ public partial class WordHandler
       if(!rSet.has(i+1))p.style.display='none';
     });
   }
+  function _loadKatexLazy(cb){
+    // Watch mode: doc may start formula-free (KaTeX tags omitted), then
+    // gain a formula via SSE patch. Inject CSS + JS on demand; on load,
+    // re-invoke the caller so the new formula renders.
+    if(window._katexLoading){window._katexCallbacks=window._katexCallbacks||[];window._katexCallbacks.push(cb);return;}
+    window._katexLoading=true;window._katexCallbacks=[cb];
+    var link=document.createElement('link');link.rel='stylesheet';link.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';link.onerror=function(){this.remove();};document.head.appendChild(link);
+    var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';
+    s.onload=function(){(window._katexCallbacks||[]).forEach(function(f){try{f();}catch(e){}});window._katexCallbacks=[];};
+    s.onerror=function(){document.querySelectorAll('.katex-formula:not(.katex-rendered)').forEach(function(el){el.textContent=el.dataset.formula;el.style.fontFamily='monospace';el.style.color='#666';el.classList.add('katex-rendered');});};
+    document.head.appendChild(s);
+  }
   function renderNewContent(){
+    var pending=document.querySelectorAll('.katex-formula:not(.katex-rendered)');
     if(typeof katex!=='undefined'){
-      document.querySelectorAll('.katex-formula:not(.katex-rendered)').forEach(function(el){
+      pending.forEach(function(el){
         try{katex.render(el.dataset.formula,el,{throwOnError:false,displayMode:!!el.dataset.display});}catch(e){el.textContent=el.dataset.formula;}
         el.classList.add('katex-rendered');
       });
+    }else if(pending.length>0){
+      _loadKatexLazy(renderNewContent);
     }
     // CJK punctuation compression on new content
     var cjkRe=/([\u3000-\u303F\uFF01-\uFF60\uFE30-\uFE4F\u2014\u2015\u2026\u2018\u2019\u201C\u201D])/;
@@ -843,8 +878,8 @@ public partial class WordHandler
         const double p = 1.0 / 20.0;    // twips → pt (exact)
         // OOXML schema types (UInt32Value) throw on .Value access when the
         // raw attribute is malformed (negative, non-numeric). Tolerate it.
-        double wTwips = SafeUIntTwips(() => pgSz?.Width?.Value, 11906);
-        double hTwips = SafeUIntTwips(() => pgSz?.Height?.Value, 16838);
+        double wTwips = SafeUIntTwips(() => pgSz?.Width?.Value, WordPageDefaults.A4WidthTwips);
+        double hTwips = SafeUIntTwips(() => pgSz?.Height?.Value, WordPageDefaults.A4HeightTwips);
         // Landscape: OOXML orient=landscape flips the width/height semantics.
         // w:w/w:h already reflect the orientation in most real-world docs,
         // but guard against the rare case where w:w < w:h but orient=landscape.
@@ -981,7 +1016,7 @@ public partial class WordHandler
             };
         }
 
-        return new DocDef(font ?? "Calibri", sizePt, lineH, color, gridLinePitchPt, spaceAfterPt, defaultAlign);
+        return new DocDef(font ?? GetThemeMinorLatinFont() ?? OfficeDefaultFonts.MinorLatin, sizePt, lineH, color, gridLinePitchPt, spaceAfterPt, defaultAlign);
     }
 
     /// <summary>Collect all distinct font names from document body, styles, and theme.</summary>
@@ -1319,6 +1354,12 @@ public partial class WordHandler
         int? currentNumId = null; // track numId for cross-numId nesting
         var numIdLevelOffset = new Dictionary<int, int>(); // numId → effective ilvl offset for cross-numId nesting
         var olCountPerLevel = new Dictionary<int, int>(); // ilvl → running <ol> item count for `start` attribute
+        // Per-(abstractNumId, ilvl) running counter. Persists across numId
+        // changes so that two num instances pointing at the same abstractNum
+        // share a counter (Word's "continue" behavior) UNLESS the new num
+        // carries an explicit <w:lvlOverride><w:startOverride/></w:lvlOverride>,
+        // in which case we reset to the override value.
+        var absNumLevelCounters = new Dictionary<int, Dictionary<int, int>>();
         var multiLevelCounters = new Dictionary<int, int>(); // ilvl → counter for multi-level numbering
         var headingCounters = new Dictionary<int, int>(); // ilvl → counter for heading auto-numbering from style numPr
         bool pendingLiClose = false; // defer </li> to allow nested lists inside
@@ -1507,8 +1548,12 @@ public partial class WordHandler
                 var listStyle = GetParagraphListStyle(para);
                 if (listStyle != null)
                 {
-                    var ilvl = para.ParagraphProperties?.NumberingProperties?.NumberingLevelReference?.Val?.Value ?? 0;
-                    var numId = para.ParagraphProperties?.NumberingProperties?.NumberingId?.Val?.Value ?? 0;
+                    // Resolve numPr through the pStyle chain so style-borne
+                    // numbering (the canonical Heading1..9 pattern) renders
+                    // identically to direct-numPr paragraphs.
+                    var resolvedNumPr = ResolveNumPrFromStyle(para);
+                    var ilvl = resolvedNumPr?.Ilvl ?? 0;
+                    var numId = resolvedNumPr?.NumId ?? 0;
                     // Clamp ilvl to the OOXML-legal range [0, 8]. Malformed
                     // docs with huge ilvl (observed via raw-zip fuzz: 10000
                     // or Int32.MaxValue) otherwise explode the nested <ul>
@@ -1609,14 +1654,26 @@ public partial class WordHandler
                     }
                     var indentStyle = $" style=\"{listStyleParts}\"";
 
-                    // Seed per-level counter from startOverride / level start
-                    // when we're opening this level for the first time in the
-                    // current list. Cross-list (different numId) continuation is
-                    // preserved via olCountPerLevel survival.
+                    // Seed per-level counter. Three-way precedence:
+                    //   1. olCountPerLevel survives within the current <ol> stack.
+                    //   2. lvlOverride/startOverride on this num → restart from value.
+                    //   3. abstractNum-level running counter → continuation across
+                    //      sibling num instances on the same abstractNum (the
+                    //      `continue=true` path through the API; matches Word's
+                    //      default "list continues from previous list using the
+                    //      same template" behavior).
+                    //   4. Otherwise, abstractNum's level start (typically 1).
+                    var seedAbsId = GetAbstractNumId(numId);
                     int SeedStart(int forIlvl)
                     {
                         if (olCountPerLevel.TryGetValue(forIlvl, out var prev) && prev > 0)
-                            return prev; // continuation
+                            return prev;
+                        var ovr = GetNumStartOverride(numId, forIlvl);
+                        if (ovr.HasValue) return ovr.Value - 1;
+                        if (seedAbsId.HasValue
+                            && absNumLevelCounters.TryGetValue(seedAbsId.Value, out var byIlvl)
+                            && byIlvl.TryGetValue(forIlvl, out var running) && running > 0)
+                            return running;
                         return (GetStartValue(numId, forIlvl) ?? 1) - 1;
                     }
 
@@ -1645,6 +1702,22 @@ public partial class WordHandler
                             if (olCountPerLevel.ContainsKey(lk)) olCountPerLevel[lk] = 0;
                             if (multiLevelCounters.ContainsKey(lk)) multiLevelCounters[lk] = 0;
                         }
+                        // Mirror the running count into the per-abstractNum
+                        // store so a later sibling num on the same template
+                        // can pick it up (continuation). Reset the deeper
+                        // levels there too — Word resets all sub-levels when
+                        // a shallower level ticks.
+                        if (seedAbsId.HasValue)
+                        {
+                            if (!absNumLevelCounters.TryGetValue(seedAbsId.Value, out var byIlvl))
+                            {
+                                byIlvl = new Dictionary<int, int>();
+                                absNumLevelCounters[seedAbsId.Value] = byIlvl;
+                            }
+                            byIlvl[ilvl] = olCountPerLevel[ilvl];
+                            for (int lk = ilvl + 1; lk <= 8; lk++)
+                                if (byIlvl.ContainsKey(lk)) byIlvl[lk] = 0;
+                        }
                     }
 
                     currentListType = listStyle;
@@ -1652,6 +1725,11 @@ public partial class WordHandler
                     currentNumId = numId;
                     sb.Append("<li");
                     sb.Append($" data-path=\"/body/p[{wParaCount}]\"");
+                    // Marker class wires up the ::marker rule emitted by
+                    // BuildListMarkerCss so this <li> picks up the abstractNum
+                    // level rPr (color/font/size/bold/italic) for ul, plus
+                    // a custom list-style-type string when applicable.
+                    sb.Append($" class=\"marker-{numId}-{ilvl}\"");
                     var paraStyle = GetParagraphInlineCss(para, isListItem: true);
                     if (!string.IsNullOrEmpty(paraStyle))
                         sb.Append($" style=\"{paraStyle}\"");
@@ -1677,7 +1755,16 @@ public partial class WordHandler
                             _ => "0.5em" // tab
                         };
                         var align = jc switch { "right" => "right", "center" => "center", _ => "left" };
-                        sb.Append($"<span style=\"display:inline-block;min-width:{markerWidth};padding-right:{markerPadding};text-align:{align}\">{HtmlEncode(marker)}</span>");
+                        // Pull in marker-level rPr (color/font/size/bold/italic) so
+                        // the ol marker span matches the styling emitted globally
+                        // for ul ::marker. Word lets per-level rPr restyle markers
+                        // independent of the body run; mirroring that here keeps
+                        // sections like "red bold 1." parallel between ol/ul.
+                        var inlineMarkerCss = GetMarkerInlineCss(numId, ilvl);
+                        var markerStyle = $"display:inline-block;min-width:{markerWidth};padding-right:{markerPadding};text-align:{align}";
+                        if (!string.IsNullOrEmpty(inlineMarkerCss))
+                            markerStyle = inlineMarkerCss + ";" + markerStyle;
+                        sb.Append($"<span style=\"{markerStyle}\">{HtmlEncode(marker)}</span>");
                     }
                     RenderParagraphContentHtml(sb, para);
                     pendingLiClose = true; // defer </li> in case next item nests

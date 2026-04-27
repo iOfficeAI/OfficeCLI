@@ -178,12 +178,23 @@ public partial class WordHandler
             table.AppendChild(row);
         }
 
+        // Dotted-key fallback for tblPr-level attrs not modeled by the
+        // hand-rolled blocks above (single-attr forms like tblpPr.* or
+        // future schema additions). CONSISTENCY(add-set-symmetry).
+        foreach (var (key, value) in properties)
+        {
+            if (!key.Contains('.')) continue;
+            if (Core.TypedAttributeFallback.TrySet(tblProps, key, value)) continue;
+            LastAddUnsupportedProps.Add(key);
+        }
+
         if (index.HasValue)
             InsertAtPosition(parent, table, index);
         else
             AppendToParent(parent, table);
-        var tblCount = parent.Elements<Table>().Count();
-        return $"{parentPath}/tbl[{tblCount}]";
+        var tbls = parent.Elements<Table>().ToList();
+        var idx = tbls.FindIndex(t => ReferenceEquals(t, table));
+        return $"{parentPath}/tbl[{(idx >= 0 ? idx + 1 : tbls.Count)}]";
     }
 
     private string AddRow(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
@@ -226,6 +237,25 @@ public partial class WordHandler
             newRow.AppendChild(new TableCell(cellPara));
         }
 
+        // Dotted-key fallback for trPr-level attrs (trHeight.*, etc.) not
+        // modeled by hand-rolled blocks. Lazy-create trPr if any dotted
+        // attr binds. CONSISTENCY(add-set-symmetry).
+        foreach (var (key, value) in properties)
+        {
+            if (!key.Contains('.')) continue;
+            var trPrTarget = newRowProps ?? new TableRowProperties();
+            if (Core.TypedAttributeFallback.TrySet(trPrTarget, key, value))
+            {
+                if (newRowProps == null)
+                {
+                    newRow.PrependChild(trPrTarget);
+                    newRowProps = trPrTarget;
+                }
+                continue;
+            }
+            LastAddUnsupportedProps.Add(key);
+        }
+
         if (index.HasValue)
         {
             var existingRows = targetTable.Elements<TableRow>().ToList();
@@ -257,6 +287,22 @@ public partial class WordHandler
 
         if (properties.TryGetValue("width", out var cellWidth))
             newCell.PrependChild(new TableCellProperties(new TableCellWidth { Width = cellWidth, Type = TableWidthUnitValues.Dxa }));
+
+        // Dotted-key fallback for tcPr-level attrs (shd.fill, etc.) not
+        // modeled by hand-rolled blocks. Lazy-create tcPr if any dotted
+        // attr binds. CONSISTENCY(add-set-symmetry).
+        foreach (var (key, value) in properties)
+        {
+            if (!key.Contains('.')) continue;
+            var tcPr = newCell.GetFirstChild<TableCellProperties>();
+            var lazyTcPr = tcPr ?? new TableCellProperties();
+            if (Core.TypedAttributeFallback.TrySet(lazyTcPr, key, value))
+            {
+                if (tcPr == null) newCell.PrependChild(lazyTcPr);
+                continue;
+            }
+            LastAddUnsupportedProps.Add(key);
+        }
 
         if (index.HasValue)
         {

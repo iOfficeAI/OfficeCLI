@@ -1,0 +1,36 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "equation",
+  "parent": "body|paragraph",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/body/oMathPara[N]", "/body/p[N]/oMath[M]"]
+  },
+  "note": "Aliases: formula, math. formula input is parsed by FormulaParser (LaTeX-ish). Display mode wraps in oMathPara; inline mode appends oMath to the parent paragraph.",
+  "properties": {
+    "formula": {
+      "type": "string",
+      "description": "math expression. Aliases: text.",
+      "aliases": ["text"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop formula=\"x^2 + y^2 = z^2\""],
+      "readback": "source formula when round-trippable",
+      "enforcement": "report"
+    },
+    "mode": {
+      "type": "enum",
+      "values": ["display", "inline"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop mode=inline"],
+      "readback": "determined by parent element type",
+      "enforcement": "report"
+    }
+  }
+}

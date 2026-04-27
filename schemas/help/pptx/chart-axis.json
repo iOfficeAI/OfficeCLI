@@ -1,0 +1,29 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "chart-axis",
+  "parent": "chart",
+  "operations": {
+    "add": false,
+    "set": true,
+    "get": true,
+    "remove": false
+  },
+  "note": "Axes are created/destroyed implicitly by chartType changes, not via Add/Remove on axis directly. Set/Get only operate on axes that already exist.",
+  "addressing": {
+    "key": "role",
+    "pathForm": "/slide[N]/chart[N]/axis[@role=ROLE]",
+    "keyValues": ["category", "value", "value2", "series"]
+  },
+  "properties": {
+    "title":          { "type": "string", "set": true, "get": true, "examples": ["--prop title=\"Quarter\""], "enforcement": "strict" },
+    "visible":        { "type": "bool",   "set": true, "get": true, "examples": ["--prop visible=false"], "enforcement": "strict" },
+    "min":            { "type": "number", "set": true, "get": true, "appliesWhen": { "role": ["value","value2"] }, "examples": ["--prop min=0"], "enforcement": "strict" },
+    "max":            { "type": "number", "set": true, "get": true, "appliesWhen": { "role": ["value","value2"] }, "examples": ["--prop max=250"], "enforcement": "strict" },
+    "logBase":        { "type": "number", "set": true, "get": true, "appliesWhen": { "role": ["value","value2"] }, "examples": ["--prop logBase=10"], "enforcement": "strict" },
+    "format":         { "type": "string", "description": "number format string", "set": true, "get": true, "examples": ["--prop format=\"#,##0\""], "enforcement": "strict" },
+    "labelRotation":  { "type": "number", "description": "tick label rotation in degrees", "set": true, "get": true, "examples": ["--prop labelRotation=-45"], "enforcement": "strict" },
+    "majorGridlines": { "type": "bool",   "set": true, "get": true, "examples": ["--prop majorGridlines=true"], "enforcement": "strict" },
+    "minorGridlines": { "type": "bool",   "set": true, "get": true, "examples": ["--prop minorGridlines=false"], "enforcement": "strict" }
+  }
+}

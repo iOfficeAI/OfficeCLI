@@ -13,56 +13,64 @@ public static class McpInstaller
     private static string OfficecliPath =>
         Environment.ProcessPath ?? (OperatingSystem.IsWindows() ? "officecli.exe" : "officecli");
 
-    public static void Install(string target)
+    /// <summary>Returns true if the target was recognized; false on unknown
+    /// target (so the CLI can surface a non-zero exit code).</summary>
+    public static bool Install(string target)
     {
         switch (target.ToLowerInvariant())
         {
             case "lms" or "lmstudio" or "lm-studio":
                 InstallLmStudio();
-                break;
+                return true;
             case "claude" or "claude-code":
                 InstallClaude();
-                break;
+                return true;
             case "cursor":
                 InstallCursor();
-                break;
+                return true;
             case "vscode" or "copilot":
                 InstallVsCode();
-                break;
+                return true;
             case "list":
                 ListStatus();
-                break;
+                return true;
             case "uninstall":
-                Console.WriteLine("Usage: officecli mcp uninstall <target>");
-                Console.WriteLine("Targets: lms, claude, cursor, vscode");
-                break;
+                // Usage hint accompanies a non-zero exit (return false) — keep
+                // it on stderr, matching the default branch below and
+                // WriteEarlyDispatchUsage. Otherwise scripts that capture stdout
+                // see the error text mixed into normal output.
+                Console.Error.WriteLine("Usage: officecli mcp uninstall <target>");
+                Console.Error.WriteLine("Targets: lms, claude, cursor, vscode");
+                return false;
             default:
                 Console.Error.WriteLine($"Unknown target: {target}");
                 Console.Error.WriteLine("Supported: lms (LM Studio), claude (Claude Code), cursor, vscode (Copilot)");
                 Console.Error.WriteLine("Use 'officecli mcp list' to see current status.");
-                break;
+                return false;
         }
     }
 
-    public static void Uninstall(string target)
+    /// <summary>Returns true if the target was recognized; false on unknown
+    /// target.</summary>
+    public static bool Uninstall(string target)
     {
         switch (target.ToLowerInvariant())
         {
             case "lms" or "lmstudio" or "lm-studio":
                 UninstallLmStudio();
-                break;
+                return true;
             case "claude" or "claude-code":
                 UninstallJson("claude", GetClaudeSettingsPath(), "mcpServers");
-                break;
+                return true;
             case "cursor":
                 UninstallJson("cursor", GetCursorMcpPath(), "mcpServers");
-                break;
+                return true;
             case "vscode" or "copilot":
                 UninstallJson("vscode", GetVsCodeMcpPath(), "mcpServers");
-                break;
+                return true;
             default:
                 Console.Error.WriteLine($"Unknown target: {target}");
-                break;
+                return false;
         }
     }
 

@@ -1,0 +1,27 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "notes",
+  "parent": "slide",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/slide[N]/notes"]
+  },
+  "note": "Speaker notes live in a NotesSlidePart paired with the slide. Add creates the part if absent; Set replaces text.",
+  "properties": {
+    "text": {
+      "type": "string",
+      "description": "notes body text.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=\"Emphasize slide 3 data\""],
+      "readback": "notes text",
+      "enforcement": "report"
+    }
+  }
+}

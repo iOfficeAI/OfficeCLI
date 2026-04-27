@@ -1,0 +1,58 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "chart-series",
+  "parent": "chart",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "remove": true
+  },
+  "paths": {
+    "stable":     ["/slide[N]/chart[@id=ID]/series[@id=ID]"],
+    "positional": ["/slide[N]/chart[N]/series[N]"]
+  },
+  "note": "At Add time, series are usually passed as properties of the parent `chart` element using dotted keys (series1.name, series1.values, series1.color, series1.categories). This element represents per-series Set/Get after the chart exists. Combo charts (mixed chartType per series, or secondary axis) are not supported. Create a separate chart for each chart type.",
+  "properties": {
+    "name": {
+      "type": "string",
+      "aliases": ["title"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop name=\"Product A\"", "--prop series1.name=\"Product A\""],
+      "enforcement": "strict"
+    },
+    "values": {
+      "type": "string",
+      "description": "comma-separated numbers, OR a cell range reference (Sheet1!B2:B13)",
+      "add": true, "set": true, "get": true,
+      "examples": [
+        "--prop series1.values=\"120,150,180,210\"",
+        "--prop series1.values=\"Sheet1!$B$2:$B$5\""
+      ],
+      "enforcement": "strict"
+    },
+    "categories": {
+      "type": "string",
+      "description": "per-series category override; range reference only",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop series1.categories=\"Sheet1!$A$2:$A$5\""],
+      "enforcement": "strict"
+    },
+    "color": {
+      "type": "color",
+      "description": "series fill color",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop series1.color=4472C4"],
+      "readback": "#RRGGBB uppercase",
+      "enforcement": "strict"
+    },
+    "smooth": {
+      "type": "bool",
+      "appliesWhen": { "parent.chartType": ["line", "scatter"] },
+      "set": true, "get": true,
+      "examples": ["--prop smooth=true"],
+      "enforcement": "strict"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "endnote",
+  "parent": "paragraph|body",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/endnotes/endnote[N]"]
+  },
+  "note": "Endnotes live in EndnotesPart. Semantics mirror footnote.json.",
+  "properties": {
+    "text": {
+      "type": "string",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=\"End-of-doc reference\""],
+      "readback": "concatenated text",
+      "enforcement": "report"
+    }
+  }
+}

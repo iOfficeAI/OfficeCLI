@@ -29,11 +29,7 @@ static partial class CommandBuilder
         };
 
         var cmd = new Command("mark",
-            "Attach an in-memory advisory mark to a document element via the running watch process. " +
-            "Marks are not written to the file. " +
-            "Path must be in data-path format (e.g. /body/p[1] for Word, /slide[1]/shape[@id=N] for PPT), as emitted by watch HTML preview. " +
-            "Use the 'selected' pseudo-path to mark every currently-selected element in one call (one mark per selected path). " +
-            "Inspect the rendered HTML for valid paths. Native handler query paths like /body/p[@paraId=...] will not resolve.");
+            "Attach an in-memory advisory mark to a document element via the watch process. Path must be in data-path format (e.g. /body/p[1]); 'selected' marks all selected elements.");
         cmd.Add(fileArg);
         cmd.Add(pathArg);
         cmd.Add(propsOpt);
@@ -243,9 +239,7 @@ static partial class CommandBuilder
         var allOpt = new Option<bool>("--all") { Description = "Remove all marks for this file" };
 
         var cmd = new Command("unmark",
-            "Remove marks from the running watch process. Must specify either --path or --all. " +
-            "--path must be in data-path format (e.g. /body/p[1] for Word, /slide[1]/shape[@id=N] for PPT), matching the value used with mark. " +
-            "Native handler query paths like /body/p[@paraId=...] will not match.");
+            "Remove marks from the watch process. Specify --path <data-path> or --all.");
         cmd.Add(fileArg);
         cmd.Add(pathOpt);
         cmd.Add(allOpt);
@@ -299,9 +293,7 @@ static partial class CommandBuilder
         var fileArg = new Argument<FileInfo>("file") { Description = "Office document path" };
 
         var cmd = new Command("get-marks",
-            "List all marks currently held by the running watch process. " +
-            "Paths in the output are in data-path format (e.g. /body/p[1] for Word, /slide[1]/shape[@id=N] for PPT), " +
-            "not native handler query paths.");
+            "List all marks currently held by the watch process.");
         cmd.Add(fileArg);
         cmd.Add(jsonOption);
 

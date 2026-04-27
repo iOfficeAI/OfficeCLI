@@ -1,0 +1,139 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "validation",
+  "parent": "sheet",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/SheetName/validation[N]"]
+  },
+  "note": "Aliases: datavalidation. Target cell range via 'ref'. Type determines which of formula1/formula2 are used.",
+  "properties": {
+    "type": {
+      "type": "enum",
+      "values": ["list", "whole", "decimal", "date", "time", "textlength", "custom"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop type=list"],
+      "readback": "validation type",
+      "enforcement": "report"
+    },
+    "ref": {
+      "type": "string",
+      "description": "target cell range. Aliases: sqref.",
+      "aliases": ["sqref"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop ref=A1:A10", "--prop sqref=A1:A10"],
+      "readback": "cell range",
+      "enforcement": "report"
+    },
+    "allowBlank": {
+      "type": "bool",
+      "description": "allow blank cells. Default: true.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop allowBlank=false"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "showError": {
+      "type": "bool",
+      "description": "show error message on invalid input. Default: true.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop showError=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "showInput": {
+      "type": "bool",
+      "description": "show input prompt when cell selected. Default: true.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop showInput=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "errorTitle": {
+      "type": "string",
+      "description": "title of the error popup.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop errorTitle=\"Bad value\""],
+      "readback": "title text",
+      "enforcement": "report"
+    },
+    "promptTitle": {
+      "type": "string",
+      "description": "title of the input prompt popup.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop promptTitle=\"Hint\""],
+      "readback": "title text",
+      "enforcement": "report"
+    },
+    "errorStyle": {
+      "type": "enum",
+      "values": ["stop", "warning", "information"],
+      "description": "severity of error popup. Default: stop. Aliases: warn=warning, info=information.",
+      "add": true, "set": false, "get": true,
+      "examples": ["--prop errorStyle=warning"],
+      "readback": "stop|warning|information",
+      "enforcement": "report"
+    },
+    "inCellDropdown": {
+      "type": "bool",
+      "description": "show in-cell dropdown arrow for type=list. Default: true. Inverse of OOXML showDropDown.",
+      "add": true, "set": false, "get": true,
+      "examples": ["--prop inCellDropdown=false"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "showDropDown": {
+      "type": "bool",
+      "description": "raw OOXML showDropDown flag (INVERTED: true = HIDE arrow). Prefer inCellDropdown for clarity.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop showDropDown=true"],
+      "readback": "raw OOXML flag",
+      "enforcement": "report"
+    },
+    "operator": {
+      "type": "enum",
+      "values": ["between", "notBetween", "equal", "notEqual", "greaterThan", "greaterThanOrEqual", "lessThan", "lessThanOrEqual"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop operator=between"],
+      "readback": "operator name",
+      "enforcement": "report"
+    },
+    "formula1": {
+      "type": "string",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop formula1=\"Yes,No,Maybe\""],
+      "readback": "formula1 content",
+      "enforcement": "report"
+    },
+    "formula2": {
+      "type": "string",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop formula2=100"],
+      "readback": "formula2 content",
+      "enforcement": "report"
+    },
+    "prompt": {
+      "type": "string",
+      "description": "message shown when cell selected.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop prompt=\"Enter 1-100\""],
+      "readback": "prompt text",
+      "enforcement": "report"
+    },
+    "error": {
+      "type": "string",
+      "description": "error message on invalid input.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop error=\"Invalid value\""],
+      "readback": "error text",
+      "enforcement": "report"
+    }
+  }
+}

@@ -167,14 +167,176 @@ public partial class WordHandler
                     var fontMatch = System.Text.RegularExpressions.Regex.Match(xml, @"font-family:&quot;([^&]*)&quot;");
                     if (fontMatch.Success) node.Format["font"] = fontMatch.Groups[1].Value;
 
-                    // Extract rotation
-                    var rotMatch = System.Text.RegularExpressions.Regex.Match(xml, @"rotation:(\d+)");
+                    // Extract rotation — allow negative / decimal values, and tolerate
+                    // intra-style whitespace ("rotation : 315").
+                    var rotMatch = System.Text.RegularExpressions.Regex.Match(xml, @"rotation\s*:\s*(-?\d+(?:\.\d+)?)");
                     if (rotMatch.Success) node.Format["rotation"] = rotMatch.Groups[1].Value;
 
                     return node;
                 }
             }
             return node;
+        }
+
+        // FormField paths: /formfield[N] or /formfield[name]
+        // Routed BEFORE ParsePath because the generic predicate validator
+        // only accepts positive-integer / last() / [@attr=v] predicates and
+        // would reject the documented /formfield[name] form.
+        var ffMatchEarly = System.Text.RegularExpressions.Regex.Match(path, @"^/formfield\[(\w+)\]$");
+        if (ffMatchEarly.Success)
+        {
+            var allFormFields = FindFormFields();
+            var indexOrName = ffMatchEarly.Groups[1].Value;
+            if (int.TryParse(indexOrName, out var ffIdx))
+            {
+                if (ffIdx < 1 || ffIdx > allFormFields.Count)
+                    return new DocumentNode { Path = path, Type = "error", Text = $"FormField {ffIdx} not found (total: {allFormFields.Count})" };
+                return FormFieldToNode(allFormFields[ffIdx - 1], path);
+            }
+            else
+            {
+                var match = allFormFields.FirstOrDefault(ff =>
+                    ff.FfData.GetFirstChild<FormFieldName>()?.Val?.Value == indexOrName);
+                if (match.Field == null)
+                    return new DocumentNode { Path = path, Type = "error", Text = $"FormField '{indexOrName}' not found" };
+                var idx = allFormFields.IndexOf(match) + 1;
+                return FormFieldToNode(match, $"/formfield[{idx}]");
+            }
+        }
+
+        // Numbering paths: /numbering/num[@id=N], /numbering/abstractNum[@id=N],
+        // /numbering/abstractNum[@id=N]/level[L]. Routed BEFORE ParsePath because
+        // these use [@id=...] / [N starting at 0] predicates ParsePath rejects.
+        //
+        // Positional aliases /numbering/abstractNum[N] and /numbering/num[N]
+        // translate to the canonical [@id=K] form of the Nth element. Without
+        // this translation, the positional path falls through to generic
+        // ParsePath and emits a node with raw OOXML field names (abstractNumId,
+        // multiLevelType, lvl[N]) instead of the canonical keys (id, type,
+        // level[L]) returned by [@id=K] — same data, two vocabularies.
+        var numPosMatch = System.Text.RegularExpressions.Regex.Match(
+            path, @"^/numbering/(abstractNum|num)\[(\d+)\](.*)$");
+        if (numPosMatch.Success)
+        {
+            var kind = numPosMatch.Groups[1].Value;
+            var posIdx = int.Parse(numPosMatch.Groups[2].Value); // 1-based
+            var rest = numPosMatch.Groups[3].Value;
+            var nb = _doc.MainDocumentPart?.NumberingDefinitionsPart?.Numbering;
+            int? canonId = null;
+            if (kind == "abstractNum")
+            {
+                var abs = nb?.Elements<AbstractNum>().ElementAtOrDefault(posIdx - 1);
+                canonId = abs?.AbstractNumberId?.Value;
+            }
+            else
+            {
+                var inst = nb?.Elements<NumberingInstance>().ElementAtOrDefault(posIdx - 1);
+                canonId = inst?.NumberID?.Value;
+            }
+            if (canonId != null)
+            {
+                // Re-enter Get with the canonical [@id=K] form so the rest of
+                // this method's branches (level[L], format keys) all hit.
+                return Get($"/numbering/{kind}[@id={canonId}]{rest}", depth);
+            }
+        }
+
+        var numMatch = System.Text.RegularExpressions.Regex.Match(
+            path, @"^/numbering/num\[@id=(\d+)\]$");
+        if (numMatch.Success)
+        {
+            var nid = int.Parse(numMatch.Groups[1].Value);
+            var nb = _doc.MainDocumentPart?.NumberingDefinitionsPart?.Numbering;
+            var inst = nb?.Elements<NumberingInstance>().FirstOrDefault(n => n.NumberID?.Value == nid);
+            if (inst == null)
+                return new DocumentNode { Path = path, Type = "error", Text = $"num with id={nid} not found" };
+            var nNode = new DocumentNode { Path = path, Type = "num" };
+            if (inst.AbstractNumId?.Val?.Value != null)
+                nNode.Format["abstractNumId"] = inst.AbstractNumId.Val.Value.ToString();
+            foreach (var ovr in inst.Elements<LevelOverride>())
+            {
+                var lvl = ovr.LevelIndex?.Value;
+                var startV = ovr.StartOverrideNumberingValue?.Val?.Value;
+                if (lvl != null && startV != null)
+                    nNode.Format[$"startOverride.{lvl}"] = startV.ToString()!;
+            }
+            return nNode;
+        }
+
+        // Accept three child-path forms for a level:
+        //   /level[L]            (positional 1-based, legacy)
+        //   /lvl[@ilvl=L]        (canonical OOXML attribute)
+        //   /lvl[L]              (positional 1-based on the lvl alias)
+        // All translate to the same lvl element (matched by LevelIndex.Value).
+        var absMatch = System.Text.RegularExpressions.Regex.Match(
+            path, @"^/numbering/abstractNum\[@id=(\d+)\](?:/(?:level|lvl)\[(?:@ilvl=)?(\d+)\])?$");
+        if (absMatch.Success)
+        {
+            var aid = int.Parse(absMatch.Groups[1].Value);
+            var nb = _doc.MainDocumentPart?.NumberingDefinitionsPart?.Numbering;
+            var abs = nb?.Elements<AbstractNum>().FirstOrDefault(a => a.AbstractNumberId?.Value == aid);
+            if (abs == null)
+                return new DocumentNode { Path = path, Type = "error", Text = $"abstractNum with id={aid} not found" };
+            if (absMatch.Groups[2].Success)
+            {
+                int lvlIdx = int.Parse(absMatch.Groups[2].Value);
+                var lvl = abs.Elements<Level>().FirstOrDefault(l => l.LevelIndex?.Value == lvlIdx);
+                if (lvl == null)
+                    return new DocumentNode { Path = path, Type = "error", Text = $"level[{lvlIdx}] not found in abstractNum {aid}" };
+                var lNode = new DocumentNode { Path = path, Type = "level" };
+                lNode.Format["ilvl"] = lvlIdx.ToString();
+                if (lvl.StartNumberingValue?.Val?.Value != null) lNode.Format["start"] = lvl.StartNumberingValue.Val.Value.ToString()!;
+                if (lvl.NumberingFormat?.Val?.HasValue == true) lNode.Format["format"] = lvl.NumberingFormat.Val.InnerText;
+                if (lvl.LevelText?.Val?.Value != null)
+                {
+                    // CONSISTENCY(canonical-keys): only emit canonical "lvlText";
+                    // legacy "text" alias dropped from Get output to honor root
+                    // CLAUDE.md "Canonical DocumentNode.Format Rules". Set still
+                    // accepts both keys via case "text" or "lvltext".
+                    lNode.Format["lvlText"] = lvl.LevelText.Val.Value;
+                }
+                if (lvl.LevelJustification?.Val?.HasValue == true) lNode.Format["justification"] = lvl.LevelJustification.Val.InnerText;
+                if (lvl.LevelSuffix?.Val?.HasValue == true) lNode.Format["suff"] = lvl.LevelSuffix.Val.InnerText;
+                var lvlR = lvl.GetFirstChild<LevelRestart>();
+                if (lvlR?.Val?.Value != null) lNode.Format["lvlRestart"] = lvlR.Val.Value.ToString()!;
+                if (lvl.GetFirstChild<IsLegalNumberingStyle>() != null) lNode.Format["isLgl"] = true;
+                var ind = lvl.PreviousParagraphProperties?.Indentation;
+                if (ind?.Left?.Value != null) lNode.Format["indent"] = ind.Left.Value;
+                if (ind?.Hanging?.Value != null) lNode.Format["hanging"] = ind.Hanging.Value;
+                var rpr = lvl.NumberingSymbolRunProperties;
+                if (rpr != null)
+                {
+                    var rfn = rpr.GetFirstChild<RunFonts>();
+                    if (rfn?.Ascii?.Value != null) lNode.Format["font"] = rfn.Ascii.Value;
+                    var fsz = rpr.GetFirstChild<FontSize>();
+                    if (fsz?.Val?.Value != null) lNode.Format["size"] = $"{int.Parse(fsz.Val.Value) / 2.0:0.##}pt";
+                    var clr = rpr.GetFirstChild<Color>();
+                    if (clr?.Val?.Value != null) lNode.Format["color"] = ParseHelpers.FormatHexColor(clr.Val.Value);
+                    if (rpr.GetFirstChild<Bold>() != null) lNode.Format["bold"] = true;
+                    if (rpr.GetFirstChild<Italic>() != null) lNode.Format["italic"] = true;
+                }
+                return lNode;
+            }
+            else
+            {
+                var aNode = new DocumentNode { Path = path, Type = "abstractNum" };
+                aNode.Format["id"] = aid.ToString();
+                var mlt = abs.GetFirstChild<MultiLevelType>();
+                if (mlt?.Val?.HasValue == true) aNode.Format["type"] = mlt.Val.InnerText;
+                var nm = abs.GetFirstChild<AbstractNumDefinitionName>();
+                if (nm?.Val?.Value != null) aNode.Format["name"] = nm.Val.Value;
+                var sl = abs.GetFirstChild<StyleLink>();
+                if (sl?.Val?.Value != null) aNode.Format["styleLink"] = sl.Val.Value;
+                var nsl = abs.GetFirstChild<NumberingStyleLink>();
+                if (nsl?.Val?.Value != null) aNode.Format["numStyleLink"] = nsl.Val.Value;
+                foreach (var lvl in abs.Elements<Level>())
+                {
+                    var li = lvl.LevelIndex?.Value;
+                    if (li.HasValue)
+                        aNode.Children.Add(new DocumentNode { Path = $"{path}/level[{li}]", Type = "level" });
+                }
+                return aNode;
+            }
         }
 
         // Handle header/footer paths
@@ -241,6 +403,23 @@ public partial class WordHandler
             if (levelsMatch.Success) tocNode.Format["levels"] = levelsMatch.Groups[1].Value;
             tocNode.Format["hyperlinks"] = instrText.Contains("\\h");
             tocNode.Format["pageNumbers"] = !instrText.Contains("\\z");
+
+            // BUG-R11-05: recover the `title=` supplied to `add toc` — it is
+            // stored as a preceding paragraph styled `TOCHeading`, not on the
+            // TOC field itself. Read the previous sibling, and if it carries
+            // that style, surface its text as `Format["title"]` so that
+            // Add→Get round-trips the title prop.
+            var prevPara = tocPara.PreviousSibling<Paragraph>();
+            if (prevPara != null)
+            {
+                var prevStyle = prevPara.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
+                if (prevStyle == "TOCHeading")
+                {
+                    var titleText = string.Concat(prevPara.Descendants<Text>().Select(t => t.Text));
+                    if (!string.IsNullOrEmpty(titleText))
+                        tocNode.Format["title"] = titleText;
+                }
+            }
             return tocNode;
         }
 
@@ -255,28 +434,24 @@ public partial class WordHandler
             return FieldToNode(allFields[fieldIdx - 1], path);
         }
 
-        // FormField paths: /formfield[N] or /formfield[name]
-        var ffMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/formfield\[(\w+)\]$");
-        if (ffMatch.Success)
+        // Chart axis-by-role sub-path: /chart[N]/axis[@role=ROLE].
+        // Per schemas/help/pptx/chart-axis.json (shared contract across Pptx/Word/Excel).
+        var chartAxisGetMatch = System.Text.RegularExpressions.Regex.Match(path,
+            @"^/chart\[(\d+)\]/axis\[@role=([a-zA-Z0-9_]+)\]$");
+        if (chartAxisGetMatch.Success)
         {
-            var allFormFields = FindFormFields();
-            var indexOrName = ffMatch.Groups[1].Value;
-            if (int.TryParse(indexOrName, out var ffIdx))
-            {
-                if (ffIdx < 1 || ffIdx > allFormFields.Count)
-                    return new DocumentNode { Path = path, Type = "error", Text = $"FormField {ffIdx} not found (total: {allFormFields.Count})" };
-                return FormFieldToNode(allFormFields[ffIdx - 1], path);
-            }
-            else
-            {
-                // Find by name (bookmark name)
-                var match = allFormFields.FirstOrDefault(ff =>
-                    ff.FfData.GetFirstChild<FormFieldName>()?.Val?.Value == indexOrName);
-                if (match.Field == null)
-                    return new DocumentNode { Path = path, Type = "error", Text = $"FormField '{indexOrName}' not found" };
-                var idx = allFormFields.IndexOf(match) + 1;
-                return FormFieldToNode(match, $"/formfield[{idx}]");
-            }
+            var caChartIdx = int.Parse(chartAxisGetMatch.Groups[1].Value);
+            var caRole = chartAxisGetMatch.Groups[2].Value;
+            var caAllCharts = GetAllWordCharts();
+            if (caChartIdx < 1 || caChartIdx > caAllCharts.Count)
+                return new DocumentNode { Path = path, Type = "error", Text = $"Chart {caChartIdx} not found" };
+            var caChartInfo = caAllCharts[caChartIdx - 1];
+            if (caChartInfo.IsExtended || caChartInfo.StandardPart?.ChartSpace == null)
+                throw new ArgumentException($"Axis not available on chart {caChartIdx}: extended charts not supported.");
+            var axisNode = Core.ChartHelper.BuildAxisNode(caChartInfo.StandardPart.ChartSpace, caRole, path);
+            if (axisNode == null)
+                throw new ArgumentException($"Axis with role '{caRole}' not found on chart {caChartIdx}.");
+            return axisNode;
         }
 
         // Chart paths: /chart[N] or /chart[N]/series[K]
@@ -340,63 +515,13 @@ public partial class WordHandler
                 throw new ArgumentException($"Section {secIdx} not found (total: {sectionProps.Count})");
 
             var sectPr = sectionProps[secIdx - 1];
-            var secNode = new DocumentNode { Path = path, Type = "section" };
-
-            var sectType = sectPr.GetFirstChild<SectionType>();
-            if (sectType?.Val?.Value != null)
-                secNode.Format["type"] = sectType.Val.InnerText;
-            var pageSize = sectPr.GetFirstChild<PageSize>();
-            // Default to A4 size (11906 × 16838 twips) if no explicit page size
-            var pgW = pageSize?.Width?.Value ?? 11906u;
-            var pgH = pageSize?.Height?.Value ?? 16838u;
-            secNode.Format["pageWidth"] = FormatTwipsToCm(pgW);
-            secNode.Format["pageHeight"] = FormatTwipsToCm(pgH);
-            if (pageSize?.Orient?.Value != null) secNode.Format["orientation"] = pageSize.Orient.InnerText;
-            var margin = sectPr.GetFirstChild<PageMargin>();
-            if (margin?.Top?.Value != null) secNode.Format["marginTop"] = FormatTwipsToCm((uint)Math.Abs(margin.Top.Value));
-            if (margin?.Bottom?.Value != null) secNode.Format["marginBottom"] = FormatTwipsToCm((uint)Math.Abs(margin.Bottom.Value));
-            if (margin?.Left?.Value != null) secNode.Format["marginLeft"] = FormatTwipsToCm(margin.Left.Value);
-            if (margin?.Right?.Value != null) secNode.Format["marginRight"] = FormatTwipsToCm(margin.Right.Value);
-
-            // Line numbers
-            var lnNum = sectPr.GetFirstChild<LineNumberType>();
-            if (lnNum != null)
-            {
-                var countBy = lnNum.CountBy?.Value ?? 1;
-                var restartVal = lnNum.Restart?.InnerText ?? "continuous";
-                var restart = restartVal switch
-                {
-                    "newPage" => "restartPage",
-                    "newSection" => "restartSection",
-                    _ => "continuous"
-                };
-                secNode.Format["lineNumbers"] = restart;
-                if (countBy != 1) secNode.Format["lineNumberCountBy"] = countBy;
-            }
-
-            // Column properties
-            var cols = sectPr.GetFirstChild<Columns>();
-            if (cols != null)
-            {
-                secNode.Format["columns"] = cols.ColumnCount?.Value ?? 1;
-                if (cols.Space?.Value != null && uint.TryParse(cols.Space.Value, out var colSpaceTwips))
-                    secNode.Format["columnSpace"] = FormatTwipsToCm(colSpaceTwips);
-                if (cols.EqualWidth?.Value != null) secNode.Format["equalWidth"] = cols.EqualWidth.Value;
-                if (cols.Separator?.Value == true) secNode.Format["separator"] = true;
-                var colDefs = cols.Elements<Column>().ToList();
-                if (colDefs.Count > 0)
-                {
-                    var widths = colDefs.Select(c => c.Width?.Value ?? "0");
-                    var spaces = colDefs.Select(c => c.Space?.Value ?? "0");
-                    secNode.Format["colWidths"] = string.Join(",", widths);
-                    secNode.Format["colSpaces"] = string.Join(",", spaces);
-                }
-            }
-            return secNode;
+            return BuildSectionNode(sectPr, path);
         }
 
-        // Style paths: /styles/StyleId
-        var styleMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/styles/(.+)$");
+        // Style paths: /styles/StyleId (read the style itself).
+        // Restrict to a single segment so deeper paths like /styles/<id>/tab[N]
+        // fall through to generic Navigation.
+        var styleMatch = System.Text.RegularExpressions.Regex.Match(path, @"^/styles/([^/]+)$");
         if (styleMatch.Success)
         {
             var styleId = styleMatch.Groups[1].Value;
@@ -418,13 +543,23 @@ public partial class WordHandler
             var rPr = style.StyleRunProperties;
             if (rPr != null)
             {
-                if (rPr.RunFonts?.Ascii?.Value != null) styleNode.Format["font"] = rPr.RunFonts.Ascii.Value;
+                if (rPr.RunFonts != null)
+                {
+                    var rf = rPr.RunFonts;
+                    if (rf.Ascii?.Value != null) styleNode.Format["font.ascii"] = rf.Ascii.Value;
+                    if (rf.EastAsia?.Value != null) styleNode.Format["font.eastAsia"] = rf.EastAsia.Value;
+                    if (rf.HighAnsi?.Value != null) styleNode.Format["font.hAnsi"] = rf.HighAnsi.Value;
+                    if (rf.ComplexScript?.Value != null) styleNode.Format["font.cs"] = rf.ComplexScript.Value;
+                    // CONSISTENCY(canonical-keys): font.ascii is canonical; do not also emit flat "font" alias.
+                }
                 if (rPr.FontSize?.Val?.Value != null) styleNode.Format["size"] = $"{int.Parse(rPr.FontSize.Val.Value) / 2.0:0.##}pt";
                 if (rPr.Bold != null) styleNode.Format["bold"] = true;
                 if (rPr.Italic != null) styleNode.Format["italic"] = true;
                 if (rPr.Color?.Val?.Value != null) styleNode.Format["color"] = ParseHelpers.FormatHexColor(rPr.Color.Val.Value);
                 else if (rPr.Color?.ThemeColor?.HasValue == true) styleNode.Format["color"] = rPr.Color.ThemeColor.InnerText;
                 if (rPr.Underline?.Val != null) styleNode.Format["underline"] = rPr.Underline.Val.InnerText;
+                // CONSISTENCY(underline-color): underline.color not yet exposed by paragraph/run Get; backfill there too.
+                if (rPr.Underline?.Color?.Value != null) styleNode.Format["underline.color"] = ParseHelpers.FormatHexColor(rPr.Underline.Color.Value);
                 if (rPr.Strike != null) styleNode.Format["strike"] = true;
             }
 
@@ -433,10 +568,135 @@ public partial class WordHandler
             if (pPr != null)
             {
                 if (pPr.Justification?.Val?.Value != null) styleNode.Format["alignment"] = pPr.Justification.Val.InnerText;
-                if (pPr.SpacingBetweenLines?.Before?.Value != null) styleNode.Format["spaceBefore"] = SpacingConverter.FormatWordSpacing(pPr.SpacingBetweenLines.Before.Value);
-                if (pPr.SpacingBetweenLines?.After?.Value != null) styleNode.Format["spaceAfter"] = SpacingConverter.FormatWordSpacing(pPr.SpacingBetweenLines.After.Value);
-                if (pPr.SpacingBetweenLines?.Line?.Value != null) styleNode.Format["lineSpacing"] = SpacingConverter.FormatWordLineSpacing(pPr.SpacingBetweenLines.Line.Value, pPr.SpacingBetweenLines.LineRule?.InnerText);
+                if (pPr.SpacingBetweenLines != null)
+                {
+                    var sp = pPr.SpacingBetweenLines;
+                    if (sp.Before?.Value != null) styleNode.Format["spaceBefore"] = SpacingConverter.FormatWordSpacing(sp.Before.Value);
+                    if (sp.After?.Value != null) styleNode.Format["spaceAfter"] = SpacingConverter.FormatWordSpacing(sp.After.Value);
+                    if (sp.Line?.Value != null) styleNode.Format["lineSpacing"] = SpacingConverter.FormatWordLineSpacing(sp.Line.Value, sp.LineRule?.InnerText);
+                    // CONSISTENCY(line-rule): lineRule not yet exposed by paragraph Get; backfill there too.
+                    if (sp.LineRule?.HasValue == true) styleNode.Format["lineRule"] = sp.LineRule.InnerText;
+                    // CONSISTENCY(spacing-lines): *Lines variants not yet exposed by paragraph Get.
+                    if (sp.BeforeLines?.Value != null) styleNode.Format["spaceBeforeLines"] = sp.BeforeLines.Value;
+                    if (sp.AfterLines?.Value != null) styleNode.Format["spaceAfterLines"] = sp.AfterLines.Value;
+                }
+
+                if (pPr.Indentation != null)
+                {
+                    var ind = pPr.Indentation;
+                    // Left/Right and Start/End are OOXML aliases; modern Word writes Start/End.
+                    // CONSISTENCY(unit-qualified-spacing): unit-qualified output via SpacingConverter.
+                    if (ind.FirstLine?.Value != null) styleNode.Format["firstLineIndent"] = SpacingConverter.FormatWordSpacing(ind.FirstLine.Value);
+                    if (ind.Hanging?.Value != null) styleNode.Format["hangingIndent"] = SpacingConverter.FormatWordSpacing(ind.Hanging.Value);
+                    var leftTwips = ind.Left?.Value ?? ind.Start?.Value;
+                    if (leftTwips != null) styleNode.Format["leftIndent"] = SpacingConverter.FormatWordSpacing(leftTwips);
+                    var rightTwips = ind.Right?.Value ?? ind.End?.Value;
+                    if (rightTwips != null) styleNode.Format["rightIndent"] = SpacingConverter.FormatWordSpacing(rightTwips);
+                    // CONSISTENCY(ind-chars): *Chars variants not yet exposed by paragraph Get.
+                    if (ind.FirstLineChars?.Value != null) styleNode.Format["firstLineChars"] = ind.FirstLineChars.Value;
+                    if (ind.HangingChars?.Value != null) styleNode.Format["hangingChars"] = ind.HangingChars.Value;
+                    var leftChars = ind.LeftChars?.Value ?? ind.StartCharacters?.Value;
+                    if (leftChars != null) styleNode.Format["leftChars"] = leftChars;
+                    var rightChars = ind.RightChars?.Value ?? ind.EndCharacters?.Value;
+                    if (rightChars != null) styleNode.Format["rightChars"] = rightChars;
+                }
+
+                // CONSISTENCY(outline-lvl): outlineLvl not yet exposed by paragraph Get.
+                if (pPr.OutlineLevel?.Val?.Value != null) styleNode.Format["outlineLvl"] = (int)pPr.OutlineLevel.Val.Value;
+
+                // Numbering linkage on the style itself (numPr in style/pPr).
+                // Mirrors paragraph-level numId/ilvl readback in Navigation.cs.
+                if (pPr.NumberingProperties != null)
+                {
+                    var sNumPr = pPr.NumberingProperties;
+                    if (sNumPr.NumberingId?.Val?.Value != null)
+                        styleNode.Format["numId"] = sNumPr.NumberingId.Val.Value.ToString();
+                    if (sNumPr.NumberingLevelReference?.Val?.Value != null)
+                        styleNode.Format["ilvl"] = sNumPr.NumberingLevelReference.Val.Value.ToString();
+                }
+
+                // Toggle props: respect explicit val="false" instead of treating presence as true.
+                if (pPr.KeepNext != null)
+                {
+                    var v = pPr.KeepNext.Val;
+                    styleNode.Format["keepNext"] = v == null || v.Value;
+                }
+                if (pPr.KeepLines != null)
+                {
+                    var v = pPr.KeepLines.Val;
+                    styleNode.Format["keepLines"] = v == null || v.Value;
+                }
+                if (pPr.PageBreakBefore != null)
+                {
+                    var v = pPr.PageBreakBefore.Val;
+                    styleNode.Format["pageBreakBefore"] = v == null || v.Value;
+                }
+                if (pPr.WidowControl != null)
+                {
+                    var v = pPr.WidowControl.Val;
+                    styleNode.Format["widowControl"] = v == null || v.Value;
+                }
+                if (pPr.ContextualSpacing != null)
+                {
+                    var v = pPr.ContextualSpacing.Val;
+                    styleNode.Format["contextualSpacing"] = v == null || v.Value;
+                }
+
+                // CONSISTENCY(canonical-keys): split shading into shading.val/.fill/.color sub-keys.
+                if (pPr.Shading != null)
+                {
+                    var shdVal = pPr.Shading.Val?.InnerText;
+                    var shdFill = pPr.Shading.Fill?.Value;
+                    var shdColor = pPr.Shading.Color?.Value;
+                    if (!string.IsNullOrEmpty(shdVal)) styleNode.Format["shading.val"] = shdVal;
+                    if (!string.IsNullOrEmpty(shdFill)) styleNode.Format["shading.fill"] = ParseHelpers.FormatHexColor(shdFill);
+                    if (!string.IsNullOrEmpty(shdColor)) styleNode.Format["shading.color"] = ParseHelpers.FormatHexColor(shdColor);
+                }
+
+                var pBdr = pPr.ParagraphBorders;
+                if (pBdr != null)
+                {
+                    ReadBorder(pBdr.TopBorder, "pbdr.top", styleNode);
+                    ReadBorder(pBdr.BottomBorder, "pbdr.bottom", styleNode);
+                    ReadBorder(pBdr.LeftBorder, "pbdr.left", styleNode);
+                    ReadBorder(pBdr.RightBorder, "pbdr.right", styleNode);
+                    ReadBorder(pBdr.BetweenBorder, "pbdr.between", styleNode);
+                    ReadBorder(pBdr.BarBorder, "pbdr.bar", styleNode);
+                }
+
+                var numProps = pPr.NumberingProperties;
+                if (numProps?.NumberingId?.Val?.Value != null)
+                {
+                    styleNode.Format["numId"] = numProps.NumberingId.Val.Value.ToString();
+                    if (numProps.NumberingLevelReference?.Val?.Value != null)
+                        styleNode.Format["numLevel"] = numProps.NumberingLevelReference.Val.Value.ToString();
+                }
+
+                // CONSISTENCY(tabs): tabs[] not yet exposed by paragraph Get.
+                if (pPr.Tabs != null)
+                {
+                    var tabList = new List<Dictionary<string, object?>>();
+                    foreach (var tab in pPr.Tabs.Elements<TabStop>())
+                    {
+                        var t = new Dictionary<string, object?>();
+                        if (tab.Position?.Value != null) t["pos"] = tab.Position.Value;
+                        if (tab.Val?.HasValue == true) t["val"] = tab.Val.InnerText;
+                        if (tab.Leader?.HasValue == true) t["leader"] = tab.Leader.InnerText;
+                        if (t.Count > 0) tabList.Add(t);
+                    }
+                    if (tabList.Count > 0) styleNode.Format["tabs"] = tabList;
+                }
             }
+
+            // Long-tail fallback: surface every rPr/pPr child element the
+            // curated reader did not consume. Keys are bare OOXML localNames
+            // (e.g. "kinsoku", "snapToGrid"), symmetric with the Set side's
+            // GenericXmlQuery.TryCreateTypedChild — so values round-trip
+            // through `get | set` without any special namespace.
+            // CONSISTENCY(generic-fallback): paragraph/run Get should adopt the
+            // same pattern in a future sweep so curated drift stops being a P0.
+            FillUnknownChildProps(rPr, styleNode);
+            FillUnknownChildProps(pPr, styleNode);
             return styleNode;
         }
 
@@ -455,6 +715,64 @@ public partial class WordHandler
         // Use the resolved positional path when available (normalizes @paraId etc.)
         var nodePath = !string.IsNullOrEmpty(resolvedPath) ? resolvedPath : path;
         return ElementToNode(element, nodePath, depth);
+    }
+
+    /// <summary>Build a DocumentNode for a section from its SectionProperties element.</summary>
+    private DocumentNode BuildSectionNode(SectionProperties sectPr, string path)
+    {
+        var secNode = new DocumentNode { Path = path, Type = "section" };
+
+        var sectType = sectPr.GetFirstChild<SectionType>();
+        if (sectType?.Val?.Value != null)
+            secNode.Format["type"] = sectType.Val.InnerText;
+        var pageSize = sectPr.GetFirstChild<PageSize>();
+        // Default to A4 size if no explicit page size
+        var pgW = pageSize?.Width?.Value ?? WordPageDefaults.A4WidthTwips;
+        var pgH = pageSize?.Height?.Value ?? WordPageDefaults.A4HeightTwips;
+        secNode.Format["pageWidth"] = FormatTwipsToCm(pgW);
+        secNode.Format["pageHeight"] = FormatTwipsToCm(pgH);
+        if (pageSize?.Orient?.Value != null) secNode.Format["orientation"] = pageSize.Orient.InnerText;
+        var margin = sectPr.GetFirstChild<PageMargin>();
+        if (margin?.Top?.Value != null) secNode.Format["marginTop"] = FormatTwipsToCm((uint)Math.Abs(margin.Top.Value));
+        if (margin?.Bottom?.Value != null) secNode.Format["marginBottom"] = FormatTwipsToCm((uint)Math.Abs(margin.Bottom.Value));
+        if (margin?.Left?.Value != null) secNode.Format["marginLeft"] = FormatTwipsToCm(margin.Left.Value);
+        if (margin?.Right?.Value != null) secNode.Format["marginRight"] = FormatTwipsToCm(margin.Right.Value);
+
+        // Line numbers
+        var lnNum = sectPr.GetFirstChild<LineNumberType>();
+        if (lnNum != null)
+        {
+            var countBy = lnNum.CountBy?.Value ?? 1;
+            var restartVal = lnNum.Restart?.InnerText ?? "continuous";
+            var restart = restartVal switch
+            {
+                "newPage" => "restartPage",
+                "newSection" => "restartSection",
+                _ => "continuous"
+            };
+            secNode.Format["lineNumbers"] = restart;
+            if (countBy != 1) secNode.Format["lineNumberCountBy"] = countBy;
+        }
+
+        // Column properties
+        var cols = sectPr.GetFirstChild<Columns>();
+        if (cols != null)
+        {
+            secNode.Format["columns"] = cols.ColumnCount?.Value ?? 1;
+            if (cols.Space?.Value != null && uint.TryParse(cols.Space.Value, out var colSpaceTwips))
+                secNode.Format["columnSpace"] = FormatTwipsToCm(colSpaceTwips);
+            if (cols.EqualWidth?.Value != null) secNode.Format["equalWidth"] = cols.EqualWidth.Value;
+            if (cols.Separator?.Value == true) secNode.Format["separator"] = true;
+            var colDefs = cols.Elements<Column>().ToList();
+            if (colDefs.Count > 0)
+            {
+                var widths = colDefs.Select(c => c.Width?.Value ?? "0");
+                var spaces = colDefs.Select(c => c.Space?.Value ?? "0");
+                secNode.Format["colWidths"] = string.Join(",", widths);
+                secNode.Format["colSpaces"] = string.Join(",", spaces);
+            }
+        }
+        return secNode;
     }
 
     /// <summary>Find all SectionProperties in the document (paragraph-level + body-level).</summary>
@@ -745,6 +1063,22 @@ public partial class WordHandler
         // Simple selector parser: element[attr=value]
         var parsed = ParseSelector(selector);
 
+        // Handle section selector — sections live in paragraph-level sectPr
+        // and the body-level sectPr (last section). OOXML tag is "sectPr",
+        // so GenericXmlQuery with element "section" never matches; route
+        // explicitly here for parity with /section[N] Get.
+        if (parsed.Element == "section")
+        {
+            var sectionProps = FindSectionProperties();
+            for (int si = 0; si < sectionProps.Count; si++)
+            {
+                var node = BuildSectionNode(sectionProps[si], $"/section[{si + 1}]");
+                if (parsed.ContainsText == null || (node.Text?.Contains(parsed.ContainsText) == true))
+                    results.Add(node);
+            }
+            return results;
+        }
+
         // Handle header/footer selectors
         if (parsed.Element is "header" or "footer")
         {
@@ -817,6 +1151,113 @@ public partial class WordHandler
                         if (negate ? matches : !matches) { matchAttrs = false; break; }
                     }
                     if (matchAttrs) results.Add(styleNode);
+                }
+            }
+            return results;
+        }
+
+        // Handle watermark selector — at most one watermark per document.
+        // Schema declares query=true; reuse the singleton /watermark Get logic.
+        if (parsed.Element == "watermark")
+        {
+            if (FindWatermark() != null)
+            {
+                var wmNode = Get("/watermark");
+                if (wmNode != null && wmNode.Type == "watermark"
+                    && (parsed.ContainsText == null || (wmNode.Text?.Contains(parsed.ContainsText) == true)))
+                {
+                    results.Add(wmNode);
+                }
+            }
+            return results;
+        }
+
+        // Handle /styles container selector — styles container is a singleton.
+        // Schema declares query=true on the styles container. Return exactly one
+        // node representing the container; individual styles remain queryable
+        // via `query style`.
+        if (parsed.Element == "styles")
+        {
+            var styles = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles;
+            if (styles != null)
+            {
+                var node = new DocumentNode
+                {
+                    Path = "/styles",
+                    Type = "styles"
+                };
+                node.Format["count"] = styles.Elements<Style>().Count();
+                results.Add(node);
+            }
+            return results;
+        }
+
+        // Handle numbering container selector — singleton, mirrors `query styles`.
+        // Schema also exposes `num` and `abstractNum` as queryable element types
+        // that live under NumberingDefinitionsPart, not under body. Without
+        // these intercepts, the generic XML fallback only walks body and
+        // returns 0 results despite Get(/numbering/...) working fine.
+        if (parsed.Element == "numbering")
+        {
+            var numbering = _doc.MainDocumentPart?.NumberingDefinitionsPart?.Numbering;
+            if (numbering != null)
+            {
+                var node = new DocumentNode { Path = "/numbering", Type = "numbering" };
+                node.Format["abstractNumCount"] = numbering.Elements<AbstractNum>().Count();
+                node.Format["numCount"] = numbering.Elements<NumberingInstance>().Count();
+                results.Add(node);
+            }
+            return results;
+        }
+
+        if (parsed.Element == "abstractNum" || parsed.Element == "abstractnum")
+        {
+            var numbering = _doc.MainDocumentPart?.NumberingDefinitionsPart?.Numbering;
+            if (numbering != null)
+            {
+                foreach (var abs in numbering.Elements<AbstractNum>())
+                {
+                    var aid = abs.AbstractNumberId?.Value;
+                    if (aid == null) continue;
+                    var node = Get($"/numbering/abstractNum[@id={aid}]");
+                    if (node == null || node.Type == "error") continue;
+                    // Filter by attributes (e.g. abstractNum[type=hybridMultilevel])
+                    bool matchAttrs = true;
+                    foreach (var (attrKey, rawVal) in parsed.Attributes)
+                    {
+                        bool negate = rawVal.StartsWith("!");
+                        var val = negate ? rawVal[1..] : rawVal;
+                        var hasKey = node.Format.TryGetValue(attrKey, out var fmtVal);
+                        bool matches = hasKey && string.Equals(fmtVal?.ToString(), val, StringComparison.OrdinalIgnoreCase);
+                        if (negate ? matches : !matches) { matchAttrs = false; break; }
+                    }
+                    if (matchAttrs) results.Add(node);
+                }
+            }
+            return results;
+        }
+
+        if (parsed.Element == "num")
+        {
+            var numbering = _doc.MainDocumentPart?.NumberingDefinitionsPart?.Numbering;
+            if (numbering != null)
+            {
+                foreach (var inst in numbering.Elements<NumberingInstance>())
+                {
+                    var nid = inst.NumberID?.Value;
+                    if (nid == null) continue;
+                    var node = Get($"/numbering/num[@id={nid}]");
+                    if (node == null || node.Type == "error") continue;
+                    bool matchAttrs = true;
+                    foreach (var (attrKey, rawVal) in parsed.Attributes)
+                    {
+                        bool negate = rawVal.StartsWith("!");
+                        var val = negate ? rawVal[1..] : rawVal;
+                        var hasKey = node.Format.TryGetValue(attrKey, out var fmtVal);
+                        bool matches = hasKey && string.Equals(fmtVal?.ToString(), val, StringComparison.OrdinalIgnoreCase);
+                        if (negate ? matches : !matches) { matchAttrs = false; break; }
+                    }
+                    if (matchAttrs) results.Add(node);
                 }
             }
             return results;
@@ -990,16 +1431,33 @@ public partial class WordHandler
                 or "field" or "formfield" or "editable"
                 or "table" or "tbl"
                 or "toc" or "tableofcontents"
-                or "style"
+                or "style" or "styles"
+                or "watermark"
                 or "revision" or "change" or "trackchange"
                 or "media"
                 or "hyperlink"
+                or "section"
                 or "ole" or "oleobject" or "object" or "embed";
         if (!isKnownType && parsed.ChildSelector == null)
         {
             var root = _doc.MainDocumentPart?.Document;
             if (root != null)
-                return GenericXmlQuery.Query(root, genericParsed.element ?? "", genericParsed.attrs, genericParsed.containsText);
+            {
+                var genericResults = GenericXmlQuery.Query(root, genericParsed.element ?? "", genericParsed.attrs, genericParsed.containsText);
+                // Canonicalize emitted paths so they resolve via `get` /
+                // `add --after`. The generic traversal starts at <w:document>
+                // and produces `/document[1]/body[1]/...` but Navigation
+                // expects paths rooted at `/body`. Strip the document prefix.
+                const string docPrefix = "/document[1]/body[1]";
+                foreach (var n in genericResults)
+                {
+                    if (n.Path != null && n.Path.StartsWith(docPrefix, StringComparison.Ordinal))
+                        n.Path = "/body" + n.Path[docPrefix.Length..];
+                    else if (n.Path == "/document[1]")
+                        n.Path = "/";
+                }
+                return genericResults;
+            }
             return results;
         }
 
@@ -1417,7 +1875,7 @@ public partial class WordHandler
                         continue;
                 }
 
-                results.Add(ElementToNode(bkStart, $"/bookmark[{bkName}]", 0));
+                results.Add(ElementToNode(bkStart, $"/bookmark[@name={bkName}]", 0));
             }
             return results;
         }
@@ -1761,22 +2219,29 @@ public partial class WordHandler
                 }
                 else
                 {
-                    if (MatchesSelector(para, parsed, paraIdx))
-                    {
-                        results.Add(ElementToNode(para, $"/body/{BuildParaPathSegment(para, paraIdx + 1)}", 0));
-                    }
-
+                    // When ChildSelector is present (e.g. "paragraph[...] > run[...]"),
+                    // the user is asking for child runs whose parent matches, not
+                    // mixed parent+child results. Only emit child runs in that case.
                     if (parsed.ChildSelector != null)
                     {
-                        int runIdx = 0;
-                        foreach (var run in GetAllRuns(para))
+                        // MatchesSelector already gated the paragraph via its
+                        // ChildSelector-aware branch; iterate matching runs here.
+                        if (MatchesSelector(para, parsed, paraIdx))
                         {
-                            if (MatchesRunSelector(run, para, parsed.ChildSelector))
+                            int runIdx = 0;
+                            foreach (var run in GetAllRuns(para))
                             {
-                                results.Add(ElementToNode(run, $"/body/{BuildParaPathSegment(para, paraIdx + 1)}/r[{runIdx + 1}]", 0));
+                                if (MatchesRunSelector(run, para, parsed.ChildSelector))
+                                {
+                                    results.Add(ElementToNode(run, $"/body/{BuildParaPathSegment(para, paraIdx + 1)}/r[{runIdx + 1}]", 0));
+                                }
+                                runIdx++;
                             }
-                            runIdx++;
                         }
+                    }
+                    else if (MatchesSelector(para, parsed, paraIdx))
+                    {
+                        results.Add(ElementToNode(para, $"/body/{BuildParaPathSegment(para, paraIdx + 1)}", 0));
                     }
                 }
             }

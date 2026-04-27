@@ -1,0 +1,43 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "hyperlink",
+  "parent": "shape|run",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/slide[N]/shape[M]/hyperlink", "/slide[N]/shape[M]/p[K]/r[L]/hyperlink"]
+  },
+  "note": "Aliases: link. Attached to a shape (shape-wide link) or to a run (inline link). Exactly one of 'url' or 'slide' is required.",
+  "properties": {
+    "url": {
+      "type": "string",
+      "aliases": ["href"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop url=https://example.com"],
+      "readback": "target URL",
+      "enforcement": "report"
+    },
+    "slide": {
+      "type": "int",
+      "description": "internal target slide index (1-based).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop slide=3"],
+      "readback": "target slide index",
+      "enforcement": "report"
+    },
+    "tooltip": {
+      "type": "string",
+      "description": "hover tooltip.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop tooltip=\"Next section\""],
+      "readback": "tooltip text",
+      "enforcement": "report"
+    }
+  }
+}

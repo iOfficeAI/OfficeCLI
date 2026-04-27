@@ -1,0 +1,47 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "comment",
+  "parent": "slide",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/slide[N]/comment[M]"]
+  },
+  "note": "Comments live in CommentsPart with an author list. Anchored at x/y EMU on the slide.",
+  "properties": {
+    "text": {
+      "type": "string",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=\"Reword this bullet\""],
+      "readback": "comment text",
+      "enforcement": "report"
+    },
+    "author": {
+      "type": "string",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop author=\"Alice\""],
+      "readback": "author name",
+      "enforcement": "report"
+    },
+    "x": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop x=2cm"],
+      "readback": "EMU",
+      "enforcement": "report"
+    },
+    "y": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop y=2cm"],
+      "readback": "EMU",
+      "enforcement": "report"
+    }
+  }
+}

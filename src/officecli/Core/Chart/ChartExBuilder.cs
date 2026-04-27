@@ -364,12 +364,24 @@ internal static partial class ChartExBuilder
             Align = CX.PosAlign.Ctr,
             Overlay = false,
         };
-        legend.Pos = posSpec.ToLowerInvariant() switch
+        // CONSISTENCY(strict-enums / R34-1): unknown legend tokens used to
+        // silently fall through to right; mirror cChart's strict validation.
+        // Note: cx:legend's SidePos has no topRight — fall back to top with
+        // a clear note rather than rejecting, since topRight is a valid
+        // value for the regular cChart variant and users may pass it through.
+        // CONSISTENCY(legend-separator-normalize): mirror SetterHelpers — dash
+        // and underscore separators are equivalent (top-right == top_right).
+        var posSpecNorm = (posSpec ?? string.Empty).ToLowerInvariant().Replace("-", "").Replace("_", "");
+        legend.Pos = posSpecNorm switch
         {
-            "top" or "t"    => CX.SidePos.T,
+            "top" or "t" or "topright" or "tr" => CX.SidePos.T,
             "bottom" or "b" => CX.SidePos.B,
             "left" or "l"   => CX.SidePos.L,
-            _               => CX.SidePos.R,  // right is the Excel default
+            "right" or "r"  => CX.SidePos.R,
+            _ => throw new ArgumentException(
+                $"Invalid legend position '{posSpec}'. " +
+                "Valid: none, top, bottom, left, right, topRight " +
+                "(or use 'none'/'false' to hide the legend)."),
         };
 
         if (properties != null)

@@ -1,0 +1,51 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "comment",
+  "parent": "paragraph|run",
+  "addParent": ["/body/p[N]", "/body/p[N]/r[M]"],
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/comments/comment[N]"]
+  },
+  "note": "Comments live in WordprocessingCommentsPart. Anchor: CommentRangeStart/End surround the target run or paragraph; CommentReference marks the inline anchor.",
+  "properties": {
+    "text": {
+      "type": "string",
+      "description": "comment body. Required.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=\"Review this\""],
+      "readback": "concatenated text",
+      "enforcement": "report"
+    },
+    "author": {
+      "type": "string",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop author=\"Alice\""],
+      "readback": "Author attribute",
+      "enforcement": "report"
+    },
+    "initials": {
+      "type": "string",
+      "description": "author initials. Defaults to first char of author.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop initials=AW"],
+      "readback": "Initials attribute",
+      "enforcement": "report"
+    },
+    "date": {
+      "type": "string",
+      "description": "ISO-8601 timestamp. Defaults to DateTime.UtcNow.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop date=2025-01-15T10:00:00Z"],
+      "readback": "Date attribute",
+      "enforcement": "report"
+    }
+  }
+}

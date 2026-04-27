@@ -282,6 +282,19 @@
     // Main SSE listener for DOM-swap events
     es.addEventListener('update', function(e) {
         var msg = JSON.parse(e.data);
+        // Scroll-only: navigate the viewer without mutating DOM/styles.
+        // Sent by the `goto` command. Word path is selector-based; for
+        // PPT use scrollToSlide if scrollTo matches /slide\[N\]/.
+        if (msg.action === 'scroll' && msg.scrollTo) {
+            var sel = msg.scrollTo;
+            var slideMatch = sel.match(/data-slide="(\d+)"/);
+            if (slideMatch) { scrollToSlide(parseInt(slideMatch[1])); return; }
+            try {
+                var t = document.querySelector(sel);
+                if (t) t.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } catch (e) { /* invalid selector — silent */ }
+            return;
+        }
         // Track version — save prevVersion BEFORE updating so gap checks
         // compare against the version we actually have, not the incoming one.
         var prevVersion = _clientVersion;

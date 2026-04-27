@@ -1,0 +1,262 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "run",
+  "parent": "paragraph",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "remove": true
+  },
+  "paths": {
+    "stable":     ["/body/p[@paraId=ID]/r[N]"],
+    "positional": ["/body/p[N]/r[N]"]
+  },
+  "properties": {
+    "text": {
+      "type": "string",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=\"run content\""],
+      "readback": "plain text of run",
+      "enforcement": "strict"
+    },
+    "bold": {
+      "type": "bool",
+      "aliases": ["font.bold"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop bold=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "italic": {
+      "type": "bool",
+      "aliases": ["font.italic"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop italic=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "font": {
+      "type": "string",
+      "description": "font family (e.g. \"Times New Roman\", \"SimSun\")",
+      "aliases": ["fontname", "fontFamily", "font.name"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop font=\"Times New Roman\""],
+      "enforcement": "strict"
+    },
+    "size": {
+      "type": "font-size",
+      "aliases": ["fontsize", "font.size"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop size=14", "--prop size=14pt", "--prop size=10.5pt"],
+      "readback": "unit-qualified, e.g. \"14pt\"",
+      "enforcement": "strict"
+    },
+    "color": {
+      "type": "color",
+      "aliases": ["font.color"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop color=FF0000", "--prop color=#FF0000", "--prop color=red"],
+      "readback": "#RRGGBB uppercase",
+      "enforcement": "strict"
+    },
+    "underline": {
+      "type": "enum",
+      "description": "underline style. Common values: single, double, dotted, dash, wave, none.",
+      "values": ["single", "double", "dotted", "dash", "wave", "none", "thick", "dottedHeavy", "dashLong", "dashLongHeavy", "dashDotHeavy", "wavyHeavy", "wavyDouble"],
+      "aliases": ["font.underline"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop underline=single", "--prop underline=double"],
+      "readback": "underline style name",
+      "enforcement": "report"
+    },
+    "highlight": {
+      "type": "color",
+      "description": "Word built-in highlight color. Accepts named colors (yellow, green, cyan, magenta, blue, red, ...).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop highlight=yellow"],
+      "readback": "highlight color name",
+      "enforcement": "report"
+    },
+    "strike": {
+      "type": "bool",
+      "description": "single strikethrough.",
+      "aliases": ["strikethrough", "font.strike", "font.strikethrough"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop strike=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "dstrike": {
+      "type": "bool",
+      "description": "double strikethrough.",
+      "aliases": ["doublestrike", "doubleStrike"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop dstrike=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "caps": {
+      "type": "bool",
+      "description": "render text in all caps (display only; underlying text unchanged).",
+      "aliases": ["allCaps"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop caps=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "smallcaps": {
+      "type": "bool",
+      "description": "render lowercase as small caps.",
+      "aliases": ["smallCaps"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop smallcaps=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "vanish": {
+      "type": "bool",
+      "description": "hidden text (not rendered, but present in the file).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop vanish=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "outline": {
+      "type": "bool",
+      "description": "outline (text effect).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop outline=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "shadow": {
+      "type": "bool",
+      "description": "shadow (text effect).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop shadow=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "emboss": {
+      "type": "bool",
+      "description": "emboss (text effect).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop emboss=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "imprint": {
+      "type": "bool",
+      "description": "imprint / engrave (text effect).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop imprint=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "noproof": {
+      "type": "bool",
+      "description": "exclude this run from spell/grammar checking.",
+      "aliases": ["noProof"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop noproof=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "rtl": {
+      "type": "bool",
+      "description": "right-to-left text.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop rtl=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "superscript": {
+      "type": "bool",
+      "description": "vertical alignment = superscript. Mutually exclusive with subscript.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop superscript=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "subscript": {
+      "type": "bool",
+      "description": "vertical alignment = subscript. Mutually exclusive with superscript.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop subscript=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "vertAlign": {
+      "type": "enum",
+      "description": "vertical text alignment. Values: superscript|super, subscript|sub, baseline.",
+      "aliases": ["vertalign"],
+      "values": ["superscript", "super", "subscript", "sub", "baseline"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop vertAlign=superscript"],
+      "readback": "n/a (surfaces as superscript/subscript flag)",
+      "enforcement": "report"
+    },
+    "charSpacing": {
+      "type": "length",
+      "description": "character spacing (letter spacing) in points. Stored as twips × 20.",
+      "aliases": ["charspacing", "letterspacing", "letterSpacing", "spacing"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop charSpacing=1pt", "--prop charspacing=2"],
+      "readback": "unit-qualified pt, e.g. \"1pt\"",
+      "enforcement": "report"
+    },
+    "shading": {
+      "type": "color",
+      "description": "background shading color or '<pattern>;<fill>;<color>' triplet.",
+      "aliases": ["shd"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop shading=FFFF00", "--prop shd=clear;FFFF00;auto"],
+      "readback": "fill #RRGGBB",
+      "enforcement": "report"
+    },
+    "textOutline": {
+      "type": "string",
+      "description": "w14 text outline 'WIDTHpt-COLOR' (e.g. '1pt-FF0000'). Width first, color second; '-' or ';' separator.",
+      "aliases": ["textoutline"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop textOutline=1pt-FF0000"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "textFill": {
+      "type": "string",
+      "description": "w14 text fill (color or gradient spec).",
+      "aliases": ["textfill"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop textFill=FF0000"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "w14shadow": {
+      "type": "string",
+      "description": "w14 text shadow effect.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop w14shadow=FF0000"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "w14glow": {
+      "type": "string",
+      "description": "w14 text glow effect.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop w14glow=FF0000"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "w14reflection": {
+      "type": "string",
+      "description": "w14 text reflection effect.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop w14reflection=true"],
+      "readback": "n/a",
+      "enforcement": "report"
+    }
+  }
+}

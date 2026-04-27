@@ -140,7 +140,10 @@ public partial class PowerPointHandler
                     var parts = cropAll.Split(',');
                     double Parse1(string s)
                     {
-                        var v = ParseHelpers.SafeParseDouble(s.Trim(), "crop");
+                        // R10: accept trailing '%' suffix on each comma-separated value.
+                        var stripped = s.Trim();
+                        if (stripped.EndsWith("%", StringComparison.Ordinal)) stripped = stripped[..^1].Trim();
+                        var v = ParseHelpers.SafeParseDouble(stripped, "crop");
                         if (v < 0 || v > 100)
                             throw new ArgumentException($"Invalid 'crop' value: '{s.Trim()}'. Crop percentage must be between 0 and 100.");
                         return v;
@@ -171,7 +174,12 @@ public partial class PowerPointHandler
                 int? SidePct(string k)
                 {
                     if (!properties.TryGetValue(k, out var v)) return null;
-                    if (!double.TryParse(v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d))
+                    // R10: accept trailing '%' suffix — error message already says
+                    // "Expected a percentage (0-100)", so the % literal is the
+                    // natural input form and rejecting it was self-contradictory.
+                    var stripped = v.Trim();
+                    if (stripped.EndsWith("%", StringComparison.Ordinal)) stripped = stripped[..^1].Trim();
+                    if (!double.TryParse(stripped, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d))
                         throw new ArgumentException($"Invalid '{k}' value: '{v}'. Expected a percentage (0-100).");
                     if (d < 0 || d > 100)
                         throw new ArgumentException($"Invalid '{k}' value: '{v}'. Crop percentage must be between 0 and 100.");

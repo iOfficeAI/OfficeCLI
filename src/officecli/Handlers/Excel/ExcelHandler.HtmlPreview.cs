@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
+using OfficeCli.Core;
 namespace OfficeCli.Handlers;
 
 public partial class ExcelHandler
@@ -1866,8 +1867,8 @@ public partial class ExcelHandler
     private string GenerateExcelCss()
     {
         // Read default font from workbook styles (font index 0)
-        var defFontName = "Calibri";
-        var defFontSize = "11";
+        var defFontName = OfficeDefaultFonts.MinorLatin;
+        var defFontSize = OfficeDefaultFonts.ExcelBodySizePt;
         var stylesheet = _doc.WorkbookPart?.WorkbookStylesPart?.Stylesheet;
         if (stylesheet?.Fonts != null && stylesheet.Fonts.Elements<Font>().Any())
         {

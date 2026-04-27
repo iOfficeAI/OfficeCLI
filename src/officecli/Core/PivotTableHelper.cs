@@ -537,6 +537,12 @@ internal static partial class PivotTableHelper
                     _defaultSubtotal = true; break;
                 case "off": case "false": case "0": case "no": case "hide": case "none":
                     _defaultSubtotal = false; break;
+                // R35-2: previously unknown values silently fell through to the
+                // default ("on"). Reject explicitly so typos like
+                // "subtotals=auto" surface as errors instead of being misread.
+                default:
+                    throw new ArgumentException(
+                        $"Invalid subtotals '{s}'. Valid: on, off (default on)");
             }
         }
 
@@ -877,6 +883,17 @@ internal static partial class PivotTableHelper
         // like '源'/'行名') BEFORE normalization so the warning echoes the
         // original spelling. Previously these keys were silently dropped
         // and users saw an empty pivot with no diagnostic.
+        //
+        // CONSISTENCY(no-double-unsupported): direct handler callers
+        // (tests, SDK users) reach us via this path and rely on this
+        // stderr warning. The CLI pipeline (CommandBuilder.Add /
+        // ResidentServer.ExecuteAdd) now also runs schema-driven
+        // validation via SchemaHelpLoader — to avoid two UNSUPPORTED
+        // lines with slightly different wording, the CLI strips keys
+        // flagged by the schema validator before calling handler.Add,
+        // so this helper then sees an empty unknown-list and stays
+        // silent on CLI-initiated pivots while still warning direct
+        // callers.
         WarnUnknownPivotProperties(CollectUnknownPivotKeys(properties));
 
         // R12-2 / R12-3: normalize alias keys (row→rows, rowFields→rows,
@@ -1030,8 +1047,22 @@ internal static partial class PivotTableHelper
             }
         }
 
+        // R34-2: pivot Add must be transactional. The four package mutations
+        // below (cachePart, recordsPart child of cachePart, PivotCache entry
+        // in workbook.xml, pivotPart on the target sheet) used to leak into
+        // the .xlsx zip when a downstream step threw — most visibly an
+        // unknown showDataAs token caught inside BuildPivotTableDefinition,
+        // leaving a 0-byte pivotTable.xml whose rels Excel then complains
+        // about. Wrap the whole emit-and-link sequence in a try/catch that
+        // rolls back the parts and the workbook.xml entry on any throw.
+        PivotTableCacheDefinitionPart? cachePart = null;
+        PivotTablePart? pivotPart = null;
+        PivotCache? pivotCacheEntry = null;
+        try
+        {
+
         // 4. Create PivotTableCacheDefinitionPart at workbook level
-        var cachePart = workbookPart.AddNewPart<PivotTableCacheDefinitionPart>();
+        cachePart = workbookPart.AddNewPart<PivotTableCacheDefinitionPart>();
         var cacheRelId = workbookPart.GetIdOfPart(cachePart);
 
         // Build cache definition + per-field shared-item index maps. The maps are
@@ -1097,11 +1128,12 @@ internal static partial class PivotTableHelper
             else
                 workbook.AppendChild(pivotCaches);
         }
-        pivotCaches.AppendChild(new PivotCache { CacheId = cacheId, Id = cacheRelId });
+        pivotCacheEntry = new PivotCache { CacheId = cacheId, Id = cacheRelId };
+        pivotCaches.AppendChild(pivotCacheEntry);
         workbook.Save();
 
         // 5. Create PivotTablePart at worksheet level
-        var pivotPart = targetSheet.AddNewPart<PivotTablePart>();
+        pivotPart = targetSheet.AddNewPart<PivotTablePart>();
         // Link pivot table to cache definition
         pivotPart.AddPart(cachePart);
 
@@ -1224,6 +1256,47 @@ internal static partial class PivotTableHelper
 
         // Return 1-based index
         return targetSheet.PivotTableParts.ToList().IndexOf(pivotPart) + 1;
+
+        }
+        catch
+        {
+            // R34-2 rollback: drop everything we added so a failed Add
+            // leaves the package exactly as it was on entry.
+            try
+            {
+                if (pivotPart != null)
+                {
+                    targetSheet.DeletePart(pivotPart);
+                }
+            }
+            catch { /* best-effort */ }
+            try
+            {
+                if (cachePart != null)
+                {
+                    // Deleting the cache part also drops its child
+                    // PivotTableCacheRecordsPart and the relationship
+                    // from pivotPart (already deleted above).
+                    workbookPart.DeletePart(cachePart);
+                }
+            }
+            catch { /* best-effort */ }
+            try
+            {
+                if (pivotCacheEntry != null && pivotCacheEntry.Parent != null)
+                {
+                    pivotCacheEntry.Remove();
+                    if (pivotCaches != null
+                        && !pivotCaches.Elements<PivotCache>().Any())
+                    {
+                        pivotCaches.Remove();
+                    }
+                    workbook.Save();
+                }
+            }
+            catch { /* best-effort */ }
+            throw;
+        }
     }
 
     // ==================== Axis Tree (general N-level row/col abstraction) ====================

@@ -72,18 +72,27 @@ public partial class WordHandler
             Paragraph cxPara;
             if (parent is Paragraph existingCxPara)
             {
-                existingCxPara.AppendChild(cxRun);
+                // CONSISTENCY(add-index): honor --index / --after / --before (#76).
+                var cxChildren = existingCxPara.ChildElements.ToList();
+                if (index.HasValue && index.Value < cxChildren.Count)
+                    existingCxPara.InsertBefore(cxRun, cxChildren[index.Value]);
+                else
+                    existingCxPara.AppendChild(cxRun);
                 cxPara = existingCxPara;
             }
             else
             {
                 cxPara = new Paragraph(cxRun);
                 AssignParaId(cxPara);
-                AppendToParent(parent, cxPara);
+                InsertAtIndexOrAppend(parent, cxPara, index);
             }
 
-            var totalCharts = CountWordCharts(chartMainPart);
-            return $"/chart[{totalCharts}]";
+            // Return document-order position so it matches the resolver
+            // (GetAllWordCharts). CountWordCharts is insertion-order and
+            // disagrees whenever --before/--after inserts mid-document.
+            var cxAllCharts = GetAllWordCharts();
+            var cxDocOrderIdx = cxAllCharts.FindIndex(c => ReferenceEquals(c.Inline, cxInline));
+            return $"/chart[{(cxDocOrderIdx >= 0 ? cxDocOrderIdx + 1 : cxAllCharts.Count)}]";
         }
 
         // Create ChartPart and build chart
@@ -126,18 +135,25 @@ public partial class WordHandler
         Paragraph chartPara;
         if (parent is Paragraph existingChartPara)
         {
-            existingChartPara.AppendChild(chartRun);
+            // CONSISTENCY(add-index): honor --index / --after / --before (#76).
+            var chartChildren = existingChartPara.ChildElements.ToList();
+            if (index.HasValue && index.Value < chartChildren.Count)
+                existingChartPara.InsertBefore(chartRun, chartChildren[index.Value]);
+            else
+                existingChartPara.AppendChild(chartRun);
             chartPara = existingChartPara;
         }
         else
         {
             chartPara = new Paragraph(chartRun);
             AssignParaId(chartPara);
-            AppendToParent(parent, chartPara);
+            InsertAtIndexOrAppend(parent, chartPara, index);
         }
 
-        var totalChartIdx = CountWordCharts(chartMainPart);
-        return $"/chart[{totalChartIdx}]";
+        // Return document-order position (matches GetAllWordCharts resolver).
+        var allCharts = GetAllWordCharts();
+        var docOrderIdx = allCharts.FindIndex(c => ReferenceEquals(c.Inline, inline));
+        return $"/chart[{(docOrderIdx >= 0 ? docOrderIdx + 1 : allCharts.Count)}]";
     }
 
     private string AddPicture(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
@@ -259,13 +275,23 @@ public partial class WordHandler
         Paragraph imgPara;
         if (parent is Paragraph existingPara)
         {
-            // When --index N is supplied, insert before the Nth existing run
-            // instead of always appending. Matches AddRun's index semantics.
-            var runCount = existingPara.Elements<Run>().Count();
-            if (index.HasValue && index.Value < runCount)
+            // Use ChildElements for index lookup to match ResolveAnchorPosition
+            // (which counts pPr). If index points at pPr, clamp forward.
+            var imgChildren = existingPara.ChildElements.ToList();
+            if (index.HasValue && index.Value < imgChildren.Count)
             {
-                var refRun = existingPara.Elements<Run>().ElementAt(index.Value);
-                existingPara.InsertBefore(imgRun, refRun);
+                var refElement = imgChildren[index.Value];
+                if (refElement is ParagraphProperties)
+                {
+                    if (index.Value + 1 < imgChildren.Count)
+                        existingPara.InsertBefore(imgRun, imgChildren[index.Value + 1]);
+                    else
+                        existingPara.AppendChild(imgRun);
+                }
+                else
+                {
+                    existingPara.InsertBefore(imgRun, refElement);
+                }
             }
             else
             {
@@ -526,11 +552,22 @@ public partial class WordHandler
         string resultPath;
         if (parent is Paragraph existingPara)
         {
-            var runCount = existingPara.Elements<Run>().Count();
-            if (index.HasValue && index.Value < runCount)
+            // Use ChildElements for index lookup to match ResolveAnchorPosition.
+            var oleChildren = existingPara.ChildElements.ToList();
+            if (index.HasValue && index.Value < oleChildren.Count)
             {
-                var refRun = existingPara.Elements<Run>().ElementAt(index.Value);
-                existingPara.InsertBefore(oleRun, refRun);
+                var refElement = oleChildren[index.Value];
+                if (refElement is ParagraphProperties)
+                {
+                    if (index.Value + 1 < oleChildren.Count)
+                        existingPara.InsertBefore(oleRun, oleChildren[index.Value + 1]);
+                    else
+                        existingPara.AppendChild(oleRun);
+                }
+                else
+                {
+                    existingPara.InsertBefore(oleRun, refElement);
+                }
             }
             else
             {

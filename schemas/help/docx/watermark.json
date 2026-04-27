@@ -1,0 +1,58 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "watermark",
+  "parent": "body",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/watermark"]
+  },
+  "note": "Watermarks are inserted into the document header as VML/DrawingML shapes. Text or image variants supported.",
+  "properties": {
+    "text": {
+      "type": "string",
+      "description": "watermark text (text variant).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=DRAFT"],
+      "readback": "text content",
+      "enforcement": "report"
+    },
+    "image": {
+      "type": "string",
+      "description": "image source for image watermark. Aliases: src, path.",
+      "aliases": ["src", "path"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop image=/path/to/logo.png"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "color": {
+      "type": "color",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop color=#C0C0C0"],
+      "readback": "#-prefixed hex",
+      "enforcement": "report"
+    },
+    "font": {
+      "type": "string",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop font=Calibri"],
+      "readback": "font name",
+      "enforcement": "report"
+    },
+    "rotation": {
+      "type": "int",
+      "description": "degrees. Defaults to -45 for diagonal.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop rotation=-45"],
+      "readback": "rotation degrees",
+      "enforcement": "report"
+    }
+  }
+}

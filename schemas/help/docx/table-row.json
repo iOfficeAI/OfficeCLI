@@ -1,0 +1,50 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "row",
+  "parent": "table",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/body/tbl[N]/tr[R]"]
+  },
+  "note": "Row column count defaults to the parent table grid. height uses AtLeast rule; height.exact forces Exact rule.",
+  "properties": {
+    "cols": {
+      "type": "int",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop cols=3"],
+      "readback": "n/a (structural)",
+      "enforcement": "strict"
+    },
+    "height": {
+      "type": "length",
+      "description": "row height in twips or unit-qualified (AtLeast rule).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop height=500"],
+      "readback": "twips",
+      "enforcement": "report"
+    },
+    "height.exact": {
+      "type": "length",
+      "description": "row height in twips (Exact rule, cannot grow).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop height.exact=500"],
+      "readback": "twips with rule=exact",
+      "enforcement": "report"
+    },
+    "header": {
+      "type": "bool",
+      "description": "repeat row as table header on every page.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop header=true"],
+      "readback": "true when header, key absent otherwise",
+      "enforcement": "report"
+    }
+  }
+}

@@ -1,0 +1,415 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "shape",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "stable": ["/slide[N]/shape[@id=ID]"],
+    "positional": ["/slide[N]/shape[N]"]
+  },
+  "properties": {
+    "text": {
+      "type": "string",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop text=\"Hello\""],
+      "readback": "plain text content of the shape",
+      "enforcement": "strict"
+    },
+    "fill": {
+      "type": "color",
+      "aliases": ["background"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop fill=FF0000",
+        "--prop fill=#FF0000",
+        "--prop fill=red",
+        "--prop fill=accent1"
+      ],
+      "readback": "#RRGGBB (uppercase) or scheme color name (e.g. accent1)",
+      "enforcement": "strict"
+    },
+    "color": {
+      "type": "color",
+      "description": "text color",
+      "aliases": ["font.color"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop color=0000FF"],
+      "readback": "#RRGGBB (uppercase)",
+      "enforcement": "strict"
+    },
+    "size": {
+      "type": "font-size",
+      "description": "font size",
+      "aliases": ["fontSize", "fontsize", "font.size"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop size=14", "--prop size=14pt", "--prop size=10.5pt"],
+      "readback": "unit-qualified string, e.g. \"14pt\"",
+      "enforcement": "strict"
+    },
+    "bold": {
+      "type": "bool",
+      "aliases": ["font.bold"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop bold=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "italic": {
+      "type": "bool",
+      "aliases": ["font.italic"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop italic=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "align": {
+      "type": "enum",
+      "values": ["left", "center", "right", "justify"],
+      "description": "text horizontal alignment",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop align=center"],
+      "readback": "one of: left | center | right | justify",
+      "enforcement": "strict"
+    },
+    "x": {
+      "type": "length",
+      "description": "horizontal position of shape",
+      "aliases": ["left"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop x=2cm", "--prop x=1in", "--prop x=72pt"],
+      "readback": "length in cm (e.g. \"2cm\")",
+      "enforcement": "strict"
+    },
+    "y": {
+      "type": "length",
+      "description": "vertical position of shape",
+      "aliases": ["top"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop y=3cm"],
+      "readback": "length in cm (e.g. \"3cm\")",
+      "enforcement": "strict"
+    },
+    "width": {
+      "type": "length",
+      "aliases": ["w"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop width=5cm"],
+      "readback": "length in cm",
+      "enforcement": "strict"
+    },
+    "height": {
+      "type": "length",
+      "aliases": ["h"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop height=3cm"],
+      "readback": "length in cm",
+      "enforcement": "strict"
+    },
+    "rotation": {
+      "type": "number",
+      "description": "rotation in degrees",
+      "aliases": ["rotate"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop rotation=45"],
+      "readback": "degrees as number (e.g. 45)",
+      "enforcement": "strict"
+    },
+    "flipH": {
+      "type": "bool",
+      "aliases": ["flipHorizontal"],
+      "description": "Flip the shape horizontally.",
+      "add": true,
+      "set": true,
+      "examples": ["--prop flipH=true"],
+      "enforcement": "report"
+    },
+    "flipV": {
+      "type": "bool",
+      "aliases": ["flipVertical"],
+      "description": "Flip the shape vertically.",
+      "add": true,
+      "set": true,
+      "examples": ["--prop flipV=true"],
+      "enforcement": "report"
+    },
+    "opacity": {
+      "type": "number",
+      "description": "fill opacity (0.0 - 1.0). Requires a fill to attach to — opacity alone (without fill/gradient/pattern) has no effect in OOXML.",
+      "requires": ["fill"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop opacity=0.5 --prop fill=FF0000"],
+      "readback": "number in [0, 1]",
+      "enforcement": "strict"
+    },
+    "name": {
+      "type": "string",
+      "description": "shape name (identifier, not display text)",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop name=MyShape"],
+      "readback": "plain string",
+      "enforcement": "strict"
+    },
+    "geometry": {
+      "type": "string",
+      "description": "Preset shape geometry (default: rect).",
+      "aliases": ["preset", "shape"],
+      "values": ["rect", "roundRect", "ellipse", "triangle", "diamond", "parallelogram", "rightArrow", "star5"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop geometry=ellipse", "--prop preset=roundRect"],
+      "readback": "preset name (e.g. \"ellipse\", \"roundRect\")",
+      "enforcement": "strict"
+    },
+    "font": {
+      "type": "string",
+      "description": "default font family for shape text.",
+      "aliases": ["font.name"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop font=Arial"],
+      "readback": "font name",
+      "enforcement": "report"
+    },
+    "underline": {
+      "type": "enum",
+      "description": "underline style for shape text.",
+      "values": ["single", "double", "dotted", "dash", "wave", "none"],
+      "aliases": ["font.underline"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop underline=single"],
+      "readback": "underline style",
+      "enforcement": "report"
+    },
+    "strike": {
+      "type": "bool",
+      "description": "strikethrough on shape text.",
+      "aliases": ["strikethrough", "font.strike", "font.strikethrough"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop strike=true"],
+      "readback": "true | false",
+      "enforcement": "report"
+    },
+    "cap": {
+      "type": "enum",
+      "description": "letter-case rendering mode for shape text (rPr/cap).",
+      "values": ["none", "small", "all"],
+      "aliases": ["allCaps", "allcaps", "smallCaps", "smallcaps"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop cap=all", "--prop allCaps=true"],
+      "readback": "none | small | all",
+      "enforcement": "report"
+    },
+    "lang": {
+      "type": "string",
+      "description": "BCP-47 language tag on first run rPr (drawingML rPr/@lang).",
+      "aliases": ["altLang", "altlang"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop lang=en-US"],
+      "readback": "BCP-47 tag",
+      "enforcement": "report"
+    },
+    "spc": {
+      "type": "number",
+      "description": "character spacing in 1/100 pt (drawingML rPr/@spc).",
+      "aliases": ["spacing", "charspacing", "letterspacing"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop spc=200"],
+      "readback": "integer",
+      "enforcement": "report"
+    },
+    "kern": {
+      "type": "number",
+      "description": "minimum kerning size in 1/100 pt (drawingML rPr/@kern).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop kern=1200"],
+      "readback": "integer",
+      "enforcement": "report"
+    },
+    "valign": {
+      "type": "enum",
+      "description": "vertical alignment of text within shape.",
+      "values": ["top", "middle", "bottom", "ctr"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop valign=middle"],
+      "readback": "vertical alignment",
+      "enforcement": "report"
+    },
+    "margin": {
+      "type": "length",
+      "description": "uniform internal padding (text inset) for shape body.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop margin=0.1in"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "autofit": {
+      "type": "enum",
+      "description": "auto-fit mode for shape text body.",
+      "values": ["none", "normal", "shape", "noAutofit", "spAutoFit"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop autofit=shape"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "lineSpacing": {
+      "type": "string",
+      "description": "line spacing for shape paragraphs (multiplier or pt).",
+      "aliases": ["linespacing"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop lineSpacing=1.5x"],
+      "readback": "1.5x or 18pt",
+      "enforcement": "report"
+    },
+    "spaceBefore": {
+      "type": "length",
+      "aliases": ["spacebefore"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop spaceBefore=6pt"],
+      "readback": "unit-qualified pt",
+      "enforcement": "report"
+    },
+    "spaceAfter": {
+      "type": "length",
+      "aliases": ["spaceafter"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop spaceAfter=6pt"],
+      "readback": "unit-qualified pt",
+      "enforcement": "report"
+    },
+    "gradient": {
+      "type": "string",
+      "description": "gradient fill spec: colors separated by '-' (e.g. 'FF0000-0000FF' linear).",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop gradient=\"FF0000-0000FF\""],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "pattern": {
+      "type": "string",
+      "description": "pattern fill: 'preset' or 'preset:fg' or 'preset:fg:bg' (defaults: fg=000000, bg=FFFFFF).",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop pattern=\"diagBrick:FF0000:FFFFFF\""],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "line": {
+      "type": "color",
+      "description": "outline (border) color.",
+      "aliases": ["linecolor", "lineColor", "border"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop line=000000"],
+      "readback": "#RRGGBB",
+      "enforcement": "report"
+    },
+    "linewidth": {
+      "type": "length",
+      "description": "outline width.",
+      "aliases": ["lineWidth"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop linewidth=1pt"],
+      "readback": "unit-qualified",
+      "enforcement": "report"
+    },
+    "list": {
+      "type": "string",
+      "description": "list style for shape paragraphs (bullet|ordered|none).",
+      "aliases": ["liststyle"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop list=bullet"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "link": {
+      "type": "string",
+      "description": "hyperlink URL or anchor for shape click action.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop link=https://example.com"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "tooltip": {
+      "type": "string",
+      "description": "tooltip / screen-tip text for hyperlink.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop tooltip=\"click here\""],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "animation": {
+      "type": "string",
+      "description": "animation effect spec.",
+      "aliases": ["animate"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop animation=fade"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "shadow": {
+      "type": "string",
+      "description": "outer shadow effect. Pass a color (e.g. '000000') or 'true' (defaults to black). Routed to text-level rPr for text-only shapes.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop shadow=000000", "--prop shadow=true"],
+      "readback": "color hex string",
+      "enforcement": "report"
+    },
+    "glow": {
+      "type": "string",
+      "description": "glow effect. Pass a color (e.g. '4472C4') or 'true' (defaults to accent blue).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop glow=4472C4", "--prop glow=true"],
+      "readback": "color hex string",
+      "enforcement": "report"
+    },
+    "reflection": {
+      "type": "string",
+      "description": "reflection effect. Accepts 'true' to enable a default reflection.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop reflection=true"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "softEdge": {
+      "type": "length",
+      "description": "soft-edge blur radius (pt).",
+      "aliases": ["softedge"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop softEdge=4pt"],
+      "readback": "n/a",
+      "enforcement": "report"
+    }
+  }
+}

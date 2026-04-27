@@ -1,0 +1,255 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "cell",
+  "parent": "row",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/body/tbl[N]/tr[R]/tc[C]"]
+  },
+  "note": "Only 'text' and 'width' are honored at Add time; every other property is applied via Set after the cell exists. Run-level formatting (font/size/bold/italic/color/highlight/underline/strike) is written to every run in every paragraph in the cell — and to ParagraphMarkRunProperties when the cell has no runs yet. Border value format is STYLE[;SIZE[;COLOR[;SPACE]]], e.g. 'single;4;FF0000'.",
+  "properties": {
+    "text": {
+      "type": "string",
+      "description": "single-run text content placed in a fresh paragraph.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=\"Hello\""],
+      "readback": "concatenated run text",
+      "enforcement": "strict"
+    },
+    "width": {
+      "type": "int",
+      "description": "cell width in twips (Dxa).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop width=2500"],
+      "readback": "twips",
+      "enforcement": "report"
+    },
+    "font": {
+      "type": "string",
+      "description": "font family applied to every run in every paragraph in the cell (set-only; apply after add).",
+      "aliases": ["fontname", "fontFamily"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop font=\"Times New Roman\""],
+      "readback": "from first run's RunFonts.Ascii",
+      "enforcement": "report"
+    },
+    "size": {
+      "type": "font-size",
+      "description": "font size applied to every run in the cell. Accepts raw number (points), '14pt', '10.5pt' (set-only; apply after add).",
+      "aliases": ["fontsize"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop size=14pt", "--prop size=10.5pt"],
+      "readback": "unit-qualified, e.g. \"14pt\"",
+      "enforcement": "report"
+    },
+    "bold": {
+      "type": "bool",
+      "description": "bold applied to every run in the cell (set-only; apply after add).",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop bold=true"],
+      "readback": "true | (absent)",
+      "enforcement": "report"
+    },
+    "italic": {
+      "type": "bool",
+      "description": "italic applied to every run in the cell (set-only; apply after add).",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop italic=true"],
+      "readback": "true | (absent)",
+      "enforcement": "report"
+    },
+    "underline": {
+      "type": "enum",
+      "values": ["none", "single", "double", "thick", "dotted", "dash", "wave", "words"],
+      "description": "underline style applied to every run in the cell (set-only; apply after add).",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop underline=single", "--prop underline=double"],
+      "readback": "one of values",
+      "enforcement": "report"
+    },
+    "strike": {
+      "type": "bool",
+      "description": "strike-through applied to every run in the cell (set-only; apply after add).",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop strike=true"],
+      "readback": "true | (absent)",
+      "enforcement": "report"
+    },
+    "color": {
+      "type": "color",
+      "description": "run text color applied to every run in the cell (set-only; apply after add).",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop color=FF0000", "--prop color=#FF0000", "--prop color=red"],
+      "readback": "#RRGGBB uppercase",
+      "enforcement": "report"
+    },
+    "highlight": {
+      "type": "color",
+      "description": "text highlight color. Mapped to Word's named highlight palette (yellow, green, cyan, magenta, blue, red, darkBlue, …) (set-only; apply after add).",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop highlight=yellow"],
+      "readback": "highlight palette name",
+      "enforcement": "report"
+    },
+    "fill": {
+      "type": "color",
+      "description": "cell background shading. Also accepts 'gradient;STARTCOLOR;ENDCOLOR[;ANGLE]' for a w14:gradFill gradient (set-only; apply after add).",
+      "aliases": ["shd", "shading"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop fill=FFFF00", "--prop fill=\"gradient;FF0000;0000FF;90\""],
+      "readback": "#RRGGBB uppercase, or 'gradient;#START;#END;ANGLE'",
+      "enforcement": "report"
+    },
+    "alignment": {
+      "type": "enum",
+      "values": ["left", "center", "right", "justify", "both", "distribute"],
+      "description": "horizontal paragraph alignment applied to every paragraph in the cell (set-only; apply after add).",
+      "aliases": ["halign", "align"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop alignment=center"],
+      "readback": "one of values (from first paragraph)",
+      "enforcement": "report"
+    },
+    "valign": {
+      "type": "enum",
+      "values": ["top", "center", "bottom"],
+      "description": "vertical alignment of cell contents (set-only; apply after add).",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop valign=center"],
+      "readback": "one of values",
+      "enforcement": "report"
+    },
+    "colspan": {
+      "type": "int",
+      "description": "number of grid columns this cell spans. Aliases: gridspan. Adjusts cell width to the sum of spanned grid columns and removes now-redundant trailing cells in the row (set-only; apply after add).",
+      "aliases": ["gridspan"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop colspan=2"],
+      "readback": "under key 'colspan' when > 1",
+      "enforcement": "report"
+    },
+    "fitText": {
+      "type": "bool",
+      "description": "enable w:fitText on every run so text is squeezed to the cell width (set-only; apply after add).",
+      "aliases": ["fittext"],
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop fitText=true"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "textDirection": {
+      "type": "enum",
+      "values": ["lrtb", "btlr", "tbrl", "horizontal", "vertical", "vertical-rl", "tbrl-r", "lrtb-r", "tblr-r"],
+      "description": "text flow direction inside the cell. Aliases: textdir (set-only; apply after add).",
+      "aliases": ["textdir"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop textDirection=btlr"],
+      "readback": "OpenXML enum inner text",
+      "enforcement": "report"
+    },
+    "nowrap": {
+      "type": "bool",
+      "description": "disable text wrapping inside the cell (set-only; apply after add).",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop nowrap=true"],
+      "readback": "true | (absent)",
+      "enforcement": "report"
+    },
+    "padding.top": {
+      "type": "length",
+      "description": "top cell margin. Value is stored as Dxa twips (raw int).",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop padding.top=100"],
+      "readback": "twips",
+      "enforcement": "report"
+    },
+    "padding.bottom": {
+      "type": "length",
+      "description": "bottom cell margin in twips.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop padding.bottom=100"],
+      "readback": "twips",
+      "enforcement": "report"
+    },
+    "padding.left": {
+      "type": "length",
+      "description": "left cell margin in twips.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop padding.left=100"],
+      "readback": "twips",
+      "enforcement": "report"
+    },
+    "padding.right": {
+      "type": "length",
+      "description": "right cell margin in twips.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop padding.right=100"],
+      "readback": "twips",
+      "enforcement": "report"
+    },
+    "border.all": {
+      "type": "string",
+      "description": "set top/bottom/left/right cell borders at once. Format: STYLE[;SIZE[;COLOR[;SPACE]]]. Style values: single, double, dashed, dotted, thick, none, … SIZE is in 1/8 pt units (4 = 0.5pt). Aliases: border.",
+      "aliases": ["border"],
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop border.all=\"single;4;FF0000\""],
+      "readback": "read per-side under border.top/bottom/left/right",
+      "enforcement": "report"
+    },
+    "border.top": {
+      "type": "string",
+      "description": "top border. Format: STYLE[;SIZE[;COLOR[;SPACE]]].",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop border.top=\"single;4;000000\""],
+      "readback": "STYLE[;SIZE;COLOR[;SPACE]]",
+      "enforcement": "report"
+    },
+    "border.bottom": {
+      "type": "string",
+      "description": "bottom border. Format: STYLE[;SIZE[;COLOR[;SPACE]]].",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop border.bottom=\"double;6;0000FF\""],
+      "readback": "STYLE[;SIZE;COLOR[;SPACE]]",
+      "enforcement": "report"
+    },
+    "border.left": {
+      "type": "string",
+      "description": "left border. Format: STYLE[;SIZE[;COLOR[;SPACE]]].",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop border.left=\"single;4\""],
+      "readback": "STYLE[;SIZE;COLOR[;SPACE]]",
+      "enforcement": "report"
+    },
+    "border.right": {
+      "type": "string",
+      "description": "right border. Format: STYLE[;SIZE[;COLOR[;SPACE]]].",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop border.right=\"single;4\""],
+      "readback": "STYLE[;SIZE;COLOR[;SPACE]]",
+      "enforcement": "report"
+    },
+    "border.tl2br": {
+      "type": "string",
+      "description": "top-left to bottom-right diagonal border (cell-only). Format: STYLE[;SIZE[;COLOR[;SPACE]]].",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop border.tl2br=\"single;4;FF0000\""],
+      "readback": "STYLE[;SIZE;COLOR[;SPACE]]",
+      "enforcement": "report"
+    },
+    "border.tr2bl": {
+      "type": "string",
+      "description": "top-right to bottom-left diagonal border (cell-only). Format: STYLE[;SIZE[;COLOR[;SPACE]]].",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop border.tr2bl=\"single;4;FF0000\""],
+      "readback": "STYLE[;SIZE;COLOR[;SPACE]]",
+      "enforcement": "report"
+    }
+  }
+}

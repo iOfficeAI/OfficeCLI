@@ -986,6 +986,121 @@ public partial class WordHandler
         int issueNum = 0;
         int lineNum = -1;
 
+        // Style integrity: schema treats w:styleId as plain string, so duplicate
+        // ids / dangling basedOn / cycles slip past `validate`. Surface them here
+        // as structure issues — Word silently picks "first match wins" for dupes
+        // and falls back to Normal for dangling refs, both invisible to users.
+        var stylesPart = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles;
+        if (stylesPart != null)
+        {
+            var allStyles = stylesPart.Elements<Style>().ToList();
+            var seenIds = new Dictionary<string, int>(StringComparer.Ordinal);
+            var seenNames = new Dictionary<string, int>(StringComparer.Ordinal);
+
+            foreach (var s in allStyles)
+            {
+                var id = s.StyleId?.Value;
+                if (!string.IsNullOrEmpty(id))
+                {
+                    seenIds.TryGetValue(id, out var c);
+                    seenIds[id] = c + 1;
+                }
+                var name = s.StyleName?.Val?.Value;
+                if (!string.IsNullOrEmpty(name))
+                {
+                    seenNames.TryGetValue(name, out var c);
+                    seenNames[name] = c + 1;
+                }
+            }
+
+            foreach (var (id, count) in seenIds.Where(kv => kv.Value > 1))
+            {
+                issues.Add(new DocumentIssue
+                {
+                    Id = $"S{++issueNum}",
+                    Type = IssueType.Structure,
+                    Severity = IssueSeverity.Error,
+                    Path = $"/styles/{id}",
+                    Message = $"Duplicate styleId ({count} occurrences)",
+                    Suggestion = "Rename or remove duplicates; Word silently keeps only the first."
+                });
+            }
+            foreach (var (name, count) in seenNames.Where(kv => kv.Value > 1))
+            {
+                issues.Add(new DocumentIssue
+                {
+                    Id = $"S{++issueNum}",
+                    Type = IssueType.Structure,
+                    Severity = IssueSeverity.Error,
+                    Path = "/styles",
+                    Message = $"Duplicate style name '{name}' ({count} occurrences)",
+                    Suggestion = "Rename so each style has a unique display name."
+                });
+            }
+
+            var idSet = new HashSet<string>(
+                allStyles.Select(s => s.StyleId?.Value).Where(v => !string.IsNullOrEmpty(v))!,
+                StringComparer.Ordinal);
+            foreach (var s in allStyles)
+            {
+                var id = s.StyleId?.Value ?? "";
+                void CheckRef(string? target, string kind)
+                {
+                    if (string.IsNullOrEmpty(target) || idSet.Contains(target)) return;
+                    issues.Add(new DocumentIssue
+                    {
+                        Id = $"S{++issueNum}",
+                        Type = IssueType.Structure,
+                        Severity = IssueSeverity.Warning,
+                        Path = $"/styles/{id}",
+                        Message = $"Dangling {kind} reference: '{target}' does not exist",
+                        Suggestion = $"Remove or repoint the {kind} reference."
+                    });
+                }
+                CheckRef(s.BasedOn?.Val?.Value, "basedOn");
+                CheckRef(s.NextParagraphStyle?.Val?.Value, "next");
+                CheckRef(s.LinkedStyle?.Val?.Value, "link");
+            }
+
+            // basedOn cycle detection (A -> B -> A). DAG-walk with per-style
+            // visited set; bail at first revisit so depth stays bounded even on
+            // pathological inputs.
+            var basedOnMap = allStyles
+                .Where(s => !string.IsNullOrEmpty(s.StyleId?.Value) && !string.IsNullOrEmpty(s.BasedOn?.Val?.Value))
+                .ToDictionary(s => s.StyleId!.Value!, s => s.BasedOn!.Val!.Value!, StringComparer.Ordinal);
+            var reportedCycle = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var startId in basedOnMap.Keys)
+            {
+                if (reportedCycle.Contains(startId)) continue;
+                var path = new List<string>();
+                var inPath = new HashSet<string>(StringComparer.Ordinal);
+                var cur = startId;
+                while (cur != null && basedOnMap.TryGetValue(cur, out var parent))
+                {
+                    path.Add(cur);
+                    if (!inPath.Add(cur)) break;
+                    if (inPath.Contains(parent))
+                    {
+                        path.Add(parent);
+                        var cycleStart = path.IndexOf(parent);
+                        var cycleNodes = path.Skip(cycleStart).ToList();
+                        foreach (var n in cycleNodes) reportedCycle.Add(n);
+                        issues.Add(new DocumentIssue
+                        {
+                            Id = $"S{++issueNum}",
+                            Type = IssueType.Structure,
+                            Severity = IssueSeverity.Error,
+                            Path = $"/styles/{cycleNodes[0]}",
+                            Message = $"basedOn cycle: {string.Join(" -> ", cycleNodes)}",
+                            Suggestion = "Break the cycle by clearing one style's basedOn."
+                        });
+                        break;
+                    }
+                    cur = parent;
+                }
+            }
+        }
+
         foreach (var para in GetBodyElements(body).OfType<Paragraph>())
         {
             lineNum++;

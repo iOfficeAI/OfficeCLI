@@ -487,8 +487,8 @@ public partial class PowerPointHandler
             ?.GetFirstChild<PlaceholderShape>();
 
         // Get slide dimensions for proportional positioning
-        long slideW = 12192000; // default 33.87cm
-        long slideH = 6858000;  // default 19.05cm
+        long slideW = SlideSizeDefaults.Widescreen16x9Cx;
+        long slideH = SlideSizeDefaults.Widescreen16x9Cy;
         if (part is SlidePart sp)
         {
             var presDoc = sp.GetParentParts().OfType<PresentationPart>().FirstOrDefault();
@@ -918,7 +918,7 @@ public partial class PowerPointHandler
         // Branch on preset geometry: straightConnectorN -> line; bentConnectorN -> polyline;
         // curvedConnectorN -> cubic bezier path. Falls back to straight line for unknown presets.
         var prstGeom = cxn.ShapeProperties?.GetFirstChild<Drawing.PresetGeometry>();
-        var preset = prstGeom?.Preset?.HasValue == true ? prstGeom.Preset.InnerText : "straightConnector1";
+        var preset = prstGeom?.Preset?.HasValue == true ? (prstGeom.Preset.InnerText ?? "straightConnector1") : "straightConnector1";
 
         // CONSISTENCY(shape-stroke-unit): stroke-width in pt matches CSS border path (see R3 fix).
         var strokeAttrs = $"stroke=\"{safeColor}\" stroke-width=\"{lineWidth:0.##}pt\" fill=\"none\"{dashAttr}{markerStartAttr}{markerEndAttr}";

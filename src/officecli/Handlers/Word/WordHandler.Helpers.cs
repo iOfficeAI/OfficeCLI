@@ -37,7 +37,7 @@ public partial class WordHandler
     internal static string NormalizeUnderlineValue(string value)
     {
         var v = (value ?? "").Trim();
-        return v.ToLowerInvariant() switch
+        var mapped = v.ToLowerInvariant() switch
         {
             "true" or "single" or "1" => "single",
             "false" or "none" or "0" or "" => "none",
@@ -60,7 +60,24 @@ public partial class WordHandler
             "words" or "word" => "words",
             _ => v  // pass-through for already-valid OOXML tokens
         };
+        // CONSISTENCY(allowlist): mirror tab val/leader allowlist (R1 a1554d59) and
+        // ParseJustification — validate before handing off to OpenXML SDK to avoid
+        // leaking "specified value is not valid according to the specified enum type".
+        if (!ValidUnderlineValues.Contains(mapped))
+            throw new ArgumentException(
+                $"Invalid underline value: '{value}'. Valid values: single, double, thick, dotted, " +
+                "dottedHeavy, dash, dashedHeavy, dashLong, dashLongHeavy, dotDash, dashDotHeavy, " +
+                "dotDotDash, dashDotDotHeavy, wave, wavyHeavy, wavyDouble, words, none.");
+        return mapped;
     }
+
+    private static readonly HashSet<string> ValidUnderlineValues = new(StringComparer.Ordinal)
+    {
+        "single", "double", "thick", "dotted", "dottedHeavy",
+        "dash", "dashedHeavy", "dashLong", "dashLongHeavy",
+        "dotDash", "dashDotHeavy", "dotDotDash", "dashDotDotHeavy",
+        "wave", "wavyHeavy", "wavyDouble", "words", "none"
+    };
 
     private static JustificationValues ParseJustification(string value) =>
         value.ToLowerInvariant() switch
@@ -110,6 +127,26 @@ public partial class WordHandler
     }
 
     /// <summary>
+    /// Extract the root path segment (e.g. "/body", "/header[1]", "/footer[2]",
+    /// "/styles") from a full parent path. Used by Add helpers that need to
+    /// return a path rooted at the actual OOXML part — header/footer parents
+    /// must not claim a /body-rooted path since that path won't resolve.
+    /// Defaults to "/body" when the input is empty or doesn't start with a
+    /// recognized root.
+    /// </summary>
+    private static string ExtractRootSegment(string? parentPath)
+    {
+        if (string.IsNullOrEmpty(parentPath)) return "/body";
+        var trimmed = parentPath.TrimEnd('/');
+        if (trimmed.Length == 0 || trimmed == "/") return "/body";
+        // Take the first segment (between leading '/' and the next '/').
+        var start = trimmed.StartsWith("/") ? 1 : 0;
+        var nextSlash = trimmed.IndexOf('/', start);
+        var firstSeg = nextSlash < 0 ? trimmed[start..] : trimmed[start..nextSlash];
+        return "/" + firstSeg;
+    }
+
+    /// <summary>
     /// Append a child element to parent, but if parent is Body, insert before
     /// the final SectionProperties to maintain valid OOXML structure.
     /// </summary>
@@ -125,6 +162,65 @@ public partial class WordHandler
             }
         }
         parent.AppendChild(child);
+    }
+
+    /// <summary>
+    /// Insert <paramref name="child"/> into <paramref name="parent"/> at the
+    /// ChildElements index specified by <paramref name="index"/>. If the
+    /// index is null or out of range, falls back to <see cref="AppendToParent"/>
+    /// (which respects Body's trailing sectPr).
+    /// </summary>
+    private static void InsertAtIndexOrAppend(OpenXmlElement parent, OpenXmlElement child, int? index)
+    {
+        if (index.HasValue && index.Value >= 0 && index.Value < parent.ChildElements.Count)
+        {
+            parent.InsertBefore(child, parent.ChildElements[index.Value]);
+            return;
+        }
+        AppendToParent(parent, child);
+    }
+
+    /// <summary>
+    /// Insert <paramref name="newElem"/> into <paramref name="para"/> at the
+    /// ChildElements index specified by <paramref name="index"/>, clamping
+    /// forward past any leading ParagraphProperties so pPr stays first child.
+    /// Null/out-of-range index appends.
+    /// </summary>
+    private static void InsertIntoParagraph(Paragraph para, OpenXmlElement newElem, int? index)
+    {
+        var children = para.ChildElements.ToList();
+        if (index.HasValue && index.Value >= 0 && index.Value < children.Count)
+        {
+            var refElem = children[index.Value];
+            if (refElem is ParagraphProperties)
+            {
+                if (index.Value + 1 < children.Count)
+                    para.InsertBefore(newElem, children[index.Value + 1]);
+                else
+                    para.AppendChild(newElem);
+            }
+            else
+            {
+                para.InsertBefore(newElem, refElem);
+            }
+            return;
+        }
+        para.AppendChild(newElem);
+    }
+
+    /// <summary>
+    /// Insert multiple elements consecutively into a paragraph, starting at
+    /// the ChildElements index (clamped forward past pPr). Later elements go
+    /// after earlier ones in order.
+    /// </summary>
+    private static void InsertIntoParagraph(Paragraph para, IList<OpenXmlElement> newElems, int? index)
+    {
+        if (newElems == null || newElems.Count == 0) return;
+        InsertIntoParagraph(para, newElems[0], index);
+        for (int i = 1; i < newElems.Count; i++)
+        {
+            para.InsertAfter(newElems[i], newElems[i - 1]);
+        }
     }
 
     private static double ParseFontSize(string value) =>
@@ -530,89 +626,154 @@ public partial class WordHandler
     }
 
     /// <summary>
-    /// Apply a run-level formatting property to either RunProperties or ParagraphMarkRunProperties.
+    /// Parse a w:shd value string ("fill", "val;fill", "val;fill;color") into a Shading element.
+    /// Shared by paragraph-level, run-level, and pmrp shading handlers.
     /// </summary>
-    private static void ApplyRunFormatting(OpenXmlCompositeElement props, string key, string? value)
+    private static Shading ParseShadingValue(string value)
     {
-        if (value is null) return;
+        var shdParts = value.Split(';');
+        var shd = new Shading();
+        if (shdParts.Length == 1)
+        {
+            shd.Val = ShadingPatternValues.Clear;
+            shd.Fill = SanitizeHex(shdParts[0]);
+        }
+        else if (shdParts.Length >= 2)
+        {
+            var firstAsHex = shdParts[0].TrimStart('#');
+            if (firstAsHex.Length >= 6 && firstAsHex.All(char.IsAsciiHexDigit))
+            {
+                shd.Val = ShadingPatternValues.Clear;
+                shd.Fill = SanitizeHex(shdParts[0]);
+            }
+            else
+            {
+                WarnIfShadingOrderWrong(shdParts[0]);
+                shd.Val = new ShadingPatternValues(shdParts[0]);
+                shd.Fill = SanitizeHex(shdParts[1]);
+                if (shdParts.Length >= 3) shd.Color = SanitizeHex(shdParts[2]);
+            }
+        }
+        return shd;
+    }
+
+    /// <summary>
+    /// Apply a run-level (rPr-style) property to any container that holds rPr children:
+    /// <c>RunProperties</c>, <c>ParagraphMarkRunProperties</c>, or <c>StyleRunProperties</c>.
+    /// Uses <see cref="OpenXmlCompositeElement"/> + RemoveAllChildren+InsertRunPropInSchemaOrder
+    /// so the same logic works across all three despite their different typed property surfaces.
+    /// Returns true if the key was handled, false if caller should fall through.
+    /// </summary>
+    private static bool ApplyRunFormatting(OpenXmlCompositeElement props, string key, string? value)
+    {
+        if (value is null) return false;
         switch (key.ToLowerInvariant())
         {
             case "size":
+            case "font.size":
                 var existingFs = props.GetFirstChild<FontSize>();
                 if (existingFs != null) existingFs.Val = ((int)Math.Round(ParseFontSize(value) * 2, MidpointRounding.AwayFromZero)).ToString();
                 else InsertRunPropInSchemaOrder(props, new FontSize { Val = ((int)Math.Round(ParseFontSize(value) * 2, MidpointRounding.AwayFromZero)).ToString() });
-                break;
+                return true;
             case "font":
+            case "font.name":
                 var existingRf = props.GetFirstChild<RunFonts>();
                 if (existingRf != null) { existingRf.Ascii = value; existingRf.HighAnsi = value; existingRf.EastAsia = value; }
                 else InsertRunPropInSchemaOrder(props, new RunFonts { Ascii = value, HighAnsi = value, EastAsia = value });
-                break;
+                return true;
             case "bold":
+            case "font.bold":
                 props.RemoveAllChildren<Bold>();
                 if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Bold());
-                break;
+                return true;
             case "italic":
+            case "font.italic":
                 props.RemoveAllChildren<Italic>();
                 if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Italic());
-                break;
+                return true;
             case "color":
+            case "font.color":
                 props.RemoveAllChildren<Color>();
                 InsertRunPropInSchemaOrder(props, new Color { Val = SanitizeHex(value) });
-                break;
+                return true;
             case "highlight":
                 props.RemoveAllChildren<Highlight>();
                 InsertRunPropInSchemaOrder(props, new Highlight { Val = ParseHighlightColor(value) });
-                break;
+                return true;
             case "underline":
+            case "font.underline":
                 props.RemoveAllChildren<Underline>();
                 var ulMapped = NormalizeUnderlineValue(value);
                 InsertRunPropInSchemaOrder(props, new Underline { Val = new UnderlineValues(ulMapped) });
-                break;
-            case "strike":
+                return true;
+            case "strike" or "strikethrough" or "font.strike" or "font.strikethrough":
                 props.RemoveAllChildren<Strike>();
                 if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Strike());
-                break;
-            case "charspacing" or "charSpacing" or "letterspacing" or "letterSpacing" or "spacing":
+                return true;
+            case "dstrike":
+                props.RemoveAllChildren<DoubleStrike>();
+                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new DoubleStrike());
+                return true;
+            case "outline":
+                props.RemoveAllChildren<Outline>();
+                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Outline());
+                return true;
+            case "shadow":
+                props.RemoveAllChildren<Shadow>();
+                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Shadow());
+                return true;
+            case "emboss":
+                props.RemoveAllChildren<Emboss>();
+                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Emboss());
+                return true;
+            case "imprint":
+                props.RemoveAllChildren<Imprint>();
+                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Imprint());
+                return true;
+            case "noproof":
+                props.RemoveAllChildren<NoProof>();
+                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new NoProof());
+                return true;
+            case "rtl":
+                props.RemoveAllChildren<RightToLeftText>();
+                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new RightToLeftText());
+                return true;
+            case "charspacing" or "letterspacing" or "spacing":
                 var csPt = value.EndsWith("pt", StringComparison.OrdinalIgnoreCase)
                     ? ParseHelpers.SafeParseDouble(value[..^2], "charspacing")
                     : ParseHelpers.SafeParseDouble(value, "charspacing");
                 props.RemoveAllChildren<Spacing>();
                 InsertRunPropInSchemaOrder(props, new Spacing { Val = (int)Math.Round(csPt * 20, MidpointRounding.AwayFromZero) });
-                break;
+                return true;
             case "shading" or "shd":
                 props.RemoveAllChildren<Shading>();
-                var shdParts = value.Split(';');
-                if (shdParts.Length == 1)
-                    InsertRunPropInSchemaOrder(props, new Shading { Val = ShadingPatternValues.Clear, Fill = SanitizeHex(shdParts[0]) });
-                else
-                {
-                    var shd = new Shading { Val = new ShadingPatternValues(shdParts[0]), Fill = SanitizeHex(shdParts[1]) };
-                    if (shdParts.Length >= 3) shd.Color = SanitizeHex(shdParts[2]);
-                    InsertRunPropInSchemaOrder(props, shd);
-                }
-                break;
+                InsertRunPropInSchemaOrder(props, ParseShadingValue(value));
+                return true;
             case "superscript":
                 props.RemoveAllChildren<VerticalTextAlignment>();
                 if (IsTruthy(value))
                     InsertRunPropInSchemaOrder(props, new VerticalTextAlignment { Val = VerticalPositionValues.Superscript });
-                break;
+                return true;
             case "subscript":
                 props.RemoveAllChildren<VerticalTextAlignment>();
                 if (IsTruthy(value))
                     InsertRunPropInSchemaOrder(props, new VerticalTextAlignment { Val = VerticalPositionValues.Subscript });
-                break;
+                return true;
             case "caps":
+            case "allcaps":
                 props.RemoveAllChildren<Caps>();
                 if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Caps());
-                break;
+                return true;
             case "smallcaps":
                 props.RemoveAllChildren<SmallCaps>();
                 if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new SmallCaps());
-                break;
+                return true;
             case "vanish":
                 props.RemoveAllChildren<Vanish>();
                 if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Vanish());
-                break;
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -769,6 +930,81 @@ public partial class WordHandler
     /// The original run keeps text [0..charOffset), new run gets [charOffset..).
     /// RunProperties are deep-cloned. rsidR is cleared on the new run.
     /// </summary>
+    /// <summary>
+    /// Split a paragraph at the given character offset, producing a head
+    /// paragraph (the original <paramref name="para"/>, now holding
+    /// runs/content up to <paramref name="charOffset"/>) followed by a tail
+    /// paragraph inserted as its immediate next sibling (holding content
+    /// from <paramref name="charOffset"/> onward). The tail inherits a
+    /// clone of the head's paragraph properties so style/numbering/heading
+    /// is preserved on both halves — matching Word's own Enter-key split.
+    /// Preconditions: 0 &lt; charOffset &lt; fullText length (boundary cases
+    /// should be handled by the caller without splitting).
+    /// </summary>
+    private static Paragraph SplitParagraphAtOffset(Paragraph para, int charOffset)
+    {
+        var runTexts = BuildRunTexts(para);
+
+        // Split the run that straddles charOffset so a clean run boundary
+        // exists at the split point. After this call, runTexts is stale.
+        foreach (var rt in runTexts)
+        {
+            if (charOffset > rt.Start && charOffset < rt.End)
+            {
+                var localOffset = charOffset - rt.Start;
+                SplitRunAtOffset(rt.Run, localOffset);
+                break;
+            }
+        }
+
+        // Recompute run positions and partition runs into head (< charOffset)
+        // and tail (>= charOffset). Inline children other than Run
+        // (hyperlink/bookmark/field/sdt/…) are routed by their document
+        // order relative to the cumulative text length: anything whose
+        // text footprint falls entirely on the tail side moves with the
+        // tail paragraph. Runs with zero-length text at the boundary stay
+        // with the head (matches Enter-key behavior in Word).
+        var tail = new Paragraph();
+        if (para.ParagraphProperties != null)
+            tail.PrependChild((ParagraphProperties)para.ParagraphProperties.CloneNode(true));
+
+        // Walk children in document order. For Run, compute its text range
+        // and decide; for non-Run inline children, treat their text contribution
+        // as zero-length at the current cumulative offset (consistent with how
+        // BuildRunTexts ignores them).
+        int cumulative = 0;
+        var toMove = new List<OpenXmlElement>();
+        foreach (var child in para.ChildElements.ToList())
+        {
+            if (child is ParagraphProperties) continue;
+            if (child is Run run)
+            {
+                var runLen = run.Elements<Text>().Sum(t => t.Text?.Length ?? 0);
+                if (cumulative >= charOffset)
+                {
+                    toMove.Add(child);
+                }
+                cumulative += runLen;
+            }
+            else
+            {
+                // Non-run inline content: keep on head side if we're still
+                // before the split point, move to tail if we've crossed it.
+                if (cumulative >= charOffset)
+                    toMove.Add(child);
+            }
+        }
+
+        foreach (var el in toMove)
+        {
+            el.Remove();
+            tail.AppendChild(el);
+        }
+
+        para.InsertAfterSelf(tail);
+        return tail;
+    }
+
     private static Run SplitRunAtOffset(Run run, int charOffset)
     {
         // Find the Text element containing the split point
@@ -1035,7 +1271,8 @@ public partial class WordHandler
         "numwords", "numchars", "revnum", "template", "comments", "doccomments", "keywords",
         "mergefield", "ref", "pageref", "noteref", "seq", "styleref", "docproperty", "if",
         "pagebreak", "columnbreak", "break", "footnote", "endnote",
-        "equation", "formula", "math", "bookmark", "formfield"
+        "equation", "formula", "math", "bookmark", "formfield",
+        "comment", "sdt", "contentcontrol", "chart"
     };
 
     /// <summary>
@@ -1059,6 +1296,12 @@ public partial class WordHandler
             findValue = $"r\"{findValue}\"";
 
         var (pattern, isRegex) = ParseFindPattern(findValue);
+
+        // Guard: empty find pattern would produce unbounded matches and blow
+        // up downstream regex/plain-text scans. Surface a clean error instead
+        // of leaking the raw .NET exception.
+        if (string.IsNullOrEmpty(pattern))
+            throw new ArgumentException("find: pattern must not be empty. Example: --after \"find:hello\".");
 
         // Resolve to a paragraph — either the parent itself, or the first
         // descendant paragraph of a container (body/cell/sdt) whose text
@@ -1100,7 +1343,44 @@ public partial class WordHandler
         }
         else
         {
-            return AddBlockAtSplitPoint(para, paraPath, splitPoint, type, position, properties);
+            // Block types (paragraph/table/section/toc/…) under a `find:`
+            // anchor: honor the literal position. When the anchor lands at
+            // a paragraph boundary (splitPoint == 0 or == full length),
+            // insert as a sibling before/after the matched paragraph
+            // (no split needed). When the anchor lands mid-paragraph,
+            // split the paragraph at that offset and insert the new block
+            // between the two halves as body-level siblings.
+            //
+            // This mirrors Word's native "cursor mid-sentence → Insert →
+            // Table" behavior: the user asked for position X, they get
+            // the block at position X, even if that requires splitting
+            // the containing paragraph.
+            var container = para.Parent
+                ?? throw new InvalidOperationException("Matched paragraph has no parent container.");
+            var containerPath = paraPath.Contains('/')
+                ? paraPath[..paraPath.LastIndexOf('/')]
+                : "/body";
+            var siblings = container.Elements<OpenXmlElement>().ToList();
+            var paraIdx = siblings.IndexOf(para);
+            if (paraIdx < 0)
+                throw new InvalidOperationException("Matched paragraph not found among its parent's children.");
+
+            var totalLen = fullText.Length;
+            bool atBoundary = splitPoint == 0 || splitPoint == totalLen;
+
+            if (atBoundary)
+            {
+                var insertIdx = (splitPoint == totalLen) ? paraIdx + 1 : paraIdx;
+                return Add(containerPath, type, InsertPosition.AtIndex(insertIdx), properties);
+            }
+
+            // Mid-paragraph: split the paragraph, inherit pPr on the tail,
+            // then insert the new block between the head and tail paragraphs.
+            SplitParagraphAtOffset(para, splitPoint);
+            // Head paragraph is now `para`; tail paragraph is its immediate
+            // following sibling. Insert the new block between them.
+            var insertIdxMid = paraIdx + 1;
+            return Add(containerPath, type, InsertPosition.AtIndex(insertIdxMid), properties);
         }
     }
 
@@ -1184,8 +1464,25 @@ public partial class WordHandler
             runIndex = 0; // insert before all runs
         }
 
-        // Delegate to normal Add with calculated run index
-        return Add(parentPath, type, InsertPosition.AtIndex(runIndex), properties);
+        // Convert run-count index → ChildElements-index so downstream handlers
+        // (which read parent.ChildElements[index]) land at the right slot. When
+        // the paragraph has a ParagraphProperties child, the ChildElements
+        // index is shifted by one; when inserting before all runs, point at
+        // the first run's ChildElements index rather than 0 (which is pPr).
+        var childElems = para.ChildElements.ToList();
+        int childIndex;
+        if (runIndex >= runs.Count)
+        {
+            childIndex = childElems.Count;
+        }
+        else
+        {
+            var targetRun = runs[runIndex];
+            childIndex = childElems.IndexOf(targetRun);
+            if (childIndex < 0) childIndex = childElems.Count;
+        }
+
+        return Add(parentPath, type, InsertPosition.AtIndex(childIndex), properties);
     }
 
     /// <summary>

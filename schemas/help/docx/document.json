@@ -1,0 +1,68 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "document",
+  "container": true,
+  "operations": {
+    "add": false,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": false
+  },
+  "paths": {
+    "positional": ["/"]
+  },
+  "note": "Root container. Get returns top-level children (body, styles, numbering, headers, footers, etc.). Set exposes core document properties (author/title/subject/keywords/description).",
+  "properties": {
+    "author": {
+      "type": "string",
+      "aliases": ["creator"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop author=\"Alice\""],
+      "readback": "author string",
+      "enforcement": "report"
+    },
+    "title": {
+      "type": "string",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop title=\"Report\""],
+      "readback": "title string",
+      "enforcement": "report"
+    },
+    "subject": {
+      "type": "string",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop subject=Finance"],
+      "readback": "subject string",
+      "enforcement": "report"
+    },
+    "keywords": {
+      "type": "string",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop keywords=\"tag1,tag2\""],
+      "readback": "keywords string",
+      "enforcement": "report"
+    },
+    "description": {
+      "type": "string",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop description=\"Abstract\""],
+      "readback": "description string",
+      "enforcement": "report"
+    },
+    "lastModifiedBy": {
+      "type": "string",
+      "aliases": ["lastmodifiedby"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop lastModifiedBy=\"Bob\""],
+      "readback": "last-modified author",
+      "enforcement": "report"
+    }
+  },
+  "children": [
+    { "element": "body",      "pathSegment": "body",      "cardinality": "1" },
+    { "element": "styles",    "pathSegment": "styles",    "cardinality": "1" },
+    { "element": "numbering", "pathSegment": "numbering", "cardinality": "0..1" }
+  ]
+}

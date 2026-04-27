@@ -26,7 +26,10 @@ public partial class WordHandler
                     cols.EqualWidth = true;
                 return true;
             }
-            case "columns.space":
+            // CONSISTENCY(canonical-key): 'columnSpace' is the canonical key
+            // returned by Get/Query (see WordHandler.Query.cs:491); accept it
+            // alongside the dotted alias so Set has parity with the read side.
+            case "columns.space" or "columnspace":
             {
                 var cols = EnsureColumns();
                 cols.Space = ParseTwips(value).ToString();

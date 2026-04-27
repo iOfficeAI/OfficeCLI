@@ -1,0 +1,43 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "toc",
+  "parent": "body|paragraph",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/toc", "/tableofcontents"]
+  },
+  "note": "Aliases: tableofcontents. Inserts a TOC field (complex fldChar). Word rebuilds the rendered entries on open unless 'pre-render' is used.",
+  "properties": {
+    "levels": {
+      "type": "string",
+      "description": "heading range (e.g. '1-3').",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop levels=1-3"],
+      "readback": "levels string",
+      "enforcement": "report"
+    },
+    "title": {
+      "type": "string",
+      "description": "optional caption above the TOC.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop title=\"Contents\""],
+      "readback": "caption text",
+      "enforcement": "report"
+    },
+    "hyperlinks": {
+      "type": "bool",
+      "description": "generate clickable links.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop hyperlinks=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    }
+  }
+}

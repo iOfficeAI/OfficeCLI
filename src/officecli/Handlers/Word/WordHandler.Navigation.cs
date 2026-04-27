@@ -170,12 +170,70 @@ public partial class WordHandler
         if (!anchorPath.StartsWith("/"))
             anchorPath = parentPath.TrimEnd('/') + "/" + anchorPath;
 
+        // Top-level /watermark[N]? special case. Watermarks are stored in
+        // the header parts, not the body — there is no body-level sibling
+        // that represents the watermark. `add --type watermark` returns
+        // "/watermark" as the new element's identity; to keep that path
+        // round-trippable as --after/--before, treat it as a no-op
+        // positional hint: --after /watermark appends to parent, --before
+        // /watermark prepends. Callers needing a specific body position
+        // should pass an explicit /body/p[N] anchor instead.
+        {
+            var wmMatch = System.Text.RegularExpressions.Regex.Match(anchorPath, @"^/watermark(?:\[(\d+)\])?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (wmMatch.Success)
+            {
+                // Honour the positional-hint contract only when a watermark
+                // actually exists in the doc. Otherwise fall through so the
+                // standard "Anchor element not found" error fires — matching
+                // /chart[1] and other absent-anchor behaviour. An explicit
+                // index beyond the number of watermarks (there's at most one)
+                // is out-of-range — error instead of silently appending.
+                var wmExists = FindWatermark() != null;
+                var wmCount = wmExists ? 1 : 0;
+                if (wmMatch.Groups[1].Success)
+                {
+                    var wmIdx = int.Parse(wmMatch.Groups[1].Value);
+                    if (wmIdx < 1 || wmIdx > wmCount)
+                        throw new ArgumentException($"Anchor element not found: {anchorPath}");
+                }
+                else if (!wmExists)
+                {
+                    throw new ArgumentException($"Anchor element not found: {anchorPath}");
+                }
+                return position.After != null ? (int?)null : 0;
+            }
+        }
+
         var segments = ParsePath(anchorPath);
         var anchor = NavigateToElement(segments, out var ctx)
             ?? throw new ArgumentException($"Anchor element not found: {anchorPath}" + (ctx != null ? $". {ctx}" : ""));
 
+        // Body-level <w:sectPr> (direct child of Body) must remain the last
+        // child of body. `--after /body/sectPr` has no valid placement;
+        // silently routing to "before sectPr" (the old behaviour) misleads
+        // the caller. Reject with a clear error. Paragraph-level sectPr
+        // (inside w:pPr) is unaffected — its carrier paragraph is the
+        // anchor, not the sectPr itself.
+        if (position.After != null && anchor is SectionProperties && anchor.Parent is Body)
+        {
+            throw new ArgumentException(
+                "Cannot insert after body-level sectPr; it must remain the last child of body. " +
+                "Use --before /body/sectPr (or omit the anchor to append before sectPr).");
+        }
+
         // Find anchor's position among parent's children
         var siblings = parent.ChildElements.ToList();
+        // /body/oMathPara[N] resolves to the inner M.Paragraph/oMathPara element;
+        // when it lives inside a pure wrapper w:p, the wrapper is the actual
+        // body child. Re-target the anchor to that wrapper so --after/--before
+        // can find it among body siblings.
+        if ((anchor is M.Paragraph || anchor.LocalName == "oMathPara")
+            && anchor.Parent is Paragraph wrapAnchor
+            && IsOMathParaWrapperParagraph(wrapAnchor)
+            && parent.ChildElements.Contains(wrapAnchor))
+        {
+            anchor = wrapAnchor;
+        }
         var anchorIdx = siblings.IndexOf(anchor);
         if (anchorIdx < 0)
             throw new ArgumentException($"Anchor element is not a child of {parentPath}: {anchorPath}");
@@ -222,19 +280,72 @@ public partial class WordHandler
     private static List<PathSegment> ParsePath(string path)
     {
         var segments = new List<PathSegment>();
+        // Reject trailing slash up front — the subsequent Trim('/') would
+        // otherwise silently absorb it and produce a path that looks valid
+        // (e.g. "/body/p[1]/" → "body/p[1]") while any callers
+        // concatenating onto the raw input would end up with doubled
+        // separators like "/body/p[1]//r[2]" in the returned path.
+        if (path.Length > 1 && path.EndsWith("/"))
+            throw new ArgumentException(
+                $"Malformed path '{path}'. Trailing '/' is not allowed.");
         var parts = path.Trim('/').Split('/');
 
         foreach (var part in parts)
         {
+            // Reject degenerate empty segments from trailing/duplicate slashes
+            // (e.g. "/body/p[1]/" or "/body//p[1]"). Without this, ParsePath
+            // would silently swallow the empty part and return a garbled
+            // navigable path.
+            if (part.Length == 0)
+                throw new ArgumentException(
+                    $"Malformed path '{path}'. Empty path segment (check for trailing or duplicate '/').");
+
             var bracketIdx = part.IndexOf('[');
             if (bracketIdx >= 0)
             {
+                // Only single-predicate form is supported. Reject malformed
+                // selectors like "p[1][2]" or "p[1]trailing" where content
+                // follows the first closing ']'. Without this the trailing
+                // junk is silently swallowed (e.g. "p[1][2]" would resolve
+                // to "p[1]") which hides typos.
+                if (!part.EndsWith("]"))
+                    throw new ArgumentException(
+                        $"Malformed path segment '{part}'. Expected 'name[index]' or 'name[@attr=value]'.");
+                var firstClose = part.IndexOf(']');
+                if (firstClose != part.Length - 1)
+                    throw new ArgumentException(
+                        $"Malformed path segment '{part}'. Multiple predicates are not supported — use a single 'name[...]' form.");
+
                 var name = Core.PathAliases.Resolve(part[..bracketIdx]);
                 var indexStr = part[(bracketIdx + 1)..^1];
+                // Reject empty predicate "p[]" which Int32.TryParse silently
+                // rejects but which then falls through as a StringIndex of "".
+                if (indexStr.Length == 0)
+                    throw new ArgumentException(
+                        $"Malformed path segment '{part}'. Empty predicate — expected 'name[index]' or 'name[@attr=value]'.");
                 if (int.TryParse(indexStr, out var idx))
+                {
+                    if (idx <= 0)
+                        throw new ArgumentException(
+                            $"Malformed path segment '{part}'. Index predicate must be a positive integer (1-based), got '{indexStr}'.");
                     segments.Add(new PathSegment(name, idx));
+                }
                 else
-                    segments.Add(new PathSegment(name, null, indexStr));
+                {
+                    // Only accept a tightly specified set of string predicates:
+                    //   last()
+                    //   @attr=value   where attr is a simple identifier
+                    //                 ([A-Za-z_][A-Za-z0-9_]*) and value is
+                    //                 either bare-word (no whitespace, not
+                    //                 starting with '@' or quote) or
+                    //                 double-quoted.
+                    // Anything else (e.g. "XYZ", " 1", "@=X", "@paraId",
+                    //   "@w:paraId=X", "@attr='X'") is rejected up front so
+                    //   typos cannot silently hit the FirstOrDefault()
+                    //   fallback in NavigateToElement.
+                    var normalizedPredicate = ValidateAndNormalizePredicate(part, indexStr);
+                    segments.Add(new PathSegment(name, null, normalizedPredicate));
+                }
             }
             else
             {
@@ -243,6 +354,68 @@ public partial class WordHandler
         }
 
         return segments;
+    }
+
+    /// <summary>
+    /// Validate a string predicate (the content inside [...] that isn't an
+    /// integer) and return its normalized form. Accepted grammar:
+    ///   last()
+    ///   @ident=value            (bare value: no whitespace, no quotes, no '@')
+    ///   @ident="quoted value"   (double-quoted value)
+    /// Everything else throws ArgumentException so typos like "p[XYZ]",
+    /// "p[ 1]", "p[@paraId]" (no =), "p[@=X]", "p[@w:paraId=X]" are rejected
+    /// instead of silently falling through to childList.FirstOrDefault().
+    /// </summary>
+    private static string ValidateAndNormalizePredicate(string part, string predicate)
+    {
+        if (predicate == "last()")
+            return predicate;
+
+        if (predicate.Length > 0 && predicate[0] == '@')
+        {
+            // Must have '=' and a non-empty identifier before it.
+            var eq = predicate.IndexOf('=');
+            if (eq <= 1)
+                throw new ArgumentException(
+                    $"Malformed path segment '{part}'. Attribute predicate must be '[@name=value]' with a non-empty attribute name.");
+
+            var attr = predicate[1..eq];
+            // Simple identifier: [A-Za-z_][A-Za-z0-9_]*
+            if (!System.Text.RegularExpressions.Regex.IsMatch(attr, "^[A-Za-z_][A-Za-z0-9_]*$"))
+                throw new ArgumentException(
+                    $"Malformed path segment '{part}'. Attribute name '{attr}' is not a simple identifier (no prefixes/colons).");
+
+            var value = predicate[(eq + 1)..];
+            if (value.Length == 0)
+                throw new ArgumentException(
+                    $"Malformed path segment '{part}'. Attribute predicate value is empty.");
+
+            // Accept double-quoted value — strip quotes so downstream
+            // comparisons (which use bare string equality) work uniformly.
+            if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
+            {
+                var inner = value[1..^1];
+                if (inner.Contains('"'))
+                    throw new ArgumentException(
+                        $"Malformed path segment '{part}'. Quoted attribute value must not contain embedded double quotes.");
+                return $"@{attr}={inner}";
+            }
+
+            // Bare value: no whitespace, no quotes, no leading '@'.
+            if (value[0] == '@' || value[0] == '\'' || value[0] == '"')
+                throw new ArgumentException(
+                    $"Malformed path segment '{part}'. Attribute value must be bare-word or double-quoted.");
+            foreach (var c in value)
+            {
+                if (char.IsWhiteSpace(c))
+                    throw new ArgumentException(
+                        $"Malformed path segment '{part}'. Attribute value must not contain whitespace (use double quotes).");
+            }
+            return predicate;
+        }
+
+        throw new ArgumentException(
+            $"Malformed path segment '{part}'. Predicate must be a positive integer, 'last()', or '[@attr=value]'.");
     }
 
     private OpenXmlElement? NavigateToElement(List<PathSegment> segments)
@@ -259,12 +432,92 @@ public partial class WordHandler
 
         var first = segments[0];
 
-        // Handle bookmark[Name] as top-level path
-        if (first.Name.ToLowerInvariant() == "bookmark" && first.StringIndex != null)
+        // Handle bookmark[@name=...] as top-level path
+        if (first.Name.ToLowerInvariant() == "bookmark" && first.StringIndex != null
+            && first.StringIndex.StartsWith("@name=", StringComparison.OrdinalIgnoreCase))
         {
+            var targetName = first.StringIndex["@name=".Length..];
             var body = _doc.MainDocumentPart?.Document?.Body;
             return body?.Descendants<BookmarkStart>()
-                .FirstOrDefault(b => b.Name?.Value == first.StringIndex);
+                .FirstOrDefault(b => b.Name?.Value == targetName);
+        }
+
+        // Top-level /section[N] anchor routing. `add --type section` returns
+        // "/section[N]" as the new element's identity; resolving it to the
+        // carrier paragraph (the one whose pPr holds the Nth sectPr) lets
+        // callers use it directly as --after/--before. Body-level sectPr
+        // (the final section) is intentionally NOT an anchor target here —
+        // it must remain the last child of body; anchor use is rejected in
+        // ResolveAnchorPosition.
+        if (first.Name.ToLowerInvariant() == "section" && segments.Count == 1 && first.Index.HasValue)
+        {
+            var body = _doc.MainDocumentPart?.Document?.Body;
+            if (body != null)
+            {
+                var n = first.Index.Value;
+                var sectParas = body.Elements<Paragraph>()
+                    .Where(p => p.ParagraphProperties?.GetFirstChild<SectionProperties>() != null)
+                    .ToList();
+                if (n >= 1 && n <= sectParas.Count)
+                    return sectParas[n - 1];
+            }
+        }
+
+        // Top-level /chart[N] anchor routing. `add --type chart` returns
+        // "/chart[N]" as the new element's identity; resolve it to the
+        // body-level paragraph containing the Nth chart drawing so callers
+        // can use the returned path directly as --after/--before.
+        if (first.Name.ToLowerInvariant() == "chart" && segments.Count == 1 && first.Index.HasValue)
+        {
+            var charts = GetAllWordCharts();
+            var n = first.Index.Value;
+            if (n >= 1 && n <= charts.Count)
+            {
+                OpenXmlElement? cur = charts[n - 1].Inline;
+                while (cur != null && cur is not Paragraph) cur = cur.Parent;
+                if (cur is Paragraph chartPara) return chartPara;
+            }
+        }
+
+        // Top-level /toc[N] anchor routing. `add --type toc` returns
+        // "/toc[N]" as the new element's identity; resolve it to the Nth
+        // body paragraph whose descendants include a FieldCode starting
+        // with "TOC" (mirrors AddToc's counting logic) so callers can use
+        // the returned path directly as --after/--before.
+        if (first.Name.ToLowerInvariant() == "toc" && segments.Count == 1 && first.Index.HasValue)
+        {
+            var body = _doc.MainDocumentPart?.Document?.Body;
+            if (body != null)
+            {
+                var tocParas = body.Elements<Paragraph>()
+                    .Where(p => p.Descendants<FieldCode>().Any(fc =>
+                        fc.Text != null && fc.Text.TrimStart().StartsWith("TOC", StringComparison.OrdinalIgnoreCase)))
+                    .ToList();
+                var n = first.Index.Value;
+                if (n >= 1 && n <= tocParas.Count)
+                    return tocParas[n - 1];
+            }
+        }
+
+        // Top-level /formfield[N] anchor routing. `add --type formfield`
+        // returns "/formfield[N]" as the new element's identity; resolve it to
+        // the body-level paragraph containing the Nth form field's begin-run
+        // so callers can use the returned path directly as --after/--before.
+        if (first.Name.ToLowerInvariant() == "formfield" && segments.Count == 1 && first.Index.HasValue)
+        {
+            var allFf = FindFormFields();
+            var n = first.Index.Value;
+            if (n >= 1 && n <= allFf.Count)
+            {
+                var beginRun = allFf[n - 1].Field.BeginRun;
+                // Walk up to the nearest Paragraph so the anchor is a direct
+                // child of the body (matching what the user typically passes
+                // as --parent /body). If no paragraph ancestor (shouldn't
+                // happen for a valid form field), fall back to the begin run.
+                OpenXmlElement? cur = beginRun;
+                while (cur != null && cur is not Paragraph) cur = cur.Parent;
+                return cur ?? beginRun;
+            }
         }
 
         OpenXmlElement? current = first.Name.ToLowerInvariant() switch
@@ -280,6 +533,47 @@ public partial class WordHandler
         };
 
         string parentPath = "/" + first.Name + (first.Index.HasValue ? $"[{first.Index}]" : "");
+
+        // Top-level /footnote[@footnoteId=N] / /footnote[N] routing. Mirrors
+        // WordHandler.Add.cs's TryResolveFootnoteOrEndnoteBody so that paths
+        // returned by `add` under a footnote/endnote are round-trippable via
+        // `get` and usable as --after/--before anchors.
+        if (current == null)
+        {
+            var fname = first.Name.ToLowerInvariant();
+            if (fname == "footnote")
+            {
+                int? fnId = first.Index;
+                if (fnId == null && first.StringIndex != null
+                    && first.StringIndex.StartsWith("@footnoteId=", StringComparison.OrdinalIgnoreCase)
+                    && int.TryParse(first.StringIndex["@footnoteId=".Length..], out var idv))
+                {
+                    fnId = idv;
+                }
+                if (fnId != null)
+                {
+                    current = _doc.MainDocumentPart?.FootnotesPart?.Footnotes?
+                        .Elements<Footnote>().FirstOrDefault(f => f.Id?.Value == fnId.Value);
+                    parentPath = $"/footnote[@footnoteId={fnId}]";
+                }
+            }
+            else if (fname == "endnote")
+            {
+                int? enId = first.Index;
+                if (enId == null && first.StringIndex != null
+                    && first.StringIndex.StartsWith("@endnoteId=", StringComparison.OrdinalIgnoreCase)
+                    && int.TryParse(first.StringIndex["@endnoteId=".Length..], out var idv))
+                {
+                    enId = idv;
+                }
+                if (enId != null)
+                {
+                    current = _doc.MainDocumentPart?.EndnotesPart?.Endnotes?
+                        .Elements<Endnote>().FirstOrDefault(e => e.Id?.Value == enId.Value);
+                    parentPath = $"/endnote[@endnoteId={enId}]";
+                }
+            }
+        }
 
         for (int i = 1; i < segments.Count && current != null; i++)
         {
@@ -299,6 +593,17 @@ public partial class WordHandler
             {
                 var contentRun = navSdtRun.GetFirstChild<SdtContentRun>();
                 if (contentRun != null) current = contentRun;
+            }
+
+            // Allow an explicit "/sdtContent" segment as a no-op selector: after
+            // the transparent descend above, `current` is already the
+            // SdtContent{Block,Run}. This keeps the ValidateParentChild hint
+            // ("Add under <sdt>/sdtContent instead") literally navigable.
+            if (seg.Name.Equals("sdtContent", StringComparison.OrdinalIgnoreCase)
+                && (current is SdtContentBlock || current is SdtContentRun))
+            {
+                parentPath += "/sdtContent";
+                continue;
             }
 
             if (current is Body body2 && (seg.Name.ToLowerInvariant() == "p" || seg.Name.ToLowerInvariant() == "tbl"))
@@ -347,6 +652,27 @@ public partial class WordHandler
                     "tc" => current.Elements<TableCell>().Cast<OpenXmlElement>(),
                     "sdt" => current.ChildElements
                         .Where(e => e is SdtBlock || e is SdtRun).Cast<OpenXmlElement>(),
+                    // /<para>/tab[N] and /styles/<id>/tab[N] descend
+                    // transparently through pPr/tabs (or StyleParagraph-
+                    // Properties/tabs) so the user-facing path stays flat
+                    // instead of leaking the OOXML containers (.../pPr/tabs/tab).
+                    // Symmetric with how AddTab returns the flat form.
+                    "tab" when current is Paragraph navParaT
+                        => navParaT.ParagraphProperties?.GetFirstChild<Tabs>()?.Elements<TabStop>().Cast<OpenXmlElement>()
+                           ?? Enumerable.Empty<OpenXmlElement>(),
+                    "tab" when current is Style navStyleT
+                        => navStyleT.StyleParagraphProperties?.GetFirstChild<Tabs>()?.Elements<TabStop>().Cast<OpenXmlElement>()
+                           ?? Enumerable.Empty<OpenXmlElement>(),
+                    // /styles/<key> resolves <key> as a styleId or styleName
+                    // (matches Set.Dispatch.cs's regex+OR matching), so paths
+                    // like /styles/Heading1 are navigable for Add/Get/Set.
+                    // The segment name here IS the key, not an OOXML local-
+                    // name; downstream FirstOrDefault picks the (single) match.
+                    _ when current is Styles navStylesContainer
+                        => navStylesContainer.Elements<Style>().Where(s =>
+                            string.Equals(s.StyleId?.Value, seg.Name, StringComparison.Ordinal)
+                            || string.Equals(s.StyleName?.Val?.Value, seg.Name, StringComparison.Ordinal))
+                           .Cast<OpenXmlElement>(),
                     _ => current.ChildElements.Where(e => e.LocalName == seg.Name).Cast<OpenXmlElement>()
                 };
             }
@@ -375,6 +701,14 @@ public partial class WordHandler
                 next = childList.OfType<Comment>()
                     .FirstOrDefault(c => c.Id?.Value == targetId);
             }
+            else if (seg.StringIndex != null && seg.StringIndex.StartsWith("@name=", StringComparison.OrdinalIgnoreCase))
+            {
+                // Generic @name=... selector, used by bookmarkStart[@name=X]
+                // so that the path returned by AddBookmark is navigable.
+                var targetName = seg.StringIndex["@name=".Length..];
+                next = childList.FirstOrDefault(e =>
+                    e is BookmarkStart bs && string.Equals(bs.Name?.Value, targetName, StringComparison.Ordinal));
+            }
             else if (seg.StringIndex != null && seg.StringIndex.StartsWith("@sdtId=", StringComparison.OrdinalIgnoreCase))
             {
                 var targetId = seg.StringIndex["@sdtId=".Length..];
@@ -385,6 +719,18 @@ public partial class WordHandler
                             ?.GetFirstChild<SdtId>()?.Val?.Value;
                         return sdtId?.ToString() == targetId;
                     });
+            }
+            // CONSISTENCY(id-selectors): mirror @paraId/@commentId/@sdtId — accept @id= for
+            // numbering/abstractNum (w:abstractNumId@val) and numbering/num (w:num@numId).
+            else if (seg.StringIndex != null && seg.StringIndex.StartsWith("@id=", StringComparison.OrdinalIgnoreCase))
+            {
+                var targetId = seg.StringIndex["@id=".Length..];
+                next = childList.FirstOrDefault(e => e switch
+                {
+                    AbstractNum an => an.AbstractNumberId?.Value.ToString() == targetId,
+                    NumberingInstance ni => ni.NumberID?.Value.ToString() == targetId,
+                    _ => false,
+                });
             }
             else
                 next = childList.FirstOrDefault();
@@ -403,6 +749,12 @@ public partial class WordHandler
             else if (next is Comment navComment && navComment.Id?.Value != null)
             {
                 parentPath += "/" + seg.Name + $"[@commentId={navComment.Id.Value}]";
+            }
+            else if (next is Style navStyle)
+            {
+                // Style is keyed by styleId — emit /styles/<id> without a
+                // positional [N] suffix to match Query's canonical form.
+                parentPath += "/" + (navStyle.StyleId?.Value ?? seg.Name);
             }
             else if (next is SdtBlock or SdtRun)
             {
@@ -489,8 +841,13 @@ public partial class WordHandler
 
             if (!string.IsNullOrEmpty(para.ParagraphId?.Value))
                 node.Format["paraId"] = para.ParagraphId.Value;
-            if (!string.IsNullOrEmpty(para.TextId?.Value))
-                node.Format["textId"] = para.TextId.Value;
+            // textId intentionally NOT exposed in Format: Set() rewrites it on
+            // every mutation (see WordHandler.Set.cs "para.TextId = GenerateParaId()"),
+            // which would let an AI agent comparing consecutive Get snapshots see
+            // spurious diffs and mistake idempotent edits for real changes. paraId
+            // is stable and sufficient for identity. The underlying w14:textId
+            // attribute is still present in the OOXML; only the user-facing
+            // DocumentNode.Format projection hides it.
 
             var pProps = para.ParagraphProperties;
             if (pProps != null)
@@ -520,49 +877,62 @@ public partial class WordHandler
                             pProps.SpacingBetweenLines.LineRule?.InnerText);
                     }
                 }
-                if (pProps.Indentation?.FirstLine?.Value != null)
-                    node.Format["firstLineIndent"] = pProps.Indentation.FirstLine.Value;
-                if (pProps.Indentation?.Left?.Value != null)
-                    node.Format["leftIndent"] = pProps.Indentation.Left.Value;
-                if (pProps.Indentation?.Right?.Value != null)
-                    node.Format["rightIndent"] = pProps.Indentation.Right.Value;
-                if (pProps.Indentation?.Hanging?.Value != null)
-                    node.Format["hangingIndent"] = pProps.Indentation.Hanging.Value;
+                if (pProps.Indentation != null)
+                {
+                    var ind = pProps.Indentation;
+                    // CONSISTENCY(unit-qualified-spacing): indents return "Xpt" via SpacingConverter,
+                    // matching spaceBefore/spaceAfter (Canonical DocumentNode.Format Rules).
+                    if (ind.FirstLine?.Value != null) node.Format["firstLineIndent"] = SpacingConverter.FormatWordSpacing(ind.FirstLine.Value);
+                    if (ind.Hanging?.Value != null) node.Format["hangingIndent"] = SpacingConverter.FormatWordSpacing(ind.Hanging.Value);
+                    // CONSISTENCY(ind-start-end): modern Word writes <w:ind w:start>/<w:end> instead of left/right.
+                    var leftTwips = ind.Left?.Value ?? ind.Start?.Value;
+                    if (leftTwips != null) node.Format["leftIndent"] = SpacingConverter.FormatWordSpacing(leftTwips);
+                    var rightTwips = ind.Right?.Value ?? ind.End?.Value;
+                    if (rightTwips != null) node.Format["rightIndent"] = SpacingConverter.FormatWordSpacing(rightTwips);
+                    // CONSISTENCY(ind-chars): chars-unit indents (Chinese typography) — backfilled from style Get edc8f884.
+                    if (ind.FirstLineChars?.Value != null) node.Format["firstLineChars"] = ind.FirstLineChars.Value;
+                    if (ind.HangingChars?.Value != null) node.Format["hangingChars"] = ind.HangingChars.Value;
+                    var leftChars = ind.LeftChars?.Value ?? ind.StartCharacters?.Value;
+                    if (leftChars != null) node.Format["leftChars"] = leftChars;
+                    var rightChars = ind.RightChars?.Value ?? ind.EndCharacters?.Value;
+                    if (rightChars != null) node.Format["rightChars"] = rightChars;
+                }
                 if (pProps.KeepNext != null)
                 {
-                    node.Format["keepNext"] = true;
+                    var v = pProps.KeepNext.Val;
+                    node.Format["keepNext"] = v == null || v.Value;
                 }
                 if (pProps.KeepLines != null)
                 {
-                    node.Format["keepLines"] = true;
+                    var v = pProps.KeepLines.Val;
+                    node.Format["keepLines"] = v == null || v.Value;
                 }
                 if (pProps.PageBreakBefore != null)
-                    node.Format["pageBreakBefore"] = true;
+                {
+                    var v = pProps.PageBreakBefore.Val;
+                    node.Format["pageBreakBefore"] = v == null || v.Value;
+                }
                 if (pProps.WidowControl != null)
                 {
                     // Val == null or Val == true means enabled; Val == false means explicitly disabled
                     var wcVal = pProps.WidowControl.Val;
                     node.Format["widowControl"] = wcVal == null || wcVal.Value;
                 }
+                if (pProps.ContextualSpacing != null)
+                {
+                    var csVal = pProps.ContextualSpacing.Val;
+                    node.Format["contextualSpacing"] = csVal == null || csVal.Value;
+                }
                 if (pProps.Shading != null)
                 {
-                    var shdVal = pProps.Shading.Val?.InnerText ?? "";
+                    // CONSISTENCY(canonical-keys): split shading into shading.val/.fill/.color sub-keys
+                    // matching the OOXML attribute structure. No compound semicolon string.
+                    var shdVal = pProps.Shading.Val?.InnerText;
                     var shdFill = pProps.Shading.Fill?.Value;
                     var shdColor = pProps.Shading.Color?.Value;
-                    if (string.Equals(shdVal, "clear", StringComparison.OrdinalIgnoreCase)
-                        && !string.IsNullOrEmpty(shdFill)
-                        && string.IsNullOrEmpty(shdColor))
-                    {
-                        node.Format["shd"] = ParseHelpers.FormatHexColor(shdFill);
-                    }
-                    else
-                    {
-                        var shdParts = new List<string>();
-                        if (!string.IsNullOrEmpty(shdVal)) shdParts.Add(shdVal);
-                        if (!string.IsNullOrEmpty(shdFill)) shdParts.Add(ParseHelpers.FormatHexColor(shdFill));
-                        if (!string.IsNullOrEmpty(shdColor)) shdParts.Add(ParseHelpers.FormatHexColor(shdColor));
-                        node.Format["shd"] = string.Join(";", shdParts);
-                    }
+                    if (!string.IsNullOrEmpty(shdVal)) node.Format["shading.val"] = shdVal;
+                    if (!string.IsNullOrEmpty(shdFill)) node.Format["shading.fill"] = ParseHelpers.FormatHexColor(shdFill);
+                    if (!string.IsNullOrEmpty(shdColor)) node.Format["shading.color"] = ParseHelpers.FormatHexColor(shdColor);
                 }
 
                 var pBdr = pProps.ParagraphBorders;
@@ -585,14 +955,44 @@ public partial class WordHandler
                         node.Format["numId"] = numIdVal.ToString();
                         var ilvlVal = numProps.NumberingLevelReference?.Val?.Value ?? 0;
                         node.Format["numLevel"] = ilvlVal.ToString();
-                        var numFmt = GetNumberingFormat(numIdVal, ilvlVal);
-                        node.Format["numFmt"] = numFmt;
-                        node.Format["listStyle"] = numFmt.ToLowerInvariant() == "bullet" ? "bullet" : "ordered";
-                        var start = GetStartValue(numIdVal, ilvlVal);
-                        if (start != null)
-                            node.Format["start"] = start.Value;
+                        // numId=0 is the OOXML "remove numbering" sentinel — the paragraph
+                        // explicitly opts out of any inherited list style. Skip numFmt /
+                        // listStyle / start lookup so Get does not falsely advertise a list.
+                        if (numIdVal != 0)
+                        {
+                            var numFmt = GetNumberingFormat(numIdVal, ilvlVal);
+                            node.Format["numFmt"] = numFmt;
+                            node.Format["listStyle"] = numFmt.ToLowerInvariant() == "bullet" ? "bullet" : "ordered";
+                            var start = GetStartValue(numIdVal, ilvlVal);
+                            if (start != null)
+                                node.Format["start"] = start.Value;
+                        }
                     }
                 }
+
+                // CONSISTENCY(outline-lvl): backfilled from style Get edc8f884. Paragraph-level outlineLvl overrides style.
+                if (pProps.OutlineLevel?.Val?.Value != null)
+                    node.Format["outlineLvl"] = (int)pProps.OutlineLevel.Val.Value;
+
+                // CONSISTENCY(tabs): backfilled from style Get edc8f884.
+                if (pProps.Tabs != null)
+                {
+                    var tabList = new List<Dictionary<string, object?>>();
+                    foreach (var tab in pProps.Tabs.Elements<TabStop>())
+                    {
+                        var t = new Dictionary<string, object?>();
+                        if (tab.Position?.Value != null) t["pos"] = tab.Position.Value;
+                        if (tab.Val?.HasValue == true) t["val"] = tab.Val.InnerText;
+                        if (tab.Leader?.HasValue == true) t["leader"] = tab.Leader.InnerText;
+                        if (t.Count > 0) tabList.Add(t);
+                    }
+                    if (tabList.Count > 0) node.Format["tabs"] = tabList;
+                }
+
+                // Long-tail fallback: surface every pPr child the curated reader
+                // didn't consume. Symmetric with the Set-side TryCreateTypedChild
+                // fallback in SetElementParagraph (WordHandler.Set.Element.cs).
+                FillUnknownChildProps(pProps, node);
             }
 
             // First-run formatting on the paragraph node (like PPTX does for shapes).
@@ -606,9 +1006,21 @@ public partial class WordHandler
                 RunProperties? rp = paraRp as RunProperties ?? null;
                 ParagraphMarkRunProperties? markRp = paraRp as ParagraphMarkRunProperties ?? null;
 
-                // Helper lambdas to read from whichever source is available
-                var pFont = (rp?.RunFonts ?? markRp?.GetFirstChild<RunFonts>())?.Ascii?.Value;
-                if (pFont != null && !node.Format.ContainsKey("font")) node.Format["font"] = pFont;
+                // CONSISTENCY(canonical-keys): mirror style Get (WordHandler.Query.cs:546-553) —
+                // emit per-script font slots, no flat "font" alias. R6 BUG-1: previously only
+                // emitted Ascii under "font" key, dropping eastAsia/hAnsi/cs slots.
+                var pRunFonts = rp?.RunFonts ?? markRp?.GetFirstChild<RunFonts>();
+                if (pRunFonts != null)
+                {
+                    if (pRunFonts.Ascii?.Value != null && !node.Format.ContainsKey("font.ascii"))
+                        node.Format["font.ascii"] = pRunFonts.Ascii.Value;
+                    if (pRunFonts.EastAsia?.Value != null && !node.Format.ContainsKey("font.eastAsia"))
+                        node.Format["font.eastAsia"] = pRunFonts.EastAsia.Value;
+                    if (pRunFonts.HighAnsi?.Value != null && !node.Format.ContainsKey("font.hAnsi"))
+                        node.Format["font.hAnsi"] = pRunFonts.HighAnsi.Value;
+                    if (pRunFonts.ComplexScript?.Value != null && !node.Format.ContainsKey("font.cs"))
+                        node.Format["font.cs"] = pRunFonts.ComplexScript.Value;
+                }
 
                 var fsVal = rp?.FontSize?.Val?.Value ?? markRp?.GetFirstChild<FontSize>()?.Val?.Value;
                 if (fsVal != null && !node.Format.ContainsKey("size"))
@@ -629,6 +1041,9 @@ public partial class WordHandler
                 var ulEl = rp?.Underline ?? markRp?.GetFirstChild<Underline>();
                 if (ulEl?.Val != null && !node.Format.ContainsKey("underline"))
                     node.Format["underline"] = ulEl.Val.InnerText;
+                // CONSISTENCY(underline-color): backfilled from style Get edc8f884.
+                if (ulEl?.Color?.Value != null && !node.Format.ContainsKey("underline.color"))
+                    node.Format["underline.color"] = ParseHelpers.FormatHexColor(ulEl.Color.Value);
 
                 var strikeEl = rp?.Strike ?? (OpenXmlLeafElement?)markRp?.GetFirstChild<Strike>();
                 if (strikeEl != null && !node.Format.ContainsKey("strike")) node.Format["strike"] = true;
@@ -655,8 +1070,17 @@ public partial class WordHandler
         {
             node.Type = "run";
             node.Text = GetRunText(run);
-            var font = GetRunFont(run);
-            if (font != null) node.Format["font"] = font;
+            // CONSISTENCY(canonical-keys): mirror style Get (WordHandler.Query.cs:546-553) —
+            // emit per-script font slots, no flat "font" alias. R6 BUG-1: previously
+            // collapsed all 4 slots into a single "font" via GetRunFont (Ascii first).
+            var rFonts = run.RunProperties?.RunFonts;
+            if (rFonts != null)
+            {
+                if (rFonts.Ascii?.Value != null) node.Format["font.ascii"] = rFonts.Ascii.Value;
+                if (rFonts.EastAsia?.Value != null) node.Format["font.eastAsia"] = rFonts.EastAsia.Value;
+                if (rFonts.HighAnsi?.Value != null) node.Format["font.hAnsi"] = rFonts.HighAnsi.Value;
+                if (rFonts.ComplexScript?.Value != null) node.Format["font.cs"] = rFonts.ComplexScript.Value;
+            }
             var size = GetRunFontSize(run);
             if (size != null) node.Format["size"] = size;
             if (run.RunProperties?.Bold != null) node.Format["bold"] = true;
@@ -664,6 +1088,9 @@ public partial class WordHandler
             if (run.RunProperties?.Color?.Val?.Value != null) node.Format["color"] = ParseHelpers.FormatHexColor(run.RunProperties.Color.Val.Value);
             else if (run.RunProperties?.Color?.ThemeColor?.HasValue == true) node.Format["color"] = run.RunProperties.Color.ThemeColor.InnerText;
             if (run.RunProperties?.Underline?.Val != null) node.Format["underline"] = run.RunProperties.Underline.Val.InnerText;
+            // CONSISTENCY(underline-color): backfilled from style Get edc8f884.
+            if (run.RunProperties?.Underline?.Color?.Value != null)
+                node.Format["underline.color"] = ParseHelpers.FormatHexColor(run.RunProperties.Underline.Color.Value);
             if (run.RunProperties?.Strike != null) node.Format["strike"] = true;
             if (run.RunProperties?.Highlight?.Val != null) node.Format["highlight"] = run.RunProperties.Highlight.Val.InnerText;
             if (run.RunProperties?.Caps != null) node.Format["caps"] = true;
@@ -688,6 +1115,10 @@ public partial class WordHandler
             }
             // w14 text effects
             ReadW14TextEffects(run.RunProperties, node);
+            // Long-tail fallback: surface every rPr child the curated reader
+            // didn't consume. Symmetric with the Set-side TryCreateTypedChild
+            // fallback in SetElementRun (WordHandler.Set.Element.cs).
+            FillUnknownChildProps(run.RunProperties, node);
             // Image properties if run contains a Drawing
             var runDrawing = run.GetFirstChild<Drawing>();
             if (runDrawing != null)
@@ -748,7 +1179,10 @@ public partial class WordHandler
                 try
                 {
                     var rel = _doc.MainDocumentPart?.HyperlinkRelationships.FirstOrDefault(r => r.Id == hlParent.Id.Value);
-                    if (rel != null) node.Format["link"] = rel.Uri.ToString();
+                    // CONSISTENCY(docx-hyperlink-canonical-url): schema docx/hyperlink.json
+                    // declares `url` as the canonical key; `link` is accepted as an input
+                    // alias by Add/Set but Get normalizes output to `url`.
+                    if (rel != null) node.Format["url"] = rel.Uri.ToString();
                 }
                 catch { }
             }
@@ -769,7 +1203,8 @@ public partial class WordHandler
                 {
                     var rel = _doc.MainDocumentPart?.HyperlinkRelationships
                         .FirstOrDefault(r => r.Id == relId);
-                    if (rel != null) node.Format["link"] = rel.Uri.ToString();
+                    // CONSISTENCY(docx-hyperlink-canonical-url): see note above.
+                    if (rel != null) node.Format["url"] = rel.Uri.ToString();
                 }
                 catch { }
             }
@@ -786,6 +1221,9 @@ public partial class WordHandler
                 if (rp.Color?.Val?.Value != null) node.Format["color"] = ParseHelpers.FormatHexColor(rp.Color.Val.Value);
                 else if (rp.Color?.ThemeColor?.HasValue == true) node.Format["color"] = rp.Color.ThemeColor.InnerText;
                 if (rp.Underline?.Val != null) node.Format["underline"] = rp.Underline.Val.InnerText;
+                // CONSISTENCY(underline-color): backfilled from style Get edc8f884.
+                if (rp.Underline?.Color?.Value != null)
+                    node.Format["underline.color"] = ParseHelpers.FormatHexColor(rp.Underline.Color.Value);
                 if (rp.Strike != null) node.Format["strike"] = true;
                 if (rp.Highlight?.Val != null) node.Format["highlight"] = rp.Highlight.Val.InnerText;
             }
@@ -875,17 +1313,26 @@ public partial class WordHandler
                                 Path = $"{path}/tr[{rowIdx + 1}]/tc[{cellIdx + 1}]",
                                 Type = "cell",
                                 Text = string.Join("", cell.Descendants<Text>().Select(t => t.Text)),
-                                ChildCount = cell.Elements<Paragraph>().Count()
+                                // CONSISTENCY(cell-children): include nested Table children alongside Paragraphs.
+                                ChildCount = cell.Elements<OpenXmlElement>().Count(e => e is Paragraph || e is Table)
                             };
                             ReadCellProps(cell, cellNode);
                             if (depth > 2)
                             {
-                                int pIdx = 0;
-                                foreach (var cellPara in cell.Elements<Paragraph>())
+                                int cellPIdx = 0, cellTblIdx = 0;
+                                foreach (var cellChild in cell.Elements<OpenXmlElement>())
                                 {
-                                    var cParaSegment = BuildParaPathSegment(cellPara, pIdx + 1);
-                                    cellNode.Children.Add(ElementToNode(cellPara, $"{path}/tr[{rowIdx + 1}]/tc[{cellIdx + 1}]/{cParaSegment}", depth - 3));
-                                    pIdx++;
+                                    if (cellChild is Paragraph cellPara)
+                                    {
+                                        cellPIdx++;
+                                        var cParaSegment = BuildParaPathSegment(cellPara, cellPIdx);
+                                        cellNode.Children.Add(ElementToNode(cellPara, $"{path}/tr[{rowIdx + 1}]/tc[{cellIdx + 1}]/{cParaSegment}", depth - 3));
+                                    }
+                                    else if (cellChild is Table cellTbl)
+                                    {
+                                        cellTblIdx++;
+                                        cellNode.Children.Add(ElementToNode(cellTbl, $"{path}/tr[{rowIdx + 1}]/tc[{cellIdx + 1}]/tbl[{cellTblIdx}]", depth - 3));
+                                    }
                                 }
                             }
                             rowNode.Children.Add(cellNode);
@@ -901,16 +1348,25 @@ public partial class WordHandler
         {
             node.Type = "cell";
             node.Text = string.Join("", directCell.Descendants<Text>().Select(t => t.Text));
-            node.ChildCount = directCell.Elements<Paragraph>().Count();
+            // CONSISTENCY(cell-children): include nested Table children alongside Paragraphs.
+            node.ChildCount = directCell.Elements<OpenXmlElement>().Count(e => e is Paragraph || e is Table);
             ReadCellProps(directCell, node);
             if (depth > 0)
             {
-                int pIdx = 0;
-                foreach (var cellPara in directCell.Elements<Paragraph>())
+                int dcPIdx = 0, dcTblIdx = 0;
+                foreach (var dcChild in directCell.Elements<OpenXmlElement>())
                 {
-                    var dcParaSegment = BuildParaPathSegment(cellPara, pIdx + 1);
-                    node.Children.Add(ElementToNode(cellPara, $"{path}/{dcParaSegment}", depth - 1));
-                    pIdx++;
+                    if (dcChild is Paragraph cellPara)
+                    {
+                        dcPIdx++;
+                        var dcParaSegment = BuildParaPathSegment(cellPara, dcPIdx);
+                        node.Children.Add(ElementToNode(cellPara, $"{path}/{dcParaSegment}", depth - 1));
+                    }
+                    else if (dcChild is Table dcTbl)
+                    {
+                        dcTblIdx++;
+                        node.Children.Add(ElementToNode(dcTbl, $"{path}/tbl[{dcTblIdx}]", depth - 1));
+                    }
                 }
             }
         }
@@ -929,17 +1385,26 @@ public partial class WordHandler
                         Path = $"{path}/tc[{cellIdx + 1}]",
                         Type = "cell",
                         Text = string.Join("", cell.Descendants<Text>().Select(t => t.Text)),
-                        ChildCount = cell.Elements<Paragraph>().Count()
+                        // CONSISTENCY(cell-children): include nested Table children alongside Paragraphs.
+                        ChildCount = cell.Elements<OpenXmlElement>().Count(e => e is Paragraph || e is Table)
                     };
                     ReadCellProps(cell, cellNode);
                     if (depth > 1)
                     {
-                        int pIdx = 0;
-                        foreach (var cellPara in cell.Elements<Paragraph>())
+                        int drPIdx = 0, drTblIdx = 0;
+                        foreach (var drChild in cell.Elements<OpenXmlElement>())
                         {
-                            var drParaSegment = BuildParaPathSegment(cellPara, pIdx + 1);
-                            cellNode.Children.Add(ElementToNode(cellPara, $"{path}/tc[{cellIdx + 1}]/{drParaSegment}", depth - 2));
-                            pIdx++;
+                            if (drChild is Paragraph cellPara)
+                            {
+                                drPIdx++;
+                                var drParaSegment = BuildParaPathSegment(cellPara, drPIdx);
+                                cellNode.Children.Add(ElementToNode(cellPara, $"{path}/tc[{cellIdx + 1}]/{drParaSegment}", depth - 2));
+                            }
+                            else if (drChild is Table drTbl)
+                            {
+                                drTblIdx++;
+                                cellNode.Children.Add(ElementToNode(drTbl, $"{path}/tc[{cellIdx + 1}]/tbl[{drTblIdx}]", depth - 2));
+                            }
                         }
                     }
                     node.Children.Add(cellNode);
@@ -963,11 +1428,11 @@ public partial class WordHandler
                 if (sdtId?.Val?.Value != null) node.Format["id"] = sdtId.Val.Value;
 
                 // Determine SDT type (check specific types first, text last as fallback)
-                if (sdtProps.GetFirstChild<SdtContentDropDownList>() != null) node.Format["sdtType"] = "dropdown";
-                else if (sdtProps.GetFirstChild<SdtContentComboBox>() != null) node.Format["sdtType"] = "combobox";
-                else if (sdtProps.GetFirstChild<SdtContentDate>() != null) node.Format["sdtType"] = "date";
-                else if (sdtProps.GetFirstChild<SdtContentText>() != null) node.Format["sdtType"] = "text";
-                else node.Format["sdtType"] = "richtext";
+                if (sdtProps.GetFirstChild<SdtContentDropDownList>() != null) node.Format["type"] = "dropdown";
+                else if (sdtProps.GetFirstChild<SdtContentComboBox>() != null) node.Format["type"] = "combobox";
+                else if (sdtProps.GetFirstChild<SdtContentDate>() != null) node.Format["type"] = "date";
+                else if (sdtProps.GetFirstChild<SdtContentText>() != null) node.Format["type"] = "text";
+                else node.Format["type"] = "richtext";
 
                 // Read date format for date controls
                 var dateContent = sdtProps.GetFirstChild<SdtContentDate>();
@@ -1015,11 +1480,11 @@ public partial class WordHandler
                 var sdtId = sdtProps.GetFirstChild<SdtId>();
                 if (sdtId?.Val?.Value != null) node.Format["id"] = sdtId.Val.Value;
 
-                if (sdtProps.GetFirstChild<SdtContentDropDownList>() != null) node.Format["sdtType"] = "dropdown";
-                else if (sdtProps.GetFirstChild<SdtContentComboBox>() != null) node.Format["sdtType"] = "combobox";
-                else if (sdtProps.GetFirstChild<SdtContentDate>() != null) node.Format["sdtType"] = "date";
-                else if (sdtProps.GetFirstChild<SdtContentText>() != null) node.Format["sdtType"] = "text";
-                else node.Format["sdtType"] = "richtext";
+                if (sdtProps.GetFirstChild<SdtContentDropDownList>() != null) node.Format["type"] = "dropdown";
+                else if (sdtProps.GetFirstChild<SdtContentComboBox>() != null) node.Format["type"] = "combobox";
+                else if (sdtProps.GetFirstChild<SdtContentDate>() != null) node.Format["type"] = "date";
+                else if (sdtProps.GetFirstChild<SdtContentText>() != null) node.Format["type"] = "text";
+                else node.Format["type"] = "richtext";
 
                 // Editable status
                 node.Format["editable"] = IsSdtEditable(sdtProps);
@@ -1081,6 +1546,57 @@ public partial class WordHandler
                     var paraSegment = BuildParaPathSegment(hfPara, pIdx + 1);
                     node.Children.Add(ElementToNode(hfPara, $"{path}/{paraSegment}", depth - 1));
                     pIdx++;
+                }
+            }
+        }
+        else if (element is Body bodyNode)
+        {
+            // CONSISTENCY(body-listing): enumerate body children using the
+            // same p[N]/oMathPara[M] counting rules as NavigateToElement so
+            // `get /body` emits paths that `get <path>` can resolve. The
+            // generic fallback would count every LocalName, listing wrapper
+            // <w:p> (pure oMathPara) as p[2] even though the resolver skips
+            // them. Mirrors the logic in WordHandler.View.ViewAsText.
+            node.ChildCount = bodyNode.ChildElements.Count;
+            if (depth > 0)
+            {
+                int pIdx = 0, tblIdx = 0, mathParaIdx = 0, sdtIdx = 0;
+                foreach (var child in bodyNode.ChildElements)
+                {
+                    if (child.LocalName == "oMathPara" || child is M.Paragraph)
+                    {
+                        mathParaIdx++;
+                        node.Children.Add(ElementToNode(child, $"{path}/oMathPara[{mathParaIdx}]", depth - 1));
+                    }
+                    else if (child is Paragraph bPara)
+                    {
+                        if (IsOMathParaWrapperParagraph(bPara))
+                        {
+                            mathParaIdx++;
+                            node.Children.Add(ElementToNode(bPara, $"{path}/oMathPara[{mathParaIdx}]", depth - 1));
+                        }
+                        else
+                        {
+                            pIdx++;
+                            var bSeg = BuildParaPathSegment(bPara, pIdx);
+                            node.Children.Add(ElementToNode(bPara, $"{path}/{bSeg}", depth - 1));
+                        }
+                    }
+                    else if (child is Table)
+                    {
+                        tblIdx++;
+                        node.Children.Add(ElementToNode(child, $"{path}/tbl[{tblIdx}]", depth - 1));
+                    }
+                    else if (child is SdtBlock)
+                    {
+                        sdtIdx++;
+                        node.Children.Add(ElementToNode(child, $"{path}/sdt[{sdtIdx}]", depth - 1));
+                    }
+                    else
+                    {
+                        // Non-structural (sectPr etc.) — keep localName naming
+                        node.Children.Add(ElementToNode(child, $"{path}/{child.LocalName}[1]", depth - 1));
+                    }
                 }
             }
         }
@@ -1206,7 +1722,7 @@ public partial class WordHandler
                 node.Format["vmerge"] = tcPr.VerticalMerge.Val?.Value == MergedCellValues.Restart ? "restart" : "continue";
             // Grid span
             if (tcPr.GridSpan?.Val?.Value != null && tcPr.GridSpan.Val.Value > 1)
-                node.Format["gridSpan"] = tcPr.GridSpan.Val.Value;
+                node.Format["colspan"] = tcPr.GridSpan.Val.Value;
             // Cell padding/margins
             var mar = tcPr.TableCellMargin;
             if (mar != null)
@@ -1240,6 +1756,9 @@ public partial class WordHandler
             if (rPr.Color?.Val?.Value != null) node.Format["color"] = ParseHelpers.FormatHexColor(rPr.Color.Val.Value);
             else if (rPr.Color?.ThemeColor?.HasValue == true) node.Format["color"] = rPr.Color.ThemeColor.InnerText;
             if (rPr.Underline?.Val != null) node.Format["underline"] = rPr.Underline.Val.InnerText;
+            // CONSISTENCY(underline-color): backfilled from style Get edc8f884.
+            if (rPr.Underline?.Color?.Value != null)
+                node.Format["underline.color"] = ParseHelpers.FormatHexColor(rPr.Underline.Color.Value);
             if (rPr.Strike != null) node.Format["strike"] = true;
             if (rPr.Highlight?.Val != null) node.Format["highlight"] = rPr.Highlight.Val.InnerText;
         }
@@ -1248,14 +1767,65 @@ public partial class WordHandler
     private static void ReadBorder(BorderType? border, string key, DocumentNode node)
     {
         if (border?.Val == null) return;
-        var style = border.Val?.InnerText ?? "none";
-        var size = border.Size?.Value ?? 0u;
-        var color = border.Color?.Value;
-        var space = border.Space?.Value ?? 0u;
-        var parts = new List<string> { style };
-        if (size > 0 || color != null || space > 0) parts.Add(size.ToString());
-        if (color != null || space > 0) parts.Add(color is not null ? ParseHelpers.FormatHexColor(color) : "auto");
-        if (space > 0) parts.Add(space.ToString());
-        node.Format[key] = string.Join(";", parts);
+        // CONSISTENCY(canonical-keys): emit val on the parent key plus .sz/.color/.space sub-keys
+        // (matches Excel border.* schema). No compound semicolon-joined string — that was a private
+        // encoding that diverged from both OOXML and the rest of the project.
+        node.Format[key] = border.Val?.InnerText ?? "none";
+        if (border.Size?.Value is uint sz) node.Format[$"{key}.sz"] = sz;
+        if (border.Color?.Value is { } c) node.Format[$"{key}.color"] = ParseHelpers.FormatHexColor(c);
+        if (border.Space?.Value is uint sp) node.Format[$"{key}.space"] = sp;
+    }
+
+    // OOXML localNames that curated style/paragraph/run readers already map
+    // to canonical keys. FillUnknownChildProps skips these so the long-tail
+    // fallback doesn't re-expose them under their bare OOXML names alongside
+    // the canonical key (e.g. avoid emitting both `bold: true` and `b: true`).
+    private static readonly System.Collections.Generic.HashSet<string> CuratedStyleLocalNames =
+        new(System.StringComparer.Ordinal)
+    {
+        // rPr-side (covered by curated style/paragraph/run readers)
+        "b", "bCs", "i", "iCs", "sz", "szCs", "u", "color", "strike", "rFonts",
+        "highlight", "caps", "smallCaps", "dstrike", "vanish",
+        "outline", "shadow", "emboss", "imprint", "noProof", "rtl",
+        "vertAlign", "spacing", "shd",
+        // pPr-side
+        "jc", "ind", "outlineLvl", "widowControl",
+        "keepNext", "keepLines", "pageBreakBefore", "contextualSpacing",
+        "pBdr", "numPr", "tabs", "pStyle",
+    };
+
+    // Long-tail OOXML fallback: walk a properties container (rPr/pPr/...) and
+    // surface every leaf child whose localName isn't already covered by the
+    // curated reader. Shape is symmetric with GenericXmlQuery.TryCreateTypedChild
+    // on the Set side: child-with-val → Format[name]=val; toggle (no attrs) →
+    // Format[name]=true. Multi-attribute / nested children are skipped — the
+    // generic Set path can't write them, so exposing them would produce keys
+    // that don't round-trip.
+    private static void FillUnknownChildProps(OpenXmlElement? container, DocumentNode node)
+    {
+        if (container == null) return;
+        foreach (var child in container.ChildElements)
+        {
+            var name = child.LocalName;
+            if (string.IsNullOrEmpty(name)) continue;
+            if (CuratedStyleLocalNames.Contains(name)) continue;
+            if (node.Format.ContainsKey(name)) continue;
+            if (child.ChildElements.Count > 0) continue;
+
+            string? valAttr = null;
+            int attrCount = 0;
+            foreach (var a in child.GetAttributes())
+            {
+                attrCount++;
+                if (a.LocalName.Equals("val", System.StringComparison.OrdinalIgnoreCase))
+                    valAttr = a.Value;
+            }
+            if (valAttr != null)
+                node.Format[name] = valAttr;
+            else if (attrCount == 0)
+                node.Format[name] = true;
+            // else: complex multi-attribute element — skip, curated reader
+            // is expected to cover it (e.g. rFonts is in CuratedStyleLocalNames).
+        }
     }
 }

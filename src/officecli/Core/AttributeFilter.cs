@@ -150,6 +150,18 @@ internal static class AttributeFilter
     /// Warns when: a filter key doesn't exist in ANY node's Format,
     /// or when >= / <= / > / < is used on a non-numeric value.
     /// </summary>
+    /// <summary>
+    /// Rewrite conditions' keys through <paramref name="keyResolver"/>. Used so
+    /// handler-level alias maps (e.g. Excel cell: bold -> font.bold) also apply
+    /// when AttributeFilter post-filters against DocumentNode.Format in the CLI
+    /// query pipeline.
+    /// </summary>
+    public static List<Condition> NormalizeKeys(List<Condition> conditions, Func<string, string> keyResolver)
+    {
+        if (conditions.Count == 0) return conditions;
+        return conditions.Select(c => new Condition(keyResolver(c.Key), c.Op, c.Value)).ToList();
+    }
+
     public static (List<DocumentNode> Results, List<string> Warnings) ApplyWithWarnings(
         List<DocumentNode> nodes, List<Condition> conditions, bool applyAll = true)
     {

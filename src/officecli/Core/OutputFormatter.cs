@@ -89,6 +89,7 @@ internal static class WarningContext
 [JsonSerializable(typeof(List<DocumentNode>))]
 [JsonSerializable(typeof(List<DocumentIssue>))]
 [JsonSerializable(typeof(Dictionary<string, object?>))]
+[JsonSerializable(typeof(List<Dictionary<string, object?>>))]
 [JsonSerializable(typeof(bool))]
 [JsonSerializable(typeof(int))]
 [JsonSerializable(typeof(long))]
@@ -393,10 +394,41 @@ internal static class OutputFormatter
         {
             // style is already shown via node.Style; skip duplicate
             if (key == "style" && node.Style != null) continue;
-            sb.Append($" {key}={val}");
+            sb.Append($" {key}={FormatNodeValue(val)}");
         }
 
         return sb.ToString();
+    }
+
+    // Render a Format value for the one-line text output. Most values are
+    // primitives whose ToString is already correct, but some readers store
+    // structured values (e.g. paragraph `tabs` is a List<Dictionary>) and
+    // those need explicit formatting — the default ToString prints
+    // "System.Collections.Generic.List`1[...]" which is useless to users.
+    private static string FormatNodeValue(object? val)
+    {
+        if (val == null) return "";
+        if (val is string s) return s;
+        if (val is System.Collections.IEnumerable e and not string)
+        {
+            var parts = new List<string>();
+            foreach (var item in e)
+            {
+                if (item is System.Collections.IDictionary d)
+                {
+                    var kvs = new List<string>();
+                    foreach (System.Collections.DictionaryEntry de in d)
+                        kvs.Add($"{de.Key}={de.Value}");
+                    parts.Add("{" + string.Join(",", kvs) + "}");
+                }
+                else
+                {
+                    parts.Add(item?.ToString() ?? "");
+                }
+            }
+            return "[" + string.Join(",", parts) + "]";
+        }
+        return val.ToString() ?? "";
     }
 
 }

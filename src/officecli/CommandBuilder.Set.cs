@@ -155,7 +155,11 @@ static partial class CommandBuilder
             foreach (var ac in autoCorrected)
                 applied.Add(new KeyValuePair<string, string>(ac.Corrected, ac.Value));
 
-            // Get find match count if applicable
+            // Get find match count if applicable.
+            // CONSISTENCY(find-match-count): mirrored in ResidentServer.ExecuteSet.
+            // The resident path is hit whenever a resident process is open
+            // (which `create` does by default), so both sites must surface
+            // findMatchCount + zero_matches warning identically.
             int? findMatchCount = null;
             if (properties.ContainsKey("find"))
             {
@@ -186,6 +190,15 @@ static partial class CommandBuilder
             if (json)
             {
                 var allWarnings = new List<OfficeCli.Core.CliWarning>();
+                if (findMatchCount is 0)
+                {
+                    allWarnings.Add(new OfficeCli.Core.CliWarning
+                    {
+                        Message = $"find pattern matched 0 occurrences at {path} — original text may have been edited or the path is wrong",
+                        Code = "zero_matches",
+                        Suggestion = "verify the path still resolves and the find text is current"
+                    });
+                }
                 foreach (var ac in autoCorrected)
                 {
                     allWarnings.Add(new OfficeCli.Core.CliWarning
@@ -235,6 +248,8 @@ static partial class CommandBuilder
                 foreach (var ac in autoCorrected)
                     Console.Error.WriteLine($"WARNING: Auto-corrected '{ac.Original}' to '{ac.Corrected}'");
                 Console.WriteLine(message);
+                if (findMatchCount is 0)
+                    Console.Error.WriteLine($"WARNING: find pattern matched 0 occurrences at {path}");
                 if (setSpatialLine != null) Console.WriteLine($"  {setSpatialLine}");
                 if (setOverlaps.Count > 0)
                     Console.Error.WriteLine($"  WARNING: Same position as {string.Join(", ", setOverlaps)}");

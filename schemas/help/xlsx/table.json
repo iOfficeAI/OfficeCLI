@@ -1,0 +1,130 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "table",
+  "parent": "sheet",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/SheetName/table[N]"]
+  },
+  "note": "Aliases: listobject. 'ref' (alias 'range') required: cell range like 'A1:C10'. Rejects ranges that overlap existing tables. Names sanitized; style validated against built-in/custom whitelist.",
+  "properties": {
+    "ref": {
+      "type": "string",
+      "description": "cell range reference (A1:C10). Required. Alias: range.",
+      "aliases": ["range"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop ref=A1:C10"],
+      "readback": "range string",
+      "enforcement": "report"
+    },
+    "name": {
+      "type": "string",
+      "description": "table identifier (sanitized). Defaults to 'TableN'.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop name=SalesData"],
+      "readback": "identifier",
+      "enforcement": "report"
+    },
+    "displayName": {
+      "type": "string",
+      "description": "Excel UI display name. Defaults to name.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop displayName=SalesData"],
+      "readback": "display name",
+      "enforcement": "report"
+    },
+    "style": {
+      "type": "string",
+      "description": "built-in or workbook custom table style name. Defaults to TableStyleMedium2.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop style=TableStyleMedium2"],
+      "readback": "style name",
+      "enforcement": "report"
+    },
+    "headerRow": {
+      "type": "bool",
+      "description": "show header row. Alias: showHeader.",
+      "aliases": ["showHeader"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop headerRow=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "totalRow": {
+      "type": "bool",
+      "description": "show total row. Alias: showTotals.",
+      "aliases": ["showTotals"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop totalRow=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "autoExpand": {
+      "type": "bool",
+      "description": "auto-expand range downward through contiguous non-empty rows at Add time.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop autoExpand=true"],
+      "readback": "affects range at Add time",
+      "enforcement": "report"
+    },
+    "showFirstColumn": {
+      "type": "bool",
+      "description": "highlight the first column with the table style. Alias: firstColumn.",
+      "aliases": ["firstColumn"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop showFirstColumn=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "showLastColumn": {
+      "type": "bool",
+      "description": "highlight the last column with the table style. Alias: lastColumn.",
+      "aliases": ["lastColumn"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop showLastColumn=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "showRowStripes": {
+      "type": "bool",
+      "description": "alternate-row banding from the table style. Default: true. Aliases: showBandedRows, bandedRows, bandRows.",
+      "aliases": ["showBandedRows", "bandedRows", "bandRows"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop showRowStripes=false"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "showColumnStripes": {
+      "type": "bool",
+      "description": "alternate-column banding from the table style. Default: false. Aliases: showBandedColumns, bandedColumns, bandedCols, showColStripes, bandCols.",
+      "aliases": ["showBandedColumns", "bandedColumns", "bandedCols", "showColStripes", "bandCols"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop showColumnStripes=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "columns": {
+      "type": "string",
+      "description": "comma-separated column header names overriding A1, B1, ... defaults.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop columns=Name,Qty,Price"],
+      "readback": "applied at Add time",
+      "enforcement": "report"
+    },
+    "totalsRowFunction": {
+      "type": "string",
+      "description": "comma-separated per-column totals row functions (none|sum|average|count|countNums|max|min|stdDev|var|custom). Effective only when totalRow=true.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop totalsRowFunction=none,sum,average"],
+      "readback": "per-column tokens",
+      "enforcement": "report"
+    }
+  }
+}

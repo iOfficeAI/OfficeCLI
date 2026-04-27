@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using OfficeCli.Core;
 using OfficeCli.Handlers;
+using OfficeCli.Help;
 
 namespace OfficeCli;
 
@@ -491,7 +492,19 @@ public class ResidentServer : IDisposable
                     : isFailure
                         ? OutputFormatter.WrapEnvelopeError(stdout, warnings)
                         : OutputFormatter.WrapEnvelopeText(stdout, warnings);
-                return MakeResponse(0, envelope, "");
+                // BUG-R11-03: JSON-mode exit code must match text mode. Previously
+                // hard-coded to 0, which silently swallowed every error type
+                // (path-not-found, unsupported_property, failed open) for any
+                // resident --json call. Map parity with text mode below:
+                //   - envelope success:false                        -> 1
+                //   - stderr contains UNSUPPORTED (unsupported_property) -> 2
+                //   - otherwise                                      -> 0
+                int jsonExitCode = 0;
+                if (stderr.Contains("UNSUPPORTED"))
+                    jsonExitCode = 2;
+                else if (!EnvelopeSuccess(envelope))
+                    jsonExitCode = 1;
+                return MakeResponse(jsonExitCode, envelope, "");
             }
 
             int exitCode = stderr.Contains("UNSUPPORTED") ? 2 : 0;
@@ -499,17 +512,26 @@ public class ResidentServer : IDisposable
         }
         catch (Exception ex)
         {
+            // CONSISTENCY(error-wrap): mirror CommandBuilder.WriteError —
+            // surface a friendlier message when an OOXML part is externally
+            // corrupted, instead of the raw "Data at the root level is
+            // invalid. Line 1, position 1." XmlException leak (fuzz-3, fuzz-4).
+            var rendered = ex is System.Xml.XmlException xe
+                ? new InvalidDataException(
+                    $"Malformed XML in document part: {xe.Message} " +
+                    $"(the file appears to have a corrupted OOXML part).", xe)
+                : ex;
             if (request?.Json == true)
             {
                 // JSON mode: wrap error in envelope
-                return MakeResponse(1, OutputFormatter.WrapErrorEnvelope(ex), "");
+                return MakeResponse(1, OutputFormatter.WrapErrorEnvelope(rendered), "");
             }
             // BUG-R11-02: prefix the stderr string with the canonical
             // "Error: " marker so resident-mode error output matches the
             // non-resident CLI path (WriteError in Program.cs). Without
             // this, clients diffing stderr across modes would mis-detect
             // failures.
-            return MakeResponse(1, "", $"Error: {ex.Message}");
+            return MakeResponse(1, "", $"Error: {rendered.Message}");
         }
     }
 
@@ -517,6 +539,28 @@ public class ResidentServer : IDisposable
     {
         var trimmed = s.AsSpan().TrimStart();
         return trimmed.Length > 0 && (trimmed[0] == '{' || trimmed[0] == '[');
+    }
+
+    // BUG-R11-03 helper: inspect envelope JSON for the "success" field so
+    // resident JSON-mode exit codes track the envelope's actual success flag
+    // instead of always returning 0.
+    private static bool EnvelopeSuccess(string envelopeJson)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(envelopeJson);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                return true;
+            if (!doc.RootElement.TryGetProperty("success", out var s))
+                return true;
+            if (s.ValueKind == System.Text.Json.JsonValueKind.False) return false;
+            if (s.ValueKind == System.Text.Json.JsonValueKind.True) return true;
+            return true;
+        }
+        catch
+        {
+            return true; // malformed — don't synthesize a failure
+        }
     }
 
     private static List<CliWarning>? BuildWarnings(string stderr)
@@ -804,7 +848,26 @@ public class ResidentServer : IDisposable
         {
             if (_handler is OfficeCli.Handlers.PowerPointHandler pptSvgHandler)
             {
-                var slideNum = start ?? 1;
+                // CONSISTENCY(view-page): SVG mode honors --page like html mode; --page wins over --start.
+                int slideNum = 1;
+                if (!string.IsNullOrEmpty(pageFilter))
+                {
+                    var firstTok = pageFilter.Split(',')[0].Split('-')[0].Trim();
+                    // CONSISTENCY(strict-page): mirror CommandBuilder.View.cs
+                    // — reject non-positive --page values rather than
+                    // silently rendering slide 1.
+                    if (!int.TryParse(firstTok, out var p))
+                        throw new ArgumentException(
+                            $"Invalid --page value '{pageFilter}': expected a positive slide number.");
+                    if (p <= 0)
+                        throw new ArgumentException(
+                            $"Invalid --page value '{pageFilter}': slide number must be >= 1.");
+                    slideNum = p;
+                }
+                else if (start.HasValue && start.Value > 0)
+                {
+                    slideNum = start.Value;
+                }
                 var svg = pptSvgHandler.ViewAsSvg(slideNum);
                 Console.Write(svg);
             }
@@ -862,6 +925,13 @@ public class ResidentServer : IDisposable
         var depth = req.GetIntArg("depth") ?? 1;
         var node = _handler.Get(path, depth);
 
+        // CONSISTENCY(get-not-found-exit): mirror CommandBuilder.GetQuery.cs.
+        // Some handler Get paths surface "not found" via Type="error" rather
+        // than throwing. Convert to a real exception so the resident response
+        // exits non-zero, matching the direct-mode CLI behavior.
+        if (string.Equals(node.Type, "error", StringComparison.Ordinal))
+            throw new ArgumentException(node.Text ?? $"Path not found: {path}");
+
         // CONSISTENCY(get-save): mirror CommandBuilder.GetQuery.cs lines 59-74.
         // Direct-mode `get --save` extracts the binary payload backing an
         // ole/picture/media node to disk. Resident mode must honour the same
@@ -885,6 +955,14 @@ public class ResidentServer : IDisposable
     {
         var selector = req.GetArg("selector", "");
         var filters = AttributeFilter.Parse(selector);
+        // CONSISTENCY(cell-selector-alias): mirror the direct-mode normalization in
+        // CommandBuilder.GetQuery.cs — without this, resident-mode Excel cell queries
+        // with short aliases (bold, size, ...) silently drop every hit (BUG-R17-01).
+        if (_handler is ExcelHandler
+            && selector.TrimStart().StartsWith("cell", StringComparison.OrdinalIgnoreCase))
+        {
+            filters = AttributeFilter.NormalizeKeys(filters, ExcelHandler.ResolveCellAttributeAlias);
+        }
         var (results, warnings) = AttributeFilter.ApplyWithWarnings(_handler.Query(selector), filters);
         var textFilter = req.GetArgOrNull("text");
         if (!string.IsNullOrEmpty(textFilter))
@@ -902,15 +980,80 @@ public class ResidentServer : IDisposable
             .Select(u => u.Contains(' ') ? u[..u.IndexOf(' ')] : u)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var applied = properties.Where(kv => !unsupportedKeys.Contains(kv.Key)).ToList();
-        if (applied.Count > 0)
-            Console.WriteLine($"Updated {path}: {string.Join(", ", applied.Select(kv => $"{kv.Key}={kv.Value}"))}");
-        else if (unsupported.Count > 0)
-            Console.WriteLine($"No properties applied to {path}");
-        if (unsupported.Count > 0)
-            Console.Error.WriteLine($"UNSUPPORTED props (use raw-set instead): {string.Join(", ", unsupported)}");
+
+        // CONSISTENCY(find-match-count): mirrored in CommandBuilder.Set.cs.
+        // The resident path is hit whenever a resident process is open
+        // (which `create` does by default), so both sites must surface
+        // findMatchCount + zero_matches warning identically.
+        int? findMatchCount = null;
+        if (properties.ContainsKey("find"))
+        {
+            findMatchCount = _handler switch
+            {
+                WordHandler wh => wh.LastFindMatchCount,
+                PowerPointHandler ph => ph.LastFindMatchCount,
+                ExcelHandler eh => eh.LastFindMatchCount,
+                _ => null
+            };
+        }
+
+        var message = applied.Count > 0
+            ? $"Updated {path}: {string.Join(", ", applied.Select(kv => $"{kv.Key}={kv.Value}"))}"
+              + (findMatchCount.HasValue ? $" ({findMatchCount.Value} matched)" : "")
+            : (unsupported.Count > 0 ? $"No properties applied to {path}" : $"Updated {path}");
+
+        var warnings = new List<OfficeCli.Core.CliWarning>();
+        if (findMatchCount is 0)
+        {
+            warnings.Add(new OfficeCli.Core.CliWarning
+            {
+                Message = $"find pattern matched 0 occurrences at {path} — original text may have been edited or the path is wrong",
+                Code = "zero_matches",
+                Suggestion = "verify the path still resolves and the find text is current"
+            });
+        }
         var overflow = CommandBuilder.CheckTextOverflow(_handler, path);
         if (overflow != null)
-            Console.Error.WriteLine($"  WARNING: {overflow}");
+        {
+            warnings.Add(new OfficeCli.Core.CliWarning
+            {
+                Message = overflow,
+                Code = "text_overflow",
+                Suggestion = "Increase shape height/width, reduce font size, or shorten text"
+            });
+        }
+
+        if (req.Json)
+        {
+            bool allFailed = applied.Count == 0 && unsupported.Count > 0;
+            Console.WriteLine(allFailed
+                ? OutputFormatter.WrapEnvelopeError(message, warnings.Count > 0 ? warnings : null)
+                : OutputFormatter.WrapEnvelopeText(message, warnings.Count > 0 ? warnings : null, findMatchCount));
+        }
+        else
+        {
+            if (applied.Count > 0 || unsupported.Count > 0) Console.WriteLine(message);
+            if (findMatchCount is 0)
+                Console.Error.WriteLine($"WARNING: find pattern matched 0 occurrences at {path}");
+            if (overflow != null)
+                Console.Error.WriteLine($"  WARNING: {overflow}");
+        }
+
+        if (unsupported.Count > 0)
+        {
+            // /styles/<id> on Word: targeted curated hints, no raw-set push.
+            // See StyleUnsupportedHints + matching branch in CommandBuilder.
+            if (_handler is WordHandler
+                && path.StartsWith("/styles/", StringComparison.Ordinal))
+            {
+                var styleHint = OfficeCli.Core.StyleUnsupportedHints.Format(unsupported);
+                if (styleHint != null) Console.Error.WriteLine(styleHint);
+            }
+            else
+            {
+                Console.Error.WriteLine($"UNSUPPORTED props (use raw-set instead): {string.Join(", ", unsupported)}");
+            }
+        }
     }
 
     private void ExecuteAdd(ResidentRequest req)
@@ -928,11 +1071,56 @@ public class ResidentServer : IDisposable
         {
             var type = req.GetArg("type", "");
             var properties = req.GetProps();
+
+            // BUG(add-lies): schema-level pre-check so bogus --prop keys
+            // don't get silently swallowed by handler.Add. The UNSUPPORTED
+            // stderr line is how ProcessRequest (above) escalates exit
+            // code to 2 and sets the envelope warning code to
+            // "unsupported_property" — so emitting it here is enough to
+            // get parity with CLI-inline Add.
+            // CONSISTENCY(schema-prop-validation): mirrors the call site in
+            // CommandBuilder.Add.cs.
+            var fmt = SchemaHelpLoader.FormatForExtension(Path.GetExtension(_filePath));
+            var schemaUnsupported = fmt != null
+                ? SchemaHelpLoader.ValidateProperties(fmt, type, "add", properties)
+                : Array.Empty<string>();
+
+            // CONSISTENCY(no-double-unsupported): see CommandBuilder.Add.cs —
+            // strip schema-flagged keys before handler.Add so pivot / other
+            // helpers don't re-warn with different phrasing.
+            if (schemaUnsupported.Count > 0)
+            {
+                foreach (var u in schemaUnsupported)
+                    properties.Remove(u);
+            }
+
             var resultPath = _handler.Add(parentPath, type, position, properties);
             Console.WriteLine($"Added {type} at {resultPath}");
             var overflow = CommandBuilder.CheckTextOverflow(_handler, resultPath);
             if (overflow != null)
                 Console.Error.WriteLine($"  WARNING: {overflow}");
+
+            // Combine schema-level unsupported (caught before handler.Add) and
+            // handler-level silent-drop (e.g. AddStyle props that pass schema
+            // validation via the `font.` prefix but the curated AddStyle has
+            // no slot for, like `font.eastAsia`). Both surface to the user.
+            var allUnsupported = new List<string>(schemaUnsupported);
+            if (_handler is WordHandler residWh)
+                allUnsupported.AddRange(residWh.LastAddUnsupportedProps);
+
+            if (allUnsupported.Count > 0)
+            {
+                if (_handler is WordHandler)
+                {
+                    var scope = resultPath.StartsWith("/styles/", StringComparison.Ordinal) ? "/styles" : resultPath;
+                    var hint = OfficeCli.Core.StyleUnsupportedHints.Format(allUnsupported, scope);
+                    if (hint != null) Console.Error.WriteLine("WARNING: " + hint);
+                }
+                else
+                {
+                    Console.Error.WriteLine($"UNSUPPORTED props (use raw-set instead): {string.Join(", ", allUnsupported)}");
+                }
+            }
         }
     }
 

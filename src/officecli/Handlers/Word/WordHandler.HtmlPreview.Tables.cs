@@ -193,7 +193,13 @@ public partial class WordHandler
             // #7b00: mark tblHeader rows so the JS paginator can clone them
             // onto every continuation page when a long table spans pages.
             var hdrMarker = isHeader ? " data-tbl-header=\"1\"" : "";
-            sb.AppendLine(isHeader ? $"<tr class=\"header-row\"{hdrMarker}{trStyle}>" : $"<tr{trStyle}>");
+            // Row data-path for goto/mark navigation. Skipped for nested tables
+            // (dataPath is only set for top-level tables — see RenderTableHtml
+            // call sites in HtmlPreview.cs:1906) because nested tables don't
+            // have a stable /body/table[N] index.
+            var rowDataPath = !string.IsNullOrEmpty(dataPath) ? $"{dataPath}/tr[{rowIdx + 1}]" : null;
+            var rowDataPathAttr = rowDataPath != null ? $" data-path=\"{rowDataPath}\"" : "";
+            sb.AppendLine(isHeader ? $"<tr class=\"header-row\"{hdrMarker}{rowDataPathAttr}{trStyle}>" : $"<tr{rowDataPathAttr}{trStyle}>");
 
             int colIdx = 0;
             foreach (var cell in row.Elements<TableCell>())
@@ -228,6 +234,12 @@ public partial class WordHandler
 
                 if (!string.IsNullOrEmpty(cellStyle))
                     attrs.Append($" style=\"{cellStyle}\"");
+
+                // Cell data-path uses the OOXML positional cell index (colIdx+1)
+                // rather than the visual grid column, to match the handler's
+                // /body/table[N]/tr[R]/tc[C] addressing.
+                if (rowDataPath != null)
+                    attrs.Append($" data-path=\"{rowDataPath}/tc[{colIdx + 1}]\"");
 
                 sb.Append($"<{tag}{attrs}>");
 

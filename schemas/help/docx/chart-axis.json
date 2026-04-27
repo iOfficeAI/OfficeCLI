@@ -1,0 +1,27 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "chart-axis",
+  "parent": "chart",
+  "operations": {
+    "add": false,
+    "set": true,
+    "get": true,
+    "remove": false
+  },
+  "note": "Axes are created/destroyed implicitly by chartType changes, not via Add/Remove on axis directly. Mirror of pptx/chart-axis.json surface.",
+  "addressing": {
+    "key": "role",
+    "pathForm": "/chart[N]/axis[@role=ROLE]",
+    "keyValues": ["category", "value", "value2", "series"]
+  },
+  "properties": {
+    "title":          { "type": "string", "set": true, "get": true, "examples": ["--prop title=\"Quarter\""], "enforcement": "report" },
+    "visible":        { "type": "bool",   "set": true, "get": true, "examples": ["--prop visible=false"], "enforcement": "report" },
+    "min":            { "type": "number", "set": true, "get": true, "appliesWhen": { "role": ["value","value2"] }, "examples": ["--prop min=0"], "enforcement": "report" },
+    "max":            { "type": "number", "set": true, "get": true, "appliesWhen": { "role": ["value","value2"] }, "examples": ["--prop max=250"], "enforcement": "report" },
+    "labelRotation":  { "type": "number", "description": "tick label rotation in degrees", "set": true, "get": true, "examples": ["--prop labelRotation=-45"], "enforcement": "report" },
+    "majorGridlines": { "type": "bool",   "set": true, "get": true, "examples": ["--prop majorGridlines=true"], "enforcement": "report" },
+    "minorGridlines": { "type": "bool",   "set": true, "get": true, "examples": ["--prop minorGridlines=false"], "enforcement": "report" }
+  }
+}

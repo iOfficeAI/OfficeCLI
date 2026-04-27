@@ -537,6 +537,15 @@ internal class WatchServer : IDisposable
             var msg = JsonSerializer.Deserialize(json, WatchMessageJsonContext.Default.WatchMessage);
             if (msg == null) return;
 
+            // Scroll-only event: broadcast a CSS selector to all SSE clients
+            // without touching the cached HTML, version, or marks. Used by the
+            // `goto` command to navigate already-running watch viewers.
+            if (msg.Action == "scroll" && !string.IsNullOrEmpty(msg.ScrollTo))
+            {
+                SendSseEvent("scroll", 0, null, msg.ScrollTo, _version);
+                return;
+            }
+
             var oldHtml = _currentHtml;
             var baseVersion = _version;
 

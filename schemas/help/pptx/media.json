@@ -1,0 +1,79 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "media",
+  "parent": "slide",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/slide[N]/video[M]", "/slide[N]/audio[M]"]
+  },
+  "note": "Aliases: video, audio. Video/audio inferred from extension when type=media. Poster image auto-generated when not supplied.",
+  "properties": {
+    "src": {
+      "type": "string",
+      "aliases": ["path"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop src=/path/to/video.mp4"],
+      "readback": "media URL or rel id",
+      "enforcement": "report"
+    },
+    "poster": {
+      "type": "string",
+      "description": "custom thumbnail image path.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop poster=/path/to/thumb.png"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "x": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop x=1in"],
+      "readback": "unit-qualified length",
+      "enforcement": "report"
+    },
+    "y": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop y=1in"],
+      "readback": "unit-qualified length",
+      "enforcement": "report"
+    },
+    "width": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop width=4in"],
+      "readback": "unit-qualified length",
+      "enforcement": "report"
+    },
+    "height": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop height=3in"],
+      "readback": "unit-qualified length",
+      "enforcement": "report"
+    },
+    "volume": {
+      "type": "int",
+      "description": "playback volume 0-100.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop volume=80"],
+      "readback": "volume percent",
+      "enforcement": "report"
+    },
+    "autoPlay": {
+      "type": "bool",
+      "aliases": ["autoplay"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop autoPlay=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    }
+  }
+}

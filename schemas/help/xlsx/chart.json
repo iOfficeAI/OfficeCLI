@@ -1,0 +1,143 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "chart",
+  "parent": "sheet",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/SheetName/chart[N]"]
+  },
+  "note": "Source of truth: Core/Chart/ChartHelper.Builder.cs (DeferredAddKeys + DeferredPrefixes) and ChartHelper.Setter.cs (case branches). Adding a new property MUST update both the handler and this file. Validator is also lenient about dotted sub-property namespaces (axis., series., trendline., errbars., datatable., displayunitslabel., trendlinelabel., combo., area., style., title., plotArea., chartArea., legend., datalabels., font., border., fill., shadow., glow., alignment.) and indexed namespaces (series{N}., dataLabel{N}., point{N}., legendEntry{N}.).",
+  "properties": {
+    "chartType": {
+      "type": "enum",
+      "values": ["column", "bar", "line", "pie", "doughnut", "area", "scatter", "radar", "stock", "bubble", "surface", "waterfall", "funnel", "treemap", "sunburst", "boxWhisker", "histogram", "pareto", "combo"],
+      "aliases": ["type"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop chartType=column"],
+      "readback": "chart type name",
+      "enforcement": "report"
+    },
+    "title":      { "type": "string", "add": true, "set": true,  "get": true, "examples": ["--prop title=\"Q1\""], "readback": "chart title" },
+    "data":       { "type": "string", "add": true, "set": false, "get": false, "description": "inline series spec 'Name:1,2,3;...'.", "examples": ["--prop data=\"Sales:10,20,30\""] },
+    "dataRange":  { "type": "string", "aliases": ["datarange", "range"], "add": true, "set": false, "get": false, "examples": ["--prop dataRange=Sheet1!A1:D5"] },
+    "categories": { "type": "string", "add": true, "set": true,  "get": false, "examples": ["--prop categories=A,B,C"] },
+    "anchor":     { "type": "string", "add": true, "set": true,  "get": true, "examples": ["--prop anchor=D2:J18"], "description": "cell range anchor; overrides x/y/width/height." },
+    "x":          { "type": "length", "add": true, "set": true,  "get": true },
+    "y":          { "type": "length", "add": true, "set": true,  "get": true },
+    "width":      { "type": "length", "add": true, "set": true,  "get": true },
+    "height":     { "type": "length", "add": true, "set": true,  "get": true },
+
+    "preset":         { "type": "string", "aliases": ["theme", "style.preset"], "add": true, "set": true, "get": false },
+    "style":          { "type": "number", "aliases": ["styleid"], "add": true, "set": true, "get": false, "description": "built-in chart style id 1..48" },
+    "colors":         { "type": "string", "add": true, "set": true, "get": false, "description": "comma-separated series fill colors." },
+
+    "legend":         { "type": "enum", "values": ["true","false","none","top","bottom","left","right","topRight","tr"], "add": true, "set": true, "get": true },
+    "legendfont":     { "type": "string", "aliases": ["legend.font"], "add": true, "set": true, "get": false },
+    "legendoverlay":  { "type": "bool", "aliases": ["legend.overlay"], "add": true, "set": true, "get": false },
+
+    "datalabels":     { "type": "string", "aliases": ["labels"], "add": true, "set": true, "get": false, "description": "show/hide labels OR comma-separated flags (value,percent,category,series)." },
+    "labelpos":       { "type": "string", "aliases": ["labelposition"], "add": true, "set": true, "get": false },
+    "labelfont":      { "type": "string", "add": true, "set": true, "get": false },
+    "labeloffset":    { "type": "number", "add": true, "set": true, "get": false },
+    "labelrotation":  { "type": "number", "aliases": ["xaxis.labelrotation", "valaxis.labelrotation", "yaxis.labelrotation", "xaxislabelrotation", "valaxislabelrotation", "yaxislabelrotation"], "add": true, "set": true, "get": false },
+    "leaderlines":    { "type": "bool", "aliases": ["showleaderlines"], "add": true, "set": true, "get": false },
+
+    "axistitle":      { "type": "string", "aliases": ["vtitle"], "add": true, "set": true, "get": false, "description": "value axis title." },
+    "cattitle":       { "type": "string", "aliases": ["htitle"], "add": true, "set": true, "get": false, "description": "category axis title." },
+    "axismin":        { "type": "number", "aliases": ["min"], "add": true, "set": true, "get": false },
+    "axismax":        { "type": "number", "aliases": ["max"], "add": true, "set": true, "get": false },
+    "majorunit":      { "type": "number", "add": true, "set": true, "get": false },
+    "minorunit":      { "type": "number", "add": true, "set": true, "get": false },
+    "axisnumfmt":     { "type": "string", "aliases": ["axisnumberformat"], "add": true, "set": true, "get": false },
+    "axisfont":       { "type": "string", "aliases": ["axis.font"], "add": true, "set": true, "get": false },
+    "majortickmark":  { "type": "enum", "aliases": ["majortick"], "values": ["none","in","out","cross"], "add": true, "set": true, "get": false },
+    "minortickmark":  { "type": "enum", "aliases": ["minortick"], "values": ["none","in","out","cross"], "add": true, "set": true, "get": false },
+    "ticklabelpos":   { "type": "string", "aliases": ["ticklabelposition"], "add": true, "set": true, "get": false },
+    "ticklabelskip":  { "type": "number", "aliases": ["tickskip"], "add": true, "set": true, "get": false },
+    "axisposition":   { "type": "string", "aliases": ["axispos"], "add": true, "set": true, "get": false },
+    "axisorientation":{ "type": "string", "aliases": ["axisreverse"], "add": true, "set": true, "get": false },
+    "axisline":       { "type": "string", "aliases": ["axis.line"], "add": true, "set": true, "get": false },
+    "cataxisline":    { "type": "string", "aliases": ["cataxis.line"], "add": true, "set": true, "get": false },
+    "valaxisline":    { "type": "string", "aliases": ["valaxis.line"], "add": true, "set": true, "get": false },
+    "axisvisible":    { "type": "bool", "aliases": ["axis.delete", "axis.visible"], "add": true, "set": true, "get": false },
+    "cataxisvisible": { "type": "bool", "aliases": ["cataxis.visible"], "add": true, "set": true, "get": false },
+    "valaxisvisible": { "type": "bool", "aliases": ["valaxis.visible"], "add": true, "set": true, "get": false },
+    "logbase":        { "type": "number", "aliases": ["logscale", "yaxisscale"], "add": true, "set": true, "get": false },
+    "crosses":        { "type": "string", "add": true, "set": true, "get": false },
+    "crossesat":      { "type": "number", "add": true, "set": true, "get": false },
+    "crossbetween":   { "type": "string", "add": true, "set": true, "get": false },
+    "dispunits":      { "type": "string", "aliases": ["displayunits"], "add": true, "set": true, "get": false },
+
+    "gridlines":      { "type": "bool", "aliases": ["majorgridlines"], "add": true, "set": true, "get": false },
+    "minorgridlines": { "type": "bool", "add": true, "set": true, "get": false },
+
+    "plotareafill":   { "type": "string", "aliases": ["plotfill"], "add": true, "set": true, "get": false },
+    "chartareafill":  { "type": "string", "aliases": ["chartfill"], "add": true, "set": true, "get": false },
+    "plotborder":     { "type": "string", "aliases": ["plotarea.border"], "add": true, "set": true, "get": false },
+    "chartborder":    { "type": "string", "aliases": ["chartarea.border"], "add": true, "set": true, "get": false },
+    "areafill":       { "type": "string", "aliases": ["area.fill"], "add": true, "set": true, "get": false },
+
+    "linewidth":      { "type": "number", "add": true, "set": true, "get": false },
+    "linedash":       { "type": "string", "aliases": ["dash"], "add": true, "set": true, "get": false },
+    "marker":         { "type": "string", "aliases": ["markers"], "add": true, "set": true, "get": false },
+    "markersize":     { "type": "number", "add": true, "set": true, "get": false },
+    "showmarker":     { "type": "bool", "aliases": ["showmarkers"], "add": true, "set": true, "get": false },
+
+    "transparency":   { "type": "number", "aliases": ["opacity", "alpha"], "add": true, "set": true, "get": false },
+    "gradient":       { "type": "string", "aliases": ["gradientfill"], "add": true, "set": true, "get": false },
+    "gradients":      { "type": "string", "add": true, "set": true, "get": false },
+
+    "view3d":         { "type": "string", "aliases": ["camera", "perspective"], "add": true, "set": true, "get": false },
+    "rotation":       { "type": "string", "add": true, "set": true, "get": false },
+
+    "smooth":         { "type": "bool",   "add": true, "set": true, "get": false },
+    "trendline":      { "type": "string", "add": true, "set": true, "get": false },
+    "secondaryaxis":  { "type": "string", "aliases": ["secondary"], "add": true, "set": true, "get": false },
+    "referenceline":  { "type": "string", "aliases": ["refline", "targetline"], "add": true, "set": true, "get": false },
+    "colorrule":      { "type": "string", "aliases": ["conditionalcolor", "colorRule"], "add": true, "set": true, "get": false },
+    "combotypes":     { "type": "string", "aliases": ["combo.types"], "add": true, "set": true, "get": false },
+
+    "scatterstyle":   { "type": "string", "add": true, "set": true, "get": false },
+    "radarstyle":     { "type": "string", "add": true, "set": true, "get": false },
+    "varycolors":     { "type": "bool",   "add": true, "set": true, "get": false },
+    "dispblanksas":   { "type": "string", "aliases": ["blanksas"], "add": true, "set": true, "get": false },
+    "roundedcorners": { "type": "bool",   "add": true, "set": true, "get": false },
+    "autotitledeleted":{ "type": "bool",  "add": true, "set": true, "get": false },
+    "plotvisonly":    { "type": "bool", "aliases": ["plotvisibleonly"], "add": true, "set": true, "get": false },
+
+    "gapwidth":       { "type": "number", "aliases": ["gap"], "add": true, "set": true, "get": false },
+    "overlap":        { "type": "number", "add": true, "set": true, "get": false },
+    "gapdepth":       { "type": "number", "add": true, "set": true, "get": false },
+    "shape":          { "type": "string", "aliases": ["barshape"], "add": true, "set": true, "get": false },
+
+    "explosion":      { "type": "number", "aliases": ["explode"], "add": true, "set": true, "get": false },
+    "invertifneg":    { "type": "bool",   "aliases": ["invertifnegative"], "add": true, "set": true, "get": false },
+    "errbars":        { "type": "string", "aliases": ["errorbars"], "add": true, "set": true, "get": false },
+    "seriesshadow":   { "type": "string", "aliases": ["series.shadow"], "add": true, "set": true, "get": false },
+    "seriesoutline":  { "type": "string", "aliases": ["series.outline"], "add": true, "set": true, "get": false },
+
+    "holesize":       { "type": "number", "add": true, "set": true, "get": false, "description": "doughnut hole size 10..90." },
+    "firstsliceangle":{ "type": "number", "aliases": ["sliceangle"], "add": true, "set": true, "get": false },
+    "bubblescale":    { "type": "number", "add": true, "set": true, "get": false },
+    "shownegbubbles": { "type": "bool",   "add": true, "set": true, "get": false },
+    "sizerepresents": { "type": "string", "add": true, "set": true, "get": false },
+
+    "datatable":      { "type": "bool",   "add": true, "set": true, "get": false },
+    "droplines":      { "type": "string", "add": true, "set": true, "get": false },
+    "hilowlines":     { "type": "string", "add": true, "set": true, "get": false },
+    "updownbars":     { "type": "string", "add": true, "set": true, "get": false },
+    "serlines":       { "type": "string", "aliases": ["serieslines"], "add": true, "set": true, "get": false },
+
+    "increaseColor":  { "type": "color", "add": true, "set": false, "get": false, "description": "waterfall increase color." },
+    "decreaseColor":  { "type": "color", "add": true, "set": false, "get": false, "description": "waterfall decrease color." },
+    "totalColor":     { "type": "color", "add": true, "set": false, "get": false, "description": "waterfall total color." },
+    "combosplit":     { "type": "number", "add": true, "set": false, "get": false, "description": "combo chart split index." }
+  }
+}

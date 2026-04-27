@@ -288,6 +288,17 @@ internal static partial class ChartHelper
         var dispBlanksAs = chart.GetFirstChild<C.DisplayBlanksAs>()?.Val;
         if (dispBlanksAs?.HasValue == true) node.Format["dispBlanksAs"] = dispBlanksAs.InnerText;
 
+        // varyColors: lives on the per-chart-type element (PieChart, BarChart, etc.).
+        // Set writes the same value to every chart-type child of plotArea, so any
+        // child carrying VaryColors faithfully represents the user-visible state.
+        var varyColorsEl = plotArea.ChildElements
+            .OfType<OpenXmlCompositeElement>()
+            .Where(e => e.LocalName.Contains("Chart") || e.LocalName.Contains("chart"))
+            .Select(ct => ct.GetFirstChild<C.VaryColors>())
+            .FirstOrDefault(v => v?.Val?.HasValue == true);
+        if (varyColorsEl?.Val?.HasValue == true)
+            node.Format["varyColors"] = varyColorsEl.Val.Value ? "true" : "false";
+
         // roundedCorners
         var roundedCorners = chart.Parent?.GetFirstChild<C.RoundedCorners>()?.Val;
         if (roundedCorners?.HasValue == true) node.Format["roundedCorners"] = roundedCorners.Value ? "true" : "false";

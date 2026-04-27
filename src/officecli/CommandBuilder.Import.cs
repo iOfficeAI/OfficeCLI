@@ -122,16 +122,19 @@ static partial class CommandBuilder
     {
         var createFileArg = new Argument<string>("file") { Description = "Output file path (.docx, .xlsx, .pptx)" };
         var createTypeOpt = new Option<string>("--type") { Description = "Document type (docx, xlsx, pptx) — optional, inferred from file extension" };
+        var createForceOpt = new Option<bool>("--force") { Description = "Overwrite an existing file." };
         var createCommand = new Command("create", "Create a blank Office document");
         createCommand.Aliases.Add("new");
         createCommand.Add(createFileArg);
         createCommand.Add(createTypeOpt);
+        createCommand.Add(createForceOpt);
         createCommand.Add(jsonOption);
 
         createCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(createFileArg)!;
             var type = result.GetValue(createTypeOpt);
+            var force = result.GetValue(createForceOpt);
 
             // If file has no extension but --type is provided, append it
             if (!string.IsNullOrEmpty(type) && string.IsNullOrEmpty(Path.GetExtension(file)))
@@ -149,6 +152,22 @@ static partial class CommandBuilder
                     Code = "file_locked",
                     Suggestion = $"Run: officecli close \"{file}\""
                 };
+            }
+
+            // Refuse to silently overwrite an existing file unless --force is set.
+            // OpenXML SDK's Create truncates the target otherwise, which can destroy
+            // user data when an AI agent retries or mis-types the path.
+            if (File.Exists(fullPath) && !force)
+            {
+                throw new CliException($"File already exists: {file}. Use --force to overwrite.")
+                {
+                    Code = "file_exists",
+                    Suggestion = "Add --force flag or remove the file first."
+                };
+            }
+            if (File.Exists(fullPath) && force)
+            {
+                Console.Error.WriteLine($"Overwriting existing file: {file}");
             }
 
             OfficeCli.BlankDocCreator.Create(file);

@@ -1,0 +1,80 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "run",
+  "parent": "paragraph",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/slide[N]/shape[M]/p[K]/r[L]"]
+  },
+  "note": "Appends a:r inside a:p. Font properties live on a:rPr. Colors get #-prefixed on readback via ParseHelpers.FormatHexColor.",
+  "properties": {
+    "text": {
+      "type": "string",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=\"word\""],
+      "readback": "a:t content",
+      "enforcement": "report"
+    },
+    "font": {
+      "type": "string",
+      "description": "Latin/EastAsia typeface name.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop font=\"Arial\""],
+      "readback": "font name",
+      "enforcement": "report"
+    },
+    "size": {
+      "type": "length",
+      "description": "font size. Lenient input (14, 14pt, 10.5pt).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop size=14"],
+      "readback": "unit-qualified pt",
+      "enforcement": "report"
+    },
+    "bold": {
+      "type": "bool",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop bold=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "italic": {
+      "type": "bool",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop italic=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "underline": {
+      "type": "enum",
+      "values": ["single", "double", "dotted", "dashed", "wavy", "none"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop underline=single"],
+      "readback": "underline style",
+      "enforcement": "report"
+    },
+    "color": {
+      "type": "color",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop color=#FF0000"],
+      "readback": "#-prefixed uppercase hex (scheme colors pass through)",
+      "enforcement": "report"
+    },
+    "cap": {
+      "type": "enum",
+      "values": ["none", "small", "all"],
+      "aliases": ["allCaps", "allcaps", "smallCaps", "smallcaps"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop cap=all", "--prop allCaps=true"],
+      "readback": "none | small | all",
+      "enforcement": "report"
+    }
+  }
+}

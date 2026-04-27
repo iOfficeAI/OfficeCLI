@@ -1,0 +1,55 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "equation",
+  "parent": "slide|shape",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/slide[N]/shape[M]/oMath[K]"]
+  },
+  "note": "Aliases: formula, math. FormulaParser parses LaTeX-ish input. Adding a 'shape' or 'textbox' with 'formula' prop also routes here.",
+  "properties": {
+    "formula": {
+      "type": "string",
+      "aliases": ["text"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop formula=\"x^2 + y^2 = z^2\""],
+      "readback": "source formula when round-trippable",
+      "enforcement": "report"
+    },
+    "x": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop x=2cm"],
+      "readback": "EMU",
+      "enforcement": "report"
+    },
+    "y": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop y=2cm"],
+      "readback": "EMU",
+      "enforcement": "report"
+    },
+    "width": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop width=10cm"],
+      "readback": "EMU",
+      "enforcement": "report"
+    },
+    "height": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop height=3cm"],
+      "readback": "EMU",
+      "enforcement": "report"
+    }
+  }
+}

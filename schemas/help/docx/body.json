@@ -1,0 +1,24 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "body",
+  "parent": "document",
+  "container": true,
+  "operations": {
+    "add": false,
+    "set": false,
+    "get": true,
+    "query": true,
+    "remove": false
+  },
+  "paths": {
+    "positional": ["/body"]
+  },
+  "note": "Main content container. Get returns the ordered stream of paragraphs, tables, sections. Mutate via child paths (/body/p[N], /body/tbl[N], /body/section[N]).",
+  "children": [
+    { "element": "paragraph", "pathSegment": "p",       "cardinality": "0..n" },
+    { "element": "table",     "pathSegment": "tbl",     "cardinality": "0..n" },
+    { "element": "section",   "pathSegment": "section", "cardinality": "0..n" },
+    { "element": "sdt",       "pathSegment": "sdt",     "cardinality": "0..n" }
+  ]
+}

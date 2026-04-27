@@ -19,16 +19,138 @@ public partial class PowerPointHandler
             ?? new List<Drawing.Run>();
     }
 
+    // drawingML CT_TextCharacterProperties attribute set (rPr attrs).
+    // Long-tail run-context Set in SetRunOrShapeProperties uses this to
+    // distinguish attribute-pattern keys (set as XML attributes on rPr) from
+    // child-pattern keys (route through TryCreateTypedChild). Symmetric with
+    // FillUnknownRunProps in NodeBuilder.cs which surfaces these via Get.
+    // Source: ECMA-376 Part 1, 21.1.2.3.9 (a:rPr).
+    private static readonly System.Collections.Generic.HashSet<string> DrawingRunPropertyAttrs =
+        new(System.StringComparer.Ordinal)
+    {
+        "kumimoji", "lang", "altLang", "sz", "b", "i", "u", "strike",
+        "kern", "cap", "spc", "normalizeH", "baseline", "noProof",
+        "dirty", "err", "smtClean", "smtId", "bmk",
+    };
+
+    // Schema-typed sub-sets used for value validation in run-context Set.
+    // Without these, an out-of-domain value for any typed attribute (e.g.
+    // kern=abc, u=GARBAGE) would be silently written as invalid OOXML — the
+    // file then fails strict validation downstream. Source: ECMA-376 Part 1
+    // 21.1.2.3.9 (a:rPr).
+    private static readonly System.Collections.Generic.HashSet<string> DrawingRunIntAttrs =
+        new(System.StringComparer.Ordinal) { "sz", "kern", "spc", "baseline", "smtId" };
+    private static readonly System.Collections.Generic.HashSet<string> DrawingRunBoolAttrs =
+        new(System.StringComparer.Ordinal) { "b", "i", "noProof", "normalizeH", "dirty", "err", "smtClean", "kumimoji" };
+
+    // ST_TextUnderlineType — full enumeration per ECMA-376 §21.1.10.82.
+    private static readonly System.Collections.Generic.HashSet<string> DrawingUnderlineEnum =
+        new(System.StringComparer.Ordinal)
+    {
+        "none", "words", "sng", "dbl", "heavy", "dotted", "dottedHeavy",
+        "dash", "dashHeavy", "dashLong", "dashLongHeavy",
+        "dotDash", "dotDashHeavy", "dotDotDash", "dotDotDashHeavy",
+        "wavy", "wavyHeavy", "wavyDbl",
+    };
+    // ST_TextStrikeType per ECMA-376 §21.1.10.78.
+    private static readonly System.Collections.Generic.HashSet<string> DrawingStrikeEnum =
+        new(System.StringComparer.Ordinal) { "noStrike", "sngStrike", "dblStrike" };
+    // ST_TextCapsType per ECMA-376 §21.1.10.7.
+    private static readonly System.Collections.Generic.HashSet<string> DrawingCapsEnum =
+        new(System.StringComparer.Ordinal) { "none", "small", "all" };
+
+    // Tolerant BCP-47 shape: starts with letter, allows letters/digits/hyphens.
+    // Stricter than xsd:language but loose enough to accept all real-world tags
+    // (zh-Hant-TW, en-US, x-private, ...). Rejects whitespace and special chars.
+    private static readonly System.Text.RegularExpressions.Regex Bcp47Shape =
+        new(@"^[A-Za-z][A-Za-z0-9-]*$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static bool IsValidDrawingRunAttrValue(string key, string value)
+    {
+        if (DrawingRunIntAttrs.Contains(key)) return int.TryParse(value, out _);
+        if (DrawingRunBoolAttrs.Contains(key))
+            return value is "0" or "1" or "true" or "false" or "True" or "False";
+        if (key == "u") return DrawingUnderlineEnum.Contains(value);
+        if (key == "strike") return DrawingStrikeEnum.Contains(value);
+        if (key == "cap") return DrawingCapsEnum.Contains(value);
+        if (key is "lang" or "altLang") return string.IsNullOrEmpty(value) || Bcp47Shape.IsMatch(value);
+        return true; // remaining string attrs (kumimoji handled above; bmk arbitrary string)
+    }
+
+    // runContext=true when the caller is a run-targeted Set path (e.g.
+    // /slide[N]/shape[K]/r[R] or /slide[N]/shape[K]/p[P]/r[R]). Affects the
+    // default branch only: long-tail unknown keys are routed to each run's
+    // RunProperties (attribute or child) instead of the shape element.
+    // Curated cases keep their existing per-key targeting (some still write
+    // to shape regardless of context — fill, geometry, etc.).
     private static List<string> SetRunOrShapeProperties(
-        Dictionary<string, string> properties, List<Drawing.Run> runs, Shape shape, OpenXmlPart? part = null)
+        Dictionary<string, string> properties, List<Drawing.Run> runs, Shape shape, OpenXmlPart? part = null,
+        bool runContext = false)
     {
         var unsupported = new List<string>();
 
-        foreach (var (key, value) in properties)
+        // CONSISTENCY(allcaps-alias): map allCaps/smallCaps onto OOXML's `cap`
+        // attribute so users mirroring CSS / Word vocabulary don't see UNSUPPORTED.
+        // Mirrors WordHandler.Helpers.cs allcaps→Caps fix (commit ccaed17a).
+        // Boolean-truthy → "all" / "small" ; explicit "none"/"false" → cap="none".
+        if (!properties.ContainsKey("cap"))
         {
+            string? capsKey = properties.Keys.FirstOrDefault(k =>
+                k.Equals("allCaps", StringComparison.OrdinalIgnoreCase)
+                || k.Equals("allcaps", StringComparison.OrdinalIgnoreCase));
+            if (capsKey != null)
+            {
+                var v = properties[capsKey];
+                properties = new Dictionary<string, string>(properties, properties.Comparer);
+                properties.Remove(capsKey);
+                properties["cap"] = (v is "0" or "false" or "False" or "none") ? "none" : "all";
+            }
+            string? smallCapsKey = properties.Keys.FirstOrDefault(k =>
+                k.Equals("smallCaps", StringComparison.OrdinalIgnoreCase)
+                || k.Equals("smallcaps", StringComparison.OrdinalIgnoreCase));
+            if (smallCapsKey != null && !properties.ContainsKey("cap"))
+            {
+                var v = properties[smallCapsKey];
+                properties = new Dictionary<string, string>(properties, properties.Comparer);
+                properties.Remove(smallCapsKey);
+                properties["cap"] = (v is "0" or "false" or "False" or "none") ? "none" : "small";
+            }
+        }
+
+        // CONSISTENCY(prop-order): fill carriers (fill/gradient/pattern) must run
+        // before modifier props (opacity attaches alpha to the resulting solidFill);
+        // otherwise opacity auto-creates a white fill that fill= then overwrites.
+        // Mirrors the implicit ordering in Add.Shape.cs which processes fill first.
+        var orderedKeys = properties.Keys
+            .OrderBy(k => k.ToLowerInvariant() switch
+            {
+                "fill" or "gradient" or "pattern" => 0,
+                _ => 1
+            })
+            .ToList();
+
+        foreach (var key in orderedKeys)
+        {
+            var value = properties[key];
             if (value is null) { unsupported.Add(key); continue; }
             switch (key.ToLowerInvariant())
             {
+                case "cap":
+                {
+                    // Apply rPr/cap to every run in the shape (or to runs when in run context).
+                    if (!DrawingCapsEnum.Contains(value))
+                    {
+                        unsupported.Add($"cap (value '{value}' must be one of: none, small, all)");
+                        break;
+                    }
+                    var targetRuns = runs.Count > 0 ? runs : shape.Descendants<Drawing.Run>().ToList();
+                    foreach (var run in targetRuns)
+                    {
+                        var rPr = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
+                        rPr.SetAttribute(new OpenXmlAttribute("", "cap", "", value));
+                    }
+                    break;
+                }
                 case "text":
                 {
                     var textLines = value.Replace("\\n", "\n").Split('\n');
@@ -72,6 +194,7 @@ public partial class PowerPointHandler
                 }
 
                 case "font":
+                case "font.name":
                     foreach (var run in runs)
                     {
                         var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
@@ -84,6 +207,9 @@ public partial class PowerPointHandler
                     break;
 
                 case "size":
+                case "fontSize":
+                case "fontsize":
+                case "font.size":
                     var sizeVal = (int)Math.Round(ParseFontSize(value) * 100);
                     foreach (var run in runs)
                     {
@@ -93,6 +219,7 @@ public partial class PowerPointHandler
                     break;
 
                 case "bold":
+                case "font.bold":
                     var isBold = IsTruthy(value);
                     foreach (var run in runs)
                     {
@@ -102,6 +229,7 @@ public partial class PowerPointHandler
                     break;
 
                 case "italic":
+                case "font.italic":
                     var isItalic = IsTruthy(value);
                     foreach (var run in runs)
                     {
@@ -111,6 +239,7 @@ public partial class PowerPointHandler
                     break;
 
                 case "color":
+                case "font.color":
                 {
                     // Build fill before removing old one (atomic: no data loss on invalid color)
                     var colorFill = BuildSolidFill(value);
@@ -151,6 +280,7 @@ public partial class PowerPointHandler
                 }
 
                 case "underline":
+                case "font.underline":
                     foreach (var run in runs)
                     {
                         var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
@@ -168,7 +298,7 @@ public partial class PowerPointHandler
                     }
                     break;
 
-                case "strikethrough" or "strike":
+                case "strikethrough" or "strike" or "font.strike" or "font.strikethrough":
                     foreach (var run in runs)
                     {
                         var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
@@ -419,6 +549,11 @@ public partial class PowerPointHandler
                     if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var opacityVal) || double.IsNaN(opacityVal) || double.IsInfinity(opacityVal))
                         throw new ArgumentException($"Invalid 'opacity' value: '{value}'. Expected a finite decimal 0.0-1.0 (e.g. 0.5 = 50% opacity).");
                     if (opacityVal > 1.0) opacityVal /= 100.0; // treat >1 as percentage (e.g. 30 → 0.30)
+                    // R10: reject out-of-range opacity instead of writing invalid OOXML
+                    // (a:alpha/@val must be in [0, 100000]). Negative input was producing
+                    // <a:alpha val="-100000"/> which corrupts the file.
+                    if (opacityVal < 0.0 || opacityVal > 1.0)
+                        throw new ArgumentException($"Invalid 'opacity' value: '{value}'. Expected 0.0-1.0 (or 0-100 as percent).");
                     var alphaPct = (int)(opacityVal * 100000); // 0.0-1.0 → 0-100000
 
                     // Apply alpha to gradient fill stops if present
@@ -470,7 +605,7 @@ public partial class PowerPointHandler
                     break;
                 }
 
-                case "spacing" or "charspacing" or "letterspacing":
+                case "spacing" or "charspacing" or "letterspacing" or "spc":
                 {
                     // Character spacing in points (e.g. "2" = +2pt, "-1" = -1pt)
                     // Stored as 1/100th of a point in OOXML (POI: setSpc((int)(100*spc)))
@@ -850,14 +985,64 @@ public partial class PowerPointHandler
                 }
 
                 default:
+                {
+                    // Long-tail OOXML fallback. In run-context (e.g. set on
+                    // /slide[N]/shape[K]/r[R]), drawingML rPr stores most
+                    // properties as attributes on rPr itself (kern, spc,
+                    // baseline, lang, dirty, smtClean, normalizeH, ...), with
+                    // a few child-pattern props (effectLst, hlinkClick).
+                    // Try attribute-setting first against the known
+                    // drawingML CT_TextCharacterProperties attribute set; fall
+                    // back to TryCreateTypedChild for child-pattern keys.
+                    bool handledByRun = false;
+                    // CONSISTENCY(rpr-attr-fallback): drawingML run-property
+                    // attributes (spc, lang, kern, cap, baseline, ...) must
+                    // route to rPr regardless of runContext. Shape-level Set
+                    // applies to all runs (mirrors how bold/size/font work
+                    // above); run-level Set applies to the targeted run only.
+                    // Without this, shape-level spc/lang silently fell through
+                    // to SetGenericAttribute(sp, ...) and wrote attributes onto
+                    // the <p:sp> element, which Office ignores.
+                    if (runs.Count > 0 && DrawingRunPropertyAttrs.Contains(key))
+                    {
+                        if (!IsValidDrawingRunAttrValue(key, value))
+                        {
+                            unsupported.Add($"{key} (value '{value}' is not valid for OOXML rPr/{key} type)");
+                            break;
+                        }
+                        handledByRun = true;
+                        foreach (var run in runs)
+                        {
+                            var rPr = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
+                            rPr.SetAttribute(new OpenXmlAttribute("", key, "", value));
+                        }
+                    }
+                    if (handledByRun) break;
+                    if (runContext && runs.Count > 0)
+                    {
+                        // Child-pattern fallback (rare in rPr but exists for
+                        // hlinkClick etc.). Symmetric with Word.
+                        handledByRun = true;
+                        foreach (var run in runs)
+                        {
+                            var rPr = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
+                            if (!GenericXmlQuery.TryCreateTypedChild(rPr, key, value))
+                            {
+                                handledByRun = false;
+                                break;
+                            }
+                        }
+                    }
+                    if (handledByRun) break;
                     if (!GenericXmlQuery.SetGenericAttribute(shape, key, value))
                     {
                         if (unsupported.Count == 0)
-                            unsupported.Add($"{key} (valid shape props: text, bold, italic, underline, color, fill, size, font, gradient, line, opacity, align, valign, x, y, width, height, rotation, name, link, animation, formula)");
+                            unsupported.Add($"{key} (valid shape props: text, bold, italic, underline, color, fill, size, font, gradient, line, opacity, align, valign, x, y, width, height, rotation, name, link, animation, formula, geometry, preset, shadow, glow, reflection, softEdge, pattern, flip, flipH, flipV)");
                         else
                             unsupported.Add(key);
                     }
                     break;
+                }
             }
         }
 
@@ -960,6 +1145,7 @@ public partial class PowerPointHandler
                     break;
                 }
                 case "font":
+                case "font.name":
                     EnsureTableCellHasRun(cell);
                     foreach (var run in cell.Descendants<Drawing.Run>())
                     {
@@ -971,6 +1157,7 @@ public partial class PowerPointHandler
                     }
                     break;
                 case "size":
+                case "font.size":
                     EnsureTableCellHasRun(cell);
                     var sz = (int)Math.Round(ParseFontSize(value) * 100);
                     foreach (var run in cell.Descendants<Drawing.Run>())
@@ -980,6 +1167,7 @@ public partial class PowerPointHandler
                     }
                     break;
                 case "bold":
+                case "font.bold":
                     EnsureTableCellHasRun(cell);
                     var b = IsTruthy(value);
                     foreach (var run in cell.Descendants<Drawing.Run>())
@@ -989,6 +1177,7 @@ public partial class PowerPointHandler
                     }
                     break;
                 case "italic":
+                case "font.italic":
                     EnsureTableCellHasRun(cell);
                     var it = IsTruthy(value);
                     foreach (var run in cell.Descendants<Drawing.Run>())
@@ -998,6 +1187,7 @@ public partial class PowerPointHandler
                     }
                     break;
                 case "color":
+                case "font.color":
                 {
                     // Build fill before removing old one (atomic)
                     EnsureTableCellHasRun(cell);
@@ -1157,6 +1347,7 @@ public partial class PowerPointHandler
                     break;
                 }
                 case "underline":
+                case "font.underline":
                     EnsureTableCellHasRun(cell);
                     foreach (var run in cell.Descendants<Drawing.Run>())
                     {
@@ -1174,7 +1365,7 @@ public partial class PowerPointHandler
                         };
                     }
                     break;
-                case "strikethrough" or "strike":
+                case "strikethrough" or "strike" or "font.strike" or "font.strikethrough":
                     EnsureTableCellHasRun(cell);
                     foreach (var run in cell.Descendants<Drawing.Run>())
                     {

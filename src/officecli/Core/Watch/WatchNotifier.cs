@@ -308,10 +308,41 @@ internal class WatchMessage
         return 0;
     }
 
-    /// <summary>Extract a CSS selector scroll target from a Word document path like /p[5] or /table[2].</summary>
+    /// <summary>
+    /// Extract a CSS selector scroll target from a Word document path.
+    ///
+    /// Coarse-grained paths reuse the legacy <c>&lt;a id="w-p-N"&gt;</c> /
+    /// <c>&lt;a id="w-table-N"&gt;</c> anchors (paragraph, table). Fine-grained
+    /// paths inside a table — row, cell — fall back to a
+    /// <c>[data-path="..."]</c> attribute selector matching the
+    /// <c>data-path</c> emitted by RenderTableHtml on each
+    /// <c>&lt;tr&gt;</c> / <c>&lt;td&gt;</c>. Run-level (/r[N]) and other
+    /// inline elements are not yet anchored.
+    ///
+    /// Supported inputs:
+    ///   /body/p[N]                          → #w-p-N
+    ///   /body/paragraph[N]                  → #w-p-N
+    ///   /body/table[N]                      → #w-table-N
+    ///   /body/table[N]/tr[R]                → [data-path="/body/table[N]/tr[R]"]
+    ///   /body/table[N]/tr[R]/tc[C]          → [data-path="..."]
+    /// </summary>
     public static string? ExtractWordScrollTarget(string? path)
     {
         if (string.IsNullOrEmpty(path)) return null;
+
+        // Cell-level: /body/table[N]/tr[R]/tc[C] — must come first so the
+        // outer paragraph/table regex doesn't claim the prefix and drop the
+        // /tr/tc tail.
+        var cellMatch = System.Text.RegularExpressions.Regex.Match(
+            path, @"^/body/table\[\d+\]/tr\[\d+\]/tc\[\d+\]$");
+        if (cellMatch.Success) return $"[data-path=\"{path}\"]";
+
+        // Row-level: /body/table[N]/tr[R]
+        var rowMatch = System.Text.RegularExpressions.Regex.Match(
+            path, @"^/body/table\[\d+\]/tr\[\d+\]$");
+        if (rowMatch.Success) return $"[data-path=\"{path}\"]";
+
+        // Paragraph / table — the original anchor-based selector.
         var match = System.Text.RegularExpressions.Regex.Match(path, @"/(p|paragraph|table)\[(\d+)\]");
         if (!match.Success) return null;
         var type = match.Groups[1].Value;

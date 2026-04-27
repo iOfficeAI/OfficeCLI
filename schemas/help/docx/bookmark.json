@@ -1,0 +1,36 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "bookmark",
+  "parent": "body|paragraph",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "stable":     ["/bookmark[@name=NAME]"],
+    "positional": ["/bookmark[N]"]
+  },
+  "note": "Bookmarks are BookmarkStart/End pairs. Name must be addressable: no whitespace, no '/[]\"', no leading '@' or single quote. Duplicate names rejected at Add.",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "bookmark name (required). Letters, digits, '.', '_', '-' only.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop name=chapter1"],
+      "readback": "name as stored on BookmarkStart",
+      "enforcement": "strict"
+    },
+    "text": {
+      "type": "string",
+      "description": "optional bookmark-covered text. Without this, only an empty Start/End pair is inserted.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop text=\"Chapter 1 title\""],
+      "readback": "not a distinct key — lives on wrapped runs",
+      "enforcement": "strict"
+    }
+  }
+}

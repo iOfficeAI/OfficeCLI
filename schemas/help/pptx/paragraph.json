@@ -1,0 +1,56 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "paragraph",
+  "parent": "shape|placeholder",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/slide[N]/shape[M]/p[K]"]
+  },
+  "note": "Aliases: para. Appends a:p to a shape's TextBody. Alignment uses pptx vocabulary (l/ctr/r/just); lineSpacing via SpacingConverter.",
+  "properties": {
+    "text": {
+      "type": "string",
+      "description": "initial single-run text.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=\"Hello\""],
+      "readback": "concatenated run text",
+      "enforcement": "report"
+    },
+    "align": {
+      "type": "enum",
+      "values": ["left", "center", "right", "justify"],
+      "aliases": ["alignment", "halign"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop align=center"],
+      "readback": "canonical 'align'",
+      "enforcement": "report"
+    },
+    "level": {
+      "type": "int",
+      "description": "list indent level 0-8.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop level=1"],
+      "readback": "indent level",
+      "enforcement": "report"
+    },
+    "lineSpacing": {
+      "type": "string",
+      "description": "multiplier (1.5x, 150%) or fixed length (18pt). SpacingConverter routes input.",
+      "aliases": ["linespacing"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop lineSpacing=1.5x"],
+      "readback": "'<N>x' or '<N>pt'",
+      "enforcement": "report"
+    }
+  },
+  "children": [
+    { "element": "run", "pathSegment": "r", "cardinality": "0..n" }
+  ]
+}

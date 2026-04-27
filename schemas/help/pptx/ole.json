@@ -1,0 +1,70 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "ole",
+  "parent": "slide",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/slide[N]/ole[M]"]
+  },
+  "note": "Aliases: oleobject, object, embed. Binary package + preview image. Position via x/y/width/height (EMU).",
+  "properties": {
+    "src": {
+      "type": "string",
+      "aliases": ["path"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop src=/path/to/data.xlsx"],
+      "readback": "rel id",
+      "enforcement": "report"
+    },
+    "progId": {
+      "type": "string",
+      "aliases": ["progid"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop progId=Excel.Sheet.12"],
+      "readback": "ProgID",
+      "enforcement": "report"
+    },
+    "preview": {
+      "type": "string",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop preview=/path/to/thumb.png"],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
+    "x": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop x=2cm"],
+      "readback": "EMU",
+      "enforcement": "report"
+    },
+    "y": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop y=2cm"],
+      "readback": "EMU",
+      "enforcement": "report"
+    },
+    "width": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop width=10cm"],
+      "readback": "EMU",
+      "enforcement": "report"
+    },
+    "height": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop height=8cm"],
+      "readback": "EMU",
+      "enforcement": "report"
+    }
+  }
+}

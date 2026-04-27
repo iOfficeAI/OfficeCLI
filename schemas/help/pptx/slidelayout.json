@@ -1,0 +1,34 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "slidelayout",
+  "parent": "slidemaster",
+  "container": true,
+  "operations": {
+    "add": false,
+    "set": false,
+    "get": true,
+    "query": true,
+    "remove": false
+  },
+  "paths": {
+    "positional": ["/slidemaster[N]/slidelayout[M]", "/slidelayout[M]"]
+  },
+  "note": "Slide layout definition. Referenced by slides via the 'layout' property. Read-only here; mutate by editing the template file.",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "layout display name (e.g. 'Title Slide').",
+      "add": false, "set": false, "get": true,
+      "readback": "layout name string",
+      "enforcement": "report"
+    },
+    "type": {
+      "type": "string",
+      "description": "layout type (title, obj, twoObj, etc.).",
+      "add": false, "set": false, "get": true,
+      "readback": "SlideLayoutValues.InnerText",
+      "enforcement": "report"
+    }
+  }
+}

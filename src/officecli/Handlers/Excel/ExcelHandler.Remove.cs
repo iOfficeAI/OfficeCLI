@@ -14,6 +14,15 @@ public partial class ExcelHandler
 {
     public string? Remove(string path)
     {
+        // CONSISTENCY(container-remove-guard): reject removal of the
+        // workbook root up front. Sheet-level removal has its own guard
+        // (can't remove last sheet) further down and is a legitimate op;
+        // /workbook is not.
+        if (!string.IsNullOrEmpty(path)
+            && path.TrimEnd('/').Equals("/workbook", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException(
+                $"Cannot remove container element '{path}': it is a required structural element of the document.");
+
         path = NormalizeExcelPath(path);
         path = ResolveSheetIndexInPath(path);
         var segments = path.TrimStart('/').Split('/', 2);

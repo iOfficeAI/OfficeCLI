@@ -19,6 +19,7 @@ public partial class WordHandler
     partial void OnHtmlParagraphBegin(Paragraph para);
     partial void OnHtmlParagraphEnd(StringBuilder sb);
     partial void OnHtmlRenderText(StringBuilder sb, string text, RunProperties? rProps, string? runStyle, ref bool handled);
+    partial void OnHtmlRenderTab(double widthPt);
 
     // ==================== Paragraph Content ====================
 

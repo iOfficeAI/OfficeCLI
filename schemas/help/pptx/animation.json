@@ -1,0 +1,70 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "animation",
+  "parent": "shape",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/slide[N]/shape[M]/animation[K]"]
+  },
+  "note": "Animation attached to a specific shape. Effect name drives the timing preset; trigger controls sequencing (onClick / withPrevious / afterPrevious).",
+  "properties": {
+    "effect": {
+      "type": "enum",
+      "description": "animation preset. spin/grow/wave require class=emphasis; appear/fade/fly/zoom/wipe/bounce/float/swivel/split/wheel/checkerboard/blinds/dissolve/flash/box/circle/diamond/plus/strips/wedge/random work for entrance and exit. (disappear is not supported — use class=exit + appear or fade.)",
+      "values": ["appear", "fade", "fly", "zoom", "wipe", "bounce", "float", "swivel", "split", "wheel", "checkerboard", "blinds", "dissolve", "flash", "box", "circle", "diamond", "plus", "strips", "wedge", "random", "spin", "grow", "wave"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop effect=fade", "--prop effect=spin --prop class=emphasis"],
+      "readback": "effect name",
+      "enforcement": "report"
+    },
+    "class": {
+      "type": "enum",
+      "description": "animation category — entrance, exit, or emphasis. spin/grow/wave only work with emphasis.",
+      "values": ["entrance", "exit", "emphasis"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop class=entrance"],
+      "readback": "entrance | exit | emphasis",
+      "enforcement": "report"
+    },
+    "trigger": {
+      "type": "enum",
+      "values": ["onClick", "withPrevious", "afterPrevious"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop trigger=onClick"],
+      "readback": "trigger mode",
+      "enforcement": "report"
+    },
+    "duration": {
+      "type": "length",
+      "description": "Animation duration in milliseconds (integer).",
+      "aliases": ["dur"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop duration=500", "--prop dur=2000"],
+      "readback": "duration in milliseconds",
+      "enforcement": "report"
+    },
+    "delay": {
+      "type": "length",
+      "description": "Delay before starting in milliseconds (integer).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop delay=200"],
+      "readback": "delay in milliseconds",
+      "enforcement": "report"
+    },
+    "direction": {
+      "type": "string",
+      "description": "direction for directional effects (in/out/left/right/up/down).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop direction=in"],
+      "readback": "direction",
+      "enforcement": "report"
+    }
+  }
+}

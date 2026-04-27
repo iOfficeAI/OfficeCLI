@@ -31,7 +31,7 @@ public partial class PowerPointHandler : IDocumentHandler
     private (long width, long height) GetSlideSize()
     {
         var sldSz = _doc.PresentationPart?.Presentation?.GetFirstChild<SlideSize>();
-        return (sldSz?.Cx?.Value ?? 12192000L, sldSz?.Cy?.Value ?? 6858000L);
+        return (sldSz?.Cx?.Value ?? SlideSizeDefaults.Widescreen16x9Cx, sldSz?.Cy?.Value ?? SlideSizeDefaults.Widescreen16x9Cy);
     }
 
     // ==================== Raw Layer ====================

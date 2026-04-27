@@ -1,0 +1,96 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "footer",
+  "parent": "/",
+  "addParent": "/",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/footer[N]"]
+  },
+  "note": "Mirror of header.json — same surface, stored in FooterParts. Duplicate type per section rejected at Add. A single Add supports at most one text + one field pair. For composite footers like 'Page X of Y' (two fields + literal text), create the footer first, then Add additional runs/fields to its paragraph (/footer[N]/p[1]) one by one — see examples.",
+  "examples": [
+    "Simple page-number footer: officecli add file.docx / --type footer --prop field=page --prop alignment=center",
+    "'Page X of Y' — must be built in steps after creating the footer:",
+    "  1) officecli add file.docx / --type footer --prop text=\"Page \" --prop alignment=center",
+    "  2) officecli add file.docx \"/footer[1]/p[1]\" --type field --prop fieldType=page",
+    "  3) officecli add file.docx \"/footer[1]/p[1]\" --type run --prop text=\" of \"",
+    "  4) officecli add file.docx \"/footer[1]/p[1]\" --type field --prop fieldType=numpages"
+  ],
+  "properties": {
+    "type": {
+      "type": "enum",
+      "values": ["default", "first", "even"],
+      "aliases": ["kind", "ref"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop type=default"],
+      "readback": "innerText of HeaderFooterValues",
+      "enforcement": "strict"
+    },
+    "text": {
+      "type": "string",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=\"My Footer\""],
+      "readback": "concatenated Text.Descendants",
+      "enforcement": "strict"
+    },
+    "alignment": {
+      "type": "enum",
+      "values": ["left", "center", "right", "justify", "both", "distribute"],
+      "aliases": ["align"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop alignment=center"],
+      "readback": "first-paragraph Justification.Val.InnerText",
+      "enforcement": "strict"
+    },
+    "font": {
+      "type": "string",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop font=\"Arial\""],
+      "readback": "Ascii or HighAnsi font name",
+      "enforcement": "strict"
+    },
+    "size": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop size=12"],
+      "readback": "unit-qualified pt",
+      "enforcement": "strict"
+    },
+    "bold": {
+      "type": "bool",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop bold=true"],
+      "readback": "true when bold, key absent otherwise",
+      "enforcement": "strict"
+    },
+    "italic": {
+      "type": "bool",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop italic=true"],
+      "readback": "true when italic, key absent otherwise",
+      "enforcement": "strict"
+    },
+    "color": {
+      "type": "color",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop color=#FF0000"],
+      "readback": "#-prefixed uppercase hex",
+      "enforcement": "strict"
+    },
+    "field": {
+      "type": "enum",
+      "values": ["page", "pagenum", "pagenumber", "numpages", "date", "author", "title", "time", "filename"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop field=page"],
+      "readback": "not surfaced as a distinct key",
+      "enforcement": "strict"
+    }
+  }
+}

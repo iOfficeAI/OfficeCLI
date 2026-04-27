@@ -1,0 +1,22 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "presentation",
+  "container": true,
+  "operations": {
+    "add": false,
+    "set": false,
+    "get": true,
+    "query": true,
+    "remove": false
+  },
+  "paths": {
+    "positional": ["/"]
+  },
+  "note": "Root container. Get returns the presentation node with slide count + theme/master/layout references as children. Not addressable via Add or Set — mutate via /slide[N], /theme, etc.",
+  "children": [
+    { "element": "slide",       "pathSegment": "slide",       "cardinality": "0..n" },
+    { "element": "slidemaster", "pathSegment": "slidemaster", "cardinality": "1..n" },
+    { "element": "theme",       "pathSegment": "theme",       "cardinality": "1" }
+  ]
+}

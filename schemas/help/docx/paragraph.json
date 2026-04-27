@@ -1,0 +1,351 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "paragraph",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "stable":     ["/body/p[@paraId=ID]"],
+    "positional": ["/body/p[N]"]
+  },
+  "note": "Canonical keys per CLAUDE.md: spaceBefore/spaceAfter/lineSpacing/alignment. Legacy aliases (spacebefore, linespacing, halign) are still accepted on Add/Set but Get normalizes to canonical.",
+  "properties": {
+    "text": {
+      "type": "string",
+      "description": "Sets plain text on the paragraph by creating an implicit single run. Do not also add a 'run' child with text on the same paragraph — they will duplicate.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=\"Hello world\""],
+      "readback": "plain text content of paragraph",
+      "enforcement": "strict"
+    },
+    "alignment": {
+      "type": "enum",
+      "values": ["left", "center", "right", "justify", "both", "distribute"],
+      "aliases": ["halign", "align"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop alignment=center"],
+      "readback": "one of values",
+      "enforcement": "strict"
+    },
+    "style": {
+      "type": "string",
+      "description": "paragraph styleId (e.g. Heading1, Normal, Quote). Must reference an existing style or one of the built-in style aliases.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop style=Heading1"],
+      "readback": "styleId as stored on the paragraph",
+      "enforcement": "strict"
+    },
+    "spaceBefore": {
+      "type": "length",
+      "aliases": ["spacebefore"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop spaceBefore=12pt"],
+      "readback": "unit-qualified, e.g. \"12pt\"",
+      "enforcement": "strict"
+    },
+    "spaceAfter": {
+      "type": "length",
+      "aliases": ["spaceafter"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop spaceAfter=6pt"],
+      "readback": "unit-qualified, e.g. \"6pt\"",
+      "enforcement": "strict"
+    },
+    "lineSpacing": {
+      "type": "string",
+      "description": "multiplier (e.g. 1.5x, 150%) or fixed length (e.g. 18pt)",
+      "aliases": ["linespacing"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop lineSpacing=1.5x", "--prop lineSpacing=18pt"],
+      "readback": "\"<N>x\" for multiplier or \"<N>pt\" for fixed",
+      "enforcement": "strict"
+    },
+    "indent": {
+      "type": "length",
+      "description": "left indentation. Routed through SpacingConverter — accepts twips int or unit-qualified (2cm/0.5in/24pt). Aliases: leftindent/leftIndent. Get canonical key is 'leftIndent'.",
+      "aliases": ["leftindent", "leftIndent"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop indent=2cm"],
+      "readback": "under canonical key 'leftIndent'",
+      "enforcement": "report"
+    },
+    "listStyle": {
+      "type": "enum",
+      "values": ["bullet", "ordered", "none"],
+      "description": "high-level list type. 'bullet' (aliases: unordered, ul) creates a bulleted list; 'ordered' (or any other non-bullet value, e.g. 'decimal') creates a numbered list; 'none'/'remove'/'clear' strips list formatting. Preferred over raw numId. Continues a preceding list of the same type automatically unless 'start' is also given.",
+      "aliases": ["liststyle"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop listStyle=bullet --prop text=\"item\"", "--prop listStyle=ordered --prop text=\"step 1\""],
+      "readback": "'bullet' or 'ordered' (normalized from the numbering format)",
+      "enforcement": "strict"
+    },
+    "numId": {
+      "type": "int",
+      "description": "numbering definition id (w:numId). Low-level entry point — prefer 'listStyle' unless you specifically need to reference an existing numbering instance.",
+      "aliases": ["numid"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop numId=1"],
+      "readback": "numbering id as stored on the paragraph",
+      "enforcement": "strict"
+    },
+    "numLevel": {
+      "type": "int",
+      "description": "list indent level (w:ilvl), 0..8. Requires numId or listStyle to be effective; Get only surfaces numLevel when numId is present on the paragraph.",
+      "aliases": ["numlevel", "ilvl", "listLevel", "listlevel", "level"],
+      "requires": ["numId"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop numLevel=1 --prop numId=1", "--prop ilvl=1 --prop numId=1"],
+      "readback": "integer level as stored on the paragraph (only when numId is set)",
+      "enforcement": "strict"
+    },
+    "start": {
+      "type": "int",
+      "description": "starting number for an ordered list (w:start on level 0 of the numbering definition). Only meaningful together with liststyle=ordered or an existing numid. Readback not implemented — w:start lives in the separate numbering part and cross-part traversal is fragile; query the numbering directly if you need it.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop liststyle=ordered --prop start=5 --prop text=\"item\""],
+      "readback": "n/a (write-only via paragraph; query numbering part)",
+      "enforcement": "report"
+    },
+    "bold": {
+      "type": "bool",
+      "description": "run-level bold. On Add, applied to the implicit run created by 'text'. On Set, applied to all runs in the paragraph and to the paragraph-mark run properties so subsequent runs inherit.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop bold=true --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "italic": {
+      "type": "bool",
+      "description": "run-level italic. Same scope as 'bold'.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop italic=true --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "font": {
+      "type": "string",
+      "description": "run-level font family (applied to Ascii/HighAnsi/EastAsia). On Add, applied to the implicit run created by 'text'. On Set, applied to all runs in the paragraph.",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop font=\"Times New Roman\" --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "size": {
+      "type": "font-size",
+      "description": "run-level font size. Accepts bare number (pt), '14pt', '10.5pt'.",
+      "aliases": ["fontsize"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop size=14 --prop text=\"Hi\"", "--prop size=10.5pt --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "color": {
+      "type": "color",
+      "description": "run-level text color. Accepts #RRGGBB, RRGGBB, named colors (e.g. red), rgb(r,g,b).",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop color=red --prop text=\"Hi\"", "--prop color=#FF0000 --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "underline": {
+      "type": "string",
+      "description": "run-level underline. Accepts 'true'/'false' or an underline style (single, double, thick, dotted, dash, wavy, etc.).",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop underline=true --prop text=\"Hi\"", "--prop underline=double --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "strike": {
+      "type": "bool",
+      "description": "run-level single strikethrough.",
+      "aliases": ["strikethrough"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop strike=true --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "highlight": {
+      "type": "string",
+      "description": "run-level highlight color (w:highlight values: yellow, green, cyan, magenta, blue, red, darkBlue, darkCyan, darkGreen, darkMagenta, darkRed, darkYellow, darkGray, lightGray, black, white, none).",
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop highlight=yellow --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "caps": {
+      "type": "bool",
+      "description": "run-level all caps. On Add only (no paragraph-level Set wrapper).",
+      "aliases": ["allCaps"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop caps=true --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "smallcaps": {
+      "type": "bool",
+      "description": "run-level small caps. On Add only.",
+      "aliases": ["smallCaps"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop smallcaps=true --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "dstrike": {
+      "type": "bool",
+      "description": "run-level double strikethrough. On Add only.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop dstrike=true --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "vanish": {
+      "type": "bool",
+      "description": "run-level hidden text. On Add only.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop vanish=true --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "outline": {
+      "type": "bool",
+      "description": "run-level outline text effect. On Add only.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop outline=true --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "shadow": {
+      "type": "bool",
+      "description": "run-level shadow text effect. On Add only.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop shadow=true --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "emboss": {
+      "type": "bool",
+      "description": "run-level emboss text effect. On Add only.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop emboss=true --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "imprint": {
+      "type": "bool",
+      "description": "run-level imprint (engrave) text effect. On Add only.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop imprint=true --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "noproof": {
+      "type": "bool",
+      "description": "run-level no-proofing flag. On Add only.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop noproof=true --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "superscript": {
+      "type": "bool",
+      "description": "run-level superscript vertical alignment. On Add only (use vertAlign for Set).",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop superscript=true --prop text=\"x^2\""],
+      "enforcement": "strict"
+    },
+    "subscript": {
+      "type": "bool",
+      "description": "run-level subscript vertical alignment. On Add only (use vertAlign for Set).",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop subscript=true --prop text=\"H2O\""],
+      "enforcement": "strict"
+    },
+    "vertAlign": {
+      "type": "enum",
+      "values": ["superscript", "subscript", "baseline", "super", "sub"],
+      "description": "run-level vertical text alignment. On Add only.",
+      "aliases": ["vertalign"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop vertAlign=superscript --prop text=\"x^2\""],
+      "enforcement": "strict"
+    },
+    "charspacing": {
+      "type": "length",
+      "description": "run-level character spacing in points (bare number = pt, or 'Xpt'). Stored as twips. On Add only.",
+      "aliases": ["charSpacing", "letterspacing", "letterSpacing"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop charspacing=2 --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "rtl": {
+      "type": "bool",
+      "description": "run-level right-to-left text flag. On Add only.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop rtl=true --prop text=\"Hi\""],
+      "enforcement": "strict"
+    },
+    "shd": {
+      "type": "string",
+      "description": "shading. Format: 'fill' or 'val;fill' or 'val;fill;color'. Applied at paragraph level on Add (pPr/shd).",
+      "aliases": ["shading"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop shd=FFFF00", "--prop shd=clear;FFFF00"],
+      "enforcement": "report"
+    },
+    "firstLineIndent": {
+      "type": "length",
+      "description": "first-line indent. Routed through SpacingConverter.",
+      "aliases": ["firstlineindent"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop firstLineIndent=2cm"],
+      "enforcement": "report"
+    },
+    "rightIndent": {
+      "type": "length",
+      "description": "right indentation. Routed through SpacingConverter.",
+      "aliases": ["rightindent", "indentright"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop rightIndent=1cm"],
+      "enforcement": "report"
+    },
+    "hangingIndent": {
+      "type": "length",
+      "description": "hanging indent (pairs with left indent). Routed through SpacingConverter.",
+      "aliases": ["hangingindent", "hanging"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop hangingIndent=0.5cm"],
+      "enforcement": "report"
+    },
+    "keepNext": {
+      "type": "bool",
+      "description": "keep paragraph with the next paragraph (no page break between).",
+      "aliases": ["keepnext"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop keepNext=true"],
+      "enforcement": "report"
+    },
+    "keepLines": {
+      "type": "bool",
+      "description": "keep all lines of the paragraph together (no page break within).",
+      "aliases": ["keeplines", "keeptogether", "keepTogether"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop keepLines=true"],
+      "enforcement": "report"
+    },
+    "pageBreakBefore": {
+      "type": "bool",
+      "description": "force a page break before this paragraph.",
+      "aliases": ["pagebreakbefore"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop pageBreakBefore=true"],
+      "enforcement": "report"
+    },
+    "widowControl": {
+      "type": "bool",
+      "description": "widow/orphan control.",
+      "aliases": ["widowcontrol"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop widowControl=true"],
+      "enforcement": "report"
+    },
+    "contextualSpacing": {
+      "type": "bool",
+      "description": "suppress space between paragraphs of the same style. Applied on Add/Set to paragraph pPr; also valid on Style.",
+      "aliases": ["contextualspacing"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop contextualSpacing=true"],
+      "enforcement": "report"
+    }
+  },
+  "children": [
+    { "element": "run", "pathSegment": "r", "cardinality": "0..n" }
+  ]
+}

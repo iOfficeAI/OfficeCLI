@@ -5,7 +5,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>OfficeCli</RootNamespace>
     <AssemblyName>officecli</AssemblyName>
-    <Version>1.0.53</Version>
+    <Version>1.0.57</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
@@ -18,10 +18,6 @@
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.4.1" />
     <PackageReference Include="OpenMcdf" Version="3.1.2" />
     <PackageReference Include="System.CommandLine" Version="3.0.0-preview.2.26159.112" />
-  </ItemGroup>
-
-  <ItemGroup Condition="Exists('wiki/')">
-    <EmbeddedResource Include="wiki/**/*.md" />
   </ItemGroup>
 
   <ItemGroup>
@@ -45,6 +41,13 @@
 
   <ItemGroup>
     <EmbeddedResource Include="../../SKILL.md" LogicalName="OfficeCli.Resources.skill-officecli.md" />
+  </ItemGroup>
+
+  <!-- Embed help schemas into the assembly so SchemaHelpLoader can read
+       them via Assembly.GetManifestResourceStream — no on-disk extraction
+       required (single-file installer ships only the .exe). -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\schemas\help\**\*.json" LogicalName="schemas/help/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

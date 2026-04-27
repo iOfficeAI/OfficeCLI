@@ -17,11 +17,13 @@ namespace OfficeCli.Core;
 /// </summary>
 internal partial class ChartSvgRenderer
 {
-    // Fallback chart colors — used only when no theme is available
-    public static readonly string[] FallbackColors = [
-        "#4472C4", "#ED7D31", "#A5A5A5", "#FFC000", "#5B9BD5", "#70AD47",
-        "#264478", "#9E480E", "#636363", "#997300", "#255E91", "#43682B"
-    ];
+    // CONSISTENCY(chart-default-palette): canonical source is
+    // OfficeDefaultThemeColors.DefaultChartSeriesPalette; SVG just needs
+    // the '#'-prefixed form, so we derive once at static init.
+    public static readonly string[] FallbackColors =
+        OfficeDefaultThemeColors.DefaultChartSeriesPalette
+            .Select(hex => "#" + hex)
+            .ToArray();
 
     /// <summary>
     /// Theme-derived accent colors for chart series. Set from document theme accent1-6.

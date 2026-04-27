@@ -290,8 +290,7 @@ After any `swap` or `move`, re-query the affected slide with `officecli get deck
 ## Help System
 
 ```bash
-officecli pptx set              # All settable elements and properties
-officecli pptx set shape        # Shape properties in detail
-officecli pptx add              # All addable element types
-officecli pptx view             # All view modes
+officecli help pptx                      # Capability reference for the format (all elements)
+officecli help pptx shape                # Shape schema with properties in detail
+officecli help pptx <element> --json     # Structured capability schema (for agents)
 ```

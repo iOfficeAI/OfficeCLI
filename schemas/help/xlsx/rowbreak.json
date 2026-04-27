@@ -1,0 +1,28 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "rowbreak",
+  "parent": "sheet",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/SheetName/rowbreak[N]"]
+  },
+  "note": "Manual page break before the specified row. 'pagebreak' with col= routes to colbreak.",
+  "properties": {
+    "row": {
+      "type": "int",
+      "description": "1-based row index where the break occurs. Alias: index.",
+      "aliases": ["index"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop row=20"],
+      "readback": "row index",
+      "enforcement": "report"
+    }
+  }
+}

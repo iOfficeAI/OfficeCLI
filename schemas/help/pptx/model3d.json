@@ -1,0 +1,58 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "model3d",
+  "parent": "slide",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/slide[N]/model3d[M]"]
+  },
+  "note": "Only .glb (glTF-Binary) accepted. Placeholder PNG auto-generated for non-3D-aware viewers. Defaults to 10cm × 10cm centered on the slide.",
+  "properties": {
+    "src": {
+      "type": "string",
+      "description": ".glb source (file path, URL, data-URI). Non-glb rejected.",
+      "aliases": ["path"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop src=/path/to/model.glb"],
+      "readback": "model URL or rel id",
+      "enforcement": "report"
+    },
+    "x": {
+      "type": "length",
+      "aliases": ["left"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop x=2cm"],
+      "readback": "unit-qualified length",
+      "enforcement": "report"
+    },
+    "y": {
+      "type": "length",
+      "aliases": ["top"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop y=2cm"],
+      "readback": "unit-qualified length",
+      "enforcement": "report"
+    },
+    "width": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop width=10cm"],
+      "readback": "unit-qualified length",
+      "enforcement": "report"
+    },
+    "height": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop height=10cm"],
+      "readback": "unit-qualified length",
+      "enforcement": "report"
+    }
+  }
+}

@@ -19,12 +19,8 @@ static partial class CommandBuilder
         var rootCommand = new RootCommand("""
             officecli: AI-friendly CLI for Office documents (.docx, .xlsx, .pptx)
 
-            Help navigation (start from the deepest level you know):
-              officecli pptx set              All settable elements and their properties
-              officecli pptx set shape        Shape properties in detail
-              officecli pptx set shape.fill   Specific property format and examples
-
-            Replace 'pptx' with 'docx' or 'xlsx'. Commands: view, get, query, set, add, raw.
+            Run 'officecli help' for the schema-driven capability reference (formats, elements, properties).
+            See the Commands section below for the full list of subcommands.
             """);
         rootCommand.Add(jsonOption);
 
@@ -113,6 +109,7 @@ static partial class CommandBuilder
         rootCommand.Add(BuildMarkCommand(jsonOption));
         rootCommand.Add(BuildUnmarkMarkCommand(jsonOption));
         rootCommand.Add(BuildGetMarksCommand(jsonOption));
+        rootCommand.Add(BuildGotoCommand(jsonOption));
         rootCommand.Add(BuildViewCommand(jsonOption));
         rootCommand.Add(BuildGetCommand(jsonOption));
         rootCommand.Add(BuildQueryCommand(jsonOption));
@@ -130,7 +127,10 @@ static partial class CommandBuilder
         rootCommand.Add(BuildCreateCommand(jsonOption));
         rootCommand.Add(BuildMergeCommand(jsonOption));
 
-        HelpCommands.Register(rootCommand);
+        foreach (var stub in BuildIntegrationStubCommands())
+            rootCommand.Add(stub);
+
+        rootCommand.Add(BuildHelpCommand(jsonOption, rootCommand));
 
         return rootCommand;
     }
@@ -396,15 +396,24 @@ static partial class CommandBuilder
 
     private static void WriteError(Exception ex, bool json)
     {
+        // CONSISTENCY(error-wrap): bare XmlException leaks ("Data at the root
+        // level is invalid. Line 1, position 1.") when an OOXML part is
+        // externally corrupted. Surface a friendlier message naming the
+        // underlying cause so users know it's a malformed part, not a bug.
+        var rendered = ex is System.Xml.XmlException xe
+            ? new InvalidDataException(
+                $"Malformed XML in document part: {xe.Message} " +
+                $"(the file appears to have a corrupted OOXML part).", xe)
+            : ex;
         if (json)
         {
             // JSON mode: structured error envelope to stdout so AI agents get it in the same stream
             WarningContext.End(); // discard any partial warnings
-            Console.WriteLine(OutputFormatter.WrapErrorEnvelope(ex));
+            Console.WriteLine(OutputFormatter.WrapErrorEnvelope(rendered));
         }
         else
         {
-            Console.Error.WriteLine($"Error: {ex.Message}");
+            Console.Error.WriteLine($"Error: {rendered.Message}");
         }
     }
 
@@ -458,14 +467,28 @@ static partial class CommandBuilder
                 }
                 if (unsupported.Count > 0)
                 {
-                    string? batchScope = handler switch
+                    // /styles/<id> in Word: route through curated hints
+                    // instead of the generic "use raw-set" message. raw-set
+                    // is an escape hatch and pushing users there for missing
+                    // curated coverage trains them out of the canonical
+                    // vocabulary. See StyleUnsupportedHints.
+                    if (handler is OfficeCli.Handlers.WordHandler
+                        && path.StartsWith("/styles/", StringComparison.Ordinal))
                     {
-                        OfficeCli.Handlers.ExcelHandler => "excel",
-                        OfficeCli.Handlers.WordHandler => "word",
-                        OfficeCli.Handlers.PowerPointHandler => "pptx",
-                        _ => null,
-                    };
-                    parts.Add(FormatUnsupported(unsupported, batchScope));
+                        var styleHint = OfficeCli.Core.StyleUnsupportedHints.Format(unsupported);
+                        if (styleHint != null) parts.Add(styleHint);
+                    }
+                    else
+                    {
+                        string? batchScope = handler switch
+                        {
+                            OfficeCli.Handlers.ExcelHandler => "excel",
+                            OfficeCli.Handlers.WordHandler => "word",
+                            OfficeCli.Handlers.PowerPointHandler => "pptx",
+                            _ => null,
+                        };
+                        parts.Add(FormatUnsupported(unsupported, batchScope));
+                    }
                 }
                 return string.Join("\n", parts);
             }
@@ -490,7 +513,24 @@ static partial class CommandBuilder
                 {
                     var type = item.Type ?? "";
                     var resultPath = handler.Add(parentPath, type, pos, props);
-                    return $"Added {type} at {resultPath}";
+                    var addMsg = $"Added {type} at {resultPath}";
+
+                    // Surface silent-drop props that the curated Add helper
+                    // could not consume. AddStyle / AddParagraph / AddRun
+                    // populate LastAddUnsupportedProps. Use the curated
+                    // hint formatter (no raw-set recommendation) so users
+                    // learn the right curated alternative instead of being
+                    // pushed to the escape hatch. Scope label = result path
+                    // truncated to the meaningful prefix (/styles,
+                    // /body/p[N], /body/p[N]/r[N]).
+                    if (handler is OfficeCli.Handlers.WordHandler addWh
+                        && addWh.LastAddUnsupportedProps.Count > 0)
+                    {
+                        var scope = ScopeLabelForWordPath(resultPath);
+                        var hint = OfficeCli.Core.StyleUnsupportedHints.Format(addWh.LastAddUnsupportedProps, scope);
+                        if (hint != null) addMsg += "\nWARNING: " + hint;
+                    }
+                    return addMsg;
                 }
             }
             case "remove":
@@ -803,6 +843,21 @@ static partial class CommandBuilder
             }
         }
         return result;
+    }
+
+    /// <summary>
+    /// Reduce a Word handler result path to the meaningful scope label for
+    /// UNSUPPORTED messages — "/styles", "/body/p[N]", "/body/p[N]/r[N]".
+    /// Stops at the first segment that is not a known top-level Word
+    /// container so unfamiliar paths fall back to the full path.
+    /// </summary>
+    private static string ScopeLabelForWordPath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return "/";
+        if (path.StartsWith("/styles/", StringComparison.Ordinal)) return "/styles";
+        // Trim everything past the last bracketed-segment we recognize for
+        // paragraph/run paths. Keep the path as-is for everything else.
+        return path;
     }
 
     internal static string FormatUnsupported(IEnumerable<string> unsupported, string? scope = null)

@@ -1,15 +1,10 @@
 // Copyright 2025 OfficeCli (officecli.ai)
 // SPDX-License-Identifier: Apache-2.0
 
-using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using OfficeCli.Core;
-using A = DocumentFormat.OpenXml.Drawing;
-using C = DocumentFormat.OpenXml.Drawing.Charts;
-using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
-using M = DocumentFormat.OpenXml.Math;
 
 namespace OfficeCli.Handlers;
 
@@ -57,11 +52,21 @@ public partial class WordHandler
         }
         else
         {
-            var after = commentPara.ParagraphProperties as OpenXmlElement;
-            if (after != null) after.InsertAfterSelf(rangeStart);
-            else commentPara.InsertAt(rangeStart, 0);
-            commentPara.AppendChild(rangeEnd);
-            commentPara.AppendChild(refRun);
+            // index is a childElement-index (ResolveAnchorPosition counts pPr).
+            // Use pPr-aware insert so an index pointing at ParagraphProperties
+            // clamps forward (pPr must stay first child).
+            if (index.HasValue)
+            {
+                InsertIntoParagraph(commentPara, new OpenXmlElement[] { rangeStart, rangeEnd, refRun }, index);
+            }
+            else
+            {
+                var after = commentPara.ParagraphProperties as OpenXmlElement;
+                if (after != null) after.InsertAfterSelf(rangeStart);
+                else commentPara.InsertAt(rangeStart, 0);
+                commentPara.AppendChild(rangeEnd);
+                commentPara.AppendChild(refRun);
+            }
         }
 
         // Return navigable path using /comments/comment[N] (sequential index)
@@ -80,34 +85,135 @@ public partial class WordHandler
         if (string.IsNullOrEmpty(bkName))
             throw new ArgumentException("'name' property is required for bookmark");
 
-        var existingIds = body.Descendants<BookmarkStart>()
+        if (bkName.Any(c => c == '/' || c == '[' || c == ']'))
+            throw new ArgumentException(
+                $"Bookmark name '{bkName}' contains path-special characters " +
+                "('/', '[', ']'). These characters prevent later addressing via " +
+                "selectors. Use only letters, digits, '.', '_', '-' in bookmark names.");
+        if (bkName.Any(char.IsWhiteSpace) || bkName[0] == '@' || bkName[0] == '\'' || bkName.Contains('"'))
+            throw new ArgumentException(
+                $"Bookmark name '{bkName}' contains whitespace or quote/@ chars " +
+                "that prevent later addressing via bare attribute selectors. " +
+                "Use only letters, digits, '.', '_', '-' in bookmark names.");
+
+        // Reject duplicate bookmark names. OOXML bookmark names are expected
+        // to be unique per document; tolerating duplicates makes
+        // /bookmark[@name=X] ambiguous (it picks the first), so the path
+        // returned by `add` may not identify the bookmark just inserted.
+        var existingStarts = body.Descendants<BookmarkStart>().ToList();
+        if (existingStarts.Any(b => string.Equals(b.Name?.Value, bkName, StringComparison.Ordinal)))
+        {
+            throw new ArgumentException(
+                $"bookmark name '{bkName}' already exists; pick a unique name.");
+        }
+
+        var existingIds = existingStarts
             .Select(b => int.TryParse(b.Id?.Value, out var id) ? id : 0);
         var bkId = (existingIds.Any() ? existingIds.Max() + 1 : 1).ToString();
 
         var bookmarkStart = new BookmarkStart { Id = bkId, Name = bkName };
         var bookmarkEnd = new BookmarkEnd { Id = bkId };
 
+        // index is a childElement-index (ResolveAnchorPosition counts pPr).
+        // When anchor-based insert is requested, bypass the text-wrapping path
+        // (which finds its own position inside existing runs) and do a positional
+        // insert — the anchor wins. Route through the pPr-aware helper so an
+        // index pointing at ParagraphProperties clamps forward.
+        var bkPara = parent as Paragraph;
+        var hasAnchor = index.HasValue && bkPara != null
+            && index.Value >= 0 && index.Value < bkPara.ChildElements.Count;
+
+        // When the body-wrap branch runs, the bookmark lives inside a newly
+        // created <w:p>, not directly under Body. Track that so we can
+        // return a path that descends into the wrapping paragraph — otherwise
+        // `{parentPath}/bookmarkStart[...]` fails Get (CONSISTENCY(add-get-symmetry)).
+        Paragraph? wrappingPara = null;
+
         if (properties.TryGetValue("text", out var bkText))
         {
-            // Try to find existing runs whose concatenated text contains the bookmark text
-            var runs = parent.Elements<Run>().ToList();
-            var wrapped = TryWrapExistingRunsWithBookmark(parent, runs, bkText, bookmarkStart, bookmarkEnd);
-            if (!wrapped)
+            if (hasAnchor && bkPara != null)
             {
-                // No matching text found — create a new run as fallback
-                parent.AppendChild(bookmarkStart);
-                parent.AppendChild(new Run(new Text(bkText) { Space = SpaceProcessingModeValues.Preserve }));
-                parent.AppendChild(bookmarkEnd);
+                var bkRun = new Run(new Text(bkText) { Space = SpaceProcessingModeValues.Preserve });
+                InsertIntoParagraph(bkPara, new OpenXmlElement[] { bookmarkStart, bkRun, bookmarkEnd }, index);
             }
+            else if (parent is Body)
+            {
+                // Runs must live inside a paragraph; wrap Start+Run+End in a new
+                // <w:p> before inserting so we don't produce bare <w:r> as a
+                // direct body child (schema-invalid).
+                var bkRun = new Run(new Text(bkText) { Space = SpaceProcessingModeValues.Preserve });
+                var wrapPara = new Paragraph(bookmarkStart, bkRun, bookmarkEnd);
+                InsertAtIndexOrAppend(parent, wrapPara, index);
+                wrappingPara = wrapPara;
+            }
+            else
+            {
+                // Try to find existing runs whose concatenated text contains the bookmark text
+                var runs = parent.Elements<Run>().ToList();
+                var wrapped = TryWrapExistingRunsWithBookmark(parent, runs, bkText, bookmarkStart, bookmarkEnd);
+                if (!wrapped)
+                {
+                    // No matching text found — create a new run as fallback.
+                    // Route through InsertAtIndexOrAppend so body-level inserts
+                    // respect the trailing <w:sectPr> invariant (bookmarks
+                    // landing after sectPr would be schema-invalid).
+                    InsertAtIndexOrAppend(parent, bookmarkStart, index);
+                    InsertAtIndexOrAppend(parent, new Run(new Text(bkText) { Space = SpaceProcessingModeValues.Preserve }),
+                        index.HasValue ? index + 1 : null);
+                    InsertAtIndexOrAppend(parent, bookmarkEnd,
+                        index.HasValue ? index + 2 : null);
+                }
+            }
+        }
+        else if (hasAnchor && bkPara != null)
+        {
+            InsertIntoParagraph(bkPara, new OpenXmlElement[] { bookmarkStart, bookmarkEnd }, index);
         }
         else
         {
-            parent.AppendChild(bookmarkStart);
-            parent.AppendChild(bookmarkEnd);
+            // Body/other parents: honor --index/--after/--before and respect
+            // Body's trailing <w:sectPr> invariant by routing through
+            // InsertAtIndexOrAppend (which falls back to AppendToParent).
+            InsertAtIndexOrAppend(parent, bookmarkStart, index);
+            InsertAtIndexOrAppend(parent, bookmarkEnd, index.HasValue ? index + 1 : null);
         }
 
-        var resultPath = $"{parentPath}/bookmark[{bkName}]";
+        // Return a navigable path: /...parent/bookmarkStart[@name=<name>] is
+        // a real DOM element Navigation understands (the legacy
+        // `/bookmark[<name>]` form addressed a synthetic type that Get/Add
+        // could not resolve, breaking --after/--before reuse).
+        // ValidateAndNormalizePredicate rejects bare attribute values that
+        // contain whitespace, leading '@', or quote chars; double-quote the
+        // value when the raw name would otherwise be rejected so the returned
+        // path is round-trippable via `get`/`add --after`.
+        string resultPath;
+        if (wrappingPara != null)
+        {
+            var wrapIdx = parent.Elements<Paragraph>().ToList().IndexOf(wrappingPara) + 1;
+            resultPath = $"{parentPath}/{BuildParaPathSegment(wrappingPara, wrapIdx)}/bookmarkStart[@name={QuoteAttrValueIfNeeded(bkName)}]";
+        }
+        else
+        {
+            resultPath = $"{parentPath}/bookmarkStart[@name={QuoteAttrValueIfNeeded(bkName)}]";
+        }
         return resultPath;
+    }
+
+    /// <summary>
+    /// Quote an attribute predicate value when the bare form would be rejected
+    /// by ValidateAndNormalizePredicate. Bare values must have no whitespace,
+    /// no leading '@' or quote. Embedded double quotes cannot be represented
+    /// by either form — error up front.
+    /// </summary>
+    private static string QuoteAttrValueIfNeeded(string value)
+    {
+        if (value.Contains('"'))
+            throw new ArgumentException(
+                $"Name '{value}' contains embedded double-quote, which cannot be represented in an attribute selector.");
+        bool needsQuote = value.Length == 0
+            || value[0] == '@' || value[0] == '\''
+            || value.Any(char.IsWhiteSpace);
+        return needsQuote ? $"\"{value}\"" : value;
     }
 
     /// <summary>
@@ -205,7 +311,12 @@ public partial class WordHandler
 
     private string AddHyperlink(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
     {
-        var hasUrl = properties.TryGetValue("url", out var hlUrl) || properties.TryGetValue("href", out hlUrl);
+        // CONSISTENCY(docx-hyperlink-canonical-url): canonical key is `url`
+        // (per schemas/help/docx/hyperlink.json). `href` and `link` are legacy
+        // input aliases; Get normalizes readback to `url`.
+        var hasUrl = properties.TryGetValue("url", out var hlUrl)
+            || properties.TryGetValue("href", out hlUrl)
+            || properties.TryGetValue("link", out hlUrl);
         var hasAnchor = properties.TryGetValue("anchor", out var hlAnchor) || properties.TryGetValue("bookmark", out hlAnchor);
         if (!hasUrl && !hasAnchor)
             throw new ArgumentException("'url' or 'anchor' property is required for hyperlink type");
@@ -252,13 +363,14 @@ public partial class WordHandler
         if (hasAnchor)
             hyperlink.Anchor = hlAnchor;
 
-        if (index.HasValue)
-            hlPara.InsertAt(hyperlink, index.Value);
-        else
-            hlPara.AppendChild(hyperlink);
+        // index is a childElement-index (ResolveAnchorPosition counts pPr).
+        // Route through pPr-aware helper so index 0 clamps forward past
+        // ParagraphProperties (pPr must stay first child of <w:p>).
+        InsertIntoParagraph(hlPara, hyperlink, index);
 
-        var hlCount = hlPara.Elements<Hyperlink>().Count();
-        var resultPath = $"{parentPath}/hyperlink[{hlCount}]";
+        var hls = hlPara.Elements<Hyperlink>().ToList();
+        var idx = hls.FindIndex(h => ReferenceEquals(h, hyperlink));
+        var resultPath = $"{parentPath}/hyperlink[{(idx >= 0 ? idx + 1 : hls.Count)}]";
         return resultPath;
     }
 
@@ -417,13 +529,29 @@ public partial class WordHandler
         string resultPath;
         if (parent is Paragraph fieldPara)
         {
-            fieldPara.AppendChild(fieldRunBegin);
-            fieldPara.AppendChild(fieldRunInstr);
-            fieldPara.AppendChild(fieldRunSep);
-            fieldPara.AppendChild(fieldRunResult);
-            fieldPara.AppendChild(fieldRunEnd);
-            var runIdx = GetAllRuns(fieldPara).Count - 4;
-            resultPath = $"{parentPath}/r[{runIdx}]";
+            // index is a childElement-index (ResolveAnchorPosition counts pPr too).
+            // Route the 5 field runs through the pPr-aware multi-insert helper
+            // so index 0 clamps forward past ParagraphProperties and they stay
+            // in the correct consecutive order.
+            if (index.HasValue)
+            {
+                InsertIntoParagraph(
+                    fieldPara,
+                    new OpenXmlElement[] { fieldRunBegin, fieldRunInstr, fieldRunSep, fieldRunResult, fieldRunEnd },
+                    index);
+                var runIdxAfterInsert = fieldPara.Elements<Run>().TakeWhile(r => r != fieldRunResult).Count();
+                resultPath = $"{parentPath}/r[{runIdxAfterInsert + 1}]";
+            }
+            else
+            {
+                fieldPara.AppendChild(fieldRunBegin);
+                fieldPara.AppendChild(fieldRunInstr);
+                fieldPara.AppendChild(fieldRunSep);
+                fieldPara.AppendChild(fieldRunResult);
+                fieldPara.AppendChild(fieldRunEnd);
+                var runIdx = GetAllRuns(fieldPara).Count - 4;
+                resultPath = $"{parentPath}/r[{runIdx}]";
+            }
         }
         else
         {
@@ -438,7 +566,7 @@ public partial class WordHandler
             fNewPara.AppendChild(fieldRunSep);
             fNewPara.AppendChild(fieldRunResult);
             fNewPara.AppendChild(fieldRunEnd);
-            AppendToParent(parent, fNewPara);
+            InsertAtIndexOrAppend(parent, fNewPara, index);
             var fIdx2 = body.Elements<Paragraph>().TakeWhile(p => p != fNewPara).Count();
             resultPath = $"/body/{BuildParaPathSegment(fNewPara, fIdx2 + 1)}";
         }
@@ -485,17 +613,34 @@ public partial class WordHandler
         string resultPath;
         if (parent is Paragraph brkPara)
         {
-            brkPara.AppendChild(brkRun);
+            // index is a childElement-index (ResolveAnchorPosition counts pPr).
+            // pPr-aware insert keeps pPr as the first child of <w:p>.
+            InsertIntoParagraph(brkPara, brkRun, index);
             var brkParaIdx = body.Elements<Paragraph>().TakeWhile(p => p != brkPara).Count();
-            resultPath = $"/body/{BuildParaPathSegment(brkPara, brkParaIdx + 1)}/r[{GetAllRuns(brkPara).Count}]";
+            var brkRunIdx = brkPara.Elements<Run>().TakeWhile(r => r != brkRun).Count() + 1;
+            resultPath = $"/body/{BuildParaPathSegment(brkPara, brkParaIdx + 1)}/r[{brkRunIdx}]";
         }
         else
         {
-            // Create a new empty paragraph with the break
+            // Create a new empty paragraph with the break and insert into the
+            // ACTUAL parent (not hard-coded body) so /header[N], /footer[N],
+            // table cells, etc. receive the new paragraph. /styles is blocked
+            // earlier by ValidateParentChild.
             var brkNewPara = new Paragraph(brkRun);
-            AppendToParent(parent, brkNewPara);
-            var brkIdx = body.Elements<Paragraph>().TakeWhile(p => p != brkNewPara).Count();
-            resultPath = $"/body/{BuildParaPathSegment(brkNewPara, brkIdx + 1)}";
+            InsertAtIndexOrAppend(parent, brkNewPara, index);
+            // Build a navigable path based on the actual container. Only /body
+            // has the @paraId indexer; other containers (headers/footers/cells)
+            // use positional paths rooted at parentPath.
+            if (parent is Body)
+            {
+                var brkIdx = body.Elements<Paragraph>().TakeWhile(p => p != brkNewPara).Count();
+                resultPath = $"/body/{BuildParaPathSegment(brkNewPara, brkIdx + 1)}";
+            }
+            else
+            {
+                var brkIdx = parent.Elements<Paragraph>().TakeWhile(p => p != brkNewPara).Count();
+                resultPath = $"{parentPath}/p[{brkIdx + 1}]";
+            }
         }
         return resultPath;
     }
@@ -509,7 +654,24 @@ public partial class WordHandler
         var ciProps = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
 
         // Add a Structured Document Tag (Content Control)
-        var sdtType = ciProps.GetValueOrDefault("sdttype", ciProps.GetValueOrDefault("controltype", "text")).ToLowerInvariant();
+        // Canonical key is "type" (per schemas/help/docx/sdt.json); "sdttype" / "controltype"
+        // retained as legacy aliases for backward-compat.
+        var sdtType = ciProps.GetValueOrDefault("type",
+            ciProps.GetValueOrDefault("sdttype",
+                ciProps.GetValueOrDefault("controltype", "text"))).ToLowerInvariant();
+        // Schema-honesty: reject values the SDT builder does not emit the
+        // correct child elements for. Keeps the schema and runtime in sync
+        // instead of silently falling back to plain-text SDT.
+        var supportedSdtTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "text", "plaintext", "richtext", "rich",
+            "dropdown", "dropdownlist", "combobox", "combo",
+            "date", "datepicker"
+        };
+        if (!supportedSdtTypes.Contains(sdtType))
+            throw new NotSupportedException(
+                $"SDT type '{sdtType}' is not implemented. Supported: text, richtext, dropdown, combobox, date. " +
+                "Create the content control in Word, then edit via CLI.");
         var alias = ciProps.GetValueOrDefault("alias", ciProps.GetValueOrDefault("name", ""));
         var tag = ciProps.GetValueOrDefault("tag", "");
         var lockVal = ciProps.GetValueOrDefault("lock", "");
@@ -601,13 +763,28 @@ public partial class WordHandler
             sdtContent.AppendChild(contentRun);
             sdtRun.AppendChild(sdtContent);
 
-            ((Paragraph)parent).AppendChild(sdtRun);
-            // Build stable @paraId= and @sdtId= based path
+            // index is a childElement-index (ResolveAnchorPosition counts pPr).
+            // pPr-aware insert so an index at pPr clamps forward to keep pPr first.
+            var sdtPara = (Paragraph)parent;
+            InsertIntoParagraph(sdtPara, sdtRun, index);
+            // Build stable @paraId= and @sdtId= based path. Determine the
+            // root segment (body / header[N] / footer[N]) from the caller's
+            // parentPath so returned paths actually resolve when the parent
+            // paragraph lives in a header or footer part.
+            var inlineRoot = ExtractRootSegment(parentPath);
             var inlineParaId = ((Paragraph)parent).ParagraphId?.Value;
-            var inlineParaSegment = !string.IsNullOrEmpty(inlineParaId)
-                ? $"p[@paraId={inlineParaId}]"
-                : $"p[{body.Elements<Paragraph>().TakeWhile(p => p != parent).Count() + 1}]";
-            resultPath = $"/body/{inlineParaSegment}/sdt[@sdtId={inlineSdtIdVal}]";
+            string inlineParaSegment;
+            if (!string.IsNullOrEmpty(inlineParaId))
+            {
+                inlineParaSegment = $"p[@paraId={inlineParaId}]";
+            }
+            else
+            {
+                var parentContainer = parent.Parent;
+                var paraIdxIn = parentContainer?.Elements<Paragraph>().TakeWhile(p => p != parent).Count() ?? 0;
+                inlineParaSegment = $"p[{paraIdxIn + 1}]";
+            }
+            resultPath = $"{inlineRoot}/{inlineParaSegment}/sdt[@sdtId={inlineSdtIdVal}]";
         }
         else
         {
@@ -687,9 +864,15 @@ public partial class WordHandler
             sdtContent.AppendChild(contentPara);
             sdtBlock.AppendChild(sdtContent);
 
-            AppendToParent(parent, sdtBlock);
-            var sdtCount = body.Elements<SdtBlock>().Count();
-            resultPath = $"/body/sdt[{sdtCount}]";
+            InsertAtIndexOrAppend(parent, sdtBlock, index);
+            // Root-aware path: the sdtBlock may have been inserted into a
+            // header/footer; count SdtBlock siblings under its actual parent
+            // and prefix with the correct root segment.
+            var blockRoot = ExtractRootSegment(parentPath);
+            var blockSiblingCount = parent.Elements<SdtBlock>().TakeWhile(s => s != sdtBlock).Count() + 1;
+            resultPath = parent is Body
+                ? $"{blockRoot}/sdt[{blockSiblingCount}]"
+                : $"{parentPath}/sdt[{blockSiblingCount}]";
         }
         return resultPath;
     }
@@ -700,7 +883,7 @@ public partial class WordHandler
         // VML watermarks accept named colors (silver, red, etc.) or hex — don't sanitize
         var wmColor = properties.TryGetValue("color", out var wmcVal)
             ? wmcVal.TrimStart('#') : "silver";
-        var wmFont = properties.GetValueOrDefault("font", "Calibri");
+        var wmFont = properties.GetValueOrDefault("font", OfficeDefaultFonts.MinorLatin);
         var wmSize = properties.GetValueOrDefault("size", "1pt");
         if (!wmSize.EndsWith("pt")) wmSize += "pt";
         var wmRotation = properties.GetValueOrDefault("rotation", "315");

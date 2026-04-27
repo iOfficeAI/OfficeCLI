@@ -1,0 +1,54 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "hyperlink",
+  "parent": "cell",
+  "operations": {
+    "add": false,
+    "set": false,
+    "get": true,
+    "query": true,
+    "remove": false
+  },
+  "paths": {
+    "positional": ["/SheetName/CellRef"]
+  },
+  "note": "In Excel, hyperlinks are a cell-level property, not a standalone addressable element. To create or modify one, use `officecli xlsx add cell` / `set` on the owning cell with `--prop link=URL` (optionally `tooltip=`, `display=`). Query returns discoverable hyperlink nodes whose `Path` points at the owning cell (e.g. `/Sheet1/A1`) so agents can Get/Set from there. Removal: Set the cell's `link=none`. Aliases on cell input: link, href.",
+  "properties": {
+    "ref": {
+      "type": "string",
+      "description": "target cell range. Readback only (from <hyperlink ref=.../>).",
+      "add": false, "set": false, "get": true,
+      "readback": "cell reference",
+      "enforcement": "report"
+    },
+    "url": {
+      "type": "string",
+      "description": "external URL. Readback only here; create via cell `link=` property.",
+      "add": false, "set": false, "get": true,
+      "readback": "target URL",
+      "enforcement": "report"
+    },
+    "location": {
+      "type": "string",
+      "description": "internal sheet/cell target (Sheet1!A1). Readback only here; create via cell `link=` property.",
+      "add": false, "set": false, "get": true,
+      "readback": "internal target",
+      "enforcement": "report"
+    },
+    "display": {
+      "type": "string",
+      "description": "display text. Readback only here; set via cell `display=` property.",
+      "add": false, "set": false, "get": true,
+      "readback": "display string",
+      "enforcement": "report"
+    },
+    "tooltip": {
+      "type": "string",
+      "description": "hover tooltip. Readback only here; set via cell `tooltip=` property.",
+      "add": false, "set": false, "get": true,
+      "readback": "tooltip text",
+      "enforcement": "report"
+    }
+  }
+}

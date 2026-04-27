@@ -4,6 +4,7 @@
 using System.CommandLine;
 using OfficeCli.Core;
 using OfficeCli.Handlers;
+using OfficeCli.Help;
 
 namespace OfficeCli;
 
@@ -15,7 +16,24 @@ static partial class CommandBuilder
         var addParentPathArg = new Argument<string>("parent") { Description = "Parent DOM path (e.g. /body, /Sheet1, /slide[1])" };
         var addTypeOpt = new Option<string>("--type") { Description = "Element type to add (e.g. paragraph, run, table, sheet, row, cell, slide, shape, picture, ole, video)" };
         var addFromOpt = new Option<string?>("--from") { Description = "Copy from an existing element path (e.g. /slide[1]/shape[2])" };
-        var addIndexOpt = new Option<int?>("--index") { Description = "Insert position (0-based). If omitted, appends to end" };
+        var addIndexOpt = new Option<int?>("--index")
+        {
+            Description = "Insert position (0-based). If omitted, appends to end",
+            // Strict parser: reject trailing/leading whitespace so "3 " doesn't
+            // silently succeed while "1.5"/"abc" cleanly error. Mirrors the
+            // tight parse other invalid numeric inputs already get.
+            CustomParser = ar =>
+            {
+                if (ar.Tokens.Count == 0) return null;
+                var raw = ar.Tokens[0].Value;
+                if (raw != raw.Trim() || !int.TryParse(raw, System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out var v))
+                {
+                    ar.AddError($"Cannot parse argument '{raw}' for option '--index' as expected type 'System.Nullable`1[System.Int32]'.");
+                    return null;
+                }
+                return v;
+            }
+        };
         var addAfterOpt = new Option<string?>("--after") { Description = "Insert after the element at this path (e.g. p[@paraId=1A2B3C4D])" };
         var addBeforeOpt = new Option<string?>("--before") { Description = "Insert before the element at this path" };
         var addPropsOpt = new Option<string[]>("--prop") { Description = "Property to set (key=value, e.g. --prop src=image.png --prop width=6in)", AllowMultipleArgumentsPerToken = true };
@@ -141,6 +159,31 @@ static partial class CommandBuilder
                 // stay in sync.
                 var properties = ParsePropsArray(props);
 
+                // BUG(add-lies): Add previously accepted any --prop key and
+                // silently ignored unknown ones, so a typo like
+                // "bogusProp=xxx" looked successful. Schema-based pre-check
+                // catches unknowns before the handler call and reports them
+                // via the existing UNSUPPORTED channel (stderr + exit code 2
+                // + JSON warning). CONSISTENCY(schema-prop-validation): same
+                // validator is reused in ResidentServer.ExecuteAdd.
+                var fmt = SchemaHelpLoader.FormatForExtension(file.Extension);
+                var schemaUnsupported = fmt != null
+                    ? SchemaHelpLoader.ValidateProperties(fmt, type!, "add", properties)
+                    : Array.Empty<string>();
+
+                // CONSISTENCY(no-double-unsupported): drop schema-flagged keys
+                // before handing off to handler.Add so downstream helpers
+                // (e.g. PivotTableHelper.WarnUnknownPivotProperties) don't
+                // emit a second UNSUPPORTED line with slightly different
+                // phrasing. The CLI layer is now the single reporter for
+                // CLI-initiated Adds; direct handler callers still see the
+                // helper's warning since they don't go through this path.
+                if (schemaUnsupported.Count > 0)
+                {
+                    foreach (var u in schemaUnsupported)
+                        properties.Remove(u);
+                }
+
                 using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
                 var oldCount = (handler as OfficeCli.Handlers.PowerPointHandler)?.GetSlideCount() ?? 0;
                 var resultPath = handler.Add(parentPath, type!, position, properties);
@@ -167,6 +210,30 @@ static partial class CommandBuilder
                         Suggestion = "Increase shape height/width, reduce font size, or shorten text"
                     });
                 }
+
+                // Map suggestion scope off the handler type — same pattern as
+                // CommandBuilder.Set.cs so Excel adds don't get PPT-only
+                // suggestion noise.
+                string? addSuggestionScope = handler switch
+                {
+                    OfficeCli.Handlers.ExcelHandler => "excel",
+                    OfficeCli.Handlers.WordHandler => "word",
+                    OfficeCli.Handlers.PowerPointHandler => "pptx",
+                    _ => null,
+                };
+                foreach (var u in schemaUnsupported)
+                {
+                    var suggestion = SuggestPropertyScoped(u, addSuggestionScope);
+                    addWarnings.Add(new OfficeCli.Core.CliWarning
+                    {
+                        Message = suggestion != null
+                            ? $"Unsupported property: {u} (did you mean: {suggestion}?)"
+                            : $"Unsupported property: {u}",
+                        Code = "unsupported_property",
+                        Suggestion = suggestion,
+                    });
+                }
+
                 if (json)
                 {
                     Console.WriteLine(OutputFormatter.WrapEnvelopeText(
@@ -178,10 +245,17 @@ static partial class CommandBuilder
                     Console.WriteLine(message);
                     if (spatialLine != null) Console.WriteLine($"  {spatialLine}");
                     foreach (var w in addWarnings)
+                    {
+                        if (w.Code == "unsupported_property") continue; // emitted as UNSUPPORTED line below
                         Console.Error.WriteLine($"  WARNING: {w.Message}");
+                    }
+                    if (schemaUnsupported.Count > 0)
+                        Console.Error.WriteLine(FormatUnsupported(schemaUnsupported, addSuggestionScope));
                 }
                 if (parentPath == "/") NotifyWatchRoot(handler, file.FullName, oldCount);
                 else NotifyWatch(handler, file.FullName, parentPath);
+
+                if (schemaUnsupported.Count > 0) return 2;
             }
 
             return hadWarnings ? 2 : 0;

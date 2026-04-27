@@ -1,0 +1,53 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "namedrange",
+  "parent": "workbook|sheet",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "stable":     ["/namedrange[@name=NAME]", "/namedrange[NAME]"],
+    "positional": ["/namedrange[N]"]
+  },
+  "note": "Aliases: definedname. Name rules from ECMA-376 §18.2.5 — start with letter/underscore/backslash, only letters/digits/underscore/period/backslash, must not look like a cell ref. refersTo content must not start with '='.",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "defined-name identifier. Required (or inferred from path).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop name=Revenue"],
+      "readback": "name",
+      "enforcement": "report"
+    },
+    "ref": {
+      "type": "string",
+      "description": "refersTo expression. Aliases: refersTo, formula. Do not include leading '='.",
+      "aliases": ["refersTo", "formula"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop ref=Sheet1!$A$1:$C$10"],
+      "readback": "refersTo content",
+      "enforcement": "report"
+    },
+    "scope": {
+      "type": "string",
+      "description": "sheet name for local scope, or 'workbook' (default).",
+      "add": true, "set": false, "get": true,
+      "examples": ["--prop scope=workbook"],
+      "readback": "scope descriptor",
+      "enforcement": "report"
+    },
+    "comment": {
+      "type": "string",
+      "description": "free-text description shown in Excel's Name Manager.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop comment=\"Q4 totals\""],
+      "readback": "comment text",
+      "enforcement": "report"
+    }
+  }
+}

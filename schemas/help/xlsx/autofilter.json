@@ -1,0 +1,36 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "autofilter",
+  "parent": "sheet",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/SheetName/autofilter"]
+  },
+  "note": "A sheet has at most one AutoFilter. Per-column criteria via 'criteriaN.OP=VAL' props where N is the 0-based column offset from the filter range and OP ∈ {equals, contains, gt, lt, top, blanks, nonBlanks}. Canonical key matches sheet.autoFilter alias.",
+  "properties": {
+    "range": {
+      "type": "string",
+      "description": "cell range the filter applies to. Required.",
+      "aliases": ["ref"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop range=A1:F100"],
+      "readback": "range reference",
+      "enforcement": "report"
+    },
+    "criteria0": {
+      "type": "string",
+      "description": "column 0 criterion: 'OP=VAL'. Multi-column via criteria1, criteria2, etc. OP ∈ equals/contains/gt/lt/top/blanks/nonBlanks.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop criteria0.equals=Red", "--prop criteria2.gt=100"],
+      "readback": "criterion spec",
+      "enforcement": "report"
+    }
+  }
+}

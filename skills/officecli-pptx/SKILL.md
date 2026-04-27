@@ -419,7 +419,7 @@ Before declaring a presentation complete, verify:
 | `--name "foo"` | Use `--prop name="foo"` -- all attributes go through `--prop` |
 | `x=-3cm` | Negative coordinates **are supported** and can be used for bleed effects (e.g., `x=-2cm` lets a decorative element overflow the left edge). |
 | `/shape[myname]` | Name indexing not supported. Use numeric index: `/shape[3]` |
-| Guessing property names | Run `officecli pptx set shape` to see exact names |
+| Guessing property names | Run `officecli help pptx shape` to see exact names |
 | `\n`/`\\` in shell strings & code slides | 普通文本 shape：使用 `\\n` 表示换行，如 `--prop text="line1\\nline2"`。<br>**代码 slide 特别注意**：`--prop text="kubectl apply \\n  -f pod.yaml"` 会在 slide 上显示字面量 `\\n`（而非换行）。对于演示用代码内容，使用单个 `\n` 实现真实换行：`--prop text="line1\nline2"`。但在 shell 单引号字符串中 `\n` 是字面量；建议使用 heredoc 或 JSON batch 传递带换行的代码文本，以避免 shell 转义问题。 |
 | Modifying an open file | Close the file in PowerPoint/WPS first |
 | Hex colors with `#` | Use `FF0000` not `#FF0000` -- no hash prefix |
@@ -683,11 +683,9 @@ Batch fields: `command`, `path`, `parent`, `type`, `from`, `to`, `index`, `after
 **When unsure about property names, value formats, or command syntax, run help instead of guessing.** One help query is faster than guess-fail-retry loops.
 
 ```bash
-officecli pptx set              # All settable elements and their properties
-officecli pptx set shape        # Shape properties in detail
-officecli pptx set shape.fill   # Specific property format and examples
-officecli pptx add              # All addable element types
-officecli pptx view             # All view modes
-officecli pptx get              # All navigable paths
-officecli pptx query            # Query selector syntax
+officecli help pptx                      # Capability reference for the format (all elements)
+officecli help pptx shape                # Shape schema with properties in detail
+officecli help pptx <element> --json     # Structured capability schema (for agents)
 ```
+
+Property-level help is included in the element output. For `view`/`raw`/`batch` flag details use `officecli view --help`, `officecli raw --help`, etc.

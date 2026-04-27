@@ -1,0 +1,92 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "slide",
+  "parent": "presentation",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/slide[N]"]
+  },
+  "note": "Slide layouts are resolved by name via ResolveSlideLayout. 'title' / 'text' shorthand inserts title / content text shapes at Add time. Background accepts hex color, 'transparent', or 'image:/path'. Transition 'morph...' auto-prefixes shape names. Newly added slides contain no placeholders by default — use --prop title=... / text=... shorthand, `add /slide[N] --type placeholder --prop phType=title`, or `add /slide[N] --type shape|textbox` to add content.",
+  "properties": {
+    "layout": {
+      "type": "string",
+      "description": "slide layout name (e.g. 'Title Slide', 'Title and Content'). Resolved against the presentation's slide masters.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop layout=\"Title Slide\""],
+      "readback": "layout name string",
+      "enforcement": "report"
+    },
+    "title": {
+      "type": "string",
+      "description": "title text. Creates a Title shape at Add time.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop title=\"Introduction\""],
+      "readback": "Preview surfaces the title text (not in Format)",
+      "enforcement": "report"
+    },
+    "text": {
+      "type": "string",
+      "description": "content body text. Creates a Content text shape at Add time.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop text=\"Body text\""],
+      "readback": "not surfaced at slide level",
+      "enforcement": "report"
+    },
+    "background": {
+      "type": "color",
+      "description": "slide background. Accepts hex color, 'transparent', or 'image:/path'.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop background=#FFFFFF"],
+      "readback": "resolved background descriptor",
+      "enforcement": "report"
+    },
+    "transition": {
+      "type": "string",
+      "description": "transition name (fade, push, wipe, morph, etc.). 'morph...' triggers auto-prefixing of shape names.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop transition=fade"],
+      "readback": "transition name",
+      "enforcement": "report"
+    },
+    "advanceTime": {
+      "type": "length",
+      "description": "auto-advance time in seconds/ms.",
+      "aliases": ["advancetime"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop advanceTime=5"],
+      "readback": "time descriptor",
+      "enforcement": "report"
+    },
+    "advanceClick": {
+      "type": "bool",
+      "description": "advance on click.",
+      "aliases": ["advanceclick"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop advanceClick=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "notes": {
+      "type": "string",
+      "description": "slide notes text. Set-only at creation time.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop notes=\"Speaker notes here\""],
+      "readback": "notes text when present",
+      "enforcement": "report"
+    }
+  },
+  "children": [
+    { "element": "shape",       "pathSegment": "shape",       "cardinality": "0..n" },
+    { "element": "table",       "pathSegment": "table",       "cardinality": "0..n" },
+    { "element": "chart",       "pathSegment": "chart",       "cardinality": "0..n" },
+    { "element": "picture",     "pathSegment": "picture",     "cardinality": "0..n" },
+    { "element": "placeholder", "pathSegment": "placeholder", "cardinality": "0..n" }
+  ]
+}

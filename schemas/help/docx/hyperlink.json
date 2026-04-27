@@ -1,0 +1,124 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "hyperlink",
+  "parent": "paragraph",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": [
+      "/body/p[N]/hyperlink[M]"
+    ]
+  },
+  "note": "Aliases: link. Exactly one of 'url' (external) or 'anchor' (internal bookmark ref) is required. Colors default to theme Hyperlink (or 0563C1 fallback) with single underline.",
+  "properties": {
+    "url": {
+      "type": "string",
+      "description": "absolute external URL. Parsed as Uri.TryCreate(UriKind.Absolute).",
+      "aliases": [
+        "href",
+        "link"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop url=https://example.com"
+      ],
+      "readback": "target URL for external links",
+      "enforcement": "report"
+    },
+    "anchor": {
+      "type": "string",
+      "description": "bookmark name for internal links. Set after Add not supported \u2014 formatting lives on inner runs (Set the run, not the hyperlink wrapper).",
+      "aliases": [
+        "bookmark"
+      ],
+      "add": true,
+      "set": false,
+      "get": true,
+      "examples": [
+        "--prop anchor=section1"
+      ],
+      "readback": "anchor name for internal links",
+      "enforcement": "report"
+    },
+    "text": {
+      "type": "string",
+      "description": "display text. Defaults to url or anchor value if omitted.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop text=\"click here\""
+      ],
+      "readback": "concatenated run text",
+      "enforcement": "report"
+    },
+    "color": {
+      "type": "color",
+      "description": "override link color (default: theme Hyperlink or 0563C1). Set after Add not supported \u2014 formatting lives on inner runs (Set the run, not the hyperlink wrapper).",
+      "add": true,
+      "set": false,
+      "get": true,
+      "examples": [
+        "--prop color=#0000FF"
+      ],
+      "readback": "#-prefixed uppercase hex",
+      "enforcement": "report"
+    },
+    "font": {
+      "type": "string",
+      "add": true,
+      "set": false,
+      "get": true,
+      "examples": [
+        "--prop font=\"Calibri\""
+      ],
+      "readback": "font name",
+      "enforcement": "report",
+      "description": " Set after Add not supported \u2014 formatting lives on inner runs (Set the run, not the hyperlink wrapper)."
+    },
+    "size": {
+      "type": "length",
+      "add": true,
+      "set": false,
+      "get": true,
+      "examples": [
+        "--prop size=11"
+      ],
+      "readback": "unit-qualified pt",
+      "enforcement": "report",
+      "description": " Set after Add not supported \u2014 formatting lives on inner runs (Set the run, not the hyperlink wrapper)."
+    },
+    "bold": {
+      "type": "bool",
+      "add": true,
+      "set": false,
+      "get": true,
+      "examples": [
+        "--prop bold=true"
+      ],
+      "readback": "true/false",
+      "enforcement": "report",
+      "description": " Set after Add not supported \u2014 formatting lives on inner runs (Set the run, not the hyperlink wrapper)."
+    },
+    "italic": {
+      "type": "bool",
+      "add": true,
+      "set": false,
+      "get": true,
+      "examples": [
+        "--prop italic=true"
+      ],
+      "readback": "true/false",
+      "enforcement": "report",
+      "description": " Set after Add not supported \u2014 formatting lives on inner runs (Set the run, not the hyperlink wrapper)."
+    }
+  }
+}

@@ -114,14 +114,22 @@ public partial class PowerPointHandler
         if (!path.Contains("[@"))
             return path;
 
-        return Regex.Replace(path, @"(\w+)\[@(id|name)=([^\]]+)\]", m =>
+        // Iterate matches left-to-right so we can rewrite the prefix as we go;
+        // each successive @id=/@name= resolves relative to whatever group context
+        // the earlier (already-rewritten) prefix established.
+        var sb = new System.Text.StringBuilder();
+        var cursor = 0;
+        var rewritten = path;
+        var matches = Regex.Matches(path, @"(\w+)\[@(id|name)=([^\]]+)\]");
+        foreach (Match m in matches)
         {
+            sb.Append(path, cursor, m.Index - cursor);
+            var prefix = sb.ToString();
+
             var elementType = m.Groups[1].Value.ToLowerInvariant();
             var attrName = m.Groups[2].Value.ToLowerInvariant();
             var attrValue = m.Groups[3].Value.Trim('"', '\'', ' ');
 
-            // Extract slide index from the path prefix before this match
-            var prefix = path[..m.Index];
             var slideMatch = Regex.Match(prefix, @"/slide\[(\d+)\]");
             if (!slideMatch.Success)
                 throw new ArgumentException($"Cannot resolve @{attrName}= outside of a slide context: {path}");
@@ -135,33 +143,59 @@ public partial class PowerPointHandler
             if (shapeTree == null)
                 throw new ArgumentException($"Slide {slideIdx} has no shape tree");
 
-            var positionalIdx = FindElementByAttr(shapeTree, elementType, attrName, attrValue);
-            return $"{m.Groups[1].Value}[{positionalIdx}]";
-        });
+            // CONSISTENCY(group-id-scope): if the prefix has /group[N] segments
+            // after /slide[N], scope the @id=/@name= search inside that nested
+            // group's shape tree, not the slide-level shape tree.
+            OpenXmlElement scope = shapeTree;
+            var groupMatches = Regex.Matches(prefix, @"/group\[(\d+)\]");
+            foreach (Match gm in groupMatches)
+            {
+                var gIdx = int.Parse(gm.Groups[1].Value);
+                var groups = scope.Elements<GroupShape>().ToList();
+                if (gIdx < 1 || gIdx > groups.Count)
+                    throw new ArgumentException($"Group {gIdx} not found in scope (total: {groups.Count})");
+                scope = groups[gIdx - 1];
+            }
+
+            var positionalIdx = FindElementByAttrInScope(scope, elementType, attrName, attrValue);
+            var replacement = $"{m.Groups[1].Value}[{positionalIdx}]";
+            sb.Append(replacement);
+            cursor = m.Index + m.Length;
+        }
+        sb.Append(path, cursor, path.Length - cursor);
+        return sb.ToString();
     }
 
     /// <summary>
     /// Find the 1-based positional index of an element within its type group by @id= or @name=.
     /// </summary>
     private static int FindElementByAttr(ShapeTree shapeTree, string elementType, string attrName, string attrValue)
+        => FindElementByAttrInScope(shapeTree, elementType, attrName, attrValue);
+
+    /// <summary>
+    /// Like <see cref="FindElementByAttr"/> but searches direct children of any
+    /// container element (ShapeTree or GroupShape). Used to scope @id=/@name=
+    /// lookups inside nested groups.
+    /// </summary>
+    private static int FindElementByAttrInScope(OpenXmlElement scope, string elementType, string attrName, string attrValue)
     {
         var elements = elementType switch
         {
-            "shape" or "textbox" or "title" or "equation" => shapeTree.Elements<Shape>()
+            "shape" or "textbox" or "title" or "equation" => scope.Elements<Shape>()
                 .Select(s => (element: (OpenXmlElement)s, nvPr: s.NonVisualShapeProperties?.NonVisualDrawingProperties)).ToList(),
-            "picture" or "pic" or "image" => shapeTree.Elements<Picture>()
+            "picture" or "pic" or "image" => scope.Elements<Picture>()
                 .Select(p => (element: (OpenXmlElement)p, nvPr: p.NonVisualPictureProperties?.NonVisualDrawingProperties)).ToList(),
-            "table" => shapeTree.Elements<GraphicFrame>()
+            "table" => scope.Elements<GraphicFrame>()
                 .Where(gf => gf.Descendants<Drawing.Table>().Any())
                 .Select(gf => (element: (OpenXmlElement)gf, nvPr: gf.NonVisualGraphicFrameProperties?.NonVisualDrawingProperties)).ToList(),
-            "chart" => shapeTree.Elements<GraphicFrame>()
+            "chart" => scope.Elements<GraphicFrame>()
                 .Where(gf => gf.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().Any() || IsExtendedChartFrame(gf))
                 .Select(gf => (element: (OpenXmlElement)gf, nvPr: gf.NonVisualGraphicFrameProperties?.NonVisualDrawingProperties)).ToList(),
-            "connector" or "connection" => shapeTree.Elements<ConnectionShape>()
+            "connector" or "connection" => scope.Elements<ConnectionShape>()
                 .Select(c => (element: (OpenXmlElement)c, nvPr: c.NonVisualConnectionShapeProperties?.NonVisualDrawingProperties)).ToList(),
-            "group" => shapeTree.Elements<GroupShape>()
+            "group" => scope.Elements<GroupShape>()
                 .Select(g => (element: (OpenXmlElement)g, nvPr: g.NonVisualGroupShapeProperties?.NonVisualDrawingProperties)).ToList(),
-            "video" or "audio" => shapeTree.Elements<Picture>()
+            "video" or "audio" => scope.Elements<Picture>()
                 .Select(p => (element: (OpenXmlElement)p, nvPr: p.NonVisualPictureProperties?.NonVisualDrawingProperties)).ToList(),
             _ => throw new ArgumentException($"Unknown element type '{elementType}' for @{attrName}= addressing")
         };
@@ -795,7 +829,10 @@ public partial class PowerPointHandler
         {
             var rtpAttr = zmPr.GetAttribute("returnToParent", "");
             if (!string.IsNullOrEmpty(rtpAttr.Value))
-                node.Format["returnToParent"] = rtpAttr.Value;
+            {
+                // Schema declares bool; normalize "1"/"0"/"true"/"false" → bool.
+                node.Format["returnToParent"] = rtpAttr.Value is "1" or "true";
+            }
             var tdAttr = zmPr.GetAttribute("transitionDur", "");
             if (!string.IsNullOrEmpty(tdAttr.Value))
                 node.Format["transitionDur"] = tdAttr.Value;

@@ -13,6 +13,37 @@ namespace OfficeCli.Core;
 /// </summary>
 internal static partial class ChartHelper
 {
+    // ==================== Legend Position ====================
+
+    /// <summary>
+    /// Parse a user-supplied legend position string into the OOXML enum.
+    /// Throws ArgumentException on unknown tokens — historically these
+    /// silently fell through to "bottom", producing a contradictory
+    /// "Updated: legend=hidden" success message while the file actually
+    /// carried legend=bottom (R34-1). Caller should already have handled
+    /// "none" / "false" (legend removal) before reaching here.
+    /// </summary>
+    internal static C.LegendPositionValues ParseLegendPosition(string value)
+    {
+        // CONSISTENCY(legend-separator-normalize): accept dash AND underscore
+        // as separators (`top-right`, `top_right`, `TOP_RIGHT`) by stripping
+        // both before comparison. Without this, `TOP_RIGHT` threw while
+        // `top-right` succeeded — punctuation variants should be uniform.
+        var norm = (value ?? string.Empty).ToLowerInvariant().Replace("-", "").Replace("_", "");
+        return norm switch
+        {
+            "top" or "t" => C.LegendPositionValues.Top,
+            "bottom" or "b" => C.LegendPositionValues.Bottom,
+            "left" or "l" => C.LegendPositionValues.Left,
+            "right" or "r" => C.LegendPositionValues.Right,
+            "topright" or "tr" => C.LegendPositionValues.TopRight,
+            _ => throw new ArgumentException(
+                $"Invalid legend position '{value}'. " +
+                "Valid: none, top, bottom, left, right, topRight " +
+                "(or use 'none'/'false' to hide the legend)."),
+        };
+    }
+
     // ==================== Tick Mark Helpers ====================
 
     internal static C.TickMarkValues ParseTickMark(string value)
@@ -315,8 +346,10 @@ internal static partial class ChartHelper
     /// <summary>
     /// Handle per-series dotted properties: smooth, trendline, trendline.*, marker, markerSize,
     /// point{M}.color, point{M}.explosion, invertIfNeg, errBars, color.
+    /// Returns true if the property was recognized and handled; false otherwise so the
+    /// caller can surface it as "unsupported" rather than silently accepting it.
     /// </summary>
-    internal static void HandleSeriesDottedProperty(OpenXmlCompositeElement ser, string prop, string value)
+    internal static bool HandleSeriesDottedProperty(OpenXmlCompositeElement ser, string prop, string value)
     {
         switch (prop)
         {
@@ -327,7 +360,7 @@ internal static partial class ChartHelper
                     ser.RemoveAllChildren<C.Smooth>();
                     InsertSeriesChildInOrder(ser, new C.Smooth { Val = ParseHelpers.IsTruthy(value) });
                 }
-                break;
+                return true;
 
             case "trendline":
                 // CL20: `Set trendline=X` APPENDS a trendline (Excel allows
@@ -355,24 +388,56 @@ internal static partial class ChartHelper
                         InsertSeriesChildInOrder(ser, newTl);
                     }
                 }
-                break;
+                return true;
 
             case "marker":
                 ApplySeriesMarker(ser, value);
-                break;
+                return true;
 
             case "markersize":
+            case "marker.size":
             {
                 var marker = ser.GetFirstChild<C.Marker>();
-                if (marker == null) { marker = new C.Marker(); ser.AppendChild(marker); }
+                if (marker == null)
+                {
+                    marker = new C.Marker();
+                    var insertBefore = (OpenXmlElement?)ser.Elements().FirstOrDefault(e =>
+                        e.LocalName is "xVal" or "yVal" or "cat" or "val" or "bubbleSize"
+                            or "smooth" or "extLst")
+                        ?? ser.Elements().FirstOrDefault(e => e.LocalName == "trendline");
+                    if (insertBefore != null) ser.InsertBefore(marker, insertBefore);
+                    else ser.AppendChild(marker);
+                }
                 marker.RemoveAllChildren<C.Size>();
                 marker.AppendChild(new C.Size { Val = ParseHelpers.SafeParseByte(value, "series.markerSize") });
-                break;
+                return true;
+            }
+
+            case "marker.style":
+            {
+                // CONSISTENCY(marker-dotted): mirror "marker=circle" but accept the
+                // dotted alternative seriesN.marker.style=circle. Preserve any
+                // existing c:size so users can set style and size independently.
+                var existing = ser.GetFirstChild<C.Marker>();
+                var existingSize = existing?.GetFirstChild<C.Size>()?.Val?.Value;
+                ApplySeriesMarker(ser, value);
+                if (existingSize.HasValue)
+                {
+                    var newMarker = ser.GetFirstChild<C.Marker>();
+                    if (newMarker != null && newMarker.GetFirstChild<C.Size>() == null)
+                    {
+                        var sym = newMarker.GetFirstChild<C.Symbol>();
+                        var sz = new C.Size { Val = existingSize.Value };
+                        if (sym != null) sym.InsertAfterSelf(sz);
+                        else newMarker.AppendChild(sz);
+                    }
+                }
+                return true;
             }
 
             case "color":
                 ApplySeriesColor(ser, value);
-                break;
+                return true;
 
             case "name":
             {
@@ -392,7 +457,7 @@ internal static partial class ChartHelper
                         serText.AppendChild(new C.NumericValue(value));
                     }
                 }
-                break;
+                return true;
             }
 
             case "values":
@@ -418,34 +483,34 @@ internal static partial class ChartHelper
                             valEl.AppendChild(child.CloneNode(true));
                     }
                 }
-                break;
+                return true;
             }
 
             case "invertifneg" or "invertifnegative":
                 ser.RemoveAllChildren<C.InvertIfNegative>();
                 ser.AppendChild(new C.InvertIfNegative { Val = ParseHelpers.IsTruthy(value) });
-                break;
+                return true;
 
             case "errbars" or "errorbars":
                 ser.RemoveAllChildren<C.ErrorBars>();
                 if (!value.Equals("none", StringComparison.OrdinalIgnoreCase)
                     && SeriesSupportsErrorBars(ser))
                     InsertSeriesChildInOrder(ser, BuildErrorBars(value));
-                break;
+                return true;
 
             case "explosion" or "explode":
                 ser.RemoveAllChildren<C.Explosion>();
                 if (uint.TryParse(value, out var expVal) && expVal > 0)
                     ser.AppendChild(new C.Explosion { Val = expVal });
-                break;
+                return true;
 
             case "linewidth":
                 ApplySeriesLineWidth(ser, (int)(ParseHelpers.SafeParseDouble(value, "series.lineWidth") * 12700));
-                break;
+                return true;
 
             case "linedash" or "dash":
                 ApplySeriesLineDash(ser, value);
-                break;
+                return true;
 
             case "shadow":
             {
@@ -457,7 +522,7 @@ internal static partial class ChartHelper
                 effectList.RemoveAllChildren<Drawing.OuterShadow>();
                 if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
                     effectList.AppendChild(DrawingEffectsHelper.BuildOuterShadow(value, BuildChartColorElement));
-                break;
+                return true;
             }
 
             case "outline":
@@ -472,29 +537,45 @@ internal static partial class ChartHelper
                     if (effLst != null) spPr.InsertBefore(outlineEl, effLst);
                     else spPr.AppendChild(outlineEl);
                 }
-                break;
+                return true;
             }
 
             case "gradient" or "gradientfill":
                 ApplySeriesGradient(ser, value);
-                break;
+                return true;
 
             case "alpha" or "transparency":
             {
                 var alphaPercent = ParseHelpers.SafeParseDouble(value, "series.alpha");
                 if (prop == "transparency") alphaPercent = 100.0 - alphaPercent;
                 ApplySeriesAlpha(ser, (int)(alphaPercent * 1000));
-                break;
+                return true;
+            }
+
+            // R26-2: `series{N}.displayEquation` / `series{N}.displayRSquared`
+            // are convenience aliases that target the series' existing
+            // trendline (equivalent to `series{N}.trendline.displayEquation`).
+            // Mirrors the chart-level `trendline.displayequation` fan-out.
+            case "displayequation" or "equation" or "dispeq":
+            case "displayrsquared" or "rsquared" or "r2" or "disprsqr":
+            {
+                var tl = ser.GetFirstChild<C.Trendline>();
+                if (tl == null) return false;
+                ApplyTrendlineOptions(tl, prop, value);
+                return true;
             }
 
             default:
                 // Trendline sub-properties: series{N}.trendline.name, .forward, .backward, etc.
+                // NOTE: this is an inner dispatch — if the sub-property is not one of
+                // ApplyTrendlineOptions' known cases it is silently ignored. See report:
+                // same silent-accept risk exists for trendline.* and point{M}.* sub-keys.
                 if (prop.StartsWith("trendline."))
                 {
                     var tl = ser.GetFirstChild<C.Trendline>();
                     if (tl != null)
                         ApplyTrendlineOptions(tl, prop["trendline.".Length..], value);
-                    break;
+                    return true;
                 }
                 // Per-point properties: series{N}.point{M}.color, series{N}.point{M}.explosion
                 if (prop.StartsWith("point") && TryParsePointKey(prop, out var ptIdx, out var ptProp))
@@ -503,14 +584,20 @@ internal static partial class ChartHelper
                     {
                         case "color":
                             ApplyDataPointColor(ser, ptIdx - 1, value);
-                            break;
+                            return true;
                         case "explosion" or "explode":
                             ApplyDataPointExplosion(ser, ptIdx - 1,
                                 uint.TryParse(value, out var pe) ? pe : 0u);
-                            break;
+                            return true;
+                        default:
+                            // Unknown point sub-property — surface as unsupported.
+                            return false;
                     }
                 }
-                break;
+                // Genuinely unknown series sub-property (e.g. chartType, axisGroup) —
+                // surface via `unsupported` so callers see "Set lied" errors instead
+                // of a bogus "Updated" message.
+                return false;
         }
     }
 

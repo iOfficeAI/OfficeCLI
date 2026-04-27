@@ -368,7 +368,7 @@ officecli validate data.xlsx
 | Pitfall | Correct Approach |
 |---------|-----------------|
 | `--name "foo"` | Use `--prop name="foo"` -- all attributes go through `--prop` |
-| Guessing property names | Run `officecli xlsx set cell` to see exact names |
+| Guessing property names | Run `officecli help xlsx cell` to see exact names |
 | `\n` in shell strings | Use `\\n` for newlines in `--prop text="line1\\nline2"` |
 | Modifying an open file | Close the file in Excel first |
 | Hex colors with `#` | Use `FF0000` not `#FF0000` -- no hash prefix |
@@ -439,11 +439,9 @@ Batch mode executes multiple operations in a single open/save cycle.
 **When unsure about property names, value formats, or command syntax, run help instead of guessing.** One help query is faster than guess-fail-retry loops.
 
 ```bash
-officecli xlsx set              # All settable elements and their properties
-officecli xlsx set cell         # Cell properties in detail
-officecli xlsx set cell.font    # Specific property format and examples
-officecli xlsx add              # All addable element types
-officecli xlsx view             # All view modes
-officecli xlsx get              # All navigable paths
-officecli xlsx query            # Query selector syntax
+officecli help xlsx                      # Capability reference for the format (all elements)
+officecli help xlsx cell                 # Cell schema with properties in detail
+officecli help xlsx <element> --json     # Structured capability schema (for agents)
 ```
+
+Property-level help is included in the element output. For `view`/`raw`/`batch` flag details use `officecli view --help`, `officecli raw --help`, etc.

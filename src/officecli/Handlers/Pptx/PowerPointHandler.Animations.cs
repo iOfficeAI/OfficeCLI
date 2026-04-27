@@ -741,13 +741,19 @@ public partial class PowerPointHandler
             PresetId = presetId,
             PresetClass = presetClass,
             PresetSubtype = presetSubtype,
-            Duration = hasInnerDuration ? null : durationMs.ToString(),
             Fill = TimeNodeFillValues.Hold,
             GroupId = (uint)grpId,
             NodeType = nodeType,
             StartConditionList = stCondEffect,
             ChildTimeNodeList = effectChildList
         };
+        // OOXML schema requires dur attribute (when present) to be non-empty.
+        // Setting Duration = null on CommonTimeNode still serializes as dur="",
+        // which validates as schema-violating empty value. Only assign when we
+        // intend to emit a duration on the effectCTn itself (emphasis effects
+        // with no inner animation child).
+        if (!hasInnerDuration)
+            effectCTn.Duration = durationMs.ToString();
         if (easingAccel > 0) effectCTn.Acceleration = easingAccel;
         if (easingDecel > 0) effectCTn.Deceleration = easingDecel;
         var effectPar = new ParallelTimeNode { CommonTimeNode = effectCTn };
@@ -1115,6 +1121,74 @@ public partial class PowerPointHandler
     /// Populate Format["animation"] on a shape DocumentNode by inspecting the slide Timing tree.
     /// Returns a string of the form "effectName-class-durationMs".
     /// </summary>
+    /// <summary>
+    /// Resolve animation effect name from filter string and presetId.
+    /// Shared by Animations.cs (ReadShapeAnimation, slide-level Get) and Query.cs
+    /// (PopulateAnimationNode, sub-path animation Get) so both code paths use the
+    /// same complete preset-id ↔ name table.
+    /// CONSISTENCY(anim-preset-map): keep filter rules + entrance/exit/emphasis
+    /// preset id tables in sync with GetAnimPreset() in this file.
+    /// </summary>
+    internal static string ResolveAnimEffectName(string filter, int presetId, string cls)
+    {
+        return filter switch
+        {
+            var f when f.StartsWith("blinds")           => "blinds",
+            "box"                                       => "box",
+            var f when f.StartsWith("checkerboard")     => "checkerboard",
+            "circle"                                    => "circle",
+            var f when f.StartsWith("crawl")            => "crawl",
+            "diamond"                                   => "diamond",
+            "dissolve"                                  => "dissolve",
+            "fade" when presetId != 17                  => "fade", // exclude swivel which uses fade+animRot
+            "flash"                                     => "flash",
+            "plus"                                      => "plus",
+            "random"                                    => "random",
+            var f when f.StartsWith("barn")             => "split",
+            var f when f.StartsWith("strips")           => "strips",
+            "wedge"                                     => "wedge",
+            var f when f.StartsWith("wheel")            => "wheel",
+            var f when f.StartsWith("wipe")             => "wipe",
+            _ => cls == "emphasis"
+                ? presetId switch
+                {
+                    1  => "bold",
+                    10 => "fade",
+                    14 => "wave",
+                    26 => "grow",
+                    27 => "spin",
+                    _  => "unknown"
+                }
+                : presetId switch
+                {
+                    // Entrance/exit preset IDs (mirror GetAnimPreset table)
+                    1  => "appear",
+                    2  => "fly",
+                    3  => "blinds",
+                    4  => "box",
+                    5  => "checkerboard",
+                    6  => "circle",
+                    7  => "crawl",
+                    8  => "diamond",
+                    9  => "dissolve",
+                    10 => "fade",
+                    11 => "flash",
+                    12 => "float",
+                    13 => "plus",
+                    14 => "random",
+                    15 => "split",
+                    16 => "strips",
+                    17 => "swivel",
+                    18 => "wedge",
+                    19 => "wheel",
+                    20 => "wipe",
+                    21 => "zoom",
+                    24 => "bounce",
+                    _  => "unknown"
+                }
+        };
+    }
+
     private static void ReadShapeAnimation(SlidePart slidePart, Shape shape, OfficeCli.Core.DocumentNode node)
     {
         var shapeId = shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value;
@@ -1167,40 +1241,7 @@ public partial class PowerPointHandler
             // Effect name from filter string or presetId
             var filter = animEffect?.Filter?.Value ?? "";
             var presetId = effectCTn.PresetId?.Value ?? 0;
-            var effectName = filter switch
-            {
-                var f when f.StartsWith("blinds")           => "blinds",
-                "box"                                       => "box",
-                var f when f.StartsWith("checkerboard")     => "checkerboard",
-                "circle"                                    => "circle",
-                var f when f.StartsWith("crawl")            => "crawl",
-                "diamond"                                   => "diamond",
-                "dissolve"                                  => "dissolve",
-                "fade" when presetId != 17                  => "fade", // exclude swivel which uses fade+animRot
-                "flash"                                     => "flash",
-                "plus"                                      => "plus",
-                "random"                                    => "random",
-                var f when f.StartsWith("barn")             => "split",
-                var f when f.StartsWith("strips")           => "strips",
-                "wedge"                                     => "wedge",
-                var f when f.StartsWith("wheel")            => "wheel",
-                var f when f.StartsWith("wipe")             => "wipe",
-                _ => presetId switch
-                {
-                    1  when cls == "emphasis" => "bold",
-                    1  => "appear",
-                    2  => "fly",
-                    10 => "fade",
-                    12 => "float",
-                    14 when cls == "emphasis" => "wave",
-                    17 => "swivel",
-                    21 => "zoom",
-                    24 => "bounce",
-                    26 when cls == "emphasis" => "grow",
-                    27 when cls == "emphasis" => "spin",
-                    _  => "unknown"
-                }
-            };
+            var effectName = ResolveAnimEffectName(filter, presetId, cls);
 
             // Read direction from presetSubtype
             var presetSubtype = effectCTn.PresetSubtype?.Value ?? 0;

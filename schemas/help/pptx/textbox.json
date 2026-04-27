@@ -1,0 +1,114 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "textbox",
+  "parent": "slide",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/slide[N]/shape[M]"]
+  },
+  "note": "textbox is an alias for shape — both route to AddShape. 'textbox' input that includes --prop formula routes to AddEquation instead. The common text/position/size/font properties are inlined below; the full property surface (geometry, rotation, opacity, name, effects, …) is documented in pptx/shape.json.",
+  "properties": {
+    "text": {
+      "type": "string",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop text=\"Hello\""],
+      "readback": "plain text content of the textbox",
+      "enforcement": "strict"
+    },
+    "font": {
+      "type": "string",
+      "description": "font family (e.g. \"Calibri\", \"SimSun\")",
+      "aliases": ["fontname", "fontFamily"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop font=Calibri"],
+      "readback": "font family string",
+      "enforcement": "report"
+    },
+    "size": {
+      "type": "font-size",
+      "description": "font size",
+      "aliases": ["fontsize"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop size=14", "--prop size=14pt", "--prop size=10.5pt"],
+      "readback": "unit-qualified string, e.g. \"14pt\"",
+      "enforcement": "strict"
+    },
+    "bold": {
+      "type": "bool",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop bold=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "italic": {
+      "type": "bool",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop italic=true"],
+      "readback": "true | false",
+      "enforcement": "strict"
+    },
+    "color": {
+      "type": "color",
+      "description": "text color",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop color=0000FF", "--prop color=#0000FF"],
+      "readback": "#RRGGBB (uppercase)",
+      "enforcement": "strict"
+    },
+    "fill": {
+      "type": "color",
+      "description": "textbox background fill",
+      "aliases": ["background"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop fill=FFFF00", "--prop fill=accent1"],
+      "readback": "#RRGGBB (uppercase) or scheme color name",
+      "enforcement": "strict"
+    },
+    "align": {
+      "type": "enum",
+      "values": ["left", "center", "right", "justify"],
+      "description": "text horizontal alignment",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop align=center"],
+      "readback": "one of: left | center | right | justify",
+      "enforcement": "strict"
+    },
+    "width": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop width=5cm"],
+      "readback": "length in cm",
+      "enforcement": "strict"
+    },
+    "height": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop height=3cm"],
+      "readback": "length in cm",
+      "enforcement": "strict"
+    },
+    "x": {
+      "type": "length",
+      "description": "horizontal position of the textbox",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop x=2cm", "--prop x=1in", "--prop x=72pt"],
+      "readback": "length in cm (e.g. \"2cm\")",
+      "enforcement": "strict"
+    },
+    "y": {
+      "type": "length",
+      "description": "vertical position of the textbox",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop y=3cm"],
+      "readback": "length in cm (e.g. \"3cm\")",
+      "enforcement": "strict"
+    }
+  }
+}

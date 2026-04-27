@@ -1,0 +1,169 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "table",
+  "parent": "body",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/body/tbl[N]"]
+  },
+  "note": "Tables default to Single/Size=4 borders on all sides. Length props use twips (raw int) or unit-qualified. Data can be seeded via 'data' (semicolon rows, comma cells) or per-cell 'r{R}c{C}' props.",
+  "properties": {
+    "rows": {
+      "type": "int",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop rows=3"],
+      "readback": "n/a (use children count)",
+      "enforcement": "strict"
+    },
+    "cols": {
+      "type": "int",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop cols=3"],
+      "readback": "n/a (use tableGrid count)",
+      "enforcement": "strict"
+    },
+    "data": {
+      "type": "string",
+      "description": "inline CSV-ish data ('H1,H2;R1C1,R1C2') or CSV file/URL/data-URI resolvable by FileSource.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop data=\"A,B;1,2\""],
+      "readback": "n/a (seeds cells at Add time)",
+      "enforcement": "strict"
+    },
+    "colwidths": {
+      "type": "string",
+      "description": "comma-separated per-column widths in twips. Aliases: colWidths.",
+      "aliases": ["colWidths"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop colwidths=3000,2000,5000"],
+      "readback": "per-column grid widths, not aggregated",
+      "enforcement": "strict"
+    },
+    "alignment": {
+      "type": "enum",
+      "values": ["left", "center", "right"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop alignment=center"],
+      "readback": "one of values",
+      "enforcement": "report"
+    },
+    "width": {
+      "type": "string",
+      "description": "table width in twips (Dxa) or percent ('50%' → Pct).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop width=9000"],
+      "readback": "Dxa twips or pct50ths",
+      "enforcement": "report"
+    },
+    "indent": {
+      "type": "int",
+      "description": "table indent in twips.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop indent=200"],
+      "readback": "twips",
+      "enforcement": "report"
+    },
+    "cellspacing": {
+      "type": "int",
+      "description": "space between cells in twips.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop cellspacing=40"],
+      "readback": "twips",
+      "enforcement": "report"
+    },
+    "layout": {
+      "type": "enum",
+      "values": ["fixed", "autofit"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop layout=fixed"],
+      "readback": "one of values",
+      "enforcement": "report"
+    },
+    "padding": {
+      "type": "int",
+      "description": "default cell padding (all four sides) in twips.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop padding=100"],
+      "readback": "per-side values on TableCellMarginDefault",
+      "enforcement": "report"
+    },
+    "style": {
+      "type": "string",
+      "description": "built-in or custom table styleId.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop style=TableGrid"],
+      "readback": "styleId",
+      "enforcement": "report"
+    },
+    "border.all": {
+      "type": "string",
+      "description": "set top/bottom/left/right AND inside horizontal/vertical borders at once. Format: STYLE[;SIZE[;COLOR[;SPACE]]]. SIZE is in 1/8 pt units (4 = 0.5pt). Aliases: border.",
+      "aliases": ["border"],
+      "add": true, "set": true, "get": false,
+      "examples": ["--prop border.all=\"single;4;FF0000\""],
+      "readback": "read per-side under border.top/bottom/left/right/insideH/insideV",
+      "enforcement": "report"
+    },
+    "border.top": {
+      "type": "string",
+      "description": "outer top border. Format: STYLE[;SIZE[;COLOR[;SPACE]]].",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop border.top=\"single;4;000000\""],
+      "readback": "STYLE[;SIZE;COLOR[;SPACE]]",
+      "enforcement": "report"
+    },
+    "border.bottom": {
+      "type": "string",
+      "description": "outer bottom border. Format: STYLE[;SIZE[;COLOR[;SPACE]]].",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop border.bottom=\"double;6;0000FF\""],
+      "readback": "STYLE[;SIZE;COLOR[;SPACE]]",
+      "enforcement": "report"
+    },
+    "border.left": {
+      "type": "string",
+      "description": "outer left border. Format: STYLE[;SIZE[;COLOR[;SPACE]]].",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop border.left=\"single;4\""],
+      "readback": "STYLE[;SIZE;COLOR[;SPACE]]",
+      "enforcement": "report"
+    },
+    "border.right": {
+      "type": "string",
+      "description": "outer right border. Format: STYLE[;SIZE[;COLOR[;SPACE]]].",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop border.right=\"single;4\""],
+      "readback": "STYLE[;SIZE;COLOR[;SPACE]]",
+      "enforcement": "report"
+    },
+    "border.horizontal": {
+      "type": "string",
+      "description": "inside horizontal borders (between rows). Format: STYLE[;SIZE[;COLOR[;SPACE]]]. Alias: border.insideH.",
+      "aliases": ["border.insideh", "border.insideH"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop border.horizontal=\"single;4;CCCCCC\""],
+      "readback": "under canonical key 'border.insideH'",
+      "enforcement": "report"
+    },
+    "border.vertical": {
+      "type": "string",
+      "description": "inside vertical borders (between columns). Format: STYLE[;SIZE[;COLOR[;SPACE]]]. Alias: border.insideV.",
+      "aliases": ["border.insidev", "border.insideV"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop border.vertical=\"single;4;CCCCCC\""],
+      "readback": "under canonical key 'border.insideV'",
+      "enforcement": "report"
+    }
+  },
+  "children": [
+    { "element": "row",  "pathSegment": "tr", "cardinality": "1..n" },
+    { "element": "cell", "pathSegment": "tc", "cardinality": "1..n (per row)" }
+  ]
+}

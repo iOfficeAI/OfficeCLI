@@ -34,7 +34,20 @@ public static class DocumentHandlerFactory
         }
         catch (DocumentFormat.OpenXml.Packaging.OpenXmlPackageException ex)
         {
-            throw new InvalidOperationException($"Cannot open {Path.GetFileName(filePath)}: {ex.Message}", ex);
+            throw new CliException($"Cannot open {Path.GetFileName(filePath)}: {ex.Message}", ex)
+            {
+                Code = "corrupt_file",
+                Suggestion = "Verify the file is a valid .docx/.xlsx/.pptx (e.g. unzip -t)."
+            };
+        }
+        catch (System.IO.FileFormatException ex)
+        {
+            // Thrown by System.IO.Packaging when the file is not a valid OOXML zip container.
+            throw new CliException($"Cannot open {Path.GetFileName(filePath)}: {ex.Message}", ex)
+            {
+                Code = "corrupt_file",
+                Suggestion = "Verify the file is a valid .docx/.xlsx/.pptx (e.g. unzip -t)."
+            };
         }
     }
 

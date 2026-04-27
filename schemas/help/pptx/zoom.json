@@ -1,0 +1,82 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "zoom",
+  "parent": "slide",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/slide[N]/zoom[M]"]
+  },
+  "note": "Aliases: slidezoom, slide-zoom. Creates a slide-zoom link on the source slide pointing to target slide. Default size 8cm × 4.5cm centered. Used for interactive non-linear navigation.",
+  "properties": {
+    "target": {
+      "type": "int",
+      "description": "target slide number (1-based). Required. Alias: slide.",
+      "aliases": ["slide"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop target=3"],
+      "readback": "target slide index",
+      "enforcement": "report"
+    },
+    "x": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop x=2cm"],
+      "readback": "EMU / unit-qualified",
+      "enforcement": "report"
+    },
+    "y": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop y=2cm"],
+      "readback": "EMU / unit-qualified",
+      "enforcement": "report"
+    },
+    "width": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop width=8cm"],
+      "readback": "EMU / unit-qualified",
+      "enforcement": "report"
+    },
+    "height": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop height=4.5cm"],
+      "readback": "EMU / unit-qualified",
+      "enforcement": "report"
+    },
+    "name": {
+      "type": "string",
+      "description": "zoom frame name. Defaults to 'Slide Zoom N'.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop name=\"Section 2\""],
+      "readback": "name string",
+      "enforcement": "report"
+    },
+    "returnToParent": {
+      "type": "bool",
+      "description": "return to parent slide after zoom plays.",
+      "aliases": ["returntoparent"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop returnToParent=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
+    "transitionDur": {
+      "type": "int",
+      "description": "transition duration in ms. Defaults to 1000.",
+      "aliases": ["transitiondur"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop transitionDur=1500"],
+      "readback": "ms",
+      "enforcement": "report"
+    }
+  }
+}

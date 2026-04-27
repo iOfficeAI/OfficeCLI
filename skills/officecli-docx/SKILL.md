@@ -321,7 +321,7 @@ officecli validate doc.docx
 | Pitfall | Correct Approach |
 |---------|-----------------|
 | `--name "foo"` | Use `--prop name="foo"` -- all attributes go through `--prop` |
-| Guessing property names | Run `officecli docx set paragraph` to see exact names |
+| Guessing property names | Run `officecli help docx paragraph` to see exact names |
 | `\n` in shell strings | Use `\\n` for newlines in `--prop text="line1\\nline2"` |
 | Modifying an open file | Close the file in Word first |
 | Hex colors with `#` | Use `FF0000` not `#FF0000` -- no hash prefix |
@@ -405,11 +405,10 @@ Batch fields: `command`, `path`, `parent`, `type`, `from`, `to`, `index`, `after
 **When unsure about property names, value formats, or command syntax, run help instead of guessing.** One help query is faster than guess-fail-retry loops.
 
 ```bash
-officecli docx set              # All settable elements and their properties
-officecli docx set paragraph    # Paragraph properties in detail
-officecli docx set table        # Table properties
-officecli docx add              # All addable element types
-officecli docx view             # All view modes
-officecli docx get              # All navigable paths
-officecli docx query            # Query selector syntax
+officecli help docx                      # Capability reference for the format (all elements)
+officecli help docx paragraph            # Paragraph schema with properties in detail
+officecli help docx table                # Table schema
+officecli help docx <element> --json     # Structured capability schema (for agents)
 ```
+
+For `view`/`raw`/`batch` flag details use `officecli view --help`, `officecli raw --help`, etc.

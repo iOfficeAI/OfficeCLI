@@ -17,25 +17,10 @@ public partial class WordHandler
 {
     private Dictionary<string, string>? _themeColors;
 
-    // Microsoft Office default "Office" theme palette. When a document has
-    // no <a:theme> part (blank docs created via BlankDocCreator), Word
-    // applies this palette; our HTML preview now does the same so
+    // CONSISTENCY(office-default-palette): when the doc has no <a:theme>
+    // part, fall back to the canonical Office palette so
     // w:themeColor="accent1" resolves instead of silently dropping.
-    private static readonly Dictionary<string, string> OfficeDefaultThemeColors = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["accent1"] = "4472C4",
-        ["accent2"] = "ED7D31",
-        ["accent3"] = "A5A5A5",
-        ["accent4"] = "FFC000",
-        ["accent5"] = "5B9BD5",
-        ["accent6"] = "70AD47",
-        ["dark1"] = "000000", ["tx1"] = "000000", ["dk1"] = "000000", ["text1"] = "000000",
-        ["dark2"] = "44546A", ["tx2"] = "44546A", ["dk2"] = "44546A", ["text2"] = "44546A",
-        ["light1"] = "FFFFFF", ["bg1"] = "FFFFFF", ["lt1"] = "FFFFFF", ["background1"] = "FFFFFF",
-        ["light2"] = "E7E6E6", ["bg2"] = "E7E6E6", ["lt2"] = "E7E6E6", ["background2"] = "E7E6E6",
-        ["hyperlink"] = "0563C1",
-        ["followedHyperlink"] = "954F72",
-    };
+    private static readonly Dictionary<string, string> _officeDefaultThemeFallback = OfficeDefaultThemeColors.BuildAliasMap();
 
     private Dictionary<string, string> GetThemeColors()
     {
@@ -52,7 +37,7 @@ public partial class WordHandler
 
         // Fill in any missing standard names from the Office default theme so
         // themeColor references resolve even when the docx has no theme part.
-        foreach (var (name, hex) in OfficeDefaultThemeColors)
+        foreach (var (name, hex) in _officeDefaultThemeFallback)
         {
             if (!_themeColors.ContainsKey(name))
                 _themeColors[name] = hex;
@@ -1521,10 +1506,24 @@ public partial class WordHandler
             var font = rProps.RunFonts?.Ascii?.Value ?? rProps.RunFonts?.HighAnsi?.Value;
             if (!string.IsNullOrEmpty(font)) return font;
         }
-        // Fall back to document default font
+        // Fall back to document default font, then theme MinorFont, then
+        // the Office default. The theme step matters for modern Office docs
+        // (e.g. Aptos) where styles.xml omits an explicit ascii font but
+        // theme1.xml's fontScheme defines it.
         var defFont = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
             ?.DocDefaults?.RunPropertiesDefault?.RunPropertiesBaseStyle?.RunFonts?.Ascii?.Value;
-        return defFont ?? "Calibri";
+        return defFont ?? GetThemeMinorLatinFont() ?? OfficeDefaultFonts.MinorLatin;
+    }
+
+    /// <summary>Read theme1.xml's <c>a:fontScheme/a:minorFont/a:latin/@typeface</c>.</summary>
+    private string? GetThemeMinorLatinFont()
+    {
+        try
+        {
+            return _doc.MainDocumentPart?.ThemePart?.Theme?
+                .ThemeElements?.FontScheme?.MinorFont?.LatinFont?.Typeface?.Value;
+        }
+        catch (System.Xml.XmlException) { return null; }
     }
 
     private string? ResolveStyleFontSize(string styleId)

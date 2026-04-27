@@ -1,0 +1,122 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "table",
+  "parent": "slide",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "stable":     ["/slide[N]/table[@id=ID]", "/slide[N]/table[@name=NAME]"],
+    "positional": ["/slide[N]/table[M]"]
+  },
+  "note": "A table is a GraphicFrame wrapping a Drawing.Table. Data can be seeded inline via 'data' (semicolon-separated rows, comma-separated cells) or per-cell via 'r{R}c{C}' props. Dimensions in EMU-parseable length (1in/2cm/raw EMU/720pt).",
+  "properties": {
+    "rows": {
+      "type": "int",
+      "description": "number of rows (ignored if 'data' is supplied).",
+      "add": true, "set": false, "get": true,
+      "examples": ["--prop rows=3"],
+      "readback": "integer row count",
+      "enforcement": "strict"
+    },
+    "cols": {
+      "type": "int",
+      "description": "number of columns (ignored if 'data' is supplied).",
+      "add": true, "set": false, "get": true,
+      "examples": ["--prop cols=3"],
+      "readback": "integer column count from first row",
+      "enforcement": "strict"
+    },
+    "data": {
+      "type": "string",
+      "description": "inline CSV-ish data ('H1,H2;R1C1,R1C2') or CSV file/URL/data-URI resolvable by FileSource.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop data=\"A,B;1,2\""],
+      "readback": "n/a (seeds cells at Add time)",
+      "enforcement": "strict"
+    },
+    "name": {
+      "type": "string",
+      "description": "NonVisualDrawingProperties Name (used for stable @name addressing).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop name=Summary"],
+      "readback": "name string",
+      "enforcement": "strict"
+    },
+    "x": {
+      "type": "length",
+      "description": "left offset in EMU-parseable length.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop x=1in"],
+      "readback": "cm-formatted length",
+      "enforcement": "report"
+    },
+    "y": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop y=1in"],
+      "readback": "cm-formatted length",
+      "enforcement": "report"
+    },
+    "width": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop width=10cm"],
+      "readback": "cm-formatted length",
+      "enforcement": "report"
+    },
+    "height": {
+      "type": "length",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop height=5cm"],
+      "readback": "cm-formatted length",
+      "enforcement": "report"
+    },
+    "rowHeight": {
+      "type": "length",
+      "description": "uniform row height (EMU). If unspecified, derived from 'height' / rows.",
+      "aliases": ["rowheight"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop rowHeight=1cm"],
+      "readback": "not surfaced at table level",
+      "enforcement": "strict"
+    },
+    "style": {
+      "type": "string",
+      "description": "table style name or GUID (accepted aliases: tableStyle, tableStyleId). Valid names: medium1..4, light1..3, dark1..2, none, or a direct {GUID}.",
+      "values": ["medium1", "medium2", "medium3", "medium4", "light1", "light2", "light3", "dark1", "dark2", "none"],
+      "aliases": ["tableStyle", "tableStyleId"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop style=medium1"],
+      "readback": "style name when resolvable, else GUID",
+      "enforcement": "strict"
+    },
+    "headerFill": {
+      "type": "color",
+      "description": "solid fill color applied to row 0 (header).",
+      "aliases": ["headerfill"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop headerFill=#4472C4"],
+      "readback": "per-cell fill, not aggregated at table level",
+      "enforcement": "strict"
+    },
+    "bodyFill": {
+      "type": "color",
+      "description": "solid fill color applied to rows 1..N (body).",
+      "aliases": ["bodyfill"],
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop bodyFill=#EEECE1"],
+      "readback": "per-cell fill, not aggregated at table level",
+      "enforcement": "strict"
+    }
+  },
+  "children": [
+    { "element": "row",    "pathSegment": "tr",  "cardinality": "1..n" },
+    { "element": "column", "pathSegment": "col", "cardinality": "1..n" }
+  ]
+}

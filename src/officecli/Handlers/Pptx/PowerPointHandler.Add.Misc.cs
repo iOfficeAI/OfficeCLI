@@ -68,12 +68,14 @@ public partial class PowerPointHandler
                     ),
                     new Drawing.PresetGeometry(new Drawing.AdjustValueList())
                     {
-                        Preset = properties.GetValueOrDefault("preset", "straightConnector1").ToLowerInvariant() switch
+                        // CONSISTENCY(canonical-key): canonical 'shape'; 'preset' legacy alias.
+                        Preset = (properties.GetValueOrDefault("shape")
+                                  ?? properties.GetValueOrDefault("preset", "straightConnector1")).ToLowerInvariant() switch
                         {
                             "straight" or "straightconnector1" => Drawing.ShapeTypeValues.StraightConnector1,
                             "elbow" or "bentconnector3" => Drawing.ShapeTypeValues.BentConnector3,
                             "curve" or "curvedconnector3" => Drawing.ShapeTypeValues.CurvedConnector3,
-                            _ => throw new ArgumentException($"Invalid connector preset: '{properties.GetValueOrDefault("preset", "straightConnector1")}'. Valid values: straight, elbow, curve.")
+                            _ => throw new ArgumentException($"Invalid connector shape: '{properties.GetValueOrDefault("shape") ?? properties.GetValueOrDefault("preset", "straightConnector1")}'. Valid values: straight, elbow, curve.")
                         }
                     }
                 );
@@ -152,7 +154,19 @@ public partial class PowerPointHandler
             return directId;
         }
 
-        // Try DOM path: /slide[N]/shape[M]
+        // Try @id path form first: /slide[N]/shape[@id=M] (as returned by `query shape`).
+        // CONSISTENCY(query-path-roundtrip): query shape returns @id form; Add must accept it.
+        var atIdMatch = Regex.Match(value, @"/slide\[\d+\]/shape\[@id=(\d+)\]");
+        if (atIdMatch.Success)
+        {
+            var atId = uint.Parse(atIdMatch.Groups[1].Value);
+            var shapes = shapeTree.Elements<Shape>().ToList();
+            if (!shapes.Any(s => s.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value == atId))
+                throw new ArgumentException($"Shape @id={atId} not found on this slide");
+            return atId;
+        }
+
+        // Try DOM path: /slide[N]/shape[M] (positional)
         var pathMatch = Regex.Match(value, @"/slide\[\d+\]/shape\[(\d+)\]");
         if (pathMatch.Success)
         {
@@ -164,7 +178,7 @@ public partial class PowerPointHandler
                 ?? throw new ArgumentException($"Shape {shapeIdx} has no ID");
         }
 
-        throw new ArgumentException($"Invalid shape reference: '{value}'. Expected a shape index (1, 2, ...) or path (/slide[N]/shape[M]).");
+        throw new ArgumentException($"Invalid shape reference: '{value}'. Expected a shape index (1, 2, ...), path (/slide[N]/shape[M]), or @id path (/slide[N]/shape[@id=M]).");
     }
 
     private string AddGroup(string parentPath, int? index, Dictionary<string, string> properties)
@@ -361,7 +375,11 @@ public partial class PowerPointHandler
                 // Build animation value string from properties
                 var effect = properties.GetValueOrDefault("effect", "fade");
                 var cls = properties.GetValueOrDefault("class", "entrance");
-                var duration = properties.GetValueOrDefault("duration", "500");
+                // CONSISTENCY(animation-dur-alias): accept "dur" as alias for
+                // "duration" — mirrors the short name used elsewhere (transition
+                // dur attribute) and matches user intuition.
+                var duration = properties.GetValueOrDefault("duration")
+                    ?? properties.GetValueOrDefault("dur", "500");
                 var trigger = properties.GetValueOrDefault("trigger", "onclick");
 
                 // Map trigger property to animation format
@@ -390,11 +408,13 @@ public partial class PowerPointHandler
                 ApplyShapeAnimation(animSlidePart, animShape, animValue);
                 GetSlide(animSlidePart).Save();
 
-                // Count animations on this shape
-                var animShapeId = animShape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value ?? 0;
-                var timing = GetSlide(animSlidePart).GetFirstChild<Timing>();
-                var animCount = timing?.Descendants<ShapeTarget>()
-                    .Count(st => st.ShapeId?.Value == animShapeId.ToString()) ?? 0;
+                // Count animations on this shape — must match Get's enumeration
+                // (effect-bearing CommonTimeNodes), not raw ShapeTarget references.
+                // CONSISTENCY(animation-index): mirror EnumerateShapeAnimationCTns
+                // in Query.cs — counting ShapeTargets over-counts effects like
+                // fly/swivel that emit multiple p:anim per single user effect,
+                // returning a stale path like animation[2] for the first add.
+                var animCount = EnumerateShapeAnimationCTns(animSlidePart, animShape).Count;
                 return $"{parentPath}/animation[{animCount}]";
     }
 

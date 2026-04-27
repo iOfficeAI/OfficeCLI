@@ -122,7 +122,27 @@ static partial class CommandBuilder
             {
                 if (handler is OfficeCli.Handlers.PowerPointHandler pptSvgHandler)
                 {
-                    var slideNum = start ?? 1;
+                    // CONSISTENCY(view-page): SVG mode honors --page like html mode; --page wins over --start
+                    int slideNum = 1;
+                    if (!string.IsNullOrEmpty(pageFilter))
+                    {
+                        var firstTok = pageFilter.Split(',')[0].Split('-')[0].Trim();
+                        // CONSISTENCY(strict-page): reject non-positive --page
+                        // values explicitly instead of silently rendering
+                        // slide 1, mirroring how 0 / negatives are surfaced
+                        // elsewhere in the CLI.
+                        if (!int.TryParse(firstTok, out var p))
+                            throw new ArgumentException(
+                                $"Invalid --page value '{pageFilter}': expected a positive slide number.");
+                        if (p <= 0)
+                            throw new ArgumentException(
+                                $"Invalid --page value '{pageFilter}': slide number must be >= 1.");
+                        slideNum = p;
+                    }
+                    else if (start.HasValue && start.Value > 0)
+                    {
+                        slideNum = start.Value;
+                    }
                     var svg = pptSvgHandler.ViewAsSvg(slideNum);
 
                     if (browser)

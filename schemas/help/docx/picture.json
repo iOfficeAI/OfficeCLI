@@ -1,0 +1,52 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "picture",
+  "parent": "paragraph",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/body/p[N]/pic[M]"]
+  },
+  "note": "Aliases: image, img. 'src' is required (alias 'path'). Image source resolved via ImageSource — accepts file path, URL, data-URI, or raw bytes. SVGs auto-generate a PNG fallback.",
+  "properties": {
+    "src": {
+      "type": "string",
+      "description": "image source (file path, URL, data-URI).",
+      "aliases": ["path"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop src=/path/to/image.png"],
+      "readback": "not surfaced directly",
+      "enforcement": "report"
+    },
+    "width": {
+      "type": "length",
+      "description": "EMU-parseable. If omitted, derived from height + native aspect ratio or defaults to 6in.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop width=3in"],
+      "readback": "unit-qualified length",
+      "enforcement": "report"
+    },
+    "height": {
+      "type": "length",
+      "description": "EMU-parseable. If omitted, derived from width + native aspect ratio or defaults to 4in.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop height=2in"],
+      "readback": "unit-qualified length",
+      "enforcement": "report"
+    },
+    "fallback": {
+      "type": "string",
+      "description": "optional PNG fallback for SVG sources. When omitted, a 1x1 transparent PNG is generated.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop fallback=/path/to/fallback.png"],
+      "readback": "n/a (SVG-only)",
+      "enforcement": "report"
+    }
+  }
+}

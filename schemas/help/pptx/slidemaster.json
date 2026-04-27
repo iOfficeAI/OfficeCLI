@@ -1,0 +1,30 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "slidemaster",
+  "parent": "presentation",
+  "container": true,
+  "operations": {
+    "add": false,
+    "set": false,
+    "get": true,
+    "query": true,
+    "remove": false
+  },
+  "paths": {
+    "positional": ["/slidemaster[N]"]
+  },
+  "note": "Slide master definition. Children: slideLayout references. Currently read-only — masters are created by templates, not user Add.",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "master part name from NonVisualDrawingProperties.",
+      "add": false, "set": false, "get": true,
+      "readback": "master name string",
+      "enforcement": "report"
+    }
+  },
+  "children": [
+    { "element": "slidelayout", "pathSegment": "slidelayout", "cardinality": "1..n" }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "column",
+  "parent": "table",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": ["/slide[N]/table[M]/col[C]"]
+  },
+  "note": "Adds a GridColumn plus a new TableCell in every existing row at the insertion index.",
+  "properties": {
+    "width": {
+      "type": "length",
+      "description": "column width in EMU-parseable length. Defaults to average of existing columns or ~2.54cm.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop width=3cm"],
+      "readback": "EMU numeric",
+      "enforcement": "report"
+    },
+    "text": {
+      "type": "string",
+      "description": "seed text inserted into every new cell of this column.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop text=Header"],
+      "readback": "not surfaced at column level",
+      "enforcement": "strict"
+    }
+  }
+}

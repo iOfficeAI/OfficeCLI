@@ -1,0 +1,21 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "styles",
+  "parent": "document",
+  "container": true,
+  "operations": {
+    "add": true,
+    "set": false,
+    "get": true,
+    "query": true,
+    "remove": false
+  },
+  "paths": {
+    "positional": ["/styles"]
+  },
+  "note": "StyleDefinitionsPart container. Add new styles here (see docx/style.json). Individual styles addressed by id: /styles/StyleId.",
+  "children": [
+    { "element": "style", "pathSegment": "{StyleId}", "cardinality": "0..n" }
+  ]
+}

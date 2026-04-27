@@ -36,9 +36,14 @@ public partial class PowerPointHandler
         sb.AppendLine("<meta charset=\"UTF-8\">");
         sb.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
         sb.AppendLine($"<title>{HtmlEncode(Path.GetFileName(_filePath))}</title>");
-        // KaTeX for math rendering (graceful degradation: shows raw LaTeX when offline)
-        sb.AppendLine("<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css\" onerror=\"this.remove()\">");
-        sb.AppendLine("<script defer src=\"https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js\" onerror=\"document.querySelectorAll('.katex-formula').forEach(function(el){el.textContent=el.dataset.formula;el.style.fontFamily='monospace';el.style.color='#666'})\"></script>");
+        // KaTeX for math rendering — only include when any slide actually has formulas.
+        // media=print + onload swap makes the CSS non-blocking so it can never stall first paint.
+        bool hasMathFormulas = slideParts.Any(sp => sp.Slide?.Descendants<DocumentFormat.OpenXml.Math.OfficeMath>().Any() == true);
+        if (hasMathFormulas)
+        {
+            sb.AppendLine("<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css\" media=\"print\" onload=\"this.media='all'\" onerror=\"this.remove()\">");
+            sb.AppendLine("<script defer src=\"https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js\" onerror=\"document.querySelectorAll('.katex-formula').forEach(function(el){el.textContent=el.dataset.formula;el.style.fontFamily='monospace';el.style.color='#666'})\"></script>");
+        }
         // Three.js for 3D model rendering (graceful degradation: shows placeholder when offline)
         sb.AppendLine(@"<script type=""importmap"">{""imports"":{""three"":""https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"",""three/addons/"":""https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/""}}</script>");
         sb.AppendLine("<style>");
@@ -122,14 +127,34 @@ public partial class PowerPointHandler
             el.textContent = el.dataset.formula;
             el.style.fontFamily = 'monospace';
             el.style.color = '#666';
+            el.classList.add('katex-rendered');
         });
     }
     function renderKatex() {
+        var pending = document.querySelectorAll('.katex-formula:not(.katex-rendered)');
+        if (pending.length === 0) return;
         if (typeof katex === 'undefined') {
+            // Lazy-load on first demand — covers watch mode where the initial
+            // doc had no formulas (KaTeX tags omitted from head), then a
+            // formula arrived via SSE patch.
+            if (!window._katexLoading) {
+                window._katexLoading = true;
+                var link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';
+                link.onerror = function() { this.remove(); };
+                document.head.appendChild(link);
+                var script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';
+                script.onload = renderKatex;
+                script.onerror = fallbackKatex;
+                document.head.appendChild(script);
+                return;
+            }
             if (++_katexRetries > 20) { fallbackKatex(); return; }
             setTimeout(renderKatex, 100); return;
         }
-        document.querySelectorAll('.katex-formula:not(.katex-rendered)').forEach(function(el) {
+        pending.forEach(function(el) {
             try {
                 katex.render(el.dataset.formula, el, { throwOnError: false, displayMode: true });
                 el.classList.add('katex-rendered');

@@ -212,7 +212,7 @@ internal static class SkillInstaller
             return;
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+        SafeCreateDirectory(Path.GetDirectoryName(targetPath)!);
         File.WriteAllText(targetPath, content);
         Console.WriteLine($"  {displayName}: officecli installed ({targetPath})");
     }
@@ -245,12 +245,14 @@ internal static class SkillInstaller
             {
                 found = true;
                 var skillDir = Path.Combine(Home, tool.SkillDir, folder);
-                var updated = InstallSkillFiles(tool.DisplayName, skillDir, files);
-                if (updated)
-                {
-                    foreach (var alias in tool.Aliases)
-                        installed.Add(alias);
-                }
+                InstallSkillFiles(tool.DisplayName, skillDir, files);
+                // CONSISTENCY(install-success): always add aliases when the
+                // agent dir exists, matching InstallBaseToAll's semantics.
+                // The exit code derived from this set is "install succeeded
+                // for these agents", not "files were rewritten" — idempotent
+                // re-install of an up-to-date skill must still report success.
+                foreach (var alias in tool.Aliases)
+                    installed.Add(alias);
             }
         }
 
@@ -276,7 +278,7 @@ internal static class SkillInstaller
             if (File.Exists(targetPath) && File.ReadAllText(targetPath) == rewritten)
                 continue;
 
-            Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+            SafeCreateDirectory(Path.GetDirectoryName(targetPath)!);
             File.WriteAllText(targetPath, rewritten);
             anyUpdated = true;
         }
@@ -287,6 +289,132 @@ internal static class SkillInstaller
             Console.WriteLine($"  {displayName}: {Path.GetFileName(targetDir)} already up to date");
 
         return anyUpdated;
+    }
+
+    // ─── Auto-refresh after binary upgrade ───────────────────
+
+    /// <summary>
+    /// Re-install only the skill files that are *already present* in detected
+    /// agent directories. Called by UpdateChecker after a binary upgrade so
+    /// installed skills stay in sync with the new binary's embedded copies.
+    ///
+    /// Conservative on purpose:
+    ///   - Only refreshes skills the user previously installed (presence of
+    ///     SKILL.md per skill folder).
+    ///   - Never adds new agents or new sub-skills.
+    ///   - Silent unless something actually changed (one summary line on stderr).
+    ///   - Identical-content writes are skipped (existing diff-and-write path).
+    /// </summary>
+    internal static int RefreshInstalled()
+    {
+        var changedFiles = 0;
+        var changedTargets = new List<string>();
+
+        foreach (var tool in Tools)
+        {
+            // Per-tool isolation: a permission/IO error in one agent's skill
+            // dir must not abort the refresh for other agents. Each tool's
+            // base SKILL.md and each of its sub-skills are wrapped
+            // individually so partial progress is preserved.
+            if (!Directory.Exists(Path.Combine(Home, tool.DetectDir))) continue;
+            var skillsDir = Path.Combine(Home, tool.SkillDir);
+            if (!Directory.Exists(skillsDir)) continue;
+
+            // Base SKILL.md
+            try
+            {
+                var basePath = Path.Combine(skillsDir, "officecli", "SKILL.md");
+                if (File.Exists(basePath))
+                {
+                    var content = LoadEmbeddedResource("OfficeCli.Resources.skill-officecli.md");
+                    if (content != null && File.ReadAllText(basePath) != content)
+                    {
+                        File.WriteAllText(basePath, content);
+                        changedFiles++;
+                        changedTargets.Add($"{tool.DisplayName}/officecli");
+                    }
+                }
+            }
+            catch { /* per-agent failure is non-fatal — keep going */ }
+
+            // Sub-skills present in this agent's skill directory
+            foreach (var folder in SkillMap.Values)
+            {
+                try
+                {
+                    var subSkillFile = Path.Combine(skillsDir, folder, "SKILL.md");
+                    if (!File.Exists(subSkillFile)) continue;
+
+                    var files = GetEmbeddedSkillFiles(folder);
+                    if (files.Count == 0) continue;
+
+                    var targetDir = Path.Combine(skillsDir, folder);
+                    var n = RewriteSkillFilesQuiet(targetDir, files);
+                    if (n > 0)
+                    {
+                        changedFiles += n;
+                        changedTargets.Add($"{tool.DisplayName}/{folder}");
+                    }
+                }
+                catch { /* per-skill failure is non-fatal */ }
+            }
+        }
+
+        if (changedFiles > 0)
+            Console.Error.WriteLine($"officecli: refreshed {changedFiles} skill file(s) after upgrade ({string.Join(", ", changedTargets)})");
+
+        return changedFiles;
+    }
+
+    /// <summary>Quiet variant of <see cref="InstallSkillFiles"/>: returns the
+    /// number of files rewritten, prints nothing per file. Used by
+    /// <see cref="RefreshInstalled"/>.</summary>
+    private static int RewriteSkillFilesQuiet(string targetDir, Dictionary<string, string> files)
+    {
+        var n = 0;
+        foreach (var (fileName, content) in files)
+        {
+            var targetPath = Path.Combine(targetDir, fileName);
+            var rewritten = fileName.EndsWith(".md", StringComparison.OrdinalIgnoreCase)
+                ? RewriteFileReferences(content, fileName)
+                : content;
+
+            if (File.Exists(targetPath) && File.ReadAllText(targetPath) == rewritten)
+                continue;
+
+            SafeCreateDirectory(Path.GetDirectoryName(targetPath)!);
+            File.WriteAllText(targetPath, rewritten);
+            n++;
+        }
+        return n;
+    }
+
+    // ─── Directory helpers ───────────────────────────────────
+
+    /// <summary>
+    /// Like Directory.CreateDirectory but handles dangling symlinks:
+    /// if the path exists as a symlink whose target is missing, remove it first.
+    /// </summary>
+    private static void SafeCreateDirectory(string dir)
+    {
+        // CONSISTENCY(skill-install): dangling symlink guard — Directory.CreateDirectory
+        // throws IOException when a path component is a dangling symlink; detect and remove it.
+        // Use FileAttributes.ReparsePoint to detect symlinks regardless of whether target exists.
+        if (!Directory.Exists(dir))
+        {
+            try
+            {
+                var attrs = File.GetAttributes(dir);
+                if (attrs.HasFlag(FileAttributes.ReparsePoint))
+                {
+                    // Dangling symlink (or symlink to non-dir) — remove it so CreateDirectory can proceed
+                    File.Delete(dir);
+                }
+            }
+            catch (FileNotFoundException) { /* fine, doesn't exist at all */ }
+            catch (DirectoryNotFoundException) { /* fine, parent also missing */ }
+        }
+        Directory.CreateDirectory(dir);
     }
 
     // ─── Embedded resource helpers ───────────────────────────

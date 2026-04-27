@@ -17,6 +17,13 @@ internal static partial class ChartHelper
         var chart = chartSpace?.GetFirstChild<C.Chart>();
         if (chart == null) { unsupported.AddRange(properties.Keys); return unsupported; }
 
+        // R24-3: expand combined "legend.layout=x:N,y:N,w:N,h:N" (and the same
+        // form for plotArea/title/trendlineLabel/displayUnitsLabel) into the
+        // individual {prefix}.x/y/w/h keys consumed by the dispatch table
+        // below. Without this, the combined form was silently accepted by
+        // the lenient prefix validator but never emitted any <c:layout>.
+        ExpandCombinedLayoutKeys(properties);
+
         // Process structural properties (legend, title) before styling properties (legendFont, titleFont)
         // to ensure the parent element exists before styling is applied.
         static int PropOrder(string k)
@@ -150,14 +157,13 @@ internal static partial class ChartHelper
                     if (!value.Equals("false", StringComparison.OrdinalIgnoreCase) &&
                         !value.Equals("none", StringComparison.OrdinalIgnoreCase))
                     {
-                        var pos = value.ToLowerInvariant() switch
-                        {
-                            "top" or "t" => C.LegendPositionValues.Top,
-                            "left" or "l" => C.LegendPositionValues.Left,
-                            "right" or "r" => C.LegendPositionValues.Right,
-                            "topright" or "tr" or "top-right" => C.LegendPositionValues.TopRight,
-                            _ => C.LegendPositionValues.Bottom
-                        };
+                        // CONSISTENCY(strict-enums / R34-1): unknown legend
+                        // positions used to silently fall through to "bottom",
+                        // producing a contradictory "Updated: legend=hidden"
+                        // success message while the file actually carried
+                        // legend=bottom. Reject up front with the valid set
+                        // so users see typos at Set time.
+                        var pos = ParseLegendPosition(value);
                         var plotVisOnly = chart.GetFirstChild<C.PlotVisibleOnly>();
                         var insertBefore = plotVisOnly as OpenXmlElement ?? chart.LastChild;
                         chart.InsertBefore(new C.Legend(
@@ -816,7 +822,8 @@ internal static partial class ChartHelper
                 case "plotarea.x" or "plotarea.y" or "plotarea.w" or "plotarea.h":
                 {
                     if (!double.TryParse(value, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out var layoutVal))
+                        System.Globalization.CultureInfo.InvariantCulture, out var layoutVal)
+                        || !double.IsFinite(layoutVal))
                     { unsupported.Add(key); break; }
                     var plotArea3 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea3 == null) { unsupported.Add(key); break; }
@@ -827,7 +834,8 @@ internal static partial class ChartHelper
                 case "title.x" or "title.y" or "title.w" or "title.h":
                 {
                     if (!double.TryParse(value, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out var layoutVal))
+                        System.Globalization.CultureInfo.InvariantCulture, out var layoutVal)
+                        || !double.IsFinite(layoutVal))
                     { unsupported.Add(key); break; }
                     var titleEl = chart.GetFirstChild<C.Title>();
                     if (titleEl == null) { unsupported.Add(key); break; }
@@ -837,8 +845,11 @@ internal static partial class ChartHelper
 
                 case "legend.x" or "legend.y" or "legend.w" or "legend.h":
                 {
+                    // Reject NaN/Infinity — double.TryParse accepts "NaN"/"Infinity"
+                    // and the resulting <c:x val="NaN"/> XML breaks Excel.
                     if (!double.TryParse(value, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out var layoutVal))
+                        System.Globalization.CultureInfo.InvariantCulture, out var layoutVal)
+                        || !double.IsFinite(layoutVal))
                     { unsupported.Add(key); break; }
                     var legendEl = chart.GetFirstChild<C.Legend>();
                     if (legendEl == null) { unsupported.Add(key); break; }
@@ -849,7 +860,8 @@ internal static partial class ChartHelper
                 case "trendlinelabel.x" or "trendlinelabel.y" or "trendlinelabel.w" or "trendlinelabel.h":
                 {
                     if (!double.TryParse(value, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out var layoutVal))
+                        System.Globalization.CultureInfo.InvariantCulture, out var layoutVal)
+                        || !double.IsFinite(layoutVal))
                     { unsupported.Add(key); break; }
                     var plotArea4 = chart.GetFirstChild<C.PlotArea>();
                     var trendlineLbl = plotArea4?.Descendants<C.TrendlineLabel>().FirstOrDefault();
@@ -861,7 +873,8 @@ internal static partial class ChartHelper
                 case "displayunitslabel.x" or "displayunitslabel.y" or "displayunitslabel.w" or "displayunitslabel.h":
                 {
                     if (!double.TryParse(value, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out var layoutVal))
+                        System.Globalization.CultureInfo.InvariantCulture, out var layoutVal)
+                        || !double.IsFinite(layoutVal))
                     { unsupported.Add(key); break; }
                     var dispUnitsLbl = chart.Descendants<C.DisplayUnitsLabel>().FirstOrDefault();
                     if (dispUnitsLbl == null) { unsupported.Add(key); break; }
@@ -1180,12 +1193,19 @@ internal static partial class ChartHelper
 
                 case "dispblanksas" or "blanksas":
                 {
+                    // CONSISTENCY(strict-enum): reject unknown enum values
+                    // instead of silently falling back to Gap. Mirrors R10
+                    // conditionalformatting / R11 cf-Add behavior so user
+                    // typos surface immediately rather than producing a
+                    // silently-different chart.
                     chart.RemoveAllChildren<C.DisplayBlanksAs>();
                     var dbVal = value.ToLowerInvariant() switch
                     {
                         "zero" => C.DisplayBlanksAsValues.Zero,
                         "span" or "connect" => C.DisplayBlanksAsValues.Span,
-                        _ => C.DisplayBlanksAsValues.Gap
+                        "gap" => C.DisplayBlanksAsValues.Gap,
+                        _ => throw new ArgumentException(
+                            $"Invalid dispBlanksAs value '{value}'. Allowed: gap, zero, span (alias: connect).")
                     };
                     chart.AppendChild(new C.DisplayBlanksAs { Val = dbVal });
                     break;
@@ -1320,11 +1340,23 @@ internal static partial class ChartHelper
                         "displayrsquared" => "disprsqr",
                         var s => s
                     };
-                    foreach (var ser in plotArea2.Descendants<OpenXmlCompositeElement>().Where(e => e.LocalName == "ser"))
+                    // fuzz-TL01/TL02: validate value before fan-out so invalid
+                    // input fails fast even when no series carries a trendline
+                    // (otherwise the loop body never runs and bad input is
+                    // silently accepted).
+                    ValidateTrendlineOptionValue(subKey, value, key);
+                    var trendlineTargets = plotArea2.Descendants<OpenXmlCompositeElement>()
+                        .Where(e => e.LocalName == "ser")
+                        .SelectMany(s => s.Elements<C.Trendline>())
+                        .ToList();
+                    if (trendlineTargets.Count == 0)
                     {
-                        foreach (var tl in ser.Elements<C.Trendline>())
-                            ApplyTrendlineOptions(tl, subKey, value);
+                        throw new InvalidOperationException(
+                            $"{key}: chart has no trendlines to update. " +
+                            "Add a trendline first via `series{N}.trendline=linear` (or similar).");
                     }
+                    foreach (var tl in trendlineTargets)
+                        ApplyTrendlineOptions(tl, subKey, value);
                     break;
                 }
 
@@ -1397,7 +1429,12 @@ internal static partial class ChartHelper
                 // CleanupE1 — dotted subkeys for toggling individual show* flags on existing
                 // dataLabels. Useful for pie charts where `datalabels.showpercent=true` should
                 // emit `<c:showPercent val="1"/>` rather than raw values.
-                case "datalabels.showvalue" or "datalabels.showval":
+                // CONSISTENCY(chart-datalabels-toggle): R28-B1 — accept top-level
+                // showValue/showPercent/showCatName/showSerName/showLegendKey
+                // aliases (in addition to the dotted datalabels.* form). Pie
+                // charts especially want `showPercent=true` as the natural prop.
+                case "datalabels.showvalue" or "datalabels.showval"
+                    or "showvalue" or "showval":
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
@@ -1410,7 +1447,8 @@ internal static partial class ChartHelper
                     break;
                 }
 
-                case "datalabels.showpercent" or "datalabels.showpct":
+                case "datalabels.showpercent" or "datalabels.showpct"
+                    or "showpercent" or "showpct":
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
@@ -1423,7 +1461,8 @@ internal static partial class ChartHelper
                     break;
                 }
 
-                case "datalabels.showcatname" or "datalabels.showcategoryname" or "datalabels.showcategory":
+                case "datalabels.showcatname" or "datalabels.showcategoryname" or "datalabels.showcategory"
+                    or "showcatname" or "showcategoryname" or "showcategory":
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
@@ -1436,7 +1475,8 @@ internal static partial class ChartHelper
                     break;
                 }
 
-                case "datalabels.showsername" or "datalabels.showseriesname" or "datalabels.showseries":
+                case "datalabels.showsername" or "datalabels.showseriesname" or "datalabels.showseries"
+                    or "showsername" or "showseriesname" or "showseries":
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
@@ -1449,7 +1489,7 @@ internal static partial class ChartHelper
                     break;
                 }
 
-                case "datalabels.showlegendkey":
+                case "datalabels.showlegendkey" or "showlegendkey":
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
@@ -1871,7 +1911,8 @@ internal static partial class ChartHelper
                             .Where(e => e.LocalName == "ser").ToList();
                         if (sIdx < 1 || sIdx > allSer.Count) { unsupported.Add(key); break; }
                         var ser = allSer[sIdx - 1];
-                        HandleSeriesDottedProperty(ser, sProp, value);
+                        if (!HandleSeriesDottedProperty(ser, sProp, value))
+                            unsupported.Add(key);
                         break;
                     }
                     // dataLabel{N}.delete / dataLabel{N}.pos
@@ -2378,5 +2419,98 @@ internal static partial class ChartHelper
         if (k.StartsWith("title")) return 2;
         // Everything else at default priority
         return 5;
+    }
+
+    // R24-3: in-place expand keys of the form "{prefix}.layout" with value
+    // "x:N,y:N,w:N,h:N" (any subset, any order) into individual {prefix}.x,
+    // {prefix}.y, {prefix}.w, {prefix}.h entries. Existing individual keys
+    // are not overwritten, so callers can still override one component.
+    // Recognized prefixes match the dispatch table above.
+    private static readonly string[] _layoutPrefixes =
+    {
+        "legend", "plotarea", "title",
+        "trendlinelabel", "displayunitslabel",
+    };
+
+    internal static void ExpandCombinedLayoutKeys(Dictionary<string, string> properties)
+    {
+        // Find all "*.layout" keys (case-insensitive) up front so we can
+        // mutate the dict while iterating.
+        var layoutKeys = properties.Keys
+            .Where(k => k.EndsWith(".layout", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        foreach (var key in layoutKeys)
+        {
+            var prefix = key[..^".layout".Length];
+            if (!_layoutPrefixes.Contains(prefix.ToLowerInvariant())) continue;
+            var raw = properties[key];
+            if (string.IsNullOrWhiteSpace(raw)) { properties.Remove(key); continue; }
+            // value: "x:0.1,y:0.5,w:0.2,h:0.4" — comma-separated k:v pairs,
+            // or positional CSV "0.1,0.2,0.3,0.4" (exactly 4 → x,y,w,h).
+            // CONSISTENCY(layout-csv): bt-2/fuzz-LL01 — positional CSV is the
+            // user-friendly form; reject ambiguous arities so silent-success
+            // bugs cannot recur.
+            var parts = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var hasColon = parts.Any(p => p.Contains(':'));
+            if (!hasColon)
+            {
+                if (parts.Length != 4)
+                    throw new ArgumentException(
+                        $"{key}: positional CSV layout requires exactly 4 values (x,y,w,h); got {parts.Length}. " +
+                        $"Use named form '{key}=x:N,y:N,w:N,h:N' for partial layouts.");
+                var dims = new[] { "x", "y", "w", "h" };
+                for (int i = 0; i < 4; i++)
+                {
+                    var expandedKey = $"{prefix}.{dims[i]}";
+                    if (!properties.ContainsKey(expandedKey))
+                        properties[expandedKey] = parts[i];
+                }
+            }
+            else
+            {
+                foreach (var part in parts)
+                {
+                    var colonIdx = part.IndexOf(':');
+                    if (colonIdx <= 0) continue;
+                    var dim = part[..colonIdx].Trim().ToLowerInvariant();
+                    var val = part[(colonIdx + 1)..].Trim();
+                    if (dim is "x" or "y" or "w" or "h")
+                    {
+                        var expandedKey = $"{prefix}.{dim}";
+                        if (!properties.ContainsKey(expandedKey))
+                            properties[expandedKey] = val;
+                    }
+                }
+            }
+            properties.Remove(key);
+        }
+    }
+
+    // fuzz-TL01/TL02: parse-validate a trendline.* sub-property value the same
+    // way ApplyTrendlineOptions would, but without mutating any element. Used
+    // by the chart-level fan-out so unrecognized values are rejected even when
+    // the chart has no trendline to apply them to.
+    private static void ValidateTrendlineOptionValue(string subKey, string value, string fullKey)
+    {
+        switch (subKey)
+        {
+            case "name" or "label":
+                break; // any string is valid
+            case "forward" or "forecastforward"
+                or "backward" or "forecastbackward"
+                or "intercept":
+                ParseHelpers.SafeParseDouble(value, fullKey);
+                break;
+            case "order" or "period":
+                ParseHelpers.SafeParseInt(value, fullKey);
+                break;
+            case "disprsqr" or "rsquared" or "r2" or "displayrsquared"
+                or "dispeq" or "equation" or "displayequation":
+                var v = (value ?? "").Trim().ToLowerInvariant();
+                if (v is not ("true" or "false" or "1" or "0" or "yes" or "no" or "on" or "off"))
+                    throw new ArgumentException(
+                        $"{fullKey}: expected boolean (true/false/1/0/yes/no/on/off), got '{value}'.");
+                break;
+        }
     }
 }

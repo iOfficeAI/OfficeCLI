@@ -33,6 +33,15 @@ public partial class PowerPointHandler
             // so both "slide[1]>ole" and "/slide[1]/ole" resolve the element type.
             selector = slideMatch.Groups[2].Value.TrimStart('>', '/', ' ');
         }
+        else
+        {
+            // CONSISTENCY(query-slide-prefix): also accept unindexed `slide > shape`
+            // as "match this child type across all slides" — Word supports child
+            // combinators without a specific parent index, so PPTX should too.
+            var unindexedSlideMatch = Regex.Match(selector, @"^\s*slide\s*>\s*(.+)$", RegexOptions.IgnoreCase);
+            if (unindexedSlideMatch.Success)
+                selector = unindexedSlideMatch.Groups[1].Value;
+        }
 
         // Element type
         var typeMatch = Regex.Match(selector, @"^(\w+)");
