@@ -583,7 +583,7 @@ public partial class WordHandler
                 }
                 numPr.NumberingId = new NumberingId { Val = numIdVal };
                 return true;
-            case "numLevel" or "numlevel" or "ilvl":
+            case "numLevel" or "numlevel" or "ilvl" or "listLevel" or "listlevel":
                 var numPr2 = pProps.NumberingProperties ?? (pProps.NumberingProperties = new NumberingProperties());
                 var ilvlSetVal = ParseHelpers.SafeParseInt(value, "numLevel");
                 if (ilvlSetVal < 0 || ilvlSetVal > 8)

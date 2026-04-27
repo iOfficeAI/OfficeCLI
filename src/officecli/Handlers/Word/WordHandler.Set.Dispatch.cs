@@ -1156,7 +1156,7 @@ public partial class WordHandler
                     sNumPr.NumberingId = new NumberingId { Val = nid };
                     break;
                 }
-                case "ilvl" or "numLevel" or "numlevel":
+                case "ilvl" or "numLevel" or "numlevel" or "listLevel" or "listlevel":
                 {
                     var pPrN2 = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
                     var sNumPr2 = pPrN2.NumberingProperties ?? (pPrN2.NumberingProperties = new NumberingProperties());
