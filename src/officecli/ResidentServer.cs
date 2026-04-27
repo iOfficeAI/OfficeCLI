@@ -13,7 +13,32 @@ namespace OfficeCli;
 
 public class ResidentServer : IDisposable
 {
-    private readonly IDocumentHandler _handler;
+    // Non-readonly: when _lazyOpen is true, this field is populated per-command
+    // inside ExecuteCommand and reset to null when the command finishes, so the
+    // underlying file handle (and its advisory flock) is only held while work is
+    // actually in flight. Outside command execution the resident holds no file.
+    // In non-lazy mode (default), this is set once in the constructor.
+    // Invariant: non-null whenever an Execute* helper runs. Enforced by the
+    // dispatch wrapper in ExecuteCommand.
+    private IDocumentHandler _handler = null!;
+    /// <summary>
+    /// When true, the resident does NOT keep the document open between commands.
+    /// Each command opens the file, runs, then disposes the handler. Controlled
+    /// by the `OFFICECLI_NO_PERSISTENT_LOCK` env var (values "1" or "true").
+    ///
+    /// Use case: hosts like desktop apps that want the resident's IPC / cache
+    /// benefits but need the underlying file to stay unlocked so external apps
+    /// (Word, WPS, Finder preview) can open it while the resident is idle.
+    ///
+    /// Tradeoff: adds ~50-150ms zip-reparse cost per command, in exchange for
+    /// losing the 60s–12min "file-is-locked-while-resident-is-alive" window.
+    /// </summary>
+    private readonly bool _lazyOpen;
+    /// <summary>
+    /// Constructor arg cached for the lazy-open path. In non-lazy mode this is
+    /// applied once at startup and then unused.
+    /// </summary>
+    private readonly bool _editable;
     private readonly string _filePath;
     private readonly string _pipeName;
     // Shutdown uses TWO independent CTSs so the ping pipe can outlive the
@@ -103,7 +128,16 @@ public class ResidentServer : IDisposable
     {
         _filePath = Path.GetFullPath(filePath);
         _pipeName = GetPipeName(_filePath);
-        _handler = DocumentHandlerFactory.Open(_filePath, editable);
+        _editable = editable;
+        var envNoLock = Environment.GetEnvironmentVariable("OFFICECLI_NO_PERSISTENT_LOCK");
+        _lazyOpen = envNoLock == "1"
+            || string.Equals(envNoLock, "true", StringComparison.OrdinalIgnoreCase);
+        if (!_lazyOpen)
+        {
+            // Default: open once, hold for the lifetime of the resident.
+            _handler = DocumentHandlerFactory.Open(_filePath, editable);
+        }
+        // In lazy mode, _handler stays null until ExecuteCommand opens it per-request.
     }
 
     public static string GetPipeName(string filePath)
@@ -571,6 +605,76 @@ public class ResidentServer : IDisposable
 
     private void ExecuteCommand(ResidentRequest request)
     {
+        if (_lazyOpen)
+        {
+            // Per-command handler lifecycle: open → run → dispose. The file's
+            // advisory flock is only held for the duration of this call, which
+            // is typically <500ms. External apps (Word, WPS, Finder preview)
+            // can open the file during the idle window between commands.
+            //
+            // MOD(#4): see docs/cove-desktop-mods.md
+            // Pure reads should match the direct CLI path and stay read-only;
+            // otherwise lazy resident upgrades every `query/get/view` into an
+            // editable open and pays paraId/docProp normalization on each read.
+            using var h = DocumentHandlerFactory.Open(
+                _filePath,
+                editable: RequestNeedsEditableAccess(request));
+            _handler = h;
+            try
+            {
+                ExecuteCommandCore(request);
+            }
+            finally
+            {
+                _handler = null!;
+            }
+            return;
+        }
+
+        ExecuteCommandCore(request);
+    }
+
+    // MOD(#4): see docs/cove-desktop-mods.md
+    private static bool RequestNeedsEditableAccess(ResidentRequest request)
+    {
+        var command = (request.Command ?? "").ToLowerInvariant();
+        return command switch
+        {
+            "set" or "add" or "remove" or "move" or "swap" or "raw-set" or "add-part" => true,
+            "batch" => BatchNeedsEditableAccess(request.GetArg("batchJson")),
+            _ => false,
+        };
+    }
+
+    // MOD(#4): see docs/cove-desktop-mods.md
+    private static bool BatchNeedsEditableAccess(string? batchJson)
+    {
+        if (string.IsNullOrWhiteSpace(batchJson))
+            return false;
+
+        try
+        {
+            var items = System.Text.Json.JsonSerializer.Deserialize<List<BatchItem>>(
+                batchJson, BatchJsonContext.Default.ListBatchItem) ?? new();
+            foreach (var item in items)
+            {
+                var command = (item.Command ?? "").ToLowerInvariant();
+                if (command is "set" or "add" or "remove" or "move" or "swap" or "raw-set" or "add-part")
+                    return true;
+            }
+            return false;
+        }
+        catch
+        {
+            // Conservative fallback: if the batch payload is unreadable,
+            // preserve the old editable-open behavior rather than risk
+            // rejecting a real write batch behind a read-only handler.
+            return true;
+        }
+    }
+
+    private void ExecuteCommandCore(ResidentRequest request)
+    {
         var format = request.Json ? OutputFormat.Json : OutputFormat.Text;
 
         switch (request.Command)
@@ -807,11 +911,8 @@ public class ResidentServer : IDisposable
 
             if (html != null)
             {
-                if (req.Json)
-                {
-                    Console.Write(html);
-                }
-                else
+                var browser = req.GetArgOrNull("browser") == "true";
+                if (browser)
                 {
                     // SECURITY: include a random token so the preview path is not predictable.
                     // Without it, a predictable path enables a symlink pre-placement attack that
@@ -826,6 +927,11 @@ public class ResidentServer : IDisposable
                         System.Diagnostics.Process.Start(psi);
                     }
                     catch { /* silently ignore if browser can't be opened */ }
+                }
+                else
+                {
+                    // Default: output HTML to stdout (matches non-resident behavior)
+                    Console.Write(html);
                 }
             }
             else
@@ -1295,10 +1401,17 @@ public class ResidentServer : IDisposable
         //    disk and closes the file handle). The ping pipe is still
         //    live right now, so any TryResident caller will correctly
         //    conclude "resident still owns the file".
-        try { _handler.Dispose(); }
-        catch (Exception ex)
+        //
+        // In lazy-open mode (_lazyOpen == true) there is no persistent
+        // handler to dispose: every command has already opened-and-closed
+        // its own. _handler is null here and there's nothing to do.
+        if (_handler != null)
         {
-            LogStderr($"Warning: handler dispose error: {ex.Message}");
+            try { _handler.Dispose(); }
+            catch (Exception ex)
+            {
+                LogStderr($"Warning: handler dispose error: {ex.Message}");
+            }
         }
 
         // 5. NOW cancel ping + idle. Clients observing the ping pipe from

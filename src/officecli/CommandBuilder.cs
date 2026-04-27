@@ -279,6 +279,15 @@ static partial class CommandBuilder
 
     internal static int? TryResident(string filePath, Action<ResidentRequest> configure, bool json = false)
     {
+        // MOD(#8): see docs/cove-desktop-mods.md
+        // Some embedders need specific commands (notably read-heavy query/view)
+        // to bypass any existing resident entirely instead of probing/reusing it.
+        // This skips both "reuse running resident" and "auto-start resident" so
+        // the caller falls through to direct file access.
+        var skipResident = Environment.GetEnvironmentVariable("OFFICECLI_SKIP_RESIDENT");
+        if (skipResident == "1" || string.Equals(skipResident, "true", StringComparison.OrdinalIgnoreCase))
+            return null;
+
         // Step 1: does a resident own this file? Probe via the -ping pipe,
         // which is never serialized behind main-pipe commands.
         if (!ResidentClient.TryConnect(filePath, out _))
