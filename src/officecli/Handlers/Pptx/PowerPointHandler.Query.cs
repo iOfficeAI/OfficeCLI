@@ -1361,7 +1361,10 @@ public partial class PowerPointHandler
             _ => presetId switch
             {
                 1 => "appear", 2 => "fly", 10 => "fade",
-                21 => "zoom", 24 => "bounce", _ => "unknown"
+                12 => "float", 17 => "swivel", 20 => "wipe",
+                21 => "zoom", 24 => "bounce",
+                26 => "grow", 27 => "spin",
+                _ => "unknown"
             }
         };
 
