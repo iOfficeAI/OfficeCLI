@@ -284,7 +284,24 @@ internal class WatchServer : IDisposable
             catch (PlatformNotSupportedException) { /* host doesn't support this signal */ }
         }
         TryRegister(PosixSignal.SIGTERM);
-        TryRegister(PosixSignal.SIGHUP);
+        // SIGHUP: only treat as shutdown when we have a controlling TTY
+        // (user closed the terminal hosting a foreground watch). For
+        // non-interactive launchers (CI, agent schedulers using stdin=
+        // /dev/null without setsid/nohup), the parent shell delivers a
+        // spurious SIGHUP after eval; we must catch and IGNORE it,
+        // because the kernel's default disposition for SIGHUP is
+        // terminate — simply not registering would still kill us.
+        bool sighupKills = !Console.IsInputRedirected;
+        try
+        {
+            signalRegs.Add(PosixSignalRegistration.Create(PosixSignal.SIGHUP, ctx =>
+            {
+                ctx.Cancel = true;
+                if (sighupKills) DoShutdownFromSignal();
+                // else: swallow — headless watch survives stray SIGHUP.
+            }));
+        }
+        catch (PlatformNotSupportedException) { /* host doesn't support */ }
         TryRegister(PosixSignal.SIGQUIT);
 
         ConsoleCancelEventHandler cancelHandler = (_, e) =>
