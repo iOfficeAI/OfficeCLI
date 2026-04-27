@@ -589,10 +589,16 @@ public partial class ExcelHandler
         // using the same token set PowerPointHandler.ParsePresetShape accepts.
         // textbox ignores preset (always "rect"). Default for shape: "rect".
         var shpPreset = Drawing.ShapeTypeValues.Rectangle;
-        if (string.Equals(type, "shape", StringComparison.OrdinalIgnoreCase)
-            && properties.TryGetValue("preset", out var shpPresetRaw)
-            && !string.IsNullOrWhiteSpace(shpPresetRaw))
-            shpPreset = ParseExcelShapePreset(shpPresetRaw);
+        if (string.Equals(type, "shape", StringComparison.OrdinalIgnoreCase))
+        {
+            // CONSISTENCY(shape-preset-aliases): preset is canonical;
+            // accept geometry/shape as aliases (mirrors Set).
+            var rawPreset = properties.GetValueOrDefault("preset")
+                ?? properties.GetValueOrDefault("geometry")
+                ?? properties.GetValueOrDefault("shape");
+            if (!string.IsNullOrWhiteSpace(rawPreset))
+                shpPreset = ParseExcelShapePreset(rawPreset);
+        }
 
         // Build ShapeProperties
         var shpXfrm = new Drawing.Transform2D(
@@ -678,11 +684,27 @@ public partial class ExcelHandler
 
         // Build TextBody with runs
         var bodyPr = new Drawing.BodyProperties { Anchor = Drawing.TextAnchoringTypeValues.Center };
+        if (properties.TryGetValue("valign", out var shpValign))
+        {
+            // CONSISTENCY(shape-valign): mirror Set vocabulary so Add path
+            // doesn't drop a known prop that round-trips through Get.
+            bodyPr.Anchor = shpValign.ToLowerInvariant() switch
+            {
+                "top" or "t" => Drawing.TextAnchoringTypeValues.Top,
+                "center" or "ctr" or "middle" or "m" or "c" => Drawing.TextAnchoringTypeValues.Center,
+                "bottom" or "b" => Drawing.TextAnchoringTypeValues.Bottom,
+                _ => throw new ArgumentException($"Invalid valign value: '{shpValign}'. Valid: top, center, bottom.")
+            };
+        }
         if (properties.TryGetValue("margin", out var shpMargin))
         {
-            var mEmu = (int)(ParseHelpers.SafeParseDouble(shpMargin, "margin") * 12700);
-            bodyPr.LeftInset = mEmu; bodyPr.RightInset = mEmu;
-            bodyPr.TopInset = mEmu; bodyPr.BottomInset = mEmu;
+            // CONSISTENCY(spacing-units): mirror Set — accept unit-qualified
+            // input and 4-CSV round-trip from Get.
+            var (lE, tE, rE, bE) = ParseShapeMarginToEmu(shpMargin);
+            bodyPr.LeftInset = lE;
+            bodyPr.TopInset = tE;
+            bodyPr.RightInset = rE;
+            bodyPr.BottomInset = bE;
         }
         var txBody = new XDR.TextBody(bodyPr, new Drawing.ListStyle());
 

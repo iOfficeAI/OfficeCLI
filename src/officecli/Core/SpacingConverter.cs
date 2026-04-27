@@ -66,6 +66,19 @@ internal static class SpacingConverter
         return (int)Math.Round(points * 100);
     }
 
+    /// <summary>
+    /// Parse a length value to points. Accepts unit-qualified "12pt", "0.5cm",
+    /// "0.5in" or bare number (treated as points). Used for XLSX shape margin
+    /// to mirror Get's "Npt" output. CONSISTENCY(spacing-units).
+    /// </summary>
+    public static double ParsePoints(string value)
+    {
+        var points = ParseSpacingToPoints(value, bareIsPoints: true);
+        if (points < 0)
+            throw new ArgumentException($"Invalid length value '{value}'. Must be non-negative.");
+        return points;
+    }
+
     // ────────────────────────────────────────────────────────────────
     //  lineSpacing  →  Word (twips + LineRule)
     // ────────────────────────────────────────────────────────────────

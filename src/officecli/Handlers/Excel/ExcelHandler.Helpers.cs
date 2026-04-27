@@ -2135,11 +2135,12 @@ public partial class ExcelHandler
                 node.Format["flip"] = "v";
         }
 
-        // Geometry preset (rect, ellipse, etc.) — schema documents `shape`
-        // as the canonical key (with `preset` as input alias on Add side).
+        // Geometry preset (rect, ellipse, etc.) — `preset` is the canonical
+        // key per shape help schema; `shape`/`geometry` are accepted as
+        // Add/Set aliases. Match PPTX shape readback which also uses `preset`.
         var presetGeom = shape.ShapeProperties?.GetFirstChild<Drawing.PresetGeometry>();
         if (presetGeom?.Preset?.HasValue == true)
-            node.Format["shape"] = presetGeom.Preset.InnerText;
+            node.Format["preset"] = presetGeom.Preset.InnerText;
 
         // Fill
         var spPr = shape.ShapeProperties;
@@ -2155,6 +2156,66 @@ public partial class ExcelHandler
             {
                 var schemeClr = shapeFill?.GetFirstChild<Drawing.SchemeColor>()?.Val;
                 if (schemeClr?.HasValue == true) node.Format["fill"] = schemeClr.InnerText;
+            }
+        }
+
+        // Paragraph alignment — read first paragraph's a:pPr/@algn (mirrors
+        // Set which writes to every paragraph). PPTX shape Get uses `align`
+        // canonical key.
+        var firstPara = shape.TextBody?.GetFirstChild<Drawing.Paragraph>();
+        var firstPPr = firstPara?.ParagraphProperties;
+        if (firstPPr?.Alignment?.HasValue == true)
+        {
+            // SDK v3 enum values are not compile-time constants; switch on InnerText.
+            node.Format["align"] = firstPPr.Alignment.InnerText switch
+            {
+                "ctr" => "center",
+                "r" => "right",
+                "just" => "justify",
+                "l" => "left",
+                var s => s,
+            };
+        }
+
+        // Vertical alignment — bodyPr/@anchor.
+        var bodyPrForAnchor = shape.TextBody?.GetFirstChild<Drawing.BodyProperties>();
+        if (bodyPrForAnchor?.Anchor?.HasValue == true)
+        {
+            node.Format["valign"] = bodyPrForAnchor.Anchor.InnerText switch
+            {
+                "t" => "top",
+                "ctr" => "center",
+                "b" => "bottom",
+                var s => s,
+            };
+        }
+
+        // Outline (line/border). Set writes "none" or "color[:width[:style]]".
+        // Round-trip emits the same canonical form.
+        var outline = spPr?.GetFirstChild<Drawing.Outline>();
+        if (outline != null)
+        {
+            if (outline.GetFirstChild<Drawing.NoFill>() != null)
+                node.Format["line"] = "none";
+            else
+            {
+                var lineFill = outline.GetFirstChild<Drawing.SolidFill>();
+                var lineRgb = lineFill?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+                string? colorPart = null;
+                if (lineRgb != null)
+                    colorPart = ParseHelpers.FormatHexColor(lineRgb);
+                else
+                {
+                    var schemeClr = lineFill?.GetFirstChild<Drawing.SchemeColor>()?.Val;
+                    if (schemeClr?.HasValue == true) colorPart = schemeClr.InnerText;
+                }
+                if (colorPart != null)
+                {
+                    var widthPt = outline.Width?.HasValue == true
+                        ? $":{outline.Width.Value / 12700.0:0.##}"
+                        : "";
+                    node.Format["line"] = colorPart + widthPt;
+                }
             }
         }
 
@@ -2548,6 +2609,30 @@ public partial class ExcelHandler
         Alias("cross", Drawing.ShapeTypeValues.Plus);
         Alias("cylinder", Drawing.ShapeTypeValues.Can);
         return map;
+    }
+
+    /// <summary>
+    /// Parse shape margin into 4 EMU insets (left, top, right, bottom).
+    /// Accepts unit-qualified "14pt"/"0.5cm"/"0.2in"/bare-points for uniform
+    /// inset, OR a 4-CSV "Lpt,Tpt,Rpt,Bpt" matching Get's readback format.
+    /// CONSISTENCY(spacing-units): mirrors SpacingConverter usage so that
+    /// margin's input vocabulary matches Get's "Npt"/"L,T,R,B" output.
+    /// </summary>
+    private static (int L, int T, int R, int B) ParseShapeMarginToEmu(string value)
+    {
+        var parts = (value ?? string.Empty).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 4)
+        {
+            int Emu(string s) => (int)Math.Round(SpacingConverter.ParsePoints(s) * 12700);
+            return (Emu(parts[0]), Emu(parts[1]), Emu(parts[2]), Emu(parts[3]));
+        }
+        if (parts.Length == 1)
+        {
+            var emu = (int)Math.Round(SpacingConverter.ParsePoints(parts[0]) * 12700);
+            return (emu, emu, emu, emu);
+        }
+        throw new ArgumentException(
+            $"Invalid 'margin' value '{value}'. Expected single length (e.g. '4pt', '0.5cm') or 4-CSV 'L,T,R,B'.");
     }
 
     private static Drawing.ShapeTypeValues ParseExcelShapePreset(string name)

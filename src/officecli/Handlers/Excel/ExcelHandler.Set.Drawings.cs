@@ -548,15 +548,18 @@ public partial class ExcelHandler
                     var bodyPr = shape.TextBody?.GetFirstChild<Drawing.BodyProperties>();
                     if (bodyPr != null)
                     {
-                        var mEmu = (int)(ParseHelpers.SafeParseDouble(value, "margin") * 12700);
-                        bodyPr.LeftInset = mEmu;
-                        bodyPr.RightInset = mEmu;
-                        bodyPr.TopInset = mEmu;
-                        bodyPr.BottomInset = mEmu;
+                        // CONSISTENCY(spacing-units): accept unit-qualified
+                        // input ('14pt', '0.5cm', '0.2in') and Get's 4-CSV
+                        // 'Lpt,Tpt,Rpt,Bpt' readback for round-trip.
+                        var (lE, tE, rE, bE) = ParseShapeMarginToEmu(value);
+                        bodyPr.LeftInset = lE;
+                        bodyPr.TopInset = tE;
+                        bodyPr.RightInset = rE;
+                        bodyPr.BottomInset = bE;
                     }
                     break;
                 }
-                case "preset" or "geometry":
+                case "preset" or "geometry" or "shape":
                 {
                     // CONSISTENCY(shape-preset): mirror Add — replace prstGeom on
                     // ShapeProperties with the new preset token.
