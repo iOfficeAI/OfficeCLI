@@ -27,8 +27,9 @@
     "name": {
       "type": "string",
       "description": "merge-field name (mergefield only) or target bookmark (ref only).",
+      "aliases": ["fieldName", "fieldname"],
       "add": true, "set": true, "get": true,
-      "examples": ["--prop name=CustomerName"],
+      "examples": ["--prop name=CustomerName", "--prop fieldName=CustomerName"],
       "readback": "n/a (embedded in instruction)",
       "enforcement": "report"
     },
