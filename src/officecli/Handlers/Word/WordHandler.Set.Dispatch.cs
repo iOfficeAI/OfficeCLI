@@ -215,6 +215,36 @@ public partial class WordHandler
         var fieldCode = instrRun.GetFirstChild<FieldCode>()!;
         var instr = fieldCode.Text ?? "";
 
+        // Update title — replace text on the immediately-preceding TOCHeading
+        // paragraph (mirrors AddToc which inserts one before the TOC field).
+        // If no TOCHeading paragraph exists yet, insert one.
+        if (properties.TryGetValue("title", out var newTitle))
+        {
+            var prev = tocPara.PreviousSibling();
+            Paragraph? titlePara = null;
+            if (prev is Paragraph pp
+                && string.Equals(pp.ParagraphProperties?.ParagraphStyleId?.Val?.Value,
+                    "TOCHeading", StringComparison.Ordinal))
+            {
+                titlePara = pp;
+            }
+            if (titlePara != null)
+            {
+                titlePara.RemoveAllChildren();
+                titlePara.AppendChild(new ParagraphProperties(
+                    new ParagraphStyleId { Val = "TOCHeading" }));
+                titlePara.AppendChild(new Run(new Text(newTitle)
+                    { Space = SpaceProcessingModeValues.Preserve }));
+            }
+            else if (!string.IsNullOrEmpty(newTitle))
+            {
+                titlePara = new Paragraph(
+                    new ParagraphProperties(new ParagraphStyleId { Val = "TOCHeading" }),
+                    new Run(new Text(newTitle) { Space = SpaceProcessingModeValues.Preserve }));
+                tocPara.InsertBeforeSelf(titlePara);
+            }
+        }
+
         // Update levels
         if (properties.TryGetValue("levels", out var newLevels))
         {
