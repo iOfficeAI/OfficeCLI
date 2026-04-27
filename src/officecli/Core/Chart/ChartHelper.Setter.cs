@@ -2422,9 +2422,17 @@ internal static partial class ChartHelper
         // autoZero, which is correct for the primary axis but wrong here.
         foreach (var c in secValAxis.Elements<C.Crosses>().ToList()) c.Remove();
         foreach (var c in secValAxis.Elements<C.CrossesAt>().ToList()) c.Remove();
-        // Schema order: crosses comes after crossAx; append is safe as BuildValueAxis
-        // ends with Crosses and we already stripped the autoZero Crosses above.
-        secValAxis.AppendChild(new C.Crosses { Val = C.CrossesValues.Maximum });
+        // Schema order in CT_ValAx: crossAx → crosses → crossBetween. BuildValueAxis
+        // already emitted CrossBetween last, so a plain AppendChild here would place
+        // the new Crosses *after* CrossBetween — schema-illegal and rejected by
+        // Excel/PowerPoint. Insert before CrossBetween (or fall back to AppendChild
+        // if the axis somehow has no CrossBetween).
+        var newCrosses = new C.Crosses { Val = C.CrossesValues.Maximum };
+        var crossBetween = secValAxis.GetFirstChild<C.CrossBetween>();
+        if (crossBetween != null)
+            secValAxis.InsertBefore(newCrosses, crossBetween);
+        else
+            secValAxis.AppendChild(newCrosses);
 
         // Insert after the last existing axis to maintain schema order
         var lastAxis = plotArea.Elements<C.ValueAxis>().LastOrDefault() as OpenXmlElement
