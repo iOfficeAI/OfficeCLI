@@ -36,7 +36,9 @@ public static class SlideSizeDefaults
         ["16:10"]      = new(12192000, 7620000,  SlideSizeValues.Screen16x10),
         ["a4"]         = new(10692000, 7560000,  SlideSizeValues.A4),
         ["a3"]         = new(15120000, 10692000, SlideSizeValues.A3),
-        ["letter"]     = new(9144000,  6858000,  SlideSizeValues.Letter),
+        // Letter = 8.5" × 11" (landscape on slide canvas: 11" × 8.5").
+        // 1in = 914400 EMU → 10058400 × 7772400.
+        ["letter"]     = new(10058400, 7772400,  SlideSizeValues.Letter),
         ["b4"]         = new(11430000, 8574000,  SlideSizeValues.B4ISO),
         ["b5"]         = new(8208000,  5760000,  SlideSizeValues.B5ISO),
         ["35mm"]       = new(10287000, 6858000,  SlideSizeValues.Film35mm),
