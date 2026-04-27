@@ -1180,6 +1180,27 @@ public partial class WordHandler
                     effectiveReplace = matchObjs[i].Result(replace);
                 }
 
+                // BUG-BT-2: detect cross-hyperlink-boundary replacement. If the
+                // match spans runs whose Hyperlink ancestors differ (e.g. one
+                // run inside a Hyperlink, another in plain paragraph body),
+                // a naive cross-run text edit destroys the hyperlink structure
+                // (URL + blue/underline formatting are lost). Reject up-front
+                // with a clear error rather than silently corrupting the doc.
+                {
+                    var affected = BuildRunTexts(para)
+                        .Where(rt => rt.End > matchStart && rt.Start < matchEnd)
+                        .Select(rt => rt.Run.Ancestors<Hyperlink>().FirstOrDefault())
+                        .Distinct()
+                        .ToList();
+                    if (affected.Count > 1)
+                    {
+                        throw new ArgumentException(
+                            $"find/replace cannot span a hyperlink boundary (match at offset {matchStart}, length {matchLen}): " +
+                            $"the match crosses into or out of a <w:hyperlink>, which would destroy its URL and formatting. " +
+                            $"Narrow the pattern to stay inside or outside the hyperlink, or edit the hyperlink text directly.");
+                    }
+                }
+
                 // Step 1: Replace text in affected runs (same logic as old ReplaceInParagraph)
                 var currentRunTexts = BuildRunTexts(para);
                 bool first = true;
