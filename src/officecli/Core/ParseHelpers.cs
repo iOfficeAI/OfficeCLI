@@ -274,6 +274,54 @@ internal static class ParseHelpers
     }
 
     /// <summary>
+    /// Word/PPT theme scheme color names (ECMA-376 §17.18.97 / §20.1.10.46).
+    /// Keep lowercase — input is matched case-insensitively but the canonical
+    /// OOXML serialization (and downstream readback) is lowercase.
+    /// </summary>
+    public static readonly HashSet<string> SchemeColorNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "dark1", "light1", "dark2", "light2",
+        "accent1", "accent2", "accent3", "accent4", "accent5", "accent6",
+        "hyperlink", "followedHyperlink",
+        // Extra variants seen in OOXML: text1/text2/background1/background2 alias dark/light.
+        "text1", "text2", "background1", "background2",
+        "none", "auto",
+    };
+
+    /// <summary>
+    /// True if <paramref name="value"/> is a recognized OOXML theme scheme
+    /// color name (e.g. "accent1", "dark2", "hyperlink"). Comparison is
+    /// case-insensitive; the canonical lowercase form is returned via
+    /// <see cref="NormalizeSchemeColorName"/>.
+    /// </summary>
+    public static bool IsSchemeColorName(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return false;
+        if (value!.StartsWith('#')) return false;
+        return SchemeColorNames.Contains(value);
+    }
+
+    /// <summary>
+    /// Returns the canonical lowercase scheme color name when
+    /// <paramref name="value"/> is recognized; otherwise returns null.
+    /// </summary>
+    public static string? NormalizeSchemeColorName(string? value)
+    {
+        if (!IsSchemeColorName(value)) return null;
+        var v = value!.ToLowerInvariant();
+        // Canonicalize the text/background aliases (Excel/PPTX prefer
+        // dark1/light1 in writes, but accept both on read).
+        return v switch
+        {
+            "text1" => "dark1",
+            "text2" => "dark2",
+            "background1" => "light1",
+            "background2" => "light2",
+            _ => v,
+        };
+    }
+
+    /// <summary>
     /// Sanitize a hex color for OOXML srgbClr val (must be exactly 6-char RGB).
     /// If 8-char hex is given, interprets as AARRGGBB (POI convention: alpha first),
     /// strips the leading alpha and returns it separately.
@@ -304,10 +352,19 @@ internal static class ParseHelpers
             hex = new string(new[] { hex[0], hex[0], hex[1], hex[1], hex[2], hex[2] });
 
         if (hex.Length != 6 || !hex.All(char.IsAsciiHexDigit))
+        {
+            // Scheme colors (accent1, dark2, hyperlink, …) are not handled
+            // here — callers that support theme colors must check
+            // IsSchemeColorName first and route to ThemeColor. Surface a
+            // hint instead of advertising support we don't provide.
+            var schemeHint = IsSchemeColorName(value)
+                ? " (scheme color names like 'accent1' must be set on properties that accept theme colors)"
+                : "";
             throw new ArgumentException(
                 $"Invalid color value: '{value}'. Expected 6-digit hex RGB (e.g. FF0000), " +
                 $"8-digit AARRGGBB (e.g. 80FF0000), named color (e.g. red), " +
-                $"rgb() notation (e.g. rgb(255,0,0)), or scheme color name.");
+                $"or rgb() notation (e.g. rgb(255,0,0))." + schemeHint);
+        }
 
         return (hex, null);
     }

@@ -1138,10 +1138,15 @@ public partial class WordHandler
                 if (italicEl != null && !node.Format.ContainsKey("italic")) node.Format["italic"] = true;
 
                 var colorEl = rp?.Color ?? markRp?.GetFirstChild<Color>();
-                if (colorEl?.Val?.Value != null && !node.Format.ContainsKey("color"))
-                    node.Format["color"] = ParseHelpers.FormatHexColor(colorEl.Val.Value);
-                else if (colorEl?.ThemeColor?.HasValue == true && !node.Format.ContainsKey("color"))
-                    node.Format["color"] = colorEl.ThemeColor.InnerText;
+                if (colorEl != null && !node.Format.ContainsKey("color"))
+                {
+                    // Prefer theme color over Val when both set (Val often
+                    // "auto" when ThemeColor is the authoritative source).
+                    if (colorEl.ThemeColor?.HasValue == true)
+                        node.Format["color"] = colorEl.ThemeColor.InnerText;
+                    else if (colorEl.Val?.Value != null)
+                        node.Format["color"] = ParseHelpers.FormatHexColor(colorEl.Val.Value);
+                }
 
                 var ulEl = rp?.Underline ?? markRp?.GetFirstChild<Underline>();
                 if (ulEl?.Val != null && !node.Format.ContainsKey("underline"))
@@ -1190,8 +1195,8 @@ public partial class WordHandler
             if (size != null) node.Format["size"] = size;
             if (run.RunProperties?.Bold != null) node.Format["bold"] = true;
             if (run.RunProperties?.Italic != null) node.Format["italic"] = true;
-            if (run.RunProperties?.Color?.Val?.Value != null) node.Format["color"] = ParseHelpers.FormatHexColor(run.RunProperties.Color.Val.Value);
-            else if (run.RunProperties?.Color?.ThemeColor?.HasValue == true) node.Format["color"] = run.RunProperties.Color.ThemeColor.InnerText;
+            if (run.RunProperties?.Color?.ThemeColor?.HasValue == true) node.Format["color"] = run.RunProperties.Color.ThemeColor.InnerText;
+            else if (run.RunProperties?.Color?.Val?.Value != null) node.Format["color"] = ParseHelpers.FormatHexColor(run.RunProperties.Color.Val.Value);
             if (run.RunProperties?.Underline?.Val != null) node.Format["underline"] = run.RunProperties.Underline.Val.InnerText;
             // CONSISTENCY(underline-color): backfilled from style Get edc8f884.
             if (run.RunProperties?.Underline?.Color?.Value != null)
@@ -1323,8 +1328,8 @@ public partial class WordHandler
                     node.Format["size"] = $"{int.Parse(rp.FontSize.Val.Value) / 2.0:0.##}pt";
                 if (rp.Bold != null) node.Format["bold"] = true;
                 if (rp.Italic != null) node.Format["italic"] = true;
-                if (rp.Color?.Val?.Value != null) node.Format["color"] = ParseHelpers.FormatHexColor(rp.Color.Val.Value);
-                else if (rp.Color?.ThemeColor?.HasValue == true) node.Format["color"] = rp.Color.ThemeColor.InnerText;
+                if (rp.Color?.ThemeColor?.HasValue == true) node.Format["color"] = rp.Color.ThemeColor.InnerText;
+                else if (rp.Color?.Val?.Value != null) node.Format["color"] = ParseHelpers.FormatHexColor(rp.Color.Val.Value);
                 if (rp.Underline?.Val != null) node.Format["underline"] = rp.Underline.Val.InnerText;
                 // CONSISTENCY(underline-color): backfilled from style Get edc8f884.
                 if (rp.Underline?.Color?.Value != null)

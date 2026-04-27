@@ -319,7 +319,10 @@ public partial class WordHandler
                     var fsz = rpr.GetFirstChild<FontSize>();
                     if (fsz?.Val?.Value != null) lNode.Format["size"] = $"{int.Parse(fsz.Val.Value) / 2.0:0.##}pt";
                     var clr = rpr.GetFirstChild<Color>();
-                    if (clr?.Val?.Value != null) lNode.Format["color"] = ParseHelpers.FormatHexColor(clr.Val.Value);
+                    if (clr?.ThemeColor?.HasValue == true)
+                        lNode.Format["color"] = clr.ThemeColor.InnerText;
+                    else if (clr?.Val?.Value != null)
+                        lNode.Format["color"] = ParseHelpers.FormatHexColor(clr.Val.Value);
                     if (rpr.GetFirstChild<Bold>() != null) lNode.Format["bold"] = true;
                     if (rpr.GetFirstChild<Italic>() != null) lNode.Format["italic"] = true;
                 }

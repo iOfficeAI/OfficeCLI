@@ -698,7 +698,22 @@ public partial class WordHandler
             case "color":
             case "font.color":
                 props.RemoveAllChildren<Color>();
-                InsertRunPropInSchemaOrder(props, new Color { Val = SanitizeHex(value) });
+                // Scheme colors (e.g. accent1, dark2, hyperlink) write to the
+                // ThemeColor attribute instead of Val; Val is left at "auto"
+                // per ECMA-376 §17.3.2.6 (Excel rejects Val=accent1).
+                {
+                    var schemeName = OfficeCli.Core.ParseHelpers.NormalizeSchemeColorName(value);
+                    Color colorEl;
+                    if (schemeName != null)
+                    {
+                        colorEl = new Color { Val = "auto", ThemeColor = new EnumValue<ThemeColorValues>(new ThemeColorValues(schemeName)) };
+                    }
+                    else
+                    {
+                        colorEl = new Color { Val = SanitizeHex(value) };
+                    }
+                    InsertRunPropInSchemaOrder(props, colorEl);
+                }
                 return true;
             case "highlight":
                 props.RemoveAllChildren<Highlight>();
