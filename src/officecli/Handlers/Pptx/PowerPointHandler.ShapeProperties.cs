@@ -1068,7 +1068,15 @@ public partial class PowerPointHandler
         var run = new Drawing.Run(
             new Drawing.RunProperties { Language = "en-US" },
             new Drawing.Text { Text = "" });
-        para.Append(run);
+        // CT_TextParagraph schema: pPr? (br | r | fld)* endParaRPr? — endParaRPr,
+        // when present, must be last. AddTable seeds empty cells with just an
+        // <a:endParaRPr/>, so a naive Append lands the new run AFTER it and
+        // produces Sch_UnexpectedElementContentExpectingComplex.
+        var endParaRPr = para.GetFirstChild<Drawing.EndParagraphRunProperties>();
+        if (endParaRPr != null)
+            para.InsertBefore(run, endParaRPr);
+        else
+            para.Append(run);
     }
 
     /// <summary>
