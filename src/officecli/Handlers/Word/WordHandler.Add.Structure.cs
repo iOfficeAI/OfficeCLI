@@ -1248,6 +1248,18 @@ public partial class WordHandler
             if (hSectPr.GetFirstChild<TitlePage>() == null)
                 hSectPr.AddChild(new TitlePage(), throwOnError: false);
         }
+        // CONSISTENCY(headerfooter-effective-toggle): mirror the type=first
+        // → titlePg auto-write pattern. Without /settings/evenAndOddHeaders,
+        // Word silently ignores the even header reference at render time.
+        if (headerType == HeaderFooterValues.Even)
+        {
+            var hSettingsPart = mainPartH.DocumentSettingsPart
+                ?? mainPartH.AddNewPart<DocumentSettingsPart>();
+            hSettingsPart.Settings ??= new Settings();
+            if (hSettingsPart.Settings.GetFirstChild<EvenAndOddHeaders>() == null)
+                hSettingsPart.Settings.AddChild(new EvenAndOddHeaders(), throwOnError: false);
+            hSettingsPart.Settings.Save();
+        }
 
         var hIdx = mainPartH.HeaderParts.ToList().IndexOf(headerPart);
         return $"/header[{hIdx + 1}]";
@@ -1383,6 +1395,17 @@ public partial class WordHandler
         {
             if (fSectPr.GetFirstChild<TitlePage>() == null)
                 fSectPr.AddChild(new TitlePage(), throwOnError: false);
+        }
+        // CONSISTENCY(headerfooter-effective-toggle): even-footer also needs
+        // settings.xml/w:evenAndOddHeaders to render.
+        if (footerType == HeaderFooterValues.Even)
+        {
+            var fSettingsPart = mainPartF.DocumentSettingsPart
+                ?? mainPartF.AddNewPart<DocumentSettingsPart>();
+            fSettingsPart.Settings ??= new Settings();
+            if (fSettingsPart.Settings.GetFirstChild<EvenAndOddHeaders>() == null)
+                fSettingsPart.Settings.AddChild(new EvenAndOddHeaders(), throwOnError: false);
+            fSettingsPart.Settings.Save();
         }
 
         var fIdx = mainPartF.FooterParts.ToList().IndexOf(footerPart);
