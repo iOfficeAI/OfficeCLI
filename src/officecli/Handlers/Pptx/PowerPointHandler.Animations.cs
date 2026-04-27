@@ -414,7 +414,7 @@ public partial class PowerPointHandler
         if (unrecognized.Count > 0)
             Console.Error.WriteLine($"Warning: unrecognized animation segments: {string.Join(", ", unrecognized)}. "
                 + "Format: EFFECT[-CLASS][-DIRECTION][-DURATION][-TRIGGER][-delay=N][-easein=N][-easeout=N] "
-                + "e.g. fly-entrance-left-400-after");
+                + "e.g. fly-entrance-left-400");
 
         // Resolve trigger
         AnimTrigger trigger;
