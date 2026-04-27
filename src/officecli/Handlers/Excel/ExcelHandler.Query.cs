@@ -202,6 +202,7 @@ public partial class ExcelHandler
                 && (sheetState == SheetStateValues.Hidden || sheetState == SheetStateValues.VeryHidden))
             {
                 sheetNode.Format["hidden"] = true;
+                sheetNode.Format["visibility"] = sheetState == SheetStateValues.VeryHidden ? "veryHidden" : "hidden";
             }
 
             // Sheet protection readback

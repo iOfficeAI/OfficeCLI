@@ -1123,18 +1123,39 @@ public partial class ExcelHandler
                 }
 
                 case "hidden":
+                case "visibility":
                 {
                     // Sheet visibility lives on the workbook-level <sheet> element,
-                    // not on the worksheet. Flip State between Visible and Hidden.
+                    // not on the worksheet. Three-state: visible / hidden / veryHidden.
                     var wbSheets = GetWorkbook().GetFirstChild<Sheets>();
                     var wbSheet = wbSheets?.Elements<Sheet>()
                         .FirstOrDefault(s => s.Name?.Value?.Equals(sheetName, StringComparison.OrdinalIgnoreCase) == true);
                     if (wbSheet != null)
                     {
-                        if (ParseHelpers.IsTruthy(value))
+                        var v = (value ?? "").Trim();
+                        var keyLower = key.ToLowerInvariant();
+                        if (v.Equals("veryHidden", StringComparison.OrdinalIgnoreCase)
+                            || v.Equals("very", StringComparison.OrdinalIgnoreCase)
+                            || v.Equals("veryhidden", StringComparison.OrdinalIgnoreCase))
+                        {
+                            wbSheet.State = SheetStateValues.VeryHidden;
+                        }
+                        else if (v.Equals("hidden", StringComparison.OrdinalIgnoreCase)
+                            || (keyLower == "hidden" && ParseHelpers.IsTruthy(v)))
+                        {
                             wbSheet.State = SheetStateValues.Hidden;
-                        else
+                        }
+                        else if (v.Equals("visible", StringComparison.OrdinalIgnoreCase)
+                            || (keyLower == "hidden" && !ParseHelpers.IsTruthy(v))
+                            || (keyLower == "visibility" && (string.IsNullOrEmpty(v) || v.Equals("none", StringComparison.OrdinalIgnoreCase))))
+                        {
                             wbSheet.State = null;
+                        }
+                        else
+                        {
+                            // Unknown value — fall back to truthiness on hidden semantics
+                            wbSheet.State = ParseHelpers.IsTruthy(v) ? SheetStateValues.Hidden : null;
+                        }
                         GetWorkbook().Save();
                     }
                     break;
