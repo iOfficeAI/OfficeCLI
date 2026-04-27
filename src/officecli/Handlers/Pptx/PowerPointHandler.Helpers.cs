@@ -1486,6 +1486,36 @@ public partial class PowerPointHandler
                     }
                 }
 
+                // BUG-TESTER fuzz-1 (PPTX mirror): drop orphan empty <a:r> runs left
+                // by cross-run replace. Only remove runs with empty <a:t> and no other
+                // semantic children (RunProperties alone is not semantic content).
+                var emptyRunsToRemove = new List<Drawing.Run>();
+                foreach (var run in para.Descendants<Drawing.Run>())
+                {
+                    bool hasContent = false;
+                    bool hasEmptyText = false;
+                    foreach (var child in run.ChildElements)
+                    {
+                        if (child is Drawing.RunProperties)
+                            continue;
+                        if (child is Drawing.Text t)
+                        {
+                            if (string.IsNullOrEmpty(t.Text))
+                                hasEmptyText = true;
+                            else
+                                hasContent = true;
+                        }
+                        else
+                        {
+                            hasContent = true;
+                        }
+                    }
+                    if (hasEmptyText && !hasContent)
+                        emptyRunsToRemove.Add(run);
+                }
+                foreach (var run in emptyRunsToRemove)
+                    run.Remove();
+
                 if (formatProps != null && formatProps.Count > 0 && effectiveReplace.Length > 0)
                 {
                     var replacedEnd = matchStart + effectiveReplace.Length;

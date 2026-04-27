@@ -1161,6 +1161,38 @@ public partial class WordHandler
                     }
                 }
 
+                // BUG-TESTER fuzz-1: cross-run replace consumes intermediate runs leaving
+                // them with empty <w:t/> — drop those orphan runs so persisted XML stays clean.
+                // Only remove runs whose Text element is now empty AND have no other
+                // semantic children (Break, TabChar, Drawing, FieldChar, Picture, etc.).
+                // RunProperties (rPr) alone is not semantic content.
+                var emptyRunsToRemove = new List<Run>();
+                foreach (var run in para.Descendants<Run>())
+                {
+                    bool hasContent = false;
+                    bool hasEmptyText = false;
+                    foreach (var child in run.ChildElements)
+                    {
+                        if (child is RunProperties)
+                            continue;
+                        if (child is Text t)
+                        {
+                            if (string.IsNullOrEmpty(t.Text))
+                                hasEmptyText = true;
+                            else
+                                hasContent = true;
+                        }
+                        else
+                        {
+                            hasContent = true;
+                        }
+                    }
+                    if (hasEmptyText && !hasContent)
+                        emptyRunsToRemove.Add(run);
+                }
+                foreach (var run in emptyRunsToRemove)
+                    run.Remove();
+
                 // Step 2: If format props, split at the replaced text position and apply
                 if (formatProps != null && formatProps.Count > 0)
                 {
