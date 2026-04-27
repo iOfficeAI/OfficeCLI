@@ -750,6 +750,11 @@ public partial class WordHandler
         if (margin?.Left?.Value != null) secNode.Format["marginLeft"] = FormatTwipsToCm(margin.Left.Value);
         if (margin?.Right?.Value != null) secNode.Format["marginRight"] = FormatTwipsToCm(margin.Right.Value);
 
+        // Page numbering start (w:pgNumType/@start)
+        var pgNumType = sectPr.GetFirstChild<PageNumberType>();
+        if (pgNumType?.Start?.Value != null)
+            secNode.Format["pageStart"] = pgNumType.Start.Value;
+
         // Line numbers
         var lnNum = sectPr.GetFirstChild<LineNumberType>();
         if (lnNum != null)

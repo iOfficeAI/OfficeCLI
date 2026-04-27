@@ -634,6 +634,26 @@ public partial class WordHandler
                     sepCols.Separator = IsTruthy(value);
                     break;
                 }
+                case "pagestart" or "pagenumberstart" or "pagenumstart":
+                {
+                    var lower = value.ToLowerInvariant();
+                    if (lower is "none" or "off" or "false" or "auto")
+                    {
+                        sectPr.RemoveAllChildren<PageNumberType>();
+                    }
+                    else
+                    {
+                        var startN = ParseHelpers.SafeParseInt(value, "pageStart");
+                        var pgNum = sectPr.GetFirstChild<PageNumberType>();
+                        if (pgNum == null)
+                        {
+                            pgNum = new PageNumberType();
+                            sectPr.AppendChild(pgNum);
+                        }
+                        pgNum.Start = startN;
+                    }
+                    break;
+                }
                 case "linenumbers" or "linenumbering":
                 {
                     var lower = value.ToLowerInvariant();
