@@ -66,15 +66,25 @@ public partial class ExcelHandler
             return node;
         }
 
-        // Handle /namedrange[N] or /namedrange[Name]
+        // Handle /namedrange[N] or /namedrange[Name] or /namedrange[@name=X]
         var namedRangeMatch = Regex.Match(path.TrimStart('/'), @"^namedrange\[(.+?)\]$", RegexOptions.IgnoreCase);
         if (namedRangeMatch.Success)
         {
             var selector = namedRangeMatch.Groups[1].Value;
+            // BUG-R36-B4: accept attribute-style selector /namedrange[@name=X]
+            // for parity with /formfield[@name=X]; previously the literal
+            // "@name=X" string was treated as the defined-name to match,
+            // matched nothing, and returning null! crashed downstream.
+            var attrMatch = Regex.Match(selector, @"^@name=(.+)$", RegexOptions.IgnoreCase);
+            if (attrMatch.Success)
+                selector = attrMatch.Groups[1].Value.Trim('"', '\'');
             var workbook = GetWorkbook();
             var definedNames = workbook.GetFirstChild<DefinedNames>();
+            // BUG-R36-B4: previously returned null! on miss, which the resident
+            // caller dereferenced (NullReferenceException). Return a typed error
+            // node so the standard "not found -> ArgumentException" path fires.
             if (definedNames == null)
-                return null!;
+                return new DocumentNode { Path = path, Type = "error", Text = $"Named range '{selector}' not found (no defined names in workbook)" };
 
             var allDefs = definedNames.Elements<DefinedName>().ToList();
             DefinedName? dn = null;
@@ -83,7 +93,7 @@ public partial class ExcelHandler
             if (int.TryParse(selector, out dnIndex))
             {
                 if (dnIndex < 1 || dnIndex > allDefs.Count)
-                    return null!;
+                    return new DocumentNode { Path = path, Type = "error", Text = $"Named range {dnIndex} not found (total: {allDefs.Count})" };
                 dn = allDefs[dnIndex - 1];
             }
             else
@@ -91,7 +101,7 @@ public partial class ExcelHandler
                 dn = allDefs.FirstOrDefault(d =>
                     d.Name?.Value?.Equals(selector, StringComparison.OrdinalIgnoreCase) == true);
                 if (dn == null)
-                    return null!;
+                    return new DocumentNode { Path = path, Type = "error", Text = $"Named range '{selector}' not found" };
                 dnIndex = allDefs.IndexOf(dn) + 1;
             }
 
