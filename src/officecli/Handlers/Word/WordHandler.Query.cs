@@ -993,18 +993,26 @@ public partial class WordHandler
         if (firstPara?.ParagraphProperties?.Justification?.Val != null)
             node.Format["alignment"] = firstPara.ParagraphProperties.Justification.Val.InnerText;
 
-        node.ChildCount = header.Elements<Paragraph>().Count();
+        node.ChildCount = header.Elements<Paragraph>().Count() + header.Elements<Table>().Count();
         // CONSISTENCY(header-footer-get): default depth (=1) returns the
         // single header/footer node, mirroring `query header` / `query footer`.
-        // Paragraph children only expand at explicit depth >= 2.
-        if (depth >= 2)
+        // Block children (paragraphs + tables) only expand at explicit depth >= 2.
+        if (depth >= 1)
         {
-            int pIdx = 0;
-            foreach (var para in header.Elements<Paragraph>())
+            int pIdx = 0, tblIdx = 0;
+            foreach (var child in header.ChildElements)
             {
-                var paraSegment = BuildParaPathSegment(para, pIdx + 1);
-                node.Children.Add(ElementToNode(para, $"{path}/{paraSegment}", depth - 1));
-                pIdx++;
+                if (child is Paragraph para)
+                {
+                    pIdx++;
+                    var paraSegment = BuildParaPathSegment(para, pIdx);
+                    node.Children.Add(ElementToNode(para, $"{path}/{paraSegment}", depth - 1));
+                }
+                else if (child is Table)
+                {
+                    tblIdx++;
+                    node.Children.Add(ElementToNode(child, $"{path}/tbl[{tblIdx}]", depth - 1));
+                }
             }
         }
 
@@ -1054,16 +1062,24 @@ public partial class WordHandler
         if (firstPara?.ParagraphProperties?.Justification?.Val != null)
             node.Format["alignment"] = firstPara.ParagraphProperties.Justification.Val.InnerText;
 
-        node.ChildCount = footer.Elements<Paragraph>().Count();
+        node.ChildCount = footer.Elements<Paragraph>().Count() + footer.Elements<Table>().Count();
         // CONSISTENCY(header-footer-get): see GetHeaderNode.
-        if (depth >= 2)
+        if (depth >= 1)
         {
-            int pIdx = 0;
-            foreach (var para in footer.Elements<Paragraph>())
+            int pIdx = 0, tblIdx = 0;
+            foreach (var child in footer.ChildElements)
             {
-                var paraSegment = BuildParaPathSegment(para, pIdx + 1);
-                node.Children.Add(ElementToNode(para, $"{path}/{paraSegment}", depth - 1));
-                pIdx++;
+                if (child is Paragraph para)
+                {
+                    pIdx++;
+                    var paraSegment = BuildParaPathSegment(para, pIdx);
+                    node.Children.Add(ElementToNode(para, $"{path}/{paraSegment}", depth - 1));
+                }
+                else if (child is Table)
+                {
+                    tblIdx++;
+                    node.Children.Add(ElementToNode(child, $"{path}/tbl[{tblIdx}]", depth - 1));
+                }
             }
         }
 

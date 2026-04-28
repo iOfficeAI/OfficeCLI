@@ -1486,7 +1486,10 @@ public partial class WordHandler
             var firstRow = table.Elements<TableRow>().FirstOrDefault();
             // Use grid column count (from TableGrid) instead of cell count for accurate column reporting
             var gridColCount = table.GetFirstChild<TableGrid>()?.Elements<GridColumn>().Count();
-            node.Format["cols"] = gridColCount ?? firstRow?.Elements<TableCell>().Count() ?? 0;
+            // CONSISTENCY(format-stringy): user-facing numeric counts are
+            // stored as strings to match other Word format keys (size "14pt",
+            // spacing "12pt"). Avoids object-vs-int comparison surprises.
+            node.Format["cols"] = (gridColCount ?? firstRow?.Elements<TableCell>().Count() ?? 0).ToString();
 
             var tp = table.GetFirstChild<TableProperties>();
             if (tp != null)
@@ -1785,18 +1788,28 @@ public partial class WordHandler
         }
         else if (element is Header or Footer)
         {
-            // Header/Footer: enumerate paragraph children with @paraId= stable paths
+            // Header/Footer: enumerate block-level children. Tables are valid
+            // block-level OOXML inside hdr/ftr (same schema as body), so list
+            // them alongside paragraphs. Mirrors body-listing logic above.
             node.Type = element is Header ? "header" : "footer";
             node.Text = string.Concat(element.Descendants<Text>().Select(t => t.Text));
-            node.ChildCount = element.Elements<Paragraph>().Count();
+            node.ChildCount = element.Elements<Paragraph>().Count() + element.Elements<Table>().Count();
             if (depth > 0)
             {
-                int pIdx = 0;
-                foreach (var hfPara in element.Elements<Paragraph>())
+                int pIdx = 0, tblIdx = 0;
+                foreach (var child in element.ChildElements)
                 {
-                    var paraSegment = BuildParaPathSegment(hfPara, pIdx + 1);
-                    node.Children.Add(ElementToNode(hfPara, $"{path}/{paraSegment}", depth - 1));
-                    pIdx++;
+                    if (child is Paragraph hfPara)
+                    {
+                        pIdx++;
+                        var paraSegment = BuildParaPathSegment(hfPara, pIdx);
+                        node.Children.Add(ElementToNode(hfPara, $"{path}/{paraSegment}", depth - 1));
+                    }
+                    else if (child is Table)
+                    {
+                        tblIdx++;
+                        node.Children.Add(ElementToNode(child, $"{path}/tbl[{tblIdx}]", depth - 1));
+                    }
                 }
             }
         }
