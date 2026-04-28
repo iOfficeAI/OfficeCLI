@@ -505,13 +505,17 @@ public partial class WordHandler
             "styleref" => $" STYLEREF \"{styleRefName}\" ",
             "docproperty" => $" DOCPROPERTY \"{docPropertyName}\" ",
             "if" => BuildIfFieldInstruction(properties),
-            _ => properties.ContainsKey("instruction")
-                ? properties["instruction"]
-                : throw new ArgumentException($"Unknown field type '{effectiveType}'. Provide a known type or an 'instruction' property.")
+            // CONSISTENCY(canonical-keys): field.json declares `instr` as
+            // the canonical raw-instruction key with `instruction` and
+            // `code` as aliases. Help docs and AI prompts use `instr=`
+            // (matching the readback key Get surfaces); accept all three.
+            _ => GetRawFieldInstruction(properties)
+                ?? throw new ArgumentException($"Unknown field type '{effectiveType}'. Provide a known type or an 'instr' / 'instruction' / 'code' property.")
         };
-        // Allow override via property
-        if (properties.TryGetValue("instruction", out var instr))
-            fieldInstr = instr.StartsWith(" ") ? instr : $" {instr} ";
+        // Allow override via property — same alias set as the no-fieldType path.
+        var rawInstr = GetRawFieldInstruction(properties);
+        if (rawInstr != null)
+            fieldInstr = rawInstr.StartsWith(" ") ? rawInstr : $" {rawInstr} ";
 
         // CONSISTENCY(field-prop-applicability): the schema in field.json
         // declares per-fieldType-specific props (expression/trueText/
@@ -641,6 +645,19 @@ public partial class WordHandler
             }
         }
         return resultPath;
+    }
+
+    // CONSISTENCY(canonical-keys): the raw field instruction can be passed
+    // under `instr` (canonical, mirrors Get readback), `instruction`
+    // (legacy, predates the schema rename), or `code` (alias documented in
+    // field.json). All three resolve to the same string. Wrapping spaces
+    // are reserved by the caller — the wrapping logic at the call site
+    // adds them when missing.
+    private static string? GetRawFieldInstruction(Dictionary<string, string> properties)
+    {
+        return properties.GetValueOrDefault("instr")
+            ?? properties.GetValueOrDefault("instruction")
+            ?? properties.GetValueOrDefault("code");
     }
 
     // CONSISTENCY(field-prop-applicability): map each fieldType to the
