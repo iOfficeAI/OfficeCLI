@@ -471,15 +471,14 @@ public partial class PowerPointHandler
             var ph = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
                 ?.GetFirstChild<PlaceholderShape>();
 
-            // Skip title/body content placeholders (these are structural, not decorative)
+            // Only date/footer/header/slide-number placeholders are visible inherited
+            // placeholders. Content placeholders are structural layout slots and should
+            // not render their edit-prompt text.
+            if (ph != null && !IsVisibleInheritedPlaceholder(ph))
+                continue;
+
             if (ph?.Type?.HasValue == true)
             {
-                var t = ph.Type.Value;
-                if (t == PlaceholderValues.Title || t == PlaceholderValues.CenteredTitle ||
-                    t == PlaceholderValues.SubTitle || t == PlaceholderValues.Body ||
-                    t == PlaceholderValues.Object)
-                    continue;
-
                 // Skip if slide already has this placeholder type
                 if (skipIndices.Contains($"type:{ph.Type.InnerText}")) continue;
             }
@@ -507,6 +506,17 @@ public partial class PowerPointHandler
         {
             RenderPicture(sb, pic, part, themeColors);
         }
+    }
+
+    private static bool IsVisibleInheritedPlaceholder(PlaceholderShape ph)
+    {
+        if (ph.Type?.HasValue != true) return false;
+
+        var type = ph.Type.Value;
+        return type == PlaceholderValues.DateAndTime
+            || type == PlaceholderValues.Footer
+            || type == PlaceholderValues.Header
+            || type == PlaceholderValues.SlideNumber;
     }
 
 }
