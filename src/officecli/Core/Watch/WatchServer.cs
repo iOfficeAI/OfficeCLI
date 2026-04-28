@@ -936,6 +936,31 @@ internal class WatchServer : IDisposable
     }
 
     /// <summary>
+    /// HTML-encode an attribute value mirroring how the renderer escapes
+    /// data-path. Only the characters that change inside double-quoted
+    /// attribute values matter (&, &lt;, &gt;, &quot;, &#39; / &apos;).
+    /// </summary>
+    private static string HtmlEncodeAttributeValue(string value)
+    {
+        // Order matters: replace '&' first so subsequent ampersand-introducing
+        // entities aren't re-encoded.
+        var sb = new StringBuilder(value.Length);
+        foreach (var ch in value)
+        {
+            switch (ch)
+            {
+                case '&': sb.Append("&amp;"); break;
+                case '<': sb.Append("&lt;"); break;
+                case '>': sb.Append("&gt;"); break;
+                case '"': sb.Append("&quot;"); break;
+                case '\'': sb.Append("&#39;"); break;
+                default: sb.Append(ch); break;
+            }
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
     /// Locate the element with the given data-path in the cached HTML snapshot
     /// and return its inner HTML fragment (start tag + children + end tag).
     /// Uses bracket-depth counting of sibling tags to find the matching close.
@@ -946,7 +971,12 @@ internal class WatchServer : IDisposable
         if (string.IsNullOrEmpty(html) || string.IsNullOrEmpty(path)) return null;
         // Anchor the search on the data-path attribute. Path may contain [] so
         // we match it as a literal substring inside quotes.
-        var marker = "data-path=\"" + path + "\"";
+        // BUG-FIX(B9): the HTML emitter encodes attribute values, so a path
+        // like /shape[@name="Foo"] is rendered as data-path="/shape[@name=&quot;Foo&quot;]".
+        // Match against the encoded form so paths containing ", ', <, >, & don't
+        // always come back stale.
+        var encodedPath = HtmlEncodeAttributeValue(path);
+        var marker = "data-path=\"" + encodedPath + "\"";
         var idx = html.IndexOf(marker, StringComparison.Ordinal);
         if (idx < 0) return null;
         // Walk back to the opening '<' of this element's start tag.
