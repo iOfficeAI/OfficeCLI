@@ -1051,7 +1051,14 @@ public partial class WordHandler
 
             switch (key.ToLowerInvariant())
             {
-                case "name":
+                // CONSISTENCY(style-dual-key): mirror AddStyle's alias chain
+                // (id/styleId/styleid for the immutable styleId; name /
+                // styleName / stylename for the display name). Round 7
+                // wired the aliases on Add; Set was the missing half —
+                // `set /styles/X --prop styleName=...` was rejected even
+                // though Get exposes `styleName` as a canonical readback
+                // key. Same alias-trap pattern policy 19b3dd5b banned.
+                case "name" or "stylename":
                     var sn = style.StyleName ?? style.AppendChild(new StyleName());
                     sn.Val = value;
                     break;

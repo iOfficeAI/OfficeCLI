@@ -430,13 +430,6 @@ public partial class WordHandler
         return string.Concat(run.Elements<Text>().Select(t => t.Text));
     }
 
-    // CONSISTENCY(field-cache-stale): walk back from a run carrying an
-    // <w:instrText> to the nearest preceding <w:fldChar fldCharType="begin">
-    // in the same paragraph and set its dirty="true" attribute, so Word
-    // recomputes the field on next open. Used by Set when the instruction
-    // text is rewritten — without dirty, the cached result run keeps the
-    // old display value (e.g. "PAGE → DATE" still shows the old page
-    // number) until the user manually presses F9.
     // CONSISTENCY(field-cache-stale): true when <paramref name="run"/> sits
     // between an owning field's <w:fldChar w:fldCharType="separate"/> and
     // <w:fldChar w:fldCharType="end"/> — i.e. it is the cached result run
@@ -474,6 +467,13 @@ public partial class WordHandler
         return false;
     }
 
+    // CONSISTENCY(field-cache-stale): walk back from a run carrying an
+    // <w:instrText> to the OWNING field's <w:fldChar fldCharType="begin">
+    // in the same paragraph and set its dirty="true" attribute so Word
+    // recomputes the field on next open. Used by Set when the instruction
+    // text is rewritten — without dirty, the cached result run keeps the
+    // old display value (e.g. "PAGE → DATE" still shows the old page
+    // number) until the user manually presses F9.
     private static void MarkOwningFieldDirty(Run run)
     {
         var para = run.Parent;
