@@ -325,6 +325,11 @@ public partial class PowerPointHandler
         };
 
         node.Format["name"] = name;
+        // CONSISTENCY(alt-readback): Set accepts alt/altText/description and
+        // writes to NonVisualDrawingProperties.Description. Surface it on Get
+        // so writes are observable.
+        var shapeAlt = shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Description?.Value;
+        if (!string.IsNullOrEmpty(shapeAlt)) node.Format["alt"] = shapeAlt;
         var shapeId = GetCNvPrId(shape);
         if (shapeId.HasValue) node.Format["id"] = shapeId.Value;
         if (isTitle) node.Format["isTitle"] = true;
