@@ -484,8 +484,23 @@ public partial class WordHandler
         if (value is null) return false;
         switch (key.ToLowerInvariant())
         {
-            case "style":
+            case "style" or "styleid":
+                // CONSISTENCY(style-dual-key): Get exposes styleId as a
+                // canonical readback key alongside the legacy `style`
+                // (Round 2). Round 7+8 wired the alias trio on AddStyle
+                // and SetStyle for /styles/X; the paragraph-level
+                // Set surface was the missing link.
                 pProps.ParagraphStyleId = new ParagraphStyleId { Val = value };
+                return true;
+            case "stylename":
+                // CONSISTENCY(style-dual-key): paragraph-level Set on
+                // styleName resolves the display name through the styles
+                // part — mirrors what Get reverses to expose styleName.
+                // Falls back to using the value as styleId verbatim if no
+                // matching display name is found (preserves the lenient-
+                // input pattern used elsewhere).
+                var resolved = ResolveStyleIdFromName(value);
+                pProps.ParagraphStyleId = new ParagraphStyleId { Val = resolved ?? value };
                 return true;
             case "alignment" or "align":
                 pProps.Justification = new Justification { Val = ParseJustification(value) };

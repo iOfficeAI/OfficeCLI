@@ -179,9 +179,20 @@ public partial class WordHandler
         var rewriteFieldType = properties.GetValueOrDefault("fieldType")
             ?? properties.GetValueOrDefault("fieldtype")
             ?? properties.GetValueOrDefault("type");
+        // CONSISTENCY(canonical-keys): mirror AddField's per-fieldType
+        // alias chain (field.json declares all of these as set:true).
+        // R6 added bookmarkName/styleName/propertyName/etc. on the Add
+        // side; Set was rejecting them as unsupported until Round 9.
         var rewriteName = properties.GetValueOrDefault("name")
             ?? properties.GetValueOrDefault("fieldName")
-            ?? properties.GetValueOrDefault("fieldname");
+            ?? properties.GetValueOrDefault("fieldname")
+            ?? properties.GetValueOrDefault("bookmarkName")
+            ?? properties.GetValueOrDefault("bookmarkname")
+            ?? properties.GetValueOrDefault("bookmark")
+            ?? properties.GetValueOrDefault("styleName")
+            ?? properties.GetValueOrDefault("stylename")
+            ?? properties.GetValueOrDefault("propertyName")
+            ?? properties.GetValueOrDefault("propertyname");
         var hasRewriteFormat = properties.TryGetValue("format", out var rewriteFormat);
         if (!string.IsNullOrEmpty(rewriteFieldType) || !string.IsNullOrEmpty(rewriteName) || hasRewriteFormat)
         {
@@ -248,13 +259,24 @@ public partial class WordHandler
 
         foreach (var (key, value) in properties)
         {
-            // Handled above by the instruction-rewrite block.
+            // Handled above by the instruction-rewrite block. Mirror the
+            // alias chain in `rewriteName` so type-specific aliases
+            // (bookmarkName/styleName/propertyName/...) don't fall
+            // through and trigger an unsupported-prop warning even
+            // though they were consumed.
             if (key.Equals("fieldType", StringComparison.OrdinalIgnoreCase)
                 || key.Equals("fieldtype", StringComparison.OrdinalIgnoreCase)
                 || key.Equals("type", StringComparison.OrdinalIgnoreCase)
                 || key.Equals("name", StringComparison.OrdinalIgnoreCase)
                 || key.Equals("fieldName", StringComparison.OrdinalIgnoreCase)
                 || key.Equals("fieldname", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("bookmarkName", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("bookmarkname", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("bookmark", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("styleName", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("stylename", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("propertyName", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("propertyname", StringComparison.OrdinalIgnoreCase)
                 || key.Equals("format", StringComparison.OrdinalIgnoreCase))
                 continue;
             switch (key.ToLowerInvariant())

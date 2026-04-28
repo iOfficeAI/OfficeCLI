@@ -34,9 +34,10 @@
     },
     "style": {
       "type": "string",
-      "description": "paragraph styleId (e.g. Heading1, Normal, Quote). Must reference an existing style or one of the built-in style aliases.",
+      "description": "paragraph styleId (e.g. Heading1, Normal, Quote). Must reference an existing style or one of the built-in style aliases. Aliases mirror the canonical readback keys exposed by Get: styleId targets the OOXML styleId; styleName resolves the display name through the styles part (lenient, falls back to verbatim if no match).",
+      "aliases": ["styleId", "styleid", "styleName", "stylename"],
       "add": true, "set": true, "get": true,
-      "examples": ["--prop style=Heading1"],
+      "examples": ["--prop style=Heading1", "--prop styleId=Heading1", "--prop styleName=\"Heading 1\""],
       "readback": "styleId as stored on the paragraph",
       "enforcement": "strict"
     },

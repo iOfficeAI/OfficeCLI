@@ -17,8 +17,18 @@ public partial class WordHandler
         AssignParaId(para);
         var pProps = new ParagraphProperties();
 
-        if (properties.TryGetValue("style", out var style))
+        // CONSISTENCY(style-dual-key): mirror SetParagraph and AddStyle —
+        // accept canonical readback aliases (styleId, styleName) so a
+        // get→add clone of a paragraph round-trips its style intact.
+        // styleName resolves the display name through the styles part;
+        // falls back to verbatim if no match (lenient-input pattern).
+        if (properties.TryGetValue("style", out var style)
+            || properties.TryGetValue("styleId", out style)
+            || properties.TryGetValue("styleid", out style))
             pProps.ParagraphStyleId = new ParagraphStyleId { Val = style };
+        else if (properties.TryGetValue("styleName", out var styleName)
+            || properties.TryGetValue("stylename", out styleName))
+            pProps.ParagraphStyleId = new ParagraphStyleId { Val = ResolveStyleIdFromName(styleName) ?? styleName };
         if (properties.TryGetValue("alignment", out var alignment) || properties.TryGetValue("align", out alignment))
             pProps.Justification = new Justification { Val = ParseJustification(alignment) };
         if (properties.TryGetValue("firstlineindent", out var indent) || properties.TryGetValue("firstLineIndent", out indent))

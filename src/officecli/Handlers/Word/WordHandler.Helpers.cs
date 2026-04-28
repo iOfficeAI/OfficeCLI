@@ -430,6 +430,20 @@ public partial class WordHandler
         return string.Concat(run.Elements<Text>().Select(t => t.Text));
     }
 
+    // CONSISTENCY(style-dual-key): resolve a style display name to its
+    // OOXML styleId by scanning the styles part. Returns null when no
+    // matching style is found, letting callers fall back to using the
+    // value verbatim (lenient input). Used by paragraph-level Set on
+    // styleName so users can write back the canonical readback key.
+    private string? ResolveStyleIdFromName(string displayName)
+    {
+        var stylesPart = _doc.MainDocumentPart?.StyleDefinitionsPart;
+        if (stylesPart?.Styles == null || string.IsNullOrEmpty(displayName)) return null;
+        var match = stylesPart.Styles.Elements<Style>()
+            .FirstOrDefault(s => string.Equals(s.StyleName?.Val?.Value, displayName, StringComparison.Ordinal));
+        return match?.StyleId?.Value;
+    }
+
     // CONSISTENCY(field-cache-stale): true when <paramref name="run"/> sits
     // between an owning field's <w:fldChar w:fldCharType="separate"/> and
     // <w:fldChar w:fldCharType="end"/> — i.e. it is the cached result run
