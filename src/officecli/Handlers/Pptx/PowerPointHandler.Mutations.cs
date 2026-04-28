@@ -21,6 +21,7 @@ public partial class PowerPointHandler
             throw new ArgumentException(
                 $"Cannot remove container element '{path}': it is a required structural element of the document.");
 
+        path = NormalizePptxPathSegmentCasing(path);
         path = NormalizeCellPath(path);
         path = ResolveIdPath(path);
 

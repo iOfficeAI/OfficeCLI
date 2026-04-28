@@ -25,6 +25,7 @@ public partial class PowerPointHandler
                 ? properties
                 : new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
 
+        parentPath = NormalizePptxPathSegmentCasing(parentPath);
         parentPath = NormalizeCellPath(parentPath);
         parentPath = ResolveIdPath(parentPath);
 

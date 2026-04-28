@@ -28,6 +28,24 @@ public partial class PowerPointHandler
     /// E.g. /slide[1]/table[1]/cell[2,3] → /slide[1]/table[1]/tr[2]/tc[3]
     /// Also handles trailing segments: /slide[1]/table[1]/cell[2,3]/txBody → /slide[1]/table[1]/tr[2]/tc[3]/txBody
     /// </summary>
+    /// <summary>
+    /// CONSISTENCY(path-stability): the per-handler path-pattern regexes are mostly
+    /// case-sensitive. DOCX folds case via ToLowerInvariant on every segment name
+    /// (Navigation.cs); we mirror that here by lowercasing the alphabetic LocalName
+    /// portion of every `<name>[index]` segment so `/SLIDE[1]/SHAPE[2]` is treated
+    /// identically to `/slide[1]/shape[2]` and routes through the structured matchers
+    /// instead of falling through to the raw-XML default.
+    /// </summary>
+    private static string NormalizePptxPathSegmentCasing(string path)
+    {
+        if (string.IsNullOrEmpty(path) || path == "/") return path;
+        // Lowercase only the LocalName before '[' or '/' or end-of-segment. Preserve
+        // bracketed identifiers (placeholder[Title 1]), attribute selectors (@role=ROLE),
+        // and named arguments verbatim — only the leading element-name token is folded.
+        return Regex.Replace(path, @"(?<=^|/)([A-Za-z][A-Za-z0-9]*)",
+            m => m.Value.ToLowerInvariant());
+    }
+
     private static string NormalizeCellPath(string path)
     {
         // Reject malformed segment separators that previously slipped past

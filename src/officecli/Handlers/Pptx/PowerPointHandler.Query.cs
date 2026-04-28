@@ -19,6 +19,7 @@ public partial class PowerPointHandler
     {
         if (string.IsNullOrEmpty(path))
             throw new ArgumentException("Path cannot be empty.");
+        path = NormalizePptxPathSegmentCasing(path);
         path = NormalizeCellPath(path);
         path = ResolveIdPath(path);
         if (path == "/")

@@ -14,6 +14,7 @@ public partial class PowerPointHandler
 {
     public List<string> Set(string path, Dictionary<string, string> properties)
     {
+        path = NormalizePptxPathSegmentCasing(path);
         path = NormalizeCellPath(path);
         path = ResolveIdPath(path);
 
