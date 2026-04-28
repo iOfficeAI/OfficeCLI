@@ -1139,6 +1139,31 @@ public partial class WordHandler
         };
     }
 
+    // Resolve the SectionProperties that a header/footer reference should
+    // attach to, based on the parent path. `/section[N]` targets the carrier
+    // paragraph's sectPr (mirrors NavigateToElement); `/`, `/body`, or any
+    // other path falls back to the body-level (final) sectPr.
+    private SectionProperties? ResolveTargetSectPrForHeaderFooter(string parentPath)
+    {
+        var body = _doc.MainDocumentPart?.Document?.Body;
+        if (body == null) return null;
+        if (!string.IsNullOrEmpty(parentPath))
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(
+                parentPath, @"^/section\[(\d+)\]/?$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (m.Success && int.TryParse(m.Groups[1].Value, out var n))
+            {
+                var sectParas = body.Elements<Paragraph>()
+                    .Where(p => p.ParagraphProperties?.GetFirstChild<SectionProperties>() != null)
+                    .ToList();
+                if (n >= 1 && n <= sectParas.Count)
+                    return sectParas[n - 1].ParagraphProperties!.GetFirstChild<SectionProperties>();
+            }
+        }
+        return body.Elements<SectionProperties>().LastOrDefault();
+    }
+
     private string AddHeader(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
     {
         var mainPartH = _doc.MainDocumentPart!;
@@ -1158,7 +1183,7 @@ public partial class WordHandler
                 _ => throw new ArgumentException($"Invalid header type: '{preHTypeStr}'. Valid values: default, first, even.")
             };
         }
-        var preSectPr = mainPartH.Document!.Body!.Elements<SectionProperties>().LastOrDefault();
+        var preSectPr = ResolveTargetSectPrForHeaderFooter(parentPath);
         if (preSectPr != null && preSectPr.Elements<HeaderReference>()
                 .Any(r => r.Type != null && r.Type.Value == preHeaderType))
         {
@@ -1252,7 +1277,7 @@ public partial class WordHandler
         headerPart.Header.Save();
 
         var hBody = mainPartH.Document!.Body!;
-        var hSectPr = hBody.Elements<SectionProperties>().LastOrDefault()
+        var hSectPr = ResolveTargetSectPrForHeaderFooter(parentPath)
             ?? hBody.AppendChild(new SectionProperties());
 
         var headerType = preHeaderType;
@@ -1305,7 +1330,7 @@ public partial class WordHandler
                 _ => throw new ArgumentException($"Invalid footer type: '{preFTypeStr}'. Valid values: default, first, even.")
             };
         }
-        var preFSectPr = mainPartF.Document!.Body!.Elements<SectionProperties>().LastOrDefault();
+        var preFSectPr = ResolveTargetSectPrForHeaderFooter(parentPath);
         if (preFSectPr != null && preFSectPr.Elements<FooterReference>()
                 .Any(r => r.Type != null && r.Type.Value == preFooterType))
         {
@@ -1395,7 +1420,7 @@ public partial class WordHandler
         footerPart.Footer.Save();
 
         var fBody = mainPartF.Document!.Body!;
-        var fSectPr = fBody.Elements<SectionProperties>().LastOrDefault()
+        var fSectPr = ResolveTargetSectPrForHeaderFooter(parentPath)
             ?? fBody.AppendChild(new SectionProperties());
 
         var footerType = preFooterType;
