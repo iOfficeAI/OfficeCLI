@@ -1167,7 +1167,7 @@ public partial class WordHandler
                     break;
                 }
                 case "pbdr.top" or "pbdr.bottom" or "pbdr.left" or "pbdr.right" or "pbdr.between" or "pbdr.bar" or "pbdr.all" or "pbdr":
-                case "border.all" or "border" or "border.top" or "border.bottom" or "border.left" or "border.right":
+                case "border.all" or "border" or "border.top" or "border.bottom" or "border.left" or "border.right" or "border.between" or "border.bar":
                 {
                     var pPrB = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
                     ApplyStyleParagraphBorders(pPrB, key, value);

@@ -168,7 +168,11 @@ public partial class WordHandler
             pProps.ContextualSpacing = new ContextualSpacing();
         foreach (var (pk, pv) in properties)
         {
-            if (pk.StartsWith("pbdr", StringComparison.OrdinalIgnoreCase))
+            // CONSISTENCY(add-set-symmetry): Set accepts border.top/bottom/left/right/between/bar
+            // (and bare "border"/"border.all"); Add must accept the same vocabulary so the
+            // Add → Get → verify lifecycle works without a follow-up Set call.
+            if (pk.StartsWith("pbdr", StringComparison.OrdinalIgnoreCase)
+                || pk.StartsWith("border", StringComparison.OrdinalIgnoreCase))
                 ApplyParagraphBorders(pProps, pk, pv);
         }
         if (properties.TryGetValue("liststyle", out var listStyle) || properties.TryGetValue("listStyle", out listStyle))

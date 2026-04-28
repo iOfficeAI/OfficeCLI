@@ -591,7 +591,7 @@ public partial class WordHandler
                 numPr2.NumberingLevelReference = new NumberingLevelReference { Val = ilvlSetVal };
                 return true;
             case "pbdr.top" or "pbdr.bottom" or "pbdr.left" or "pbdr.right" or "pbdr.between" or "pbdr.bar" or "pbdr.all" or "pbdr":
-            case "border.all" or "border" or "border.top" or "border.bottom" or "border.left" or "border.right":
+            case "border.all" or "border" or "border.top" or "border.bottom" or "border.left" or "border.right" or "border.between" or "border.bar":
                 ApplyParagraphBorders(pProps, key, value);
                 return true;
             default:
@@ -631,10 +631,10 @@ public partial class WordHandler
             case "pbdr.right" or "border.right":
                 borders.RightBorder = MakeBorder<RightBorder>(style, size, color, space);
                 break;
-            case "pbdr.between":
+            case "pbdr.between" or "border.between":
                 borders.BetweenBorder = MakeBorder<BetweenBorder>(style, size, color, space);
                 break;
-            case "pbdr.bar":
+            case "pbdr.bar" or "border.bar":
                 borders.BarBorder = MakeBorder<BarBorder>(style, size, color, space);
                 break;
         }
@@ -679,10 +679,10 @@ public partial class WordHandler
             case "pbdr.right" or "border.right":
                 borders.RightBorder = MakeBorder<RightBorder>(style, size, color, space);
                 break;
-            case "pbdr.between":
+            case "pbdr.between" or "border.between":
                 borders.BetweenBorder = MakeBorder<BetweenBorder>(style, size, color, space);
                 break;
-            case "pbdr.bar":
+            case "pbdr.bar" or "border.bar":
                 borders.BarBorder = MakeBorder<BarBorder>(style, size, color, space);
                 break;
         }
