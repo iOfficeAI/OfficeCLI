@@ -167,6 +167,20 @@ public partial class ExcelHandler
         if (cellSegments.Length > 1 && Regex.IsMatch(cellSegments[1], @"^[A-Z]+\d+$", RegexOptions.IgnoreCase))
             cellRefFromPath = cellSegments[1].ToUpperInvariant();
 
+        // BUG-R41-B6: also honor a row[N] path tail (e.g. /Sheet1/row[5]) so
+        // `add /Sheet1/row[5] cell` lands on row 5 instead of silently snapping
+        // to row 1. Without this, the row[N] segment was completely ignored:
+        // the auto-assign branch below always picked row 1, and `--prop ref=A1`
+        // overrode the row index too. Encode the row-from-path as a 1-based
+        // row index and apply it later wherever a row choice is made.
+        uint? rowIndexFromPath = null;
+        if (cellSegments.Length > 1)
+        {
+            var rowPathMatch = Regex.Match(cellSegments[1], @"^row\[(\d+)\]$", RegexOptions.IgnoreCase);
+            if (rowPathMatch.Success)
+                rowIndexFromPath = uint.Parse(rowPathMatch.Groups[1].Value);
+        }
+
         string cellRef;
         // BUG-R36-B1: when --prop arrayformula= is supplied with --prop ref=A1:C3,
         // the range is the spill region, not a single cell address. Detect it and
@@ -200,15 +214,28 @@ public partial class ExcelHandler
         }
         else
         {
-            // Auto-assign next available cell in row 1
+            // BUG-R41-B6: if the parent path supplies a row index (/Sheet1/row[5]),
+            // auto-assign within that row instead of always defaulting to row 1.
+            var targetRow = rowIndexFromPath ?? 1;
             var existingRefs = cellSheetData.Descendants<Cell>()
                 .Where(c => c.CellReference?.Value != null)
                 .Select(c => c.CellReference!.Value!)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             int colIdx = 1;
-            while (existingRefs.Contains(IndexToColumnName(colIdx) + "1"))
+            while (existingRefs.Contains(IndexToColumnName(colIdx) + targetRow))
                 colIdx++;
-            cellRef = IndexToColumnName(colIdx) + "1";
+            cellRef = IndexToColumnName(colIdx) + targetRow;
+        }
+
+        // BUG-R41-B6: if both /Sheet1/row[N] and an explicit ref/address (or
+        // path-tail cell-ref) were supplied, the row index in the address
+        // wins, but warn when they disagree so the operator notices.
+        if (rowIndexFromPath.HasValue)
+        {
+            var refRowMatch = Regex.Match(cellRef, @"^([A-Z]+)(\d+)$", RegexOptions.IgnoreCase);
+            if (refRowMatch.Success && uint.Parse(refRowMatch.Groups[2].Value) != rowIndexFromPath.Value)
+                Console.Error.WriteLine(
+                    $"warning: path row[{rowIndexFromPath.Value}] does not match cell ref '{cellRef}' row; using ref's row.");
         }
         var cell = FindOrCreateCell(cellSheetData, cellRef);
 
