@@ -74,6 +74,22 @@
       "examples": ["--prop autoPlay=true"],
       "readback": "true/false",
       "enforcement": "report"
+    },
+    "trimstart": {
+      "type": "string",
+      "description": "trim from media start (e.g. '00:00:01.500' or millisecond count). Surfaced as trimStart on Get.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop trimstart=00:00:01.500"],
+      "readback": "OOXML trim Start string",
+      "enforcement": "report"
+    },
+    "trimend": {
+      "type": "string",
+      "description": "trim from media end. Surfaced as trimEnd on Get.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop trimend=00:00:10.000"],
+      "readback": "OOXML trim End string",
+      "enforcement": "report"
     }
   }
 }
