@@ -2449,6 +2449,38 @@ public partial class WordHandler
                     if (fRoot == null) continue;
                     CollectParaRunInHeaderFooter(fRoot, $"/footer[{fIdx}]", parsed, isParagraphSelector, isRunSelector, results);
                 }
+                // CONSISTENCY(query-aux-parts-recurse): paragraph/run/combinator
+                // selectors must descend into footnotes/endnotes/comments too.
+                // EnsureAllParaIds (Round 2) already scans these for paraId
+                // uniqueness; query was the asymmetric outlier that hid every
+                // ptab/fieldChar/instrText living in those parts.
+                if (mainPart.FootnotesPart?.Footnotes != null)
+                {
+                    int fnIdx = 0;
+                    foreach (var fn in mainPart.FootnotesPart.Footnotes.Elements<Footnote>())
+                    {
+                        fnIdx++;
+                        CollectParaRunInHeaderFooter(fn, $"/footnote[{fnIdx}]", parsed, isParagraphSelector, isRunSelector, results);
+                    }
+                }
+                if (mainPart.EndnotesPart?.Endnotes != null)
+                {
+                    int enIdx = 0;
+                    foreach (var en in mainPart.EndnotesPart.Endnotes.Elements<Endnote>())
+                    {
+                        enIdx++;
+                        CollectParaRunInHeaderFooter(en, $"/endnote[{enIdx}]", parsed, isParagraphSelector, isRunSelector, results);
+                    }
+                }
+                if (mainPart.WordprocessingCommentsPart?.Comments != null)
+                {
+                    int cIdx = 0;
+                    foreach (var cmt in mainPart.WordprocessingCommentsPart.Comments.Elements<Comment>())
+                    {
+                        cIdx++;
+                        CollectParaRunInHeaderFooter(cmt, $"/comment[{cIdx}]", parsed, isParagraphSelector, isRunSelector, results);
+                    }
+                }
             }
         }
 

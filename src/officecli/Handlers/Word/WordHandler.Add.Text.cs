@@ -839,6 +839,10 @@ public partial class WordHandler
 
         var ptabRun = new Run(ptab);
         InsertIntoParagraph(para, ptabRun, index);
+        // CONSISTENCY(paraid-textid-refresh): paragraph contents changed,
+        // so textId must regenerate to mark the paragraph as modified for
+        // revision-tracking and diff tooling. Mirrors AddRun's behavior.
+        para.TextId = GenerateParaId();
         var runIdx = para.Elements<Run>().TakeWhile(r => r != ptabRun).Count() + 1;
         // CONSISTENCY(para-path-canonical): when parent is itself a
         // paragraph, parentPath already points at it — appending another

@@ -185,6 +185,19 @@ public partial class WordHandler
 
         foreach (var (key, value) in properties)
         {
+            // CONSISTENCY(run-special-content): typography props (font.* /
+            // size / bold / color / underline …) are noise on ptab /
+            // fieldChar / instrText / break runs because there is no glyph
+            // to apply them to. Get strips them on readback (Round 2);
+            // accepting them on Set would write to <w:rPr> anyway and
+            // diverge between the read and write surfaces. Reject so the
+            // caller sees a clean unsupported notice and the OOXML stays
+            // free of cosmetic-but-invisible noise.
+            if (isSpecialRun && IsTypographyOnlyKey(key))
+            {
+                unsupported.Add(key);
+                continue;
+            }
             // CONSISTENCY(run-prop-helper): rPr-only props delegate to
             // ApplyRunFormatting so the per-property OOXML write logic
             // lives in one place (also used by pmrp / style-run paths);

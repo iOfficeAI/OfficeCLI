@@ -1883,8 +1883,19 @@ public partial class WordHandler
                     sb.Append($" data-path=\"/body/p[{wParaCount}]\"");
                     // Add CSS class for TOC paragraphs (suppress hyperlink styling, enable dot leaders)
                     var paraStyleId = para.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
+                    var classNames = new List<string>();
                     if (paraStyleId != null && paraStyleId.StartsWith("TOC", StringComparison.OrdinalIgnoreCase))
-                        sb.Append(" class=\"toc\"");
+                        classNames.Add("toc");
+                    // CONSISTENCY(run-special-content): body-path render must
+                    // also flag has-ptab so the paragraph becomes a flex
+                    // container — without this, body and table-cell ptabs
+                    // collapse into a single line (only the header/footer
+                    // render path went through RenderParagraphHtml which had
+                    // the class added in Round 2).
+                    if (para.Descendants<PositionalTab>().Any())
+                        classNames.Add("has-ptab");
+                    if (classNames.Count > 0)
+                        sb.Append($" class=\"{string.Join(" ", classNames)}\"");
                     var pStyle = GetParagraphInlineCss(para);
                     if (!string.IsNullOrEmpty(pStyle))
                         sb.Append($" style=\"{pStyle}\"");

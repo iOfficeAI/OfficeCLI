@@ -1342,6 +1342,15 @@ public partial class WordHandler
                     node.Type = "fieldChar";
                     if (fldCharEl.FieldCharType?.HasValue == true)
                         node.Format["fieldCharType"] = fldCharEl.FieldCharType.InnerText;
+                    // CONSISTENCY(field-cache-stale): expose dirty so audit
+                    // tools can verify whether Set instr / Set cached
+                    // properly flagged the owning field for recompute. The
+                    // attribute persists in OOXML; surfacing it via Get
+                    // closes the loop the Round 3 dirty fix opened.
+                    if (fldCharEl.Dirty?.Value == true)
+                        node.Format["dirty"] = true;
+                    if (fldCharEl.FormFieldData != null)
+                        node.Format["hasFormFieldData"] = true;
                 }
             }
             if (node.Type == "run")
@@ -1351,6 +1360,14 @@ public partial class WordHandler
                 {
                     node.Type = "instrText";
                     node.Format["instr"] = instrEl.Text ?? "";
+                    // CONSISTENCY(canonical-keys): also surface the
+                    // instruction as node.Text so selector text-contains
+                    // searches (`instrText[text~=PAGE]`) and Get readback
+                    // agree. Without this, MatchesRunSelector's
+                    // GetRunText fallback hits the <w:instrText> content
+                    // while Navigation hands callers an empty Text — the
+                    // two surfaces disagreed on what the run "says".
+                    node.Text = instrEl.Text ?? "";
                 }
             }
             if (node.Type == "run" && string.IsNullOrEmpty(node.Text))

@@ -516,6 +516,26 @@ public partial class WordHandler
         }
     }
 
+    // CONSISTENCY(run-special-content): true when <paramref name="key"/>
+    // names a typography property that has no glyph to apply on a ptab /
+    // fieldChar / instrText / tab / break run. Used by SetElementRun to
+    // reject cosmetic writes on these runs, mirroring the readback strip.
+    private static bool IsTypographyOnlyKey(string key)
+    {
+        var k = key.ToLowerInvariant();
+        return k is "font" or "font.ascii" or "font.eastasia" or "font.hansi" or "font.cs"
+            or "size"
+            or "bold" or "italic"
+            or "color"
+            or "underline" or "underline.color"
+            or "strike" or "dstrike" or "highlight"
+            or "caps" or "smallcaps" or "vanish"
+            or "outline" or "shadow" or "emboss" or "imprint"
+            or "noproof" or "rtl"
+            or "superscript" or "subscript"
+            or "charspacing" or "shading";
+    }
+
     // CONSISTENCY(run-special-content): typography-only Format keys that
     // get scrubbed from runs whose Type was upgraded to ptab / fieldChar /
     // instrText / tab / break. These properties are valid in the underlying

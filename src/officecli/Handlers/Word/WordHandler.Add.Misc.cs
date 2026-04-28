@@ -566,6 +566,9 @@ public partial class WordHandler
             // surfaces (paraId is globally unique, works in body / header /
             // footer / cell alike).
             var fieldParaPath = ReplaceTrailingParaSegment(parentPath, fieldPara);
+            // CONSISTENCY(paraid-textid-refresh): mirror AddRun — bump
+            // textId because the paragraph's content sequence is changing.
+            fieldPara.TextId = GenerateParaId();
             // index is a childElement-index (ResolveAnchorPosition counts pPr too).
             // Route the 5 field runs through the pPr-aware multi-insert helper
             // so index 0 clamps forward past ParagraphProperties and they stay
@@ -677,6 +680,11 @@ public partial class WordHandler
         string resultPath;
         if (parent is Paragraph brkPara)
         {
+            // CONSISTENCY(paraid-textid-refresh): mirror AddRun — bump
+            // textId so revision/diff tooling sees the paragraph as
+            // modified. Done before we possibly take an early return on
+            // the index-resolved path to make sure both branches stamp it.
+            brkPara.TextId = GenerateParaId();
             // index is a childElement-index (ResolveAnchorPosition counts pPr).
             // pPr-aware insert keeps pPr as the first child of <w:p>.
             InsertIntoParagraph(brkPara, brkRun, index);
