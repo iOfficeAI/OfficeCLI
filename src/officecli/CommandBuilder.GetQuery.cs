@@ -201,6 +201,25 @@ static partial class CommandBuilder
                 results = results.Where(n => n.Text != null && n.Text.Contains(textFilter, StringComparison.OrdinalIgnoreCase)).ToList();
             if (json)
             {
+                // CONSISTENCY(query-json-children): Query returns nodes with empty
+                // Children but populated ChildCount (handlers build query nodes at
+                // depth=0 to avoid expensive subtree walks). For --json output we
+                // hydrate children via Get(path, depth=1) so consumers see the same
+                // shape that `get --json` produces.
+                for (int i = 0; i < results.Count; i++)
+                {
+                    var n = results[i];
+                    if (n.ChildCount > 0 && n.Children.Count == 0 && !string.IsNullOrEmpty(n.Path))
+                    {
+                        try
+                        {
+                            var hydrated = handler.Get(n.Path, depth: 1);
+                            if (hydrated?.Children != null && hydrated.Children.Count > 0)
+                                n.Children.AddRange(hydrated.Children);
+                        }
+                        catch { /* path may not be Get-resolvable; leave as-is */ }
+                    }
+                }
                 var cliWarnings = warnings.Select(w => new OfficeCli.Core.CliWarning { Message = w, Code = "filter_warning" }).ToList();
                 Console.WriteLine(OutputFormatter.WrapEnvelope(
                     OutputFormatter.FormatNodes(results, OutputFormat.Json),

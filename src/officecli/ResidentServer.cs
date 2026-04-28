@@ -1043,6 +1043,25 @@ public class ResidentServer : IDisposable
         var textFilter = req.GetArgOrNull("text");
         if (!string.IsNullOrEmpty(textFilter))
             results = results.Where(n => n.Text != null && n.Text.Contains(textFilter, StringComparison.OrdinalIgnoreCase)).ToList();
+        // CONSISTENCY(query-json-children): hydrate Children from Get(path, depth=1)
+        // for JSON output so consumers see the same shape as `get --json`. Mirrors
+        // the post-processing in CommandBuilder.GetQuery.cs.
+        if (format == OutputFormat.Json)
+        {
+            foreach (var n in results)
+            {
+                if (n.ChildCount > 0 && n.Children.Count == 0 && !string.IsNullOrEmpty(n.Path))
+                {
+                    try
+                    {
+                        var hydrated = _handler.Get(n.Path, depth: 1);
+                        if (hydrated?.Children != null && hydrated.Children.Count > 0)
+                            n.Children.AddRange(hydrated.Children);
+                    }
+                    catch { /* path may not be Get-resolvable; leave empty */ }
+                }
+            }
+        }
         foreach (var w in warnings) Console.Error.WriteLine(w);
         Console.WriteLine(OutputFormatter.FormatNodes(results, format));
     }
