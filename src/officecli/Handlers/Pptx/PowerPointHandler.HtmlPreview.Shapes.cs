@@ -1203,8 +1203,17 @@ public partial class PowerPointHandler
     }
 
     private static int _model3dCounter;
-    // Cache: part URI → JS variable name, to avoid embedding the same GLB multiple times
+    // Cache: GLB content hash → JS variable name, to avoid embedding the same
+    // GLB multiple times within a single render. MUST be reset between renders
+    // (see ResetModel3DRenderState) — otherwise call N+1 hits the cache and
+    // skips emitting the data script that the new HTML's module script needs.
     private static readonly Dictionary<string, string> _glbDataCache = new();
+
+    internal static void ResetModel3DRenderState()
+    {
+        _model3dCounter = 0;
+        _glbDataCache.Clear();
+    }
 
     /// <summary>
     /// Render a 3D model using Three.js with the embedded GLB data.

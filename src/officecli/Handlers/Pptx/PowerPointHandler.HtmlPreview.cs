@@ -71,6 +71,7 @@ public partial class PowerPointHandler
     /// </summary>
     public string ViewAsHtml(int? startSlide = null, int? endSlide = null)
     {
+        ResetModel3DRenderState();
         var sb = new StringBuilder();
         var slideParts = GetSlideParts().ToList();
 
@@ -276,6 +277,9 @@ public partial class PowerPointHandler
     /// </summary>
     public string? RenderSlideHtml(int slideNum)
     {
+        // Each slide-render call must be self-contained: the receiver (watch
+        // SSE replace) has no other source for the GLB data scripts.
+        ResetModel3DRenderState();
         var slideParts = GetSlideParts().ToList();
         if (slideNum < 1 || slideNum > slideParts.Count) return null;
 
