@@ -235,9 +235,9 @@ officecli add "$FILE" "/body/p[last()]" --type run --prop text=" we define the l
 officecli view "$FILE" text | head -20       # λ₁ + α, ∫₀∞, x² must appear as unicode math (verified renders)
 officecli raw "$FILE" /document | grep -c '<m:oMathPara'   # ≥ 1 per display equation
 ```
-If the body prose contains raw `lambda_1`, `x_{t+1}`, `\alpha` or similar plain-text tokens (i.e., you typed them into a `paragraph --prop text=` instead of wrapping with `--type equation --prop mode=inline`), downstream viewers will render them as literal ASCII — this was a R1 IEEE defect. **Rule: every mathematical variable / Greek letter / subscript in prose goes through `--type equation mode=inline`, never through `paragraph --prop text=`.**
+If the body prose contains raw `lambda_1`, `x_{t+1}`, `\alpha` or similar plain-text tokens (i.e., you typed them into a `paragraph --prop text=` instead of wrapping with `--type equation --prop mode=inline`), downstream viewers will render them as literal ASCII. **Rule: every mathematical variable / Greek letter / subscript in prose goes through `--type equation mode=inline`, never through `paragraph --prop text=`.**
 
-**LaTeX subset pitfalls** (all three inherited from prior rounds, non-negotiable):
+**LaTeX subset pitfalls** (non-negotiable):
 
 1. `\left(...\right)` / `\left[...\right]` + sub/superscript inside → **cast error crash**. Use plain `(`, `)`, `[`, `]` — OMML auto-sizes delimiters in display mode.
 2. `\mathcal{L}` → invalid OMML. Use `\mathit{L}` or plain uppercase letters.
@@ -393,7 +393,7 @@ officecli close "$FILE"
 officecli validate "$FILE"
 ```
 
-**Visual verify.** `officecli view "$FILE" html --browser` must show the abstract as full-width and the introduction onward as two columns. If the abstract wraps into two narrow columns, the first section break landed before the abstract — move it.
+**Visual verify.** Run `officecli view "$FILE" html` and Read the returned HTML to audit the rendered output. The abstract must render as full-width and the introduction onward as two columns. If the abstract wraps into two narrow columns, the first section break landed before the abstract — move it.
 
 **Section index bookkeeping.** Each `add /body --type section` inserts one empty paragraph into `/body` (the section-break marker). All subsequent `p[N]` indices shift by +1 per section break. Plan section breaks in advance; after adding a break, `officecli get "$FILE" /body --depth 1` to re-index before continuing.
 
@@ -462,19 +462,12 @@ echo "Gate 5a: SEQ fields=$SEQ_COUNT, distinct rendered labels=$DISTINCT"
 # If SEQ_COUNT > DISTINCT, cached values collide — go back and patch <w:t> after each SEQ field.
 ```
 
-### Gate 5b — Fresh-eyes visual audit (MANDATORY, not optional)
+### Gate 5b — Visual audit via HTML preview (MANDATORY, not optional)
 
-Gates 1–5a catch schema, token leaks, live-field presence, citation counts. **They do NOT catch physical assembly defects** — scrambled page order, a duplicated Abstract mid-document, three figures all labeled "Fig. 1" despite SEQ field presence, equation variables rendering as plain-text LaTeX (`lambda_1`, `x_{t+1}`) instead of math. R1 Evaluators caught all of these with fresh eyes after Gates 1–5 went green. Do not skip.
+Gates 1–5a catch schema, token leaks, live-field presence, citation counts. **They do NOT catch physical assembly defects** — scrambled page order, a duplicated Abstract mid-document, three figures all labeled "Fig. 1" despite SEQ field presence, equation variables rendering as plain-text LaTeX (`lambda_1`, `x_{t+1}`) instead of math. Do not skip — Gates 1–5a pass ≠ visual OK.
 
-Render for human review — opens the rendered document in a browser for visual check:
+Run `officecli view "$FILE" html` and Read the returned HTML path. For every page of the paper, answer:
 
-```bash
-officecli view "$FILE" html --browser
-```
-
-Spawn a **fresh-eyes subagent** (or, if alone, close this terminal and reopen with fresh context). Instruction:
-
-> Open `$FILE` in the browser preview. For every page of the paper, answer:
 > (a) Are pages in logical academic sequence? (Title → Abstract → Keywords → Introduction → body → References — no forward jumps, no backward leaks.)
 > (b) Does the Abstract appear exactly once, not duplicated mid-document?
 > (c) Are Figure N / Table N labels distinct and ascending? (Fig. 1, Fig. 2, Fig. 3 — not all "Fig. 1". Same for tables.)
@@ -483,10 +476,10 @@ Spawn a **fresh-eyes subagent** (or, if alone, close this terminal and reopen wi
 > (f) For APA papers: are Level-1 headings centered bold and unnumbered (not `1. Introduction`)?
 > (g) Does every in-text "see Fig. N" / "see Table N" resolve to a figure/table that actually carries that number?
 > (h) Heading hierarchy visually distinct (size + weight) across H1 / H2 / H3?
->
-> Report every instance. If even one defect is present → REJECT; do not deliver until fixed.
 
-This is the only check that catches the Tester-pass / Evaluator-reject gap that both pptx R1 and academic-paper R1 surfaced.
+Report every instance. If even one defect is present → REJECT; do not deliver until fixed.
+
+**Human preview (optional).** If you want the user to visually preview the paper, run `officecli watch "$FILE"` for a live preview the user can open at their own discretion, or have them open the `.docx` directly in Word / WPS / Pages. For final visual verification, open the file in the target viewer.
 
 ### Honest limit
 

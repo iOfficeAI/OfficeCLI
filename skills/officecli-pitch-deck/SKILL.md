@@ -532,7 +532,7 @@ For Series B+, traction often spans 2 slides: one for the chart + callout (recip
 - **Gate 4** — slide-order sanity — cover first, dividers before sections, closing last.
 - **Gate 5a** — dark-on-dark contrast — every fill in `{1E2761, 0A1628, 8B1A1A, 2C5F2D, 36454F}` must declare near-white textColor.
 
-Do not skip or reorder these five. Every pptx R1 defect caught by Gates 1–5a also fires on pitch decks.
+Do not skip or reorder these five. Every pptx-layer defect caught by Gates 1–5a also fires on pitch decks.
 
 **Gate 2b — pitch-specific shell-strip signatures (MANDATORY).** Gate 2 misses `$35M` that zsh silently stripped to empty (no residue to grep). Run this after Gate 2:
 
@@ -544,17 +544,11 @@ STRIP=$(officecli view "$FILE" text | grep -niE '(^|[^A-Za-z0-9])M (ARR|raised|S
 
 Fix: re-issue the offending `add`/`set` with single quotes around the text value (`--prop text='Series B · $35M'`, not double quotes).
 
-### Gate 5b — Fresh-eyes visual audit (MANDATORY, NOT optional)
+### Gate 5b — Visual audit via HTML preview (MANDATORY, NOT optional)
 
-Gates 1–5a are token-grep defenses. **They cannot see a rendered slide.** pptx R1 showed all 3 Testers passed Gates 1–3 AND YET all 3 decks were REJECTed by Evaluators for slide-order + title overlap + dark-on-dark. academic-paper R1 skipped this gate and got 59.3/100 visual. **Pitch-deck R1 will not repeat the pattern.** This step is the only visual-assembly check. Do not skip.
+Gates 1–5a are token-grep defenses. **They cannot see a rendered slide.** This step is the only visual-assembly check. Do not skip.
 
-Open the per-slide preview:
-
-```bash
-officecli view "$FILE" html --browser
-```
-
-Walk every slide and answer, for EACH (inherits pptx v2 Gate 5b checklist; pitch-specific additions marked ⭐):
+Run `officecli view "$FILE" html` and Read the returned HTML. Walk every slide and answer, for EACH (inherits pptx v2 Gate 5b checklist; pitch-specific additions marked ⭐):
 
 - **overlap**: do any text shapes overlap each other or a chart?
 - **dark-on-dark**: is any text on a fill where fill brightness < 30% AND text brightness < 80%?
@@ -567,21 +561,19 @@ Walk every slide and answer, for EACH (inherits pptx v2 Gate 5b checklist; pitch
 - ⭐ **Use-of-Funds pie**: does the ask slide carry a 4-bucket pie (Engineering / GTM / G&A / Reserve) or a 4-card row with %s?
 - ⭐ **narrative completeness**: is the order cover → problem → solution → market → product → model → traction → team → financials → ask, or your stage-appropriate permutation from §Stage diagnosis?
 
-**Subagent instruction template.** Spawn a fresh-eyes subagent (or close terminal and reopen).
+**Instruction.** Run `officecli view "$FILE" html` and Read the HTML. Walk every slide against the questions below. If rendering chart colors, animations, or zoom — those only show in the target viewer (PowerPoint / Keynote / WPS); ask the user to open `.pptx` directly for those runtime features.
 
-**If you cannot spawn a subagent** (no Task tool, single-shot agent, CI, Clean Tester session) — pick the first that works: (1) **Browser visual walk** — `officecli view "$FILE" html --browser` + walk slides in fresh tab (use chrome-devtools MCP / playwright for per-slide screenshots when available — closest analogue to fresh-eyes); (2) **Annotated text dump** — `officecli view "$FILE" annotated > /tmp/deck-walk.txt`, read top-to-bottom WITHOUT your build plan, scan for overlap / dark-on-dark / missing arrowheads / `TBD` / `lorem` / empty `$`-strips / team cards without prior-company / charts without `axismin=0` / Use-of-Funds missing buckets; (3) **User's Office locally** — flip 30s per slide against the 6 subagent-prompt questions below. Whichever fallback, **answer every item in the subagent prompt below** — skipping Gate 5b is the single biggest risk to this skill's reputation.
-
-> Open `$FILE` via `officecli view "$FILE" html --browser`. For every slide:
+> For every slide:
 > (a) Are slides in VC narrative order (cover → problem → solution → market → product → model → traction → team → financials → ask, with your stage's adjustments)? Flag any out-of-sequence.
 > (b) Is every ARR / revenue / growth line chart y-axis anchored at 0? Flag hockey-stick visual lies.
 > (c) Does the team slide carry prior-company credentials for each person? (Not just headshot + name.)
 > (d) Does every TAM / SAM / SOM claim have a visible source or methodology?
 > (e) Does the ask slide have a 4-bucket Use of Funds (Engineering / GTM / G&A / Reserve) and a specific next milestone + runway length?
 > (f) Any text overlap, dark-on-dark, off-slide geometry, missing arrowheads, placeholder tokens (`TBD` / `lorem` / `{{...}}` / `xxxx` / empty `()`)?
->
-> Report every instance with slide number. If ANY defect — REJECT; do not deliver until fixed.
 
-This is the only check that catches the Tester-pass / Evaluator-reject gap that pptx R1 and academic-paper R1 both surfaced. **Skipping Gate 5b is the single biggest risk to this skill's reputation.**
+Report every instance with slide number. If ANY defect — REJECT; do not deliver until fixed.
+
+**Human preview (optional).** If you want the user to visually preview the deck, run `officecli watch "$FILE"` for a live preview the user can open at their own discretion, or have them open the `.pptx` directly in PowerPoint / WPS / Keynote. For final visual verification, open the file in the target presentation viewer.
 
 ### Gate 6 — Pitch narrative sanity (executable)
 
