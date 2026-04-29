@@ -923,7 +923,7 @@ public partial class WordHandler
                 switch (key.ToLowerInvariant())
                 {
                     case "format" or "numfmt":
-                        var fmtV = ParseNumberingFormat(value);
+                        var fmtV = ParseNumberFormat(value);
                         var nf = level.GetFirstChild<NumberingFormat>();
                         if (nf == null) level.AppendChild(new NumberingFormat { Val = fmtV });
                         else nf.Val = fmtV;

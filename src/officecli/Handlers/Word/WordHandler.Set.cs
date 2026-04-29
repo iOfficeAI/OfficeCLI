@@ -721,8 +721,8 @@ public partial class WordHandler
             "decimal" => NumberFormatValues.Decimal,
             "lowerroman" => NumberFormatValues.LowerRoman,
             "upperroman" => NumberFormatValues.UpperRoman,
-            "lowerletter" => NumberFormatValues.LowerLetter,
-            "upperletter" => NumberFormatValues.UpperLetter,
+            "lowerletter" or "loweralpha" => NumberFormatValues.LowerLetter,
+            "upperletter" or "upperalpha" => NumberFormatValues.UpperLetter,
             "arabicalpha" => NumberFormatValues.ArabicAlpha,
             "arabicabjad" => NumberFormatValues.ArabicAbjad,
             "hindivowels" => NumberFormatValues.HindiVowels,
@@ -763,15 +763,17 @@ public partial class WordHandler
             "ordinal" => NumberFormatValues.Ordinal,
             "cardinaltext" => NumberFormatValues.CardinalText,
             "ordinaltext" => NumberFormatValues.OrdinalText,
-            "bullet" => NumberFormatValues.Bullet,
+            "bullet" or "unordered" or "ul" => NumberFormatValues.Bullet,
+            "decimalzero" => NumberFormatValues.DecimalZero,
+            "decimalfullwidth" => NumberFormatValues.DecimalFullWidth,
             "decimalenclosedcircle" => NumberFormatValues.DecimalEnclosedCircle,
             "decimalenclosedcirclechinese" => NumberFormatValues.DecimalEnclosedCircleChinese,
             "decimalenclosedfullstop" => NumberFormatValues.DecimalEnclosedFullstop,
             "decimalenclosedparen" => NumberFormatValues.DecimalEnclosedParen,
             "none" => NumberFormatValues.None,
             _ => throw new ArgumentException(
-                $"Invalid pageNumFmt: '{value}'. Common values: decimal, lowerRoman, upperRoman, "
-                + "lowerLetter, upperLetter. Locale-specific: hindiNumbers, hindiVowels, arabicAlpha, "
+                $"Unknown numbering format '{value}'. Common values: decimal, lowerRoman, upperRoman, "
+                + "lowerLetter, upperLetter, bullet. Locale-specific: hindiNumbers, hindiVowels, arabicAlpha, "
                 + "arabicAbjad, thaiCounting, chineseCounting, japaneseCounting, koreanCounting, "
                 + "ideographDigital, none.")
         };

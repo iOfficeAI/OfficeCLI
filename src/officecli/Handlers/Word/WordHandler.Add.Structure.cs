@@ -877,8 +877,8 @@ public partial class WordHandler
                 levelFormatRaw = "bullet";
             else
                 levelFormatRaw = (lvl % 3) switch { 0 => "decimal", 1 => "lowerLetter", _ => "lowerRoman" };
-            var numFmt = ParseNumberingFormat(levelFormatRaw);
-            var isBulletAtThisLvl = numFmt.Equals(NumberFormatValues.Bullet);
+            var numFmt = ParseNumberFormat(levelFormatRaw);
+            var isBulletAtThisLvl = numFmt.Value == NumberFormatValues.Bullet;
 
             // start (default 1)
             int start = 1;
@@ -1030,7 +1030,7 @@ public partial class WordHandler
         // numFmt: default decimal. Also accept 'numFmt' alias.
         var fmtRaw = properties.GetValueOrDefault("format",
             properties.GetValueOrDefault("numFmt", "decimal"));
-        var numFmt = ParseNumberingFormat(fmtRaw);
+        var numFmt = ParseNumberFormat(fmtRaw);
 
         level.AppendChild(new StartNumberingValue { Val = start });
         level.AppendChild(new NumberingFormat { Val = numFmt });
@@ -1134,32 +1134,6 @@ public partial class WordHandler
 
         var absId = abstractNum.AbstractNumberId?.Value ?? 0;
         return $"/numbering/abstractNum[@id={absId}]/lvl[@ilvl={ilvl}]";
-    }
-
-    private static NumberFormatValues ParseNumberingFormat(string raw)
-    {
-        return raw.ToLowerInvariant() switch
-        {
-            "decimal" => NumberFormatValues.Decimal,
-            "bullet" or "unordered" or "ul" => NumberFormatValues.Bullet,
-            "lowerletter" or "loweralpha" => NumberFormatValues.LowerLetter,
-            "upperletter" or "upperalpha" => NumberFormatValues.UpperLetter,
-            "lowerroman" => NumberFormatValues.LowerRoman,
-            "upperroman" => NumberFormatValues.UpperRoman,
-            "ordinal" => NumberFormatValues.Ordinal,
-            "cardinaltext" => NumberFormatValues.CardinalText,
-            "ordinaltext" => NumberFormatValues.OrdinalText,
-            "chinesecounting" => NumberFormatValues.ChineseCounting,
-            "chineselegalsimplified" => NumberFormatValues.ChineseLegalSimplified,
-            "chinesecountingthousand" => NumberFormatValues.ChineseCountingThousand,
-            "ideographdigital" => NumberFormatValues.IdeographDigital,
-            "japanesecounting" => NumberFormatValues.JapaneseCounting,
-            "decimalzero" => NumberFormatValues.DecimalZero,
-            "decimalenclosedcircle" => NumberFormatValues.DecimalEnclosedCircle,
-            "decimalfullwidth" => NumberFormatValues.DecimalFullWidth,
-            "none" => NumberFormatValues.None,
-            _ => throw new ArgumentException($"Unknown numbering format '{raw}'. Common values: decimal, bullet, lowerLetter, upperLetter, lowerRoman, upperRoman, chineseCounting.")
-        };
     }
 
     // Resolve the SectionProperties that a header/footer reference should
