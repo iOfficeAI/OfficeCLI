@@ -6,30 +6,31 @@ description: "Use this skill any time a .xlsx file is involved -- as input, outp
 
 # OfficeCLI XLSX Skill
 
-## BEFORE YOU START
+## BEFORE YOU START (CRITICAL)
 
-**Install check.** If `officecli --version` fails:
+**If `officecli` is not installed:**
+
+`macOS / Linux`
 
 ```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
+if ! command -v officecli >/dev/null 2>&1; then
+    curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
+fi
 ```
+
+`Windows (PowerShell)`
 
 ```powershell
-# Windows (PowerShell)
-irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+if (-not (Get-Command officecli -ErrorAction SilentlyContinue)) {
+    irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+}
 ```
 
-If still not found, open a new terminal, then `officecli --version` should report `1.0.63`.
+Verify: `officecli --version`
 
-**Shell quoting (zsh / bash).** Excel paths contain `[]`, and number formats contain `$`. Both are shell metacharacters. Rules:
+If `officecli` is still not found after first install, open a new terminal and run the verify command again.
 
-- ALWAYS quote element paths: `"/Sheet1/row[1]"`, not `/Sheet1/row[1]`.
-- Use **single quotes** for any prop value containing `$`: `numFmt='$#,##0'`.
-- For formulas with cross-sheet `!` references, use `batch` with a `<<'EOF'` heredoc (see Known Issues).
-- NEVER hand-write `\$`, `\t`, `\n` inside executable examples. The CLI does not interpret backslash escapes; they will land in your file as literal characters.
-
-**Incremental execution.** Run commands one at a time and read each exit code. `officecli` mutates the file on every call; a 50-command script that fails at command 3 will cascade silently. One command → check output → continue.
+If the install command above fails (e.g. blocked by security policy, no network access, or insufficient permissions), install manually — download the binary for your platform from https://github.com/iOfficeAI/OfficeCLI/releases — then re-run the verify command.
 
 ## ⚠️ Help-First Rule
 
@@ -43,6 +44,17 @@ officecli help xlsx <element> --json        # Machine-readable schema
 ```
 
 Help is pinned to the installed CLI version (v1.0.63). When this skill and help disagree, **help is authoritative**.
+
+## Shell & Execution Discipline
+
+**Shell quoting (zsh / bash).** Excel paths contain `[]`, and number formats contain `$`. Both are shell metacharacters. Rules:
+
+- ALWAYS quote element paths: `"/Sheet1/row[1]"`, not `/Sheet1/row[1]`.
+- Use **single quotes** for any prop value containing `$`: `numFmt='$#,##0'`.
+- For formulas with cross-sheet `!` references, use `batch` with a `<<'EOF'` heredoc (see Known Issues).
+- NEVER hand-write `\$`, `\t`, `\n` inside executable examples. The CLI does not interpret backslash escapes; they will land in your file as literal characters.
+
+**Incremental execution.** Run commands one at a time and read each exit code. `officecli` mutates the file on every call; a 50-command script that fails at command 3 will cascade silently. One command → check output → continue.
 
 ## Requirements for Outputs
 

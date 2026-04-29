@@ -10,25 +10,31 @@ description: "Use this skill to build academic-style .docx output: journal / con
 
 When the docx base rules cover it, the text here says `→ see docx v2 §X`. Read docx v2 first if you have not.
 
-## BEFORE YOU START
+## BEFORE YOU START (CRITICAL)
 
-**Install check.** If `officecli --version` fails:
+**If `officecli` is not installed:**
+
+`macOS / Linux`
 
 ```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
+if ! command -v officecli >/dev/null 2>&1; then
+    curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
+fi
 ```
+
+`Windows (PowerShell)`
 
 ```powershell
-# Windows (PowerShell)
-irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+if (-not (Get-Command officecli -ErrorAction SilentlyContinue)) {
+    irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+}
 ```
 
-`officecli --version` must report `1.0.63` or newer. If not, open a new terminal and retry.
+Verify: `officecli --version`
 
-**Shell quoting, incremental execution, `$FILE` convention** → see docx v2 §BEFORE YOU START. The same rules apply here verbatim — quote `[N]` paths, single-quote any value containing `$` (including `$2.8B` in a body paragraph or `@` DOIs), never hand-write `\$ \t \n` in executable examples, one command at a time. Academic-paper examples below use `$FILE` as a shell variable (`FILE="thesis.docx"`).
+If `officecli` is still not found after first install, open a new terminal and run the verify command again.
 
-**Inherits docx v2.** You should have read `skills/officecli-docx/SKILL.md` first. This skill assumes you know how to add paragraphs, set styles, build tables, insert images, manage TOC/footer/headers, force page breaks, and run the Delivery Gate. If any of those are unfamiliar, open a second session on docx v2 before continuing.
+If the install command above fails (e.g. blocked by security policy, no network access, or insufficient permissions), install manually — download the binary for your platform from https://github.com/iOfficeAI/OfficeCLI/releases — then re-run the verify command.
 
 ## ⚠️ Help-First Rule
 
@@ -41,6 +47,14 @@ officecli help docx <element> --json         # Machine-readable
 ```
 
 Help is pinned to the installed CLI version. **When this skill and help disagree, help wins.** Every `--prop X=` in this file has been grep-verified against `officecli help docx <element>` — if help adds / renames a prop in a later version, trust help.
+
+## Mental Model & Inheritance
+
+**Inherits docx v2.** You should have read `skills/officecli-docx/SKILL.md` first. This skill assumes you know how to add paragraphs, set styles, build tables, insert images, manage TOC/footer/headers, force page breaks, and run the Delivery Gate. If any of those are unfamiliar, open a second session on docx v2 before continuing.
+
+## Shell & Execution Discipline
+
+**Shell quoting, incremental execution, `$FILE` convention** → see docx v2 §Shell & Execution Discipline. The same rules apply here verbatim — quote `[N]` paths, single-quote any value containing `$` (including `$2.8B` in a body paragraph or `@` DOIs), never hand-write `\$ \t \n` in executable examples, one command at a time. Academic-paper examples below use `$FILE` as a shell variable (`FILE="thesis.docx"`).
 
 ## What "academic" means here (identity)
 

@@ -6,33 +6,31 @@ description: "Use this skill any time a .docx file is involved -- as input, outp
 
 # OfficeCLI DOCX Skill
 
-## BEFORE YOU START
+## BEFORE YOU START (CRITICAL)
 
-**Mental model.** A `.docx` is a ZIP of XML parts (`document.xml`, `styles.xml`, `numbering.xml`, `header*.xml`, `footer*.xml`, `comments.xml`, ...). Everything the user sees — headings, tables, page numbers, TOC, tracked changes — is XML inside that ZIP. `officecli` gives you a semantic-path API (`/body/p[1]/r[2]`) over it, so you almost never touch raw XML; when you must, use `raw-set`.
+**If `officecli` is not installed:**
 
-**Install check.** If `officecli --version` fails:
+`macOS / Linux`
 
 ```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
+if ! command -v officecli >/dev/null 2>&1; then
+    curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
+fi
 ```
+
+`Windows (PowerShell)`
 
 ```powershell
-# Windows (PowerShell)
-irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+if (-not (Get-Command officecli -ErrorAction SilentlyContinue)) {
+    irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+}
 ```
 
-If still not found, open a new terminal, then `officecli --version` should report `1.0.63` or newer.
+Verify: `officecli --version`
 
-**Shell quoting (zsh / bash).** docx paths contain `[]`, some prop values contain `$`. Both are shell metacharacters. Rules:
+If `officecli` is still not found after first install, open a new terminal and run the verify command again.
 
-- ALWAYS quote element paths: `"/body/p[1]"`, not `/body/p[1]`.
-- Use **single quotes** for any prop value containing `$`: `--prop text='$50M'`.
-- NEVER hand-write `\$`, `\t`, `\n` inside executable examples. The CLI does not interpret backslash escapes; they will land in your file as literal characters. In a cell / paragraph text, a real newline goes through the JSON layer (`batch` heredoc with `"\n"` inside the JSON string).
-
-**Incremental execution.** Run commands one at a time and read each exit code. `officecli` mutates the file on every call; a 50-command script that fails at command 3 will cascade silently. One command → check output → continue. After any structural op (new style, table, TOC, section break) run `get` on it before stacking more on top.
-
-**File-name convention in this skill.** Fixed-command examples (Reading & Analysis, Creating & Editing) use the literal `doc.docx` — swap in your own filename. Copy-paste blocks and recipes that you will run *as-is* (Quick Start, Delivery Gate, Report-level recipes (a)-(f)) use `"$FILE"` — set once at the top of your script (`FILE="annual-review.docx"`) and every command picks it up. When in doubt, treat `$FILE` blocks as drop-in and `doc.docx` blocks as patterns.
+If the install command above fails (e.g. blocked by security policy, no network access, or insufficient permissions), install manually — download the binary for your platform from https://github.com/iOfficeAI/OfficeCLI/releases — then re-run the verify command.
 
 ## ⚠️ Help-First Rule
 
@@ -46,6 +44,22 @@ officecli help docx <element> --json        # Machine-readable schema
 ```
 
 Help is pinned to the installed CLI version. When this skill and help disagree, **help is authoritative**. Special-topic mini-sections below end with an explicit pointer back to help.
+
+## Mental Model & Inheritance
+
+**Mental model.** A `.docx` is a ZIP of XML parts (`document.xml`, `styles.xml`, `numbering.xml`, `header*.xml`, `footer*.xml`, `comments.xml`, ...). Everything the user sees — headings, tables, page numbers, TOC, tracked changes — is XML inside that ZIP. `officecli` gives you a semantic-path API (`/body/p[1]/r[2]`) over it, so you almost never touch raw XML; when you must, use `raw-set`.
+
+## Shell & Execution Discipline
+
+**Shell quoting (zsh / bash).** docx paths contain `[]`, some prop values contain `$`. Both are shell metacharacters. Rules:
+
+- ALWAYS quote element paths: `"/body/p[1]"`, not `/body/p[1]`.
+- Use **single quotes** for any prop value containing `$`: `--prop text='$50M'`.
+- NEVER hand-write `\$`, `\t`, `\n` inside executable examples. The CLI does not interpret backslash escapes; they will land in your file as literal characters. In a cell / paragraph text, a real newline goes through the JSON layer (`batch` heredoc with `"\n"` inside the JSON string).
+
+**Incremental execution.** Run commands one at a time and read each exit code. `officecli` mutates the file on every call; a 50-command script that fails at command 3 will cascade silently. One command → check output → continue. After any structural op (new style, table, TOC, section break) run `get` on it before stacking more on top.
+
+**File-name convention in this skill.** Fixed-command examples (Reading & Analysis, Creating & Editing) use the literal `doc.docx` — swap in your own filename. Copy-paste blocks and recipes that you will run *as-is* (Quick Start, Delivery Gate, Report-level recipes (a)-(f)) use `"$FILE"` — set once at the top of your script (`FILE="annual-review.docx"`) and every command picks it up. When in doubt, treat `$FILE` blocks as drop-in and `doc.docx` blocks as patterns.
 
 ## Requirements for Outputs
 

@@ -10,29 +10,31 @@ description: "Use this skill when the user is building a fundraising / investor 
 
 When the pptx base rules cover it, the text here says `→ see pptx v2 §X`. Read `skills/officecli-pptx/SKILL.md` first if you have not.
 
-## BEFORE YOU START
+## BEFORE YOU START (CRITICAL)
 
-**Install check.** If `officecli --version` fails:
+**If `officecli` is not installed:**
+
+`macOS / Linux`
 
 ```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
+if ! command -v officecli >/dev/null 2>&1; then
+    curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
+fi
 ```
+
+`Windows (PowerShell)`
 
 ```powershell
-# Windows (PowerShell)
-irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+if (-not (Get-Command officecli -ErrorAction SilentlyContinue)) {
+    irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+}
 ```
 
-`officecli --version` must report `1.0.63` or newer. Open a new terminal after install.
+Verify: `officecli --version`
 
-**Shell quoting, incremental execution, `$FILE` convention** → see pptx v2 §BEFORE YOU START. Same rules verbatim — quote `[N]` paths, single-quote values containing `$` (including `$35M`, `$1.2B TAM` in a cover or ask slide), never hand-write `\$ \t \n` in executable examples, one command at a time. Examples below use `$FILE` (`FILE="deck.pptx"`).
+If `officecli` is still not found after first install, open a new terminal and run the verify command again.
 
-**Single-quote every shape text containing `$`.** `--prop text="Series B · $35M"` (double quotes) is WRONG — zsh expands `$35M` → empty, deck renders `Series B · M` silently. `--prop text='Series B · $35M'` (single quotes) is right. This is the #1 pitch-deck shell-escape failure mode (`$35M`, `$18M ARR`, `$1.2B TAM` appear on cover/ask/financials/milestones). Gate 2 cannot detect a stripped `$35M` — no residue. Gate 2b catches common strip patterns; single-quoting PREVENTS them.
-
-**Inherits pptx v2.** You should have read `skills/officecli-pptx/SKILL.md` first. This skill assumes you know how to: add slides + shapes + charts + connectors; address by `@name=` / `@id=`; quote paths; use `batch` heredocs; write `--prop tailEnd=triangle` on every flow connector; and run the 5-gate Delivery Gate. If any of those are unfamiliar, open a pptx v2 session before continuing.
-
-**Pitch-deck identity.** Slides are consumed at ~3 seconds per slide in a live room — the pptx v2 rule. Pitch decks add a second constraint on top: **every slide carries one investable proposition**. If a slide is "interesting background" that doesn't move the ask forward, cut it. VCs will not.
+If the install command above fails (e.g. blocked by security policy, no network access, or insufficient permissions), install manually — download the binary for your platform from https://github.com/iOfficeAI/OfficeCLI/releases — then re-run the verify command.
 
 ## ⚠️ Help-First Rule
 
@@ -46,9 +48,19 @@ officecli help pptx <element> --json         # Machine-readable
 
 Help is pinned to the installed CLI version. When this skill and help disagree, **help wins.** Every `--prop X=` in this file has been grep-verified against `officecli help pptx <element>` on v1.0.63 — if help adds / renames a prop in a later version, trust help.
 
+## Mental Model & Inheritance
+
+**Inherits pptx v2.** You should have read `skills/officecli-pptx/SKILL.md` first. This skill assumes you know how to: add slides + shapes + charts + connectors; address by `@name=` / `@id=`; quote paths; use `batch` heredocs; write `--prop tailEnd=triangle` on every flow connector; and run the 5-gate Delivery Gate. If any of those are unfamiliar, open a pptx v2 session before continuing.
+
+## Shell & Execution Discipline
+
+**Shell quoting, incremental execution, `$FILE` convention** → see pptx v2 §Shell & Execution Discipline. Same rules verbatim — quote `[N]` paths, single-quote values containing `$` (including `$35M`, `$1.2B TAM` in a cover or ask slide), never hand-write `\$ \t \n` in executable examples, one command at a time. Examples below use `$FILE` (`FILE="deck.pptx"`).
+
+**Single-quote every shape text containing `$`.** `--prop text="Series B · $35M"` (double quotes) is WRONG — zsh expands `$35M` → empty, deck renders `Series B · M` silently. `--prop text='Series B · $35M'` (single quotes) is right. This is the #1 pitch-deck shell-escape failure mode (`$35M`, `$18M ARR`, `$1.2B TAM` appear on cover/ask/financials/milestones). Gate 2 cannot detect a stripped `$35M` — no residue. Gate 2b catches common strip patterns; single-quoting PREVENTS them.
+
 ## What "pitch deck" means here (identity)
 
-A pitch deck is a pptx with a **fundraising layer** on top: VC-oriented narrative arc, verifiable metrics, stage-appropriate data density, founder-credibility surface. The base pptx rules still apply; pitch decks add six deltas:
+A pitch deck is a pptx with a **fundraising layer** on top: VC-oriented narrative arc, verifiable metrics, stage-appropriate data density, founder-credibility surface. Slides are consumed at ~3 seconds per slide in a live room — the pptx v2 rule. Pitch decks add a second constraint on top: **every slide carries one investable proposition**. If a slide is "interesting background" that doesn't move the ask forward, cut it. VCs will not. The base pptx rules still apply; pitch decks add six deltas:
 
 1. **Stage determines everything.** Series A / B / C each dictates slide count, narrative weight, which metrics are must-haves, and tolerance for unit-econ sophistication. A Series A deck with 6 pages of CAC/LTV math reads as over-packaged; a Series B deck missing unit econ reads as incomplete. Pick the stage first — everything downstream follows.
 2. **Narrative arc beats feature dump.** 10 essential slides in a fixed order: cover → problem → solution → market → product → model → traction → team → financials → ask. Out of order = VCs disengage.

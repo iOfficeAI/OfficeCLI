@@ -6,19 +6,31 @@ description: "Use this skill any time a .pptx file is involved -- as input, outp
 
 # OfficeCLI PPTX Skill
 
-## BEFORE YOU START
+## BEFORE YOU START (CRITICAL)
 
-**Mental model.** A `.pptx` is a ZIP of XML parts (`ppt/slides/*.xml`, `slideLayouts/`, `slideMasters/`, `theme*.xml`, `charts/`, `media/`, `notesSlides/`). `officecli` gives you a semantic-path API (`/slide[N]/shape[M]`, `/slide[N]/shape[@name=X]`) over it. Raw XML only via `raw-set`.
+**If `officecli` is not installed:**
 
-**Slides are consumed at ~3 seconds per slide in a live room.** Scanned, not read. Every design decision below serves that constraint.
+`macOS / Linux`
 
-**Install check.** If `officecli --version` fails, install then open a new terminal (should report `1.0.63` or newer):
-- macOS / Linux: `curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash`
-- Windows (PowerShell): `irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex`
+```bash
+if ! command -v officecli >/dev/null 2>&1; then
+    curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
+fi
+```
 
-**Shell quoting (zsh / bash).** ALWAYS quote element paths (`"/slide[1]/..."`). Single-quote values containing `$`. Never hand-write `\$` / `\t` / `\n` — CLI does not interpret them. Full rules in "Shell escape — three layers" below.
+`Windows (PowerShell)`
 
-**Incremental execution.** One command → check exit code → continue. A 50-command script that fails at command 3 cascades silently. After any structural op (new slide, chart, animation, connector) run `get` before stacking more.
+```powershell
+if (-not (Get-Command officecli -ErrorAction SilentlyContinue)) {
+    irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+}
+```
+
+Verify: `officecli --version`
+
+If `officecli` is still not found after first install, open a new terminal and run the verify command again.
+
+If the install command above fails (e.g. blocked by security policy, no network access, or insufficient permissions), install manually — download the binary for your platform from https://github.com/iOfficeAI/OfficeCLI/releases — then re-run the verify command.
 
 ## ⚠️ Help-First Rule
 
@@ -32,6 +44,18 @@ officecli help pptx <element> --json        # Machine-readable schema
 ```
 
 Help is pinned to the installed CLI version (v1.0.63). When skill and help disagree, **help is authoritative**. Triggers to run help immediately: `UNSUPPORTED props:` warning, unknown animation preset, `connector.shape=` enum (drifts — C-P-5), prop-vs-alias (`lineWidth` vs `line.width`, `color` vs `font.color`).
+
+## Mental Model & Inheritance
+
+**Mental model.** A `.pptx` is a ZIP of XML parts (`ppt/slides/*.xml`, `slideLayouts/`, `slideMasters/`, `theme*.xml`, `charts/`, `media/`, `notesSlides/`). `officecli` gives you a semantic-path API (`/slide[N]/shape[M]`, `/slide[N]/shape[@name=X]`) over it. Raw XML only via `raw-set`.
+
+**Slides are consumed at ~3 seconds per slide in a live room.** Scanned, not read. Every design decision below serves that constraint.
+
+## Shell & Execution Discipline
+
+**Shell quoting (zsh / bash).** ALWAYS quote element paths (`"/slide[1]/..."`). Single-quote values containing `$`. Never hand-write `\$` / `\t` / `\n` — CLI does not interpret them. Full rules in "Shell escape — three layers" below.
+
+**Incremental execution.** One command → check exit code → continue. A 50-command script that fails at command 3 cascades silently. After any structural op (new slide, chart, animation, connector) run `get` before stacking more.
 
 ## Requirements for Outputs
 
