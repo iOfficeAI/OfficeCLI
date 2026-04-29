@@ -12,19 +12,7 @@ When the docx base rules cover it, the text here says `→ see docx v2 §X`. Rea
 
 ## BEFORE YOU START
 
-**Install check.** If `officecli --version` fails:
-
-```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
-```
-
-```powershell
-# Windows (PowerShell)
-irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
-```
-
-`officecli --version` must report `1.0.63` or newer. If not, open a new terminal and retry.
+**Install check.** Run `officecli --version` before starting. The reported version **must be `1.0.63` or newer**. If the command is not found or reports a version older than `1.0.63`, **stop immediately** and tell the user to install or upgrade to `1.0.63` or newer before continuing. See installation instructions at: https://github.com/iOfficeAI/OfficeCLI/
 
 **Shell quoting, incremental execution, `$FILE` convention** → see docx v2 §BEFORE YOU START. The same rules apply here verbatim — quote `[N]` paths, single-quote any value containing `$` (including `$2.8B` in a body paragraph or `@` DOIs), never hand-write `\$ \t \n` in executable examples, one command at a time. Academic-paper examples below use `$FILE` as a shell variable (`FILE="thesis.docx"`).
 

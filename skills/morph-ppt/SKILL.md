@@ -105,9 +105,9 @@ For every morph transition, plan the slide pair BEFORE writing any code. Use a t
 - Do **not** click "Open with system app" during generation, to avoid file lock / write conflicts.
 - Use clear, direct language and make this a concrete warning, not an optional suggestion.
 
-**FIRST: Install `officecli` if needed**
+**FIRST: Verify `officecli` is installed**
 
-Follow the install section in `reference/officecli-pptx-min.md` section 0.
+Run `officecli --version`. If the command is not found, **stop immediately** and tell the user to install `officecli` before continuing. See installation instructions at: https://github.com/iOfficeAI/OfficeCLI/
 
 **IMPORTANT: Use morph-helpers for reliable workflow**
 

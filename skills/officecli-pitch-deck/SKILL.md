@@ -12,19 +12,7 @@ When the pptx base rules cover it, the text here says `→ see pptx v2 §X`. Rea
 
 ## BEFORE YOU START
 
-**Install check.** If `officecli --version` fails:
-
-```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
-```
-
-```powershell
-# Windows (PowerShell)
-irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
-```
-
-`officecli --version` must report `1.0.63` or newer. Open a new terminal after install.
+**Install check.** Run `officecli --version` before starting. The reported version **must be `1.0.63` or newer**. If the command is not found or reports a version older than `1.0.63`, **stop immediately** and tell the user to install or upgrade to `1.0.63` or newer before continuing. See installation instructions at: https://github.com/iOfficeAI/OfficeCLI/
 
 **Shell quoting, incremental execution, `$FILE` convention** → see pptx v2 §BEFORE YOU START. Same rules verbatim — quote `[N]` paths, single-quote values containing `$` (including `$35M`, `$1.2B TAM` in a cover or ask slide), never hand-write `\$ \t \n` in executable examples, one command at a time. Examples below use `$FILE` (`FILE="deck.pptx"`).
 

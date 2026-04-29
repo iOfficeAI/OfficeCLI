@@ -10,19 +10,7 @@ description: "Use this skill any time a .docx file is involved -- as input, outp
 
 **Mental model.** A `.docx` is a ZIP of XML parts (`document.xml`, `styles.xml`, `numbering.xml`, `header*.xml`, `footer*.xml`, `comments.xml`, ...). Everything the user sees — headings, tables, page numbers, TOC, tracked changes — is XML inside that ZIP. `officecli` gives you a semantic-path API (`/body/p[1]/r[2]`) over it, so you almost never touch raw XML; when you must, use `raw-set`.
 
-**Install check.** If `officecli --version` fails:
-
-```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
-```
-
-```powershell
-# Windows (PowerShell)
-irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
-```
-
-If still not found, open a new terminal, then `officecli --version` should report `1.0.63` or newer.
+**Install check.** Run `officecli --version` before starting. The reported version **must be `1.0.63` or newer**. If the command is not found or reports a version older than `1.0.63`, **stop immediately** and tell the user to install or upgrade to `1.0.63` or newer before continuing. See installation instructions at: https://github.com/iOfficeAI/OfficeCLI/
 
 **Shell quoting (zsh / bash).** docx paths contain `[]`, some prop values contain `$`. Both are shell metacharacters. Rules:
 

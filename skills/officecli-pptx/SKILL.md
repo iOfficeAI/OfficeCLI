@@ -12,9 +12,7 @@ description: "Use this skill any time a .pptx file is involved -- as input, outp
 
 **Slides are consumed at ~3 seconds per slide in a live room.** Scanned, not read. Every design decision below serves that constraint.
 
-**Install check.** If `officecli --version` fails, install then open a new terminal (should report `1.0.63` or newer):
-- macOS / Linux: `curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash`
-- Windows (PowerShell): `irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex`
+**Install check.** Run `officecli --version` before starting. The reported version **must be `1.0.63` or newer**. If the command is not found or reports a version older than `1.0.63`, **stop immediately** and tell the user to install or upgrade to `1.0.63` or newer before continuing. See installation instructions at: https://github.com/iOfficeAI/OfficeCLI/
 
 **Shell quoting (zsh / bash).** ALWAYS quote element paths (`"/slide[1]/..."`). Single-quote values containing `$`. Never hand-write `\$` / `\t` / `\n` — CLI does not interpret them. Full rules in "Shell escape — three layers" below.
 

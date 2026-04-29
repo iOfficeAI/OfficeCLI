@@ -7,27 +7,7 @@ description: OfficeCli Command Reference — PPT generation and validation comma
 
 ## 0) BEFORE YOU START (CRITICAL)
 
-**If `officecli` is not installed:**
-
-`macOS / Linux`
-
-```bash
-if ! command -v officecli >/dev/null 2>&1; then
-    curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
-fi
-```
-
-`Windows (PowerShell)`
-
-```powershell
-if (-not (Get-Command officecli -ErrorAction SilentlyContinue)) {
-    irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
-}
-```
-
-Verify: `officecli --version`
-
-If `officecli` is still not found after first install, open a new terminal and run the verify command again.
+**Install check.** Run `officecli --version` before starting. If the command is not found, **stop immediately** and tell the user to install `officecli` before continuing. See installation instructions at: https://github.com/iOfficeAI/OfficeCLI/
 
 ---
 
