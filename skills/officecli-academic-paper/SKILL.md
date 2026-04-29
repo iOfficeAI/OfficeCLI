@@ -235,7 +235,7 @@ officecli add "$FILE" "/body/p[last()]" --type run --prop text=" we define the l
 officecli view "$FILE" text | head -20       # λ₁ + α, ∫₀∞, x² must appear as unicode math (verified renders)
 officecli raw "$FILE" /document | grep -c '<m:oMathPara'   # ≥ 1 per display equation
 ```
-If the body prose contains raw `lambda_1`, `x_{t+1}`, `\alpha` or similar plain-text tokens (i.e., you typed them into a `paragraph --prop text=` instead of wrapping with `--type equation --prop mode=inline`), the PDF will render them as literal ASCII — this was a R1 IEEE defect. **Rule: every mathematical variable / Greek letter / subscript in prose goes through `--type equation mode=inline`, never through `paragraph --prop text=`.**
+If the body prose contains raw `lambda_1`, `x_{t+1}`, `\alpha` or similar plain-text tokens (i.e., you typed them into a `paragraph --prop text=` instead of wrapping with `--type equation --prop mode=inline`), downstream viewers will render them as literal ASCII — this was a R1 IEEE defect. **Rule: every mathematical variable / Greek letter / subscript in prose goes through `--type equation mode=inline`, never through `paragraph --prop text=`.**
 
 **LaTeX subset pitfalls** (all three inherited from prior rounds, non-negotiable):
 
@@ -249,20 +249,20 @@ Full equation schema: `officecli help docx equation`.
 
 ## Figures, tables, and cross-references (SEQ + PAGEREF)
 
-Two primitives, both **native fieldTypes** (verified against `officecli help docx field` v1.0.63): `seq` for auto-numbered caption counters, `pageref` for "see Fig. 2 on page 7" back-references. Native fields insert correctly, but their **cached rendered values** need a one-shot raw-set patch per field (see §SEQ cached-value trap below) — otherwise LibreOffice PDF export shows every figure as "Fig. 1".
+Two primitives, both **native fieldTypes** (verified against `officecli help docx field` v1.0.63): `seq` for auto-numbered caption counters, `pageref` for "see Fig. 2 on page 7" back-references. Native fields insert correctly, but their **cached rendered values** need a one-shot raw-set patch per field (see §SEQ cached-value trap below) — otherwise downstream viewers that don't recompute cached fields will show every figure as "Fig. 1".
 
 ### SEQ auto-numbering — figures and tables
 
 A SEQ field is a counter with a name (`identifier`). Every `SEQ Figure` increments the Figure counter on **recalc**; every `SEQ Table` increments the Table counter.
 
-**⚠️ SEQ cached-value trap (verified on v1.0.63).** The CLI emits every SEQ field with cached result `1` — so a document with 3 Figure captions readbacks as `Figure 1 / Figure 1 / Figure 1` (via `view text` or `query field[fieldType=seq]`), and LibreOffice's headless `soffice --convert-to pdf` honors the cached value instead of recomputing. Word and WPS recompute on open when `w:updateFields=true` is set in settings. **Two must-do steps per paper with multiple figures/tables:**
+**⚠️ SEQ cached-value trap (verified on v1.0.63).** The CLI emits every SEQ field with cached result `1` — so a document with 3 Figure captions readbacks as `Figure 1 / Figure 1 / Figure 1` via `view text` or `query field[fieldType=seq]`, and any downstream viewer that doesn't recompute cached fields will display the same `Figure 1 / Figure 1 / Figure 1`. Word and WPS recompute on open when `w:updateFields=true` is set in settings. **Two must-do steps per paper with multiple figures/tables:**
 
 1. Flip `updateFields=true` in settings once per document (right after `create`). **Position matters** — OOXML `CT_Settings` schema rejects `<w:updateFields>` as the first child; insert it *before* `<w:compat>`:
    ```bash
    officecli raw-set "$FILE" /settings --xpath '//w:compat' --action insertbefore \
      --xml '<w:updateFields xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" w:val="true"/>'
    ```
-2. **Patch the cached `<w:t>` after each SEQ field** so the artifact reads correctly in every viewer (including `soffice → PDF`, which Testers and graders use):
+2. **Patch the cached `<w:t>` after each SEQ field** so the artifact reads correctly in every viewer:
    ```bash
    # After adding the Nth SEQ Figure caption, override cached "1" to the real number N:
    officecli raw-set "$FILE" /document \
@@ -270,7 +270,7 @@ A SEQ field is a counter with a name (`identifier`). Every `SEQ Figure` incremen
      --action replace \
      --xml '<w:t xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xml:space="preserve">N</w:t>'
    ```
-   Repeat for N = 1, 2, 3, ... for every figure; same pattern with `SEQ Table` for tables. After patching, `officecli view "$FILE" text` will show `Figure 1 / Figure 2 / Figure 3` — and the PDF export will too.
+   Repeat for N = 1, 2, 3, ... for every figure; same pattern with `SEQ Table` for tables. After patching, `officecli view "$FILE" text` will show `Figure 1 / Figure 2 / Figure 3` — and downstream viewers will too.
 
 ```bash
 # Figure with caption BELOW the image. Caption = "Figure <seq>: title" + optional bookmark for cross-ref.
@@ -445,7 +445,7 @@ officecli query "$FILE" 'field[fieldType=mergefield]' | wc -l   # ≥ 1 if any M
 
 ### Gate 5a — SEQ presence + cached numbers distinct
 
-If the paper has any numbered figure or table, the body must carry live `SEQ` fields AND their cached values must show distinct ascending numbers (else every caption renders "Figure 1" in LibreOffice PDF).
+If the paper has any numbered figure or table, the body must carry live `SEQ` fields AND their cached values must show distinct ascending numbers (else `view text` and downstream viewers that don't recompute cached fields will show "Figure 1" for all).
 
 ```bash
 # Count SEQ fields via query (raw-grep collapses multi-matches on one XML line → undercounts).
@@ -466,17 +466,15 @@ echo "Gate 5a: SEQ fields=$SEQ_COUNT, distinct rendered labels=$DISTINCT"
 
 Gates 1–5a catch schema, token leaks, live-field presence, citation counts. **They do NOT catch physical assembly defects** — scrambled page order, a duplicated Abstract mid-document, three figures all labeled "Fig. 1" despite SEQ field presence, equation variables rendering as plain-text LaTeX (`lambda_1`, `x_{t+1}`) instead of math. R1 Evaluators caught all of these with fresh eyes after Gates 1–5 went green. Do not skip.
 
-Render for human review — `officecli view "$FILE" html --browser` or export PDF:
+Render for human review — opens the rendered document in a browser for visual check:
 
 ```bash
 officecli view "$FILE" html --browser
-# or:
-soffice --headless --convert-to pdf "$FILE"
 ```
 
 Spawn a **fresh-eyes subagent** (or, if alone, close this terminal and reopen with fresh context). Instruction:
 
-> Open `$FILE` and its PDF. For every page of the paper, answer:
+> Open `$FILE` in the browser preview. For every page of the paper, answer:
 > (a) Are pages in logical academic sequence? (Title → Abstract → Keywords → Introduction → body → References — no forward jumps, no backward leaks.)
 > (b) Does the Abstract appear exactly once, not duplicated mid-document?
 > (c) Are Figure N / Table N labels distinct and ascending? (Fig. 1, Fig. 2, Fig. 3 — not all "Fig. 1". Same for tables.)

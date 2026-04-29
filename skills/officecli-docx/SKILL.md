@@ -423,7 +423,7 @@ officecli add "$FILE" /body --type paragraph --prop text="2. Market Diagnosis ..
 # ... one per heading
 ```
 
-Tester #1 shipped 13 static TOC lines this way after the live-field option left the literal prompt visible to the reader. Page numbers are manually set — either open the file in Word, or headless: `soffice --headless --convert-to pdf "$FILE"` then `pdftotext -layout "$FILE.pdf" - | grep -nE '^(第.章|\d+\.)'` reads real page numbers for batch fill. `add --type toc` (live field) remains correct for recipients whose viewer recalculates on open (or who will press F9) — this recipe is for everyone else.
+Tester #1 shipped 13 static TOC lines this way after the live-field option left the literal prompt visible to the reader. Page numbers are manually set. For approximate pagination preview: `officecli view "$FILE" html --browser`. For exact page numbers: open in your target viewer (Word / WPS / etc.) — precise numbers only come from the final render in that viewer. This recipe assumes you can get approximate page positions from the document structure. `add --type toc` (live field) remains correct for recipients whose viewer recalculates on open (or who will press F9) — this recipe is for everyone else.
 
 ### Forcing page breaks — belt-and-suspenders for cross-viewer reliability
 
