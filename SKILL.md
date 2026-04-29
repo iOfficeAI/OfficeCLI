@@ -364,19 +364,31 @@ officecli add-part <file> <parent>                   # create new document part 
 
 ## Specialized Skills
 
-For complex scenarios, load the dedicated skill from `skills/<skill-name>/SKILL.md`:
+Load the dedicated skill from `skills/<skill-name>/SKILL.md`. Skills are organized as **base layer + scene layer**: scene-layer skills inherit every rule from their base — pick the most specific one that fits the user's ask; if none fits, fall back to the base.
 
-| Skill | Scope |
-|-------|-------|
-| `officecli-docx` | Word documents — reports, letters, memos |
-| `officecli-academic-paper` | Academic papers with TOC, equations, footnotes, bibliography |
-| `officecli-pptx` | Presentations — general slide decks |
-| `officecli-pitch-deck` | Investor/product/sales decks with charts and callouts |
-| `morph-ppt` | Morph-animated cinematic presentations |
-| `morph-ppt-3d` | 3D Morph effects (camera, depth) |
-| `officecli-xlsx` | Excel — workbooks, formulas, pivots |
-| `officecli-financial-model` | Financial models, scenarios, projections |
-| `officecli-data-dashboard` | CSV/tabular data → Excel dashboards with charts, sparklines |
+### Word (.docx)
+
+| Skill | When to use | Layer |
+|-------|-------------|-------|
+| `officecli-docx` | Reports, letters, memos, proposals, generic documents | **base** |
+| `officecli-academic-paper` | Journal / conference / thesis: APA / Chicago / IEEE / MLA citations, equations, SEQ + PAGEREF cross-refs, multi-column journal layout, bibliography | scene (inherits docx) |
+
+### PowerPoint (.pptx)
+
+| Skill | When to use | Layer |
+|-------|-------------|-------|
+| `officecli-pptx` | Generic decks: board reviews, sales decks, all-hands, product launches | **base** |
+| `officecli-pitch-deck` | **Fundraising only** — seed / Series A-C / SAFE / convertible / strategic raise. NOT for sales / product / board decks (route those to `officecli-pptx`) | scene (inherits pptx) |
+| `morph-ppt` | Cinematic Morph-animated presentations | scene (inherits pptx) |
+| `morph-ppt-3d` | 3D Morph: GLB models, camera moves, depth (extends `morph-ppt`) | scene (extends morph-ppt) |
+
+### Excel (.xlsx)
+
+| Skill | When to use | Layer |
+|-------|-------------|-------|
+| `officecli-xlsx` | Generic workbooks, formulas, pivots, trackers | **base** |
+| `officecli-financial-model` | Financial models, scenarios, projections | scene (inherits xlsx) |
+| `officecli-data-dashboard` | CSV/tabular data → KPI / analytics / executive dashboards with charts and sparklines | scene (inherits xlsx) |
 
 ---
 
