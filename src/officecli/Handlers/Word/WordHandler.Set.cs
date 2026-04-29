@@ -701,7 +701,11 @@ public partial class WordHandler
             "chineselegalsimplified" => NumberFormatValues.ChineseLegalSimplified,
             "japanesecounting" => NumberFormatValues.JapaneseCounting,
             "japaneselegal" => NumberFormatValues.JapaneseLegal,
-            "japanesedigitalten" => NumberFormatValues.JapaneseDigitalTenThousand,
+            // OOXML SDK exposes only one Japanese-digital enum
+            // (JapaneseDigitalTenThousand, ECMA-376 §17.18.59). Accept both
+            // the short "ten" alias and the canonical OOXML wire name.
+            "japanesedigitalten" or "japanesedigitaltenthousand"
+                => NumberFormatValues.JapaneseDigitalTenThousand,
             "koreancounting" => NumberFormatValues.KoreanCounting,
             "koreanlegal" => NumberFormatValues.KoreanLegal,
             "koreandigital" => NumberFormatValues.KoreanDigital,
