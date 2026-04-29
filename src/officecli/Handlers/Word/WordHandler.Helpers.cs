@@ -181,13 +181,20 @@ public partial class WordHandler
         ParseHelpers.SanitizeColorForOoxml(value).Rgb;
 
     /// <summary>
-    /// Sanitize a font name input for the per-script font slots. Currently
-    /// just normalizes empty/null. Extended in follow-up commits.
+    /// Sanitize a font name input for the per-script font slots. Strips
+    /// a leading BOM (U+FEFF) — font names are token-like strings, and
+    /// a stray BOM (commonly produced by Windows clipboard / shell
+    /// quoting paths) breaks Word's font lookup and round-trips back
+    /// into OOXML as a literal U+FEFF byte attached to the typeface
+    /// name. Surrounding ASCII whitespace is trimmed as well.
     /// </summary>
     private static string SanitizeFontTokenInput(string? value)
     {
         if (string.IsNullOrEmpty(value)) return string.Empty;
-        return value!;
+        var s = value!;
+        while (s.Length > 0 && s[0] == '﻿') s = s.Substring(1);
+        while (s.Length > 0 && s[s.Length - 1] == '﻿') s = s.Substring(0, s.Length - 1);
+        return s.Trim();
     }
 
     /// <summary>
