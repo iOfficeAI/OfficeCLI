@@ -40,12 +40,16 @@ static partial class CommandBuilder
                 }
                 else
                 {
-                    Console.WriteLine($"Found {errors.Count} validation error(s):");
+                    // R7-bt-4: schema validation reports go to stderr —
+                    // callers piping `validate` for CI gates need to see
+                    // the failure summary on the diagnostic stream rather
+                    // than mixed into stdout. Mirrors the resident path.
+                    Console.Error.WriteLine($"Found {errors.Count} validation error(s):");
                     foreach (var err in errors)
                     {
-                        Console.WriteLine($"  [{err.ErrorType}] {err.Description}");
-                        if (err.Path != null) Console.WriteLine($"    Path: {err.Path}");
-                        if (err.Part != null) Console.WriteLine($"    Part: {err.Part}");
+                        Console.Error.WriteLine($"  [{err.ErrorType}] {err.Description}");
+                        if (err.Path != null) Console.Error.WriteLine($"    Path: {err.Path}");
+                        if (err.Part != null) Console.Error.WriteLine($"    Part: {err.Part}");
                     }
                 }
             }

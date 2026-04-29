@@ -532,6 +532,14 @@ public class ResidentServer : IDisposable
             // _lastBatchHadFailure; promote it to a non-zero exit here.
             var isBatch = request.Command.Equals("batch", StringComparison.OrdinalIgnoreCase);
             var batchFailure = isBatch && _lastBatchHadFailure;
+            // R7-bt-3: validate must surface a non-zero exit code on schema
+            // errors so callers (CI / shell scripts) can detect failure
+            // without parsing the report text. ExecuteValidate writes the
+            // report to stderr and records the count in
+            // _lastValidateErrorCount.
+            var isValidate = request.Command.Equals("validate", StringComparison.OrdinalIgnoreCase);
+            var validateFailure = isValidate && _lastValidateErrorCount > 0;
+            if (isValidate) _lastValidateErrorCount = 0;
 
             if (request.Json)
             {
@@ -554,12 +562,12 @@ public class ResidentServer : IDisposable
                 int jsonExitCode = 0;
                 if (stderr.Contains("UNSUPPORTED"))
                     jsonExitCode = 2;
-                else if (!EnvelopeSuccess(envelope) || batchFailure)
+                else if (!EnvelopeSuccess(envelope) || batchFailure || validateFailure)
                     jsonExitCode = 1;
                 return MakeResponse(jsonExitCode, envelope, "");
             }
 
-            int exitCode = stderr.Contains("UNSUPPORTED") ? 2 : (batchFailure ? 1 : 0);
+            int exitCode = stderr.Contains("UNSUPPORTED") ? 2 : ((batchFailure || validateFailure) ? 1 : 0);
             return MakeResponse(exitCode, stdout, stderr);
         }
         catch (Exception ex)
@@ -1323,21 +1331,31 @@ public class ResidentServer : IDisposable
         }
     }
 
+    // R7-bt-3 / R7-bt-4: validate exit code & stream destination.
+    // Pre-fix the resident path printed everything (including failure
+    // reports) to stdout and the wrapper at the bottom of ProcessRequest
+    // returned exit 0 because no stderr / UNSUPPORTED token was emitted.
+    // Track the validation outcome here so ProcessRequest can promote it
+    // to a non-zero exit code, and write the failure report to stderr —
+    // mirrors the standard convention for diagnostic / lint tools.
+    private int _lastValidateErrorCount;
+
     private void ExecuteValidate()
     {
         var errors = _handler.Validate();
+        _lastValidateErrorCount = errors.Count;
         if (errors.Count == 0)
         {
             Console.WriteLine("Validation passed: no errors found.");
         }
         else
         {
-            Console.WriteLine($"Found {errors.Count} validation error(s):");
+            Console.Error.WriteLine($"Found {errors.Count} validation error(s):");
             foreach (var err in errors)
             {
-                Console.WriteLine($"  [{err.ErrorType}] {err.Description}");
-                if (err.Path != null) Console.WriteLine($"    Path: {err.Path}");
-                if (err.Part != null) Console.WriteLine($"    Part: {err.Part}");
+                Console.Error.WriteLine($"  [{err.ErrorType}] {err.Description}");
+                if (err.Path != null) Console.Error.WriteLine($"    Path: {err.Path}");
+                if (err.Part != null) Console.Error.WriteLine($"    Part: {err.Part}");
             }
         }
     }
