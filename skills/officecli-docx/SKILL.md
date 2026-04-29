@@ -3,6 +3,7 @@
 name: officecli-docx
 description: "Use this skill any time a .docx file is involved -- as input, output, or both. This includes: creating Word documents, reports, letters, memos, or proposals; reading, parsing, or extracting text from any .docx file; editing, modifying, or updating existing documents; working with templates, tracked changes, comments, headers/footers, or tables of contents. Trigger whenever the user mentions 'Word doc', 'document', 'report', 'letter', 'memo', or references a .docx filename."
 ---
+# officecli: v1.0.63
 
 # OfficeCLI DOCX Skill
 
@@ -357,7 +358,7 @@ officecli add "$FILE" "/footer[1]/p[1]" --type field --prop fieldType=page
 officecli add "$FILE" "/footer[1]/p[1]" --type run --prop text=" of "
 officecli add "$FILE" "/footer[1]/p[1]" --type field --prop fieldType=numpages
 # Verify the 3 field fragments exist:
-officecli get "$FILE" "/footer[1]/p[1]" --depth 1 | grep -c fldChar   # expect ≥ 4 (begin+separate+end per field)
+officecli get "$FILE" "/footer[1]/p[1]" --depth 1 | grep -o fldChar | wc -l   # expect ≥ 4 (begin+separate+end per field; DON'T use `grep -c` — single-line XML always returns 1)
 ```
 
 **(c) Header row with fill and white bold text.** Don't chain `shd.fill=` (broken). Order matters: populate the header row's cell text FIRST (runs don't exist in empty cells, so a `set .../tc[N]/p[1]/r[1]` on empty cells errors with "No r found"), THEN apply cell fill, THEN run formatting. Visual outcome: dark-blue header band with white bold labels, zebra-striped data rows.
@@ -422,7 +423,7 @@ officecli add "$FILE" /body --type paragraph --prop text="2. Market Diagnosis ..
 # ... one per heading
 ```
 
-Tester #1 shipped 13 static TOC lines this way after the live-field option left the literal prompt visible to the reader. Page numbers are manually set — open the file in Word once to learn the real numbers, then fill. The trade-off: no click-to-jump, but no placeholder text either. `add --type toc` (live field) remains correct for recipients whose viewer recalculates on open (or who will press F9) — this recipe is for everyone else.
+Tester #1 shipped 13 static TOC lines this way after the live-field option left the literal prompt visible to the reader. Page numbers are manually set — either open the file in Word, or headless: `soffice --headless --convert-to pdf "$FILE"` then `pdftotext -layout "$FILE.pdf" - | grep -nE '^(第.章|\d+\.)'` reads real page numbers for batch fill. `add --type toc` (live field) remains correct for recipients whose viewer recalculates on open (or who will press F9) — this recipe is for everyone else.
 
 ### Forcing page breaks — belt-and-suspenders for cross-viewer reliability
 
@@ -437,7 +438,7 @@ officecli set "$FILE" "/body/p[<N+1>]" --prop pageBreakBefore=true
 
 Neither alone guarantees a break in every client. Observed on officecli 1.0.60: `pageBreakBefore` alone left 9 chapters mashed into 6 pages in one viewer; `--type pagebreak` alone flaked in earlier rounds. The redundant pair closes the gap.
 
-**`break=newPage` alias (1.0.61+).** The paragraph / section prop `--prop break=newPage` is a shorter alias that maps to `pageBreakBefore=true` (accepts `newPage | page | nextPage | pageBreak`). Same underlying XML, same behavior — so the belt-and-suspenders rule still applies: use `add --type pagebreak` before the heading AND set `pageBreakBefore=true` / `break=newPage` on the heading paragraph itself.
+**`break=newPage` alias (1.0.61+).** The paragraph / section prop `--prop break=newPage` is a shorter alias that maps to `pageBreakBefore=true` (accepts `newPage | page | nextPage | pageBreak`). Same underlying XML, same behavior — so the belt-and-suspenders rule still applies: use `add --type pagebreak` before the heading AND set `pageBreakBefore=true` / `break=newPage` on the heading paragraph itself. ⚠️ `pageBreakBefore`/`break=` passed to `add` may be silently dropped — always apply it via a subsequent `set`.
 
 Apply to every H1, the TOC heading, and the cover-closing paragraph. Preview via `view html --browser` and count pages to confirm.
 
@@ -533,7 +534,7 @@ The greps above correspond one-to-one with R1 failures: `$...$` catches shell-es
 
 TOC, PAGE, NUMPAGES, MERGEFIELD are all fields with **cached values** that may be stale or empty at write time. Confirm existence by structure, not by text.
 
-- [ ] Footer PAGE field: `get /footer[N] --depth 3` lists the runs that carry the `fldChar begin` / `instrText` / `fldChar separate` / cached value / `fldChar end` chain — expect ≥ 5 runs for a single PAGE, ≥ 11 for composite "Page X of Y". For the underlying `<w:fldChar>` XML, use `officecli raw doc.docx "/footer[1]" | grep -c fldChar`, or run `officecli query doc.docx 'field[fieldType=page]'` for a semantic match. If you see a single run with text `"Page"`, the field is missing — re-add with `--prop field=page`.
+- [ ] Footer PAGE field: `get /footer[N] --depth 3` lists the runs that carry the `fldChar begin` / `instrText` / `fldChar separate` / cached value / `fldChar end` chain — expect ≥ 5 runs for a single PAGE, ≥ 11 for composite "Page X of Y". For the underlying `<w:fldChar>` XML, use `officecli raw doc.docx "/footer[1]" | grep -o fldChar | wc -l` (NOT `grep -c` — single-line XML returns 1, false-PASS risk), or run `officecli query doc.docx 'field[fieldType=page]'` for a semantic match. If you see a single run with text `"Page"`, the field is missing — re-add with `--prop field=page`.
 - [ ] TOC: `get /body/toc[1] --depth 2` must show field structure. In some viewers the TOC shows `1 1 1 1` for page numbers or the literal `Update field to see table of contents` until recalculated (see TOC delivery step).
 - [ ] MERGEFIELD: `query 'field[fieldType=mergefield]'` — one entry per template slot. No literal `{{name}}` text elsewhere.
 - [ ] SEQ / PAGEREF (if your document uses them via raw-set): confirm each `<w:fldChar>` chain exists by `raw`-inspecting the `document.xml`.
@@ -640,6 +641,7 @@ Before calling a color, field, or chart broken, open the file in the user's targ
 | Pitfall | Correct approach |
 |---|---|
 | `--index` vs `[N]` | `--index` is 0-based (array convention); `[N]` paths are 1-based (XPath) |
+| Multiple `add --index N` with the same N | Each insert shifts later content down; reusing the same N puts subsequent items BEFORE earlier ones. Insert in reverse order, or use `move --after/--before` anchored on `paraId` |
 | Unquoted `[N]` in zsh/bash | Quote every path: `"/body/p[1]"` |
 | `[last]` as predicate | Must be `[last()]` with parens. `/body/tbl[last()]/tr[1]` valid; `[last]` throws "Malformed path segment" |
 | Raw twips in spacing | Use unit-qualified values: `12pt`, `0.5cm`, `1.5x` |

@@ -43,12 +43,14 @@ These are the deliverable standards every deck MUST meet. Violating any one = no
 
 **Explicit type hierarchy — do NOT rely on theme defaults.** Theme defaults drift between masters. Set sizes explicitly on every text shape. **This is the single source of truth — Visual Floor, Design Principles, and Pitfalls all cross-link back here.**
 
-| Element | Minimum | Typical |
-|---|---|---|
-| Slide title | **≥ 36pt** bold | 36–44pt |
-| Section / subtitle | ≥ 20pt | 20–24pt |
-| Body text | **≥ 18pt** | 18–22pt |
-| Caption / axis label | ≥ 10pt muted | 10–12pt |
+| Element | Minimum | Typical | Min shape height |
+|---|---|---|---|
+| Slide title | **≥ 36pt** bold | 36–44pt | ≥ 2cm |
+| Section / subtitle | ≥ 20pt | 20–24pt | ≥ 1.2cm |
+| Body text | **≥ 18pt** | 18–22pt | ≥ 1cm |
+| Caption / axis label | ≥ 10pt muted | 10–12pt | ≥ 0.6cm |
+
+Rule of thumb: **min shape height ≈ font_pt × 0.05cm**. An 18pt sublabel in a 0.8cm-tall box will overflow — `view annotated` catches this.
 
 Title must be **≥ 2× body size** (36pt over 20pt works; 28pt over 20pt looks timid). Four legit exceptions to body ≥ 18pt: chart axis labels, legends, footer / page number, and ≤ 5-word KPI sublabels (e.g. "Active users"). Descriptive sentences must be ≥ 18pt. Left-align body; center only titles and hero numbers.
 
