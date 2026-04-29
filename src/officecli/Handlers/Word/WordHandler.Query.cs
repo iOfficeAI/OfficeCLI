@@ -597,8 +597,16 @@ public partial class WordHandler
                     // CONSISTENCY(canonical-keys): font.ascii is canonical; do not also emit flat "font" alias.
                 }
                 if (rPr.FontSize?.Val?.Value != null) styleNode.Format["size"] = $"{int.Parse(rPr.FontSize.Val.Value) / 2.0:0.##}pt";
+                // Complex-script size (<w:szCs/>) — half-points like <w:sz/>.
+                // Mirrors the run-node readback in WordHandler.Navigation.cs:1287
+                // so a get→add round-trip on a style preserves CS sizing.
+                if (rPr.GetFirstChild<FontSizeComplexScript>()?.Val?.Value is string szCsVal
+                    && int.TryParse(szCsVal, out var szCsHalfPt))
+                    styleNode.Format["size.cs"] = $"{szCsHalfPt / 2.0:0.##}pt";
                 if (rPr.Bold != null) styleNode.Format["bold"] = true;
+                if (rPr.GetFirstChild<BoldComplexScript>() != null) styleNode.Format["bold.cs"] = true;
                 if (rPr.Italic != null) styleNode.Format["italic"] = true;
+                if (rPr.GetFirstChild<ItalicComplexScript>() != null) styleNode.Format["italic.cs"] = true;
                 if (rPr.Color?.Val?.Value != null) styleNode.Format["color"] = ParseHelpers.FormatHexColor(rPr.Color.Val.Value);
                 else if (rPr.Color?.ThemeColor?.HasValue == true) styleNode.Format["color"] = rPr.Color.ThemeColor.InnerText;
                 if (rPr.Underline?.Val != null) styleNode.Format["underline"] = rPr.Underline.Val.InnerText;
