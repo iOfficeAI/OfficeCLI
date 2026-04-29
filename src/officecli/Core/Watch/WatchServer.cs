@@ -1326,6 +1326,17 @@ internal class WatchServer : IDisposable
         if (!oldHtml.Contains("data-block=\"1\"") || !newHtml.Contains("data-block=\"1\""))
             return null;
 
+        // Section count change → fall back to full diff. Block <wb>/<we>
+        // markers can straddle a section boundary (e.g. when a new section
+        // is appended, the trailing block's <wb> sits in the prior section's
+        // page-body and its <we> in the new section's page-body). Treating
+        // that span as block content would inject structural markup
+        // (</page-body></page></page-wrapper><page-wrapper data-section="N">…)
+        // into the previous section's page-body, producing nested pages.
+        var oldSecCount = System.Text.RegularExpressions.Regex.Matches(oldHtml, @"data-section=""\d+""").Count;
+        var newSecCount = System.Text.RegularExpressions.Regex.Matches(newHtml, @"data-section=""\d+""").Count;
+        if (oldSecCount != newSecCount) return null;
+
         var oldBlocks = SplitWordBlocks(oldHtml);
         var newBlocks = SplitWordBlocks(newHtml);
 
