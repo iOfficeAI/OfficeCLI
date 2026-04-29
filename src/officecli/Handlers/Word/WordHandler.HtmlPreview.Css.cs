@@ -1675,10 +1675,13 @@ public partial class WordHandler
         var hyphensCss = settings?.Descendants<AutoHyphenation>().Any() == true
             ? "hyphens: auto; -webkit-hyphens: auto;"
             : "";
-        // Build font fallback chain: document font → platform-specific CJK equivalents → generic
+        // Build font fallback chain: document font → locale-aware CJK equivalents → generic.
+        // GetCjkFontFallback already weaves in the locale's CJK chain (or empty if
+        // the document is locale-neutral); we terminate with -apple-system + sans-serif
+        // so the OS picks a system default rather than a hardcoded script.
         var docFont = CssSanitize(dd.Font);
         var cjkFallback = GetCjkFontFallback(docFont, _eastAsiaLang, _themeCjkFont);
-        var font = $"\'{docFont}\'{cjkFallback}, \'Microsoft YaHei\', -apple-system, \'PingFang SC\', sans-serif";
+        var font = $"\'{docFont}\'{cjkFallback}, -apple-system, sans-serif";
         var pageH = $"{pg.HeightPt:0.#}pt";
         var pageW = $"{pg.WidthPt:0.#}pt";
         var sz = $"{dd.SizePt:0.##}pt";
@@ -1742,13 +1745,24 @@ public partial class WordHandler
             hr.page-break {{ page-break-after: always; border: none; margin: 0; }} }}";
     }
 
-    /// <summary>Get platform-specific CJK font fallback for the given document font.</summary>
-    /// <param name="docFont">The font name from the document.</param>
-    /// <param name="eastAsiaLang">Optional EastAsia language code (e.g. "zh-CN", "ja-JP", "ko-KR").</param>
+    /// <summary>
+    /// Get a platform-specific CJK font fallback fragment for the given
+    /// document font. Returned string is prefixed with ", " when non-empty,
+    /// so callers can append it directly after the primary font.
+    ///
+    /// Resolution order:
+    ///   1. Style-specific match on the font name itself (e.g. 宋体 → Songti SC).
+    ///      These mappings preserve the typographic style across platforms.
+    ///   2. Theme's CJK font (from supplemental font list) — if present.
+    ///   3. Locale-driven CJK chain via <see cref="LocaleFontRegistry"/>:
+    ///      uses <paramref name="eastAsiaLang"/> if declared, otherwise
+    ///      tries to detect locale from the font name itself.
+    ///   4. Empty — let the OS pick (the body CSS terminates with sans-serif).
+    /// </summary>
     private static string GetCjkFontFallback(string docFont, string? eastAsiaLang = null, string? themeCjkFont = null)
     {
         var lower = docFont.ToLowerInvariant();
-        // Chinese font names — match directly
+        // Style-specific Chinese matches — preserve serif/sans/handwriting style.
         if (lower.Contains("宋") || lower.Contains("song") || lower == "simsun")
             return ", 'Songti SC', 'STSong'";
         if (lower.Contains("黑") || lower.Contains("hei") || lower == "simhei")
@@ -1757,36 +1771,38 @@ public partial class WordHandler
             return ", 'Kaiti SC', 'STKaiti'";
         if (lower.Contains("仿宋") || lower.Contains("fangsong"))
             return ", 'STFangsong'";
-        // Japanese font names
+        // Style-specific Japanese matches.
         if (lower.Contains("明朝") || lower.Contains("mincho"))
             return ", 'Hiragino Mincho ProN', 'Yu Mincho', 'MS Mincho'";
         if (lower.Contains("ゴシック") || lower.Contains("gothic") || lower == "ms gothic" || lower == "yu gothic")
             return ", 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic'";
-        // Korean font names
+        // Style-specific Korean matches.
         if (lower.Contains("바탕") || lower == "batang" || lower == "batangche")
             return ", 'Apple SD Gothic Neo', 'Malgun Gothic', 'Batang'";
         if (lower.Contains("굴림") || lower == "gulim" || lower == "dotum" || lower == "malgun gothic")
             return ", 'Apple SD Gothic Neo', 'Malgun Gothic'";
 
-        // Western fonts — use EastAsia language to pick the right CJK fallback
+        // Generic Latin/western fonts — use locale (declared or detected) to
+        // pick the appropriate CJK fallback chain. Without a locale signal,
+        // return empty so the body's terminal sans-serif handles it.
         bool isWestern = lower is "calibri" or "arial" or "helvetica" or "verdana" or "segoe ui"
             or "tahoma" or "trebuchet ms" or "times new roman" or "cambria" or "georgia"
             or "garamond" or "book antiqua" or "palatino linotype";
-        if (isWestern)
-        {
-            // Prefer theme-resolved CJK font (from supplemental font list)
-            // CssSanitize the theme font name — theme1.xml is attacker-
-            // controlled and this value interpolates into font-family.
-            var safeTheme = !string.IsNullOrEmpty(themeCjkFont) ? CssSanitize(themeCjkFont) : "";
-            var prefix = !string.IsNullOrEmpty(safeTheme) ? $", '{safeTheme}'" : "";
-            var lang = eastAsiaLang?.ToLowerInvariant() ?? "";
-            if (lang.StartsWith("ja"))
-                return prefix + ", 'Hiragino Mincho ProN', 'Yu Mincho', 'MS Mincho'";
-            if (lang.StartsWith("ko"))
-                return prefix + ", 'Apple SD Gothic Neo', 'Malgun Gothic', 'Batang'";
-            // Default: Chinese (zh or unspecified)
-            return prefix + ", 'SimSun', '宋体', 'Songti SC', 'STSong'";
-        }
-        return "";
+        if (!isWestern) return "";
+
+        // Theme-resolved CJK font (from supplemental font list) goes first.
+        // CssSanitize is required: theme1.xml is attacker-controlled and the
+        // value interpolates into font-family.
+        var safeTheme = !string.IsNullOrEmpty(themeCjkFont) ? CssSanitize(themeCjkFont) : "";
+        var prefix = !string.IsNullOrEmpty(safeTheme) ? $", '{safeTheme}'" : "";
+
+        // Resolve locale: explicit eastAsia lang wins; otherwise probe the
+        // theme font name (zh themes typically declare a Chinese typeface).
+        var locale = eastAsiaLang;
+        if (string.IsNullOrEmpty(locale))
+            locale = LocaleFontRegistry.DetectLocaleFromCjkFontName(themeCjkFont);
+
+        var chain = LocaleFontRegistry.GetCjkCssFallback(locale);
+        return string.IsNullOrEmpty(chain) ? prefix : prefix + ", " + chain;
     }
 }

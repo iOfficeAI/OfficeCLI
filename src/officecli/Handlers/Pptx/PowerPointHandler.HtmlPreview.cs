@@ -12,6 +12,58 @@ namespace OfficeCli.Handlers;
 
 public partial class PowerPointHandler
 {
+    private string? _cachedDocCjkFallback;
+
+    /// <summary>
+    /// Resolve a CSS CJK font-family fallback fragment for the whole document,
+    /// based on the theme's MinorFont/EastAsianFont declaration. Instance
+    /// wrapper around <see cref="ResolveDocCjkFallbackStatic"/>; caches the
+    /// result because every shape's font-family CSS string may need it.
+    /// </summary>
+    private string ResolveDocCjkFallback()
+        => _cachedDocCjkFallback ??= ResolveDocCjkFallbackStatic(_doc);
+
+    /// <summary>
+    /// Static counterpart of <see cref="ResolveDocCjkFallback"/> — accepts
+    /// the document directly so it can be invoked from static SVG render
+    /// helpers that don't carry a handler instance reference.
+    ///
+    /// Returns a comma-separated, individually-quoted CSS font-family
+    /// fragment (no leading comma). When the document declares no CJK
+    /// font in the theme — i.e. it's locale-neutral — returns a wide,
+    /// language-agnostic CJK chain so any CJK glyphs in the slides still
+    /// render reliably, without privileging one script's typography.
+    /// </summary>
+    internal static string ResolveDocCjkFallbackStatic(PresentationDocument doc)
+    {
+        string? themeEa = null;
+        try
+        {
+            var masters = doc.PresentationPart?.SlideMasterParts;
+            if (masters != null)
+            {
+                foreach (var m in masters)
+                {
+                    var ea = m.ThemePart?.Theme?.ThemeElements?.FontScheme?
+                        .MinorFont?.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
+                    if (!string.IsNullOrEmpty(ea)) { themeEa = ea; break; }
+                }
+            }
+        }
+        catch (System.Xml.XmlException) { }
+
+        var locale = LocaleFontRegistry.DetectLocaleFromCjkFontName(themeEa);
+        var chain = LocaleFontRegistry.GetCjkCssFallback(locale);
+
+        // Locale-neutral fallback: when the document carries no script signal,
+        // emit a broad CJK chain covering zh/ja/ko on macOS/Windows/Linux
+        // without favoring one. Slides containing CJK content still render;
+        // pure-Latin documents are unaffected (browsers ignore unused fonts).
+        return string.IsNullOrEmpty(chain)
+            ? "'PingFang SC', 'Hiragino Sans', 'Yu Gothic', 'Apple SD Gothic Neo', 'Microsoft YaHei', 'Noto Sans CJK SC'"
+            : chain;
+    }
+
     /// <summary>
     /// Generate a self-contained HTML file that previews all slides.
     /// Each slide is rendered as an absolutely-positioned div with CSS styling.
@@ -310,12 +362,15 @@ public partial class PowerPointHandler
         var minorLatin = fontScheme?.MinorFont?.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value;
         var minorEa = fontScheme?.MinorFont?.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
 
-        // Build font-family with fallbacks including CJK fonts
+        // Build font-family with fallbacks including CJK fonts. The CJK chain
+        // is locale-driven (read from theme's east-asian font name); when the
+        // document carries no script signal, ResolveDocCjkFallback returns a
+        // broad cross-script chain so slides still render reliably.
         var fonts = new List<string>();
         if (!string.IsNullOrEmpty(minorLatin)) fonts.Add($"'{CssSanitize(minorLatin)}'");
         if (!string.IsNullOrEmpty(minorEa)) fonts.Add($"'{CssSanitize(minorEa)}'");
-        // CJK fallback chain: macOS → Windows → Linux
-        fonts.AddRange(new[] { "'PingFang SC'", "'Microsoft YaHei'", "'Noto Sans CJK SC'", "'Hiragino Sans GB'", "sans-serif" });
+        fonts.Add(ResolveDocCjkFallback());
+        fonts.Add("sans-serif");
         styles.Add($"font-family:{string.Join(",", fonts)};");
 
         // 2. Default text size from presentation defaultTextStyle or slide master otherStyle

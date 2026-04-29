@@ -61,4 +61,67 @@ public static class LocaleFontRegistry
             _ => (null, null, null)
         };
     }
+
+    /// <summary>
+    /// Returns a CSS font-family fallback fragment for the locale's CJK script,
+    /// used by HTML/SVG renderers when the document's declared font isn't
+    /// installed on the rendering machine.
+    ///
+    /// The returned fragment is comma-separated, individually quoted, NOT
+    /// prefixed with a comma — callers concatenate as needed. Empty string
+    /// for unknown/unspecified locales: callers should fall through to a
+    /// neutral generic family (e.g. <c>sans-serif</c>) so the rendering OS
+    /// picks a reasonable default rather than forcing one script's glyphs.
+    /// </summary>
+    public static string GetCjkCssFallback(string? locale)
+    {
+        if (string.IsNullOrWhiteSpace(locale)) return "";
+        var lang = locale.Replace('_', '-').ToLowerInvariant().Split('-')[0];
+        return lang switch
+        {
+            "zh" => "'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Hiragino Sans GB', 'Songti SC', 'STSong'",
+            "ja" => "'Hiragino Sans', 'Hiragino Mincho ProN', 'Yu Gothic', 'Yu Mincho', 'Noto Sans CJK JP', 'MS Gothic'",
+            "ko" => "'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans CJK KR', 'Batang'",
+            _ => ""
+        };
+    }
+
+    /// <summary>
+    /// Heuristic: detect a CJK locale tag ("zh" / "ja" / "ko") from a font
+    /// typeface name. Returns null when the name carries no strong script
+    /// signal. Used by renderers to pick the right fallback chain when the
+    /// document doesn't declare an explicit eastAsia language tag.
+    ///
+    /// Order matters: Japanese is checked before Chinese because some JP
+    /// font names contain hanzi that overlap with Chinese keywords.
+    /// </summary>
+    public static string? DetectLocaleFromCjkFontName(string? font)
+    {
+        if (string.IsNullOrEmpty(font)) return null;
+        var lower = font.ToLowerInvariant();
+
+        if (lower.Contains("明朝") || lower.Contains("mincho")
+            || lower.Contains("ゴシック") || lower.Contains("hiragino")
+            || lower.Contains("yu mincho") || lower.Contains("yu gothic")
+            || lower.Contains("ms mincho") || lower.Contains("ms gothic")
+            || lower.Contains("meiryo") || lower.Contains("游明朝")
+            || lower.Contains("游ゴシック"))
+            return "ja";
+
+        if (lower.Contains("바탕") || lower.Contains("굴림") || lower.Contains("돋움")
+            || lower.Contains("맑은") || lower == "batang" || lower == "batangche"
+            || lower == "gulim" || lower == "dotum" || lower.Contains("malgun")
+            || lower.Contains("nanum") || lower.Contains("apple sd gothic"))
+            return "ko";
+
+        if (lower.Contains("宋") || lower.Contains("song") || lower.Contains("simsun")
+            || lower.Contains("黑") || lower.Contains("hei") || lower.Contains("simhei")
+            || lower.Contains("楷") || lower.Contains("kai") || lower.Contains("仿宋")
+            || lower.Contains("fangsong") || lower.Contains("pingfang")
+            || lower.Contains("yahei") || lower.Contains("等线") || lower.Contains("华文")
+            || lower.Contains("方正") || lower.Contains("微软雅黑"))
+            return "zh";
+
+        return null;
+    }
 }

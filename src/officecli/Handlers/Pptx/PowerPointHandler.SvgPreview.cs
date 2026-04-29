@@ -184,7 +184,7 @@ public partial class PowerPointHandler
 
     // ==================== Shape Rendering (SVG) ====================
 
-    private static void RenderShapeSvg(StringBuilder sb, StringBuilder defs, ref int defId,
+    private void RenderShapeSvg(StringBuilder sb, StringBuilder defs, ref int defId,
         Shape shape, OpenXmlPart part, Dictionary<string, string> themeColors,
         (long x, long y, long cx, long cy)? overridePos = null)
     {
@@ -553,7 +553,7 @@ public partial class PowerPointHandler
 
     // ==================== Text Rendering (SVG) ====================
 
-    private static void RenderTextBodySvg(StringBuilder sb, OpenXmlElement textBody,
+    private void RenderTextBodySvg(StringBuilder sb, OpenXmlElement textBody,
         Dictionary<string, string> themeColors,
         double shapeW, double shapeH,
         double lIns, double tIns, double rIns, double bIns,
@@ -673,7 +673,7 @@ public partial class PowerPointHandler
 
             sb.Append($"<text x=\"{textAnchorX:0.##}\" y=\"{baselineY:0.##}\" text-anchor=\"{align}\"");
             sb.Append($" font-size=\"{fontSizePx:0.##}\"");
-            sb.Append($" font-family=\"{OfficeDefaultFonts.MinorLatin}, &apos;PingFang SC&apos;, &apos;Microsoft YaHei&apos;, sans-serif\"");
+            sb.Append($" font-family=\"{OfficeDefaultFonts.MinorLatin}, {SvgEncode(ResolveDocCjkFallback())}, sans-serif\"");
             sb.Append(">");
 
             // Bullet character
@@ -1031,7 +1031,7 @@ public partial class PowerPointHandler
 
     // ==================== Table Rendering (SVG) ====================
 
-    private static void RenderTableSvg(StringBuilder sb, StringBuilder defs, ref int defId,
+    private void RenderTableSvg(StringBuilder sb, StringBuilder defs, ref int defId,
         GraphicFrame gf, Dictionary<string, string> themeColors)
     {
         var table = gf.Descendants<Drawing.Table>().FirstOrDefault();
@@ -1143,7 +1143,7 @@ public partial class PowerPointHandler
     /// Render text using foreignObject + HTML for automatic wrapping.
     /// Can be swapped with RenderTextBodySvg for pure SVG output.
     /// </summary>
-    private static void RenderTextBodyFO(StringBuilder sb, OpenXmlElement textBody,
+    private void RenderTextBodyFO(StringBuilder sb, OpenXmlElement textBody,
         Dictionary<string, string> themeColors,
         double shapeW, double shapeH,
         double lIns, double tIns, double rIns, double bIns,
@@ -1283,7 +1283,8 @@ public partial class PowerPointHandler
                         // explicit font, emit the same Office default chain
                         // the title-text path uses (around L676) so SVG
                         // matches PowerPoint's effective Calibri default.
-                        styles.Add($"font-family:'{OfficeDefaultFonts.MinorLatin}','PingFang SC','Microsoft YaHei',sans-serif");
+                        // CJK fallback is locale-driven via ResolveDocCjkFallback.
+                        styles.Add($"font-family:'{OfficeDefaultFonts.MinorLatin}',{ResolveDocCjkFallback()},sans-serif");
                     }
 
                     // Size — resolve per-paragraph from placeholder inheritance chain
