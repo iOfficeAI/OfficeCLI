@@ -1827,6 +1827,10 @@ public partial class WordHandler
         .toc {{ display: flex; text-indent: 0 !important; }}
         .toc a {{ color: inherit; text-decoration: none; display: flex; flex: 1; }}
         .toc a span {{ color: inherit !important; text-decoration: none !important; }}
+        .comment-highlight {{ background-color: #FFD079; position: relative; cursor: pointer; }}
+        .comment-highlight:hover {{ outline: 1px solid #e65100; }}
+        .comment-highlight .comment-content {{ display: none; }}
+        .comment-highlight:hover .comment-content {{ display: inline-block; bottom: 100%; margin-bottom: 4px; position: absolute; z-index: 10; }}
         .dot-leader {{ flex: 1; border-bottom: 1px dotted #000; margin: 0 4px; min-width: 2em; align-self: flex-end; margin-bottom: 0.25em; }}
         .hyphen-leader {{ flex: 1; border-bottom: 1px dashed #000; margin: 0 4px; min-width: 2em; align-self: flex-end; margin-bottom: 0.25em; }}
         .underscore-leader {{ flex: 1; border-bottom: 1px solid #000; margin: 0 4px; min-width: 2em; align-self: flex-end; margin-bottom: 0.25em; }}

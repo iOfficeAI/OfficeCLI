@@ -68,8 +68,25 @@ public partial class WordHandler
         var preGroupImages = hasTextBoxGroup ? new List<Drawing>() : null;
         bool textBoxSeen = false;
 
+        int commentDepth = 0; // tracks nesting level of open comment ranges
+
         foreach (var child in para.ChildElements)
         {
+            // Comment range begin — open a highlight span and embed comment content
+            if (child is CommentRangeStart crs && crs.Id?.Value != null)
+            {
+                commentDepth++;
+                var commentContent = GetCommentDisplayHtml(crs.Id!.Value);
+                sb.Append($"<span class=\"comment-highlight\">{commentContent}");
+                continue;
+            }
+            // Comment range end — close the highlight span if we're in a comment
+            if (child is CommentRangeEnd cre && commentDepth > 0)
+            {
+                commentDepth--;
+                sb.Append("</span>");
+                continue;
+            }
             if (child is Run run)
             {
                 // Find drawing (direct child or inside mc:AlternateContent Choice)
@@ -679,6 +696,49 @@ public partial class WordHandler
             sb.AppendLine("</div>");
         }
         sb.AppendLine("</div>");
+    }
+
+    /// <summary>
+    /// Look up a comment by ID and return its content as an inline HTML
+    /// snippet styled as an absolute-positioned tooltip anchored to the
+    /// comment highlight span.
+    /// </summary>
+    private string GetCommentDisplayHtml(string commentId)
+    {
+        var commentsPart = _doc.MainDocumentPart?.WordprocessingCommentsPart;
+        if (commentsPart?.Comments == null) return "";
+
+        var comment = commentsPart.Comments
+            .Elements<Comment>()
+            .FirstOrDefault(c => c.Id?.Value == commentId);
+        if (comment == null) return "";
+
+        var author = HtmlEncode(comment.Author?.Value ?? "匿名");
+        var dateVal = comment.Date?.Value;
+        var dateStr = dateVal.HasValue ? dateVal.Value.ToString("yyyy-MM-dd HH:mm") : "";
+        var initials = HtmlEncode(comment.Initials?.Value ?? "");
+
+        // Collect the comment's paragraph text (may span multiple paragraphs)
+        var textSb = new StringBuilder();
+        foreach (var para in comment.Elements<Paragraph>())
+        {
+            if (textSb.Length > 0) textSb.Append("<br>");
+            textSb.Append(HtmlEncode(para.InnerText));
+        }
+        var content = textSb.ToString();
+        if (string.IsNullOrEmpty(content)) return "";
+
+        // Build the tooltip span — position:absolute so it floats over the
+        // highlighted text; comment-highlight (which is position:relative).
+        // When hovering, .comment-highlight:hover .comment-content shows it.
+        return $"<span class=\"comment-content\" style=\"position:absolute;" +
+               $"background:#fffbe6;border:1px solid #f0d0b0;border-radius:4px;" +
+               $"padding:6px 10px;font-size:11px;line-height:1.4;max-width:300px;min-width:222px;" +
+               $"color:#333;box-shadow:2px 2px 6px rgba(0,0,0,0.12);white-space:normal;z-index:10\">" +
+               $"<span style=\"font-weight:600;color:#e65100\">{initials} {author}</span>" +
+               (dateStr.Length > 0 ? $" <span style=\"color:#999;font-size:10px\">{dateStr}</span>" : "") +
+               $"<br>{content}" +
+               $"</span>";
     }
 
     /// <summary>Get the numbering format for footnotes (default: decimal per OOXML spec §17.11.11).</summary>
