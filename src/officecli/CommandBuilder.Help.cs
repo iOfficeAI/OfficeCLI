@@ -181,6 +181,26 @@ static partial class CommandBuilder
         // "unknown format ''" error, instead of silently discarding the
         // trailing tokens by routing into the no-args banner.
         // CONSISTENCY(empty-arg) — mirrors the Case 2 element guard.
+        // Case 0: `help all` — flat, grep-friendly dump of every (format,
+        // element, property) row across the schema corpus. One self-contained
+        // line per record so `officecli help all | grep <term>` returns
+        // intelligible matches without context loss.
+        if (string.Equals(format, "all", StringComparison.OrdinalIgnoreCase) && verb == null)
+        {
+            // Second arg "verbose" is not a CRUD verb, so the disambiguation
+            // upstream lands it in `element`. Accept it from either slot so
+            // both `help all verbose` and `help all` work.
+            bool verbose = string.Equals(element, "verbose", StringComparison.OrdinalIgnoreCase);
+            if (!verbose && element != null)
+            {
+                Console.Error.WriteLine(
+                    $"error: unknown modifier '{element}' for 'help all'. Did you mean 'verbose'?");
+                return 1;
+            }
+            Console.Write(SchemaHelpFlatRenderer.RenderAll(verbose));
+            return 0;
+        }
+
         if (format == null)
         {
             if (rootCommand != null)
@@ -200,6 +220,8 @@ static partial class CommandBuilder
             Console.WriteLine("  officecli help <format> <element>               Full element detail");
             Console.WriteLine("  officecli help <format> <verb> <element>        Verb-filtered element detail");
             Console.WriteLine("  officecli help <format> <element> --json        Raw schema JSON");
+            Console.WriteLine("  officecli help all                              Lean flat dump (name/type/ops/aliases/values) — pipe to grep");
+            Console.WriteLine("  officecli help all verbose                      Full dump with descriptions and examples");
             Console.WriteLine();
             Console.Write("  Formats: ");
             Console.WriteLine(string.Join(", ", SchemaHelpLoader.ListFormats()));
