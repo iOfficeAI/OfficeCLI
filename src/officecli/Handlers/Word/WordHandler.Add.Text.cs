@@ -51,9 +51,15 @@ public partial class WordHandler
             else
             {
                 // Clear semantics: direction=ltr removes any prior bidi marker.
-                // R19-fuzz-1/2: if the paragraph's linked style chain carries
-                // bidi=true, simply clearing pPr.bidi re-inherits RTL — emit
-                // <w:bidi w:val="0"/> to cancel. Mirrors paragraph Set/cascade.
+                // R19-fuzz-1/2 + R20-fuzz-11: if ANY inherited source carries
+                // bidi=true (style chain, enclosing section, docDefaults, or
+                // numbering lvl), simply clearing pPr.bidi re-inherits RTL —
+                // the user's explicit ltr override would silently disappear.
+                // Emit <w:bidi w:val="0"/> to cancel. Style-chain check happens
+                // here (no parent context needed); section / docDefaults /
+                // numbering checks are deferred until after the paragraph is
+                // inserted into the tree (see post-insert HasInheritedBidi
+                // pass below). Mirrors paragraph Set/ApplyDirectionCascade.
                 pProps.RemoveAllChildren<BiDi>();
                 var addStyleId = pProps.ParagraphStyleId?.Val?.Value;
                 if (addStyleId != null && StyleChainHasBidi(addStyleId))
@@ -621,6 +627,16 @@ public partial class WordHandler
             AppendToParent(parent, para);
             var paraCount = parent.Elements<Paragraph>().Count();
             resultPath = $"{parentPath}/{BuildParaPathSegment(para, paraCount)}";
+        }
+        // R20-fuzz-11: post-insert evaluation of inherited RTL for direction=ltr.
+        // Only the style-chain layer can be evaluated before insertion; the
+        // enclosing section, docDefaults, and numbering lvl all need the
+        // paragraph to be parented. Mirror the Set path's HasInheritedBidi
+        // helper and emit <w:bidi w:val="0"/> when any layer would otherwise
+        // re-inherit RTL.
+        if (paraRtl == false && pProps.GetFirstChild<BiDi>() == null && HasInheritedBidi(para))
+        {
+            pProps.BiDi = new BiDi { Val = new DocumentFormat.OpenXml.OnOffValue(false) };
         }
         return resultPath;
     }
