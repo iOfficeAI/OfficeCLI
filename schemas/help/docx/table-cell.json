@@ -173,35 +173,35 @@
       "enforcement": "report"
     },
     "padding.top": {
-      "type": "length",
-      "description": "top cell margin. Value is stored as Dxa twips (raw int).",
+      "type": "number",
+      "description": "top cell margin in twips (integer; 1 twip = 1/20 pt, e.g. 100 = 5pt). Raw integer only — no unit suffix.",
       "add": false, "set": true, "get": true,
       "examples": ["--prop padding.top=100"],
-      "readback": "twips",
+      "readback": "twips integer",
       "enforcement": "report"
     },
     "padding.bottom": {
-      "type": "length",
-      "description": "bottom cell margin in twips.",
+      "type": "number",
+      "description": "bottom cell margin in twips (integer; 1 twip = 1/20 pt, e.g. 100 = 5pt). Raw integer only — no unit suffix.",
       "add": false, "set": true, "get": true,
       "examples": ["--prop padding.bottom=100"],
-      "readback": "twips",
+      "readback": "twips integer",
       "enforcement": "report"
     },
     "padding.left": {
-      "type": "length",
-      "description": "left cell margin in twips.",
+      "type": "number",
+      "description": "left cell margin in twips (integer; 1 twip = 1/20 pt, e.g. 100 = 5pt). Raw integer only — no unit suffix.",
       "add": false, "set": true, "get": true,
       "examples": ["--prop padding.left=100"],
-      "readback": "twips",
+      "readback": "twips integer",
       "enforcement": "report"
     },
     "padding.right": {
-      "type": "length",
-      "description": "right cell margin in twips.",
+      "type": "number",
+      "description": "right cell margin in twips (integer; 1 twip = 1/20 pt, e.g. 100 = 5pt). Raw integer only — no unit suffix.",
       "add": false, "set": true, "get": true,
       "examples": ["--prop padding.right=100"],
-      "readback": "twips",
+      "readback": "twips integer",
       "enforcement": "report"
     },
     "border.all": {

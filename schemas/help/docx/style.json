@@ -97,7 +97,8 @@
       "enforcement": "report"
     },
     "size": {
-      "type": "length",
+      "type": "font-size",
+      "description": "font size. Accepts bare number or pt-suffixed.",
       "add": true, "set": true, "get": true,
       "examples": ["--prop size=14"],
       "readback": "unit-qualified pt",

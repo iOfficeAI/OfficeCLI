@@ -29,7 +29,7 @@
       "description": "EMU-parseable. If omitted, derived from height + native aspect ratio or defaults to 6in.",
       "add": true, "set": true, "get": true,
       "examples": ["--prop width=3in"],
-      "readback": "unit-qualified length",
+      "readback": "length in cm (e.g. \"5.1cm\")",
       "enforcement": "report"
     },
     "height": {
@@ -37,7 +37,7 @@
       "description": "EMU-parseable. If omitted, derived from width + native aspect ratio or defaults to 4in.",
       "add": true, "set": true, "get": true,
       "examples": ["--prop height=2in"],
-      "readback": "unit-qualified length",
+      "readback": "length in cm (e.g. \"3.2cm\")",
       "enforcement": "report"
     },
     "fallback": {
