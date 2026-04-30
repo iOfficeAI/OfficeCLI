@@ -333,6 +333,15 @@ public partial class PowerPointHandler
                 newCell.Append(new Drawing.TextBody(cBodyProps, cListStyle, cPara));
                 newCell.Append(new Drawing.TableCellProperties());
 
+                // CONSISTENCY(add-set-parity): fill / background applied at Add time
+                // by delegating to SetTableCellProperties — same builder, same schema
+                // ordering, no divergence between Add and Set.
+                if (properties.TryGetValue("fill", out var cFill)
+                    || properties.TryGetValue("background", out cFill))
+                {
+                    SetTableCellProperties(newCell, new Dictionary<string, string> { { "fill", cFill } });
+                }
+
                 if (index.HasValue)
                 {
                     var existingCells = cellRow.Elements<Drawing.TableCell>().ToList();

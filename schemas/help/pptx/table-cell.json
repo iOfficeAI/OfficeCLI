@@ -22,6 +22,15 @@
       "examples": ["--prop text=\"Hello\""],
       "readback": "concatenated run text",
       "enforcement": "strict"
+    },
+    "fill": {
+      "type": "color",
+      "description": "cell background fill. Accepts a solid color (hex, named, rgb(...)), 'none' for explicit no-fill, or a gradient string 'COLOR1-COLOR2[-ANGLE]' (e.g. 'FF0000-0000FF-90'). Stored as a:solidFill / a:gradFill / a:noFill on a:tcPr.",
+      "aliases": ["background"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop fill=FFFF00", "--prop fill=#FF0000", "--prop fill=red", "--prop background=accent1", "--prop fill=none", "--prop fill=\"FF0000-0000FF-90\""],
+      "readback": "#RRGGBB uppercase, 'gradient' (with separate 'gradient' key), or 'image' for picture fill",
+      "enforcement": "report"
     }
   }
 }

@@ -1353,6 +1353,7 @@ public partial class PowerPointHandler
                     break;
                 }
                 case "fill":
+                case "background":
                 {
                     // Build new fill element BEFORE removing old one (atomic: no data loss on invalid color)
                     OpenXmlElement newCellFill;
