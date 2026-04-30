@@ -37,6 +37,14 @@ public partial class WordHandler
                 SaveStyles();
                 return true;
             }
+            case "docdefaults.font.hansi" or "docdefaults.font.highansi":
+            {
+                var rPr = EnsureRunPropsDefault();
+                var fonts = rPr.GetFirstChild<RunFonts>() ?? rPr.AppendChild(new RunFonts());
+                fonts.HighAnsi = value;
+                SaveStyles();
+                return true;
+            }
             case "docdefaults.font.eastasia":
             {
                 var rPr = EnsureRunPropsDefault();
