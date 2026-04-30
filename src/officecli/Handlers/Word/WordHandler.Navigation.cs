@@ -2169,8 +2169,14 @@ public partial class WordHandler
         if (just != null)
             node.Format["alignment"] = just.InnerText;
         // Direction: <w:bidi/> on the first cell paragraph maps to canonical
-        // direction=rtl. Mirrors paragraph readback canonical key.
+        // direction=rtl. Mirrors paragraph readback canonical key. R20-bt-2:
+        // also surface direction=rtl when the enclosing table carries
+        // <w:bidiVisual/> on tblPr — cells inherit table-level visual RTL
+        // even without their own pPr.bidi.
         if (firstPara?.ParagraphProperties?.BiDi != null)
+            node.Format["direction"] = "rtl";
+        else if (cell.Ancestors<Table>().FirstOrDefault()
+                     ?.GetFirstChild<TableProperties>()?.GetFirstChild<BiDiVisual>() != null)
             node.Format["direction"] = "rtl";
         // Run-level formatting from first run (mirrors PPTX table cell behavior)
         var firstRun = cell.Descendants<Run>().FirstOrDefault();

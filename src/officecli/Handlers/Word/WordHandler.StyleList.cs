@@ -648,6 +648,24 @@ public partial class WordHandler
                 }
             }
         }
+        // R20-bt-2: enclosing table's own tblPr/<w:bidiVisual/> cascades to
+        // every paragraph in every cell — independent of the table-style
+        // layer above (a table can carry direct bidiVisual without referencing
+        // any RTL table style). Sits between the table-style layer and the
+        // section layer so direct table bidiVisual beats sectPr bidi but is
+        // beaten by an explicit pPr.bidi or a paragraph-style bidi.
+        if (!node.Format.ContainsKey("direction") && direction == null)
+        {
+            var ownTbl = para.Ancestors<Table>().FirstOrDefault();
+            if (ownTbl?.GetFirstChild<TableProperties>()?.GetFirstChild<BiDiVisual>() != null)
+            {
+                direction = "rtl";
+                // Locate 1-based table index in document order for src.
+                var tbls = _doc.MainDocumentPart?.Document?.Body?.Descendants<Table>().ToList();
+                var tblIdx = tbls?.FindIndex(t => ReferenceEquals(t, ownTbl)) ?? -1;
+                directionSrc = tblIdx >= 0 ? $"/body/tbl[{tblIdx + 1}]" : "/body/tbl";
+            }
+        }
         if (!node.Format.ContainsKey("direction") && direction == null)
         {
             // R15-bt-3: enclosing section's <w:bidi/> on sectPr cascades
