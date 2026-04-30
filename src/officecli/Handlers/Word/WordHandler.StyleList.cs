@@ -710,6 +710,29 @@ public partial class WordHandler
             node.Format["effective.direction"] = direction;
             if (directionSrc != null) node.Format["effective.direction.src"] = directionSrc;
         }
+        // R21-fuzz-2: paragraph carries its own pPr.bidi. Emit
+        // effective.direction + .src=self for cascade-uniform readback so
+        // downstream consumers always have an effective.direction key
+        // regardless of whether the resolved direction came from the
+        // paragraph itself or an inherited cascade layer.
+        else if (node.Format.ContainsKey("direction"))
+        {
+            var ownBidi = para.ParagraphProperties?.GetFirstChild<BiDi>();
+            if (ownBidi != null)
+            {
+                var on = TryReadOnOff(ownBidi.Val);
+                if (on.HasValue)
+                {
+                    node.Format["effective.direction"] = on.Value ? "rtl" : "ltr";
+                    var bodyParas = _doc.MainDocumentPart?.Document?.Body?
+                        .Descendants<Paragraph>().ToList();
+                    var pIdx = bodyParas?.FindIndex(p => ReferenceEquals(p, para)) ?? -1;
+                    node.Format["effective.direction.src"] = pIdx >= 0
+                        ? $"/body/p[{pIdx + 1}]"
+                        : "/body/p";
+                }
+            }
+        }
     }
 
     // ==================== List / Numbering ====================
