@@ -59,11 +59,15 @@ public partial class PowerPointHandler
     private static readonly System.Collections.Generic.HashSet<string> DrawingCapsEnum =
         new(System.StringComparer.Ordinal) { "none", "small", "all" };
 
-    // Tolerant BCP-47 shape: starts with letter, allows letters/digits/hyphens.
-    // Stricter than xsd:language but loose enough to accept all real-world tags
-    // (zh-Hant-TW, en-US, x-private, ...). Rejects whitespace and special chars.
+    // BCP-47 shape per RFC 5646 §2.1 (subset): primary subtag 2-3 ALPHA (or
+    // 4-8 ALPHA for reserved/registered), then hyphen-separated subtags each
+    // 1-8 alphanumerics, total length <= 35. Also accepts `x-…` private-use.
+    // R18-fuzz-3: tightened — old shape `^[A-Za-z][A-Za-z0-9-]*$` accepted
+    // hyphen-less garbage like "INVALID" and 1000-char strings.
+    private const int Bcp47MaxLength = 35;
     private static readonly System.Text.RegularExpressions.Regex Bcp47Shape =
-        new(@"^[A-Za-z][A-Za-z0-9-]*$", System.Text.RegularExpressions.RegexOptions.Compiled);
+        new(@"^(?:[A-Za-z]{2,3}(?:-[A-Za-z0-9]{1,8})*|[A-Za-z]{4,8}(?:-[A-Za-z0-9]{1,8})+|x(?:-[A-Za-z0-9]{1,8})+)$",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private static bool IsValidDrawingRunAttrValue(string key, string value)
     {
@@ -73,7 +77,7 @@ public partial class PowerPointHandler
         if (key == "u") return DrawingUnderlineEnum.Contains(value);
         if (key == "strike") return DrawingStrikeEnum.Contains(value);
         if (key == "cap") return DrawingCapsEnum.Contains(value);
-        if (key is "lang" or "altLang") return string.IsNullOrEmpty(value) || Bcp47Shape.IsMatch(value);
+        if (key is "lang" or "altLang") return string.IsNullOrEmpty(value) || (value.Length <= Bcp47MaxLength && Bcp47Shape.IsMatch(value));
         return true; // remaining string attrs (kumimoji handled above; bmk arbitrary string)
     }
 
