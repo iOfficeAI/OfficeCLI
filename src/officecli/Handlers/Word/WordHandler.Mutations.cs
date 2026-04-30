@@ -1166,7 +1166,7 @@ public partial class WordHandler
             var pPr = pPrChange.Parent as ParagraphProperties;
             if (pPr != null)
             {
-                var originalProps = pPrChange.GetFirstChild<PreviousParagraphProperties>();
+                var originalProps = pPrChange.GetFirstChild<ParagraphPropertiesExtended>();
                 if (originalProps != null)
                 {
                     var para = pPr.Parent;
