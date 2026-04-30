@@ -982,6 +982,16 @@ public partial class WordHandler
             return node;
         }
 
+        if (element is SectionProperties sectPrEl)
+        {
+            // CONSISTENCY(section-readback): /body/sectPr[N] should surface
+            // the same Format keys as /section[N] so direction, page size,
+            // margins, etc. are visible regardless of which path the caller
+            // used. Delegate to BuildSectionNode but preserve the original
+            // path the caller asked for.
+            return BuildSectionNode(sectPrEl, path);
+        }
+
         if (element is Paragraph para)
         {
             node.Type = "paragraph";
