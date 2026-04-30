@@ -441,19 +441,12 @@ officecli add "$FILE" / --type header --prop type=default --prop alignment=right
 Every in-text citation key should resolve to a bibliography entry. Count mismatches = REJECT.
 
 ```bash
-# APA / MLA style: extract parenthetical citations. Adjust the regex for your style.
-# APA: (Author, Year) — e.g. "(Smith, 2024)" — regex: \([A-Z][a-zA-Z]+(?:\s*(?:&|et al\.?|and)\s*[A-Z][a-zA-Z]+)*,?\s*[0-9]{4}\)
-# IEEE: [N] — regex: \[[0-9]+\]
-# Chicago Notes-Bib: footnotes — count with query 'footnote'
+# IEEE example (bracketed numerics). Adjust regex for APA (Author, Year) or MLA (Author Page).
 CITATIONS=$(officecli view "$FILE" text | grep -oE '\[[0-9]+\]' | sort -u | wc -l)
-ENTRIES=$(officecli query "$FILE" 'paragraph[hangingIndent]' | wc -l)
-echo "In-text citation markers: $CITATIONS"
-echo "Bibliography entries (hanging indent): $ENTRIES"
-# For IEEE, the highest [N] should equal ENTRIES. For APA/MLA, CITATIONS ≤ ENTRIES and every cited author appears in biblio.
-# REJECT rule: CITATIONS > ENTRIES (cites without references) = REJECT. ENTRIES > CITATIONS is tolerated (listed but never cited; some venues allow).
-
-# Mergefield-based citation keys (if the paper uses them) round-trip:
-officecli query "$FILE" 'field[fieldType=mergefield]' | wc -l   # ≥ 1 if any MERGEFIELD citations exist
+ENTRIES=$(officecli query "$FILE" 'paragraph[hangingIndent]' --json | jq '.data.results | length')
+echo "In-text citation markers: $CITATIONS | Bibliography entries: $ENTRIES"
+# REJECT when citations exceed entries (cites without references). Entries > citations is allowed by some venues.
+[ "$CITATIONS" -le "$ENTRIES" ] && echo "Gate 4 OK" || { echo "REJECT Gate 4: $CITATIONS in-text markers but only $ENTRIES bibliography entries"; exit 1; }
 ```
 
 ### Gate 5a — SEQ presence + cached numbers distinct
@@ -471,8 +464,7 @@ fi
 # Cached values must be distinct (CLI emits "1" per field by default → all three would show "Figure 1").
 # After the raw-set patches in §SEQ, view text should show Figure 1 / Figure 2 / Figure 3:
 DISTINCT=$(officecli view "$FILE" text | grep -oE '(Figure|Table) [0-9]+' | sort -u | wc -l)
-echo "Gate 5a: SEQ fields=$SEQ_COUNT, distinct rendered labels=$DISTINCT"
-# If SEQ_COUNT > DISTINCT, cached values collide — go back and patch <w:t> after each SEQ field.
+[ "$SEQ_COUNT" -le "$DISTINCT" ] && echo "Gate 5a OK (SEQ=$SEQ_COUNT, distinct=$DISTINCT)" || { echo "REJECT Gate 5a: $SEQ_COUNT SEQ fields but only $DISTINCT distinct rendered labels — patch cached <w:t> after each SEQ field"; exit 1; }
 ```
 
 ### Gate 5b — Visual audit via HTML preview (MANDATORY, not optional)

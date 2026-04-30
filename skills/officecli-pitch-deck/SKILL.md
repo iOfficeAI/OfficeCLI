@@ -132,6 +132,8 @@ Regulatory pipeline IS the business. Replace "product roadmap" with **clinical p
 
 The 10 slides every pitch deck carries. Each recipe below gives: **visual outcome** (what the slide looks like from 3m away) + **runnable block** (≤ 18 lines) + **QA one-liner**. All recipes inherit pptx v2 palettes, grid math, type hierarchy, and `--prop tailEnd=triangle` on every connector. `$FILE` is your deck file.
 
+**Long-title wrap rule.** A 36pt+ title that wraps to 2 lines: add `height` (e.g. 2cm → 3.5cm) — never drop the font below 36pt. Titles < 36pt on a pitch deck read as timid regardless of content.
+
 ### (1) Cover slide — company · tagline · round · date
 
 **Visual outcome.** Dark navy fill, centered 44pt company name, 20pt one-line tagline underneath, small 16pt meta line at the bottom with round + amount + date. Thin brand band at the very bottom (0.5cm high) in the accent color.
@@ -542,7 +544,7 @@ For Series B+, traction often spans 2 slides: one for the chart + callout (recip
 - **Gate 2** — token leak via `view text` grep (`$xxx$`, `{{...}}`, `<TODO>`, `lorem`, `xxxx`, empty `()`/`[]`, `\$`/`\t`/`\n` literals).
 - **Gate 3** — hyperlink `rPr` schema trap (C-P-1) — zero `<a:rPr><a:hlinkClick>`.
 - **Gate 4** — slide-order sanity — cover first, dividers before sections, closing last.
-- **Gate 5a** — dark-on-dark contrast — every fill in `{1E2761, 0A1628, 8B1A1A, 2C5F2D, 36454F}` must declare near-white textColor.
+- **Gate 5a** — dark-on-dark contrast — every fill in `{1E2761, 0A1628, 8B1A1A, 2C5F2D, 36454F}` must declare near-white textColor. **This includes charts rendered on that fill**: chart `title.textColor`, `legend.textColor`, axis text default to dark and read as invisible on dark backgrounds — set them explicitly, or place the chart on a light card inside the dark slide.
 
 Do not skip or reorder these five. Every pptx-layer defect caught by Gates 1–5a also fires on pitch decks.
 
@@ -554,7 +556,7 @@ STRIP=$(officecli view "$FILE" text | grep -niE '(^|[^A-Za-z0-9])M (ARR|raised|S
 [ -z "$STRIP" ] && echo "Gate 2b OK (no \$-strip signatures)" || { echo "REJECT Gate 2b (likely zsh \$-strip — re-issue with single quotes):"; echo "$STRIP"; exit 1; }
 ```
 
-Fix: re-issue the offending `add`/`set` with single quotes around the text value (`--prop text='Series B · $35M'`, not double quotes).
+Fix: re-issue the offending `add`/`set` with single quotes around the text value (`--prop text='Series B · $35M'`, not double quotes). The same strip hits **chart series names / axis titles** (`--prop name="营收 ($M)"` → legend shows `营收 ()`): single-quote every chart prop carrying `$`.
 
 ### Gate 5b — Visual audit via HTML preview (MANDATORY, NOT optional)
 

@@ -84,6 +84,14 @@ Before you declare done, run `officecli view "$FILE" html` and Read the returned
 
 If any of the above fails, STOP and fix before declaring done.
 
+**Print layout.** Any sheet the user may print or send as a board pack needs page setup. Default portrait + no fit-to-page splits wide tables and charts mid-way. Apply per sheet:
+
+```bash
+officecli set "$FILE" "/Summary" --prop orientation=landscape --prop fitToPage=true
+```
+
+Trigger: sheet holds a chart, or > 8 columns, or the user's ask mentions print / board / investor.
+
 ### Financial models only — skip this section if you are building a template, tracker, CSV import, or operational sheet
 
 Scope: budgets, forecasts, 3-statement models, valuation, any `$`-heavy analytical workbook. A customer-support tracker or onboarding template does not need this section.
@@ -111,7 +119,7 @@ Scope: budgets, forecasts, 3-statement models, valuation, any `$`-heavy analytic
 
 Six steps. Every non-trivial build follows this shape.
 
-1. **Choose the mode.** Always use `officecli open <file>` at the start and `officecli close <file>` at the end. Resident mode is the default, not an optimization — it avoids re-parsing the file on every command. For many cells, use `batch`: **≤ 50 ops/block recommended; pure value-set batches run fine at 80+ ops (verified at 82 × 80-op chunks, 0 failures). Keep ≤ 12 only for mixed formula + resident scenarios**.
+1. **Choose the mode.** Always use `officecli open <file>` at the start and `officecli close <file>` at the end. Resident mode is the default, not an optimization — it avoids re-parsing the file on every command. For many cells, use `batch`: **≤ 50 ops/block recommended; tested up to 80+ ops per block on pure value-set payloads with zero failures. Cross-sheet formula batches are the exception — run those non-resident, single heredoc (see Known Issues)**.
 2. **Create or load.** `officecli create foo.xlsx` (new) or `officecli view foo.xlsx outline` (existing — get the lay of the land first).
 3. **Build incrementally.** One command, read the output, continue. After any structural op (new sheet, chart, named range, pivot), run `get` on it to confirm shape before stacking more on top.
 4. **Format.** Column widths, number formats, freeze panes, tab colors, header fills. Formatting is not optional polish — per "Requirements for Outputs" it is part of the deliverable.
@@ -143,9 +151,17 @@ officecli validate revenue.xlsx
 
 Verified: `validate` returns `no errors found`, `B5` resolves to `135000`. This is the shape of every build: open → set cells/formulas → format → close → validate.
 
-## CSV / bulk import (no native `import` command)
+## CSV / bulk import
 
-There is no `officecli import csv`. Pattern: read the CSV in Python, emit a batch JSON, pipe via heredoc. Recipe for 600-6000+ cells:
+**Native `import` command (preferred for CSV/TSV).** Fastest path; loads a CSV into a sheet in one call. `--header` sets AutoFilter + freeze pane on row 1. Widths and `numFmt` still need a follow-up pass (per D-12 in Dashboard skill).
+
+```bash
+officecli import data.xlsx /Sheet1 --file data.csv --header
+officecli import data.xlsx /Sheet1 --file data.tsv --format tsv --header
+officecli import data.xlsx /Sheet1 --stdin --start-cell B2 < data.csv
+```
+
+**Python + batch fallback** — use when you need custom type coercion, formula injection, or the CSV lives inside another data pipeline. Recipe for 600-6000+ cells:
 
 ```python
 # gen_batch.py — produces batch chunks of 80 value-set ops each
@@ -369,13 +385,13 @@ Your first workbook is almost never correct. Treat QA as a bug hunt, not a confi
    officecli query data.xlsx 'cell:contains("#NAME?")'
    officecli query data.xlsx 'cell:contains("#N/A")'
    ```
-4. `officecli validate data.xlsx` — close any resident first (see Known Issues).
+4. `officecli validate "$FILE"` — close any resident first (see Known Issues).
 5. **Visual pass — walk every sheet via the HTML preview.** Run `officecli view "$FILE" html` and Read the returned HTML path. Each sheet renders with charts inline. Scan for `###`, truncated titles, placeholder tokens (`$fy$24`, `{var}`, `<TODO>`), sliced charts, white-slice pie charts, empty chart anchors — **STOP and fix before declaring done**. "validate pass" is not delivery; "the preview looks like a real workbook" is delivery. For human preview, run `officecli watch "$FILE"` (user opens the live preview at their own discretion) or have them open the `.xlsx` directly in Excel / WPS / Numbers.
-6. **Print / export layout fix (wide tables / multi-chart sheets).** When a sheet holds a chart or a wide table and the user will print or export it, set per-sheet page layout so it fits on one page:
+6. **Print layout fix (wide tables / multi-chart sheets).** When a sheet holds a chart or a wide table and the user will print it, set per-sheet page layout so it fits on one page:
    ```bash
-   officecli set data.xlsx "/Summary" --prop orientation=landscape --prop fitToPage=true
+   officecli set "$FILE" "/Summary" --prop orientation=landscape --prop fitToPage=true
    ```
-   Outcome: each sheet's print/export layout is one page with no mid-chart splits. Apply to every sheet that holds a chart or a > 8-column table.
+   Outcome: each sheet's print layout is one page with no mid-chart splits. Apply to every sheet that holds a chart or a > 8-column table.
 7. If anything failed, fix, then **rerun the full cycle**. One fix commonly creates another problem.
 
 `officecli view issues` + `view html` are the structural QA pair: `issues` catches broken formulas and empty sheets; `view html` (Read the returned HTML path) catches `###`, truncation, and token leakage. Chart fill colors / theme tints can vary across viewers — spot-check in the user's target viewer when color fidelity matters.
@@ -440,6 +456,8 @@ Avoid these until fixed; they produce invalid XML or silent breakage. Full detai
 - **Conditional formatting naming asymmetry** — the element name for `--type` is `conditionalformatting`; the path suffix is `/cf[N]`. Use `officecli help xlsx conditionalformatting` for schema, `/cf[N]` for paths.
 - **Sheet `position` prop on add** — help says Add processes `position`, but the prop is often ignored. Reorder with `officecli move --index` / `--after` / `--before` after creating the sheet.
 - **`remove /sheet[N]` cascade guard** — 1.0.59+ rejects sheet remove/rename when the sheet is referenced by validation / conditional format / sparkline / hyperlink / named range on another sheet. Remove those dependent elements first, then remove the sheet.
+- **Batch JSON rejects cell `color` alias** — inside batch `props`, `"color": "FF0000"` errors `ambiguous in cell context — use 'font.color' (text) or 'fill' (bg)`. The CLI at shell level accepts `--prop color=...` / `--prop size=14` as aliases on non-cell elements, but inside batch JSON on a cell always write the full dotted name: `"font.color"`, `"font.size"`, `"font.name"`.
+- **`SUMPRODUCT((range=criterion)*values)` caches `0` on 1.0.63** — the CLI calc engine does not evaluate array-predicate `SUMPRODUCT` at write-time; runtime Excel/WPS compute fine but the cached `0` ships to non-recalculating readers. **Helper-column fallback:** add a column `F` on the source sheet with `=C2*D2` per row, then aggregate via `=SUMIF(B:B, "Region X", F:F)`. Caches correctly, audits cleanly, and survives non-recalculating viewers.
 
 ### Renderer caveats (cross-viewer color fidelity)
 

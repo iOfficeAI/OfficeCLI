@@ -393,6 +393,13 @@ officecli set deck.pptx "/slide[7]/shape[@name=DocsBtn]" --prop link=https://exa
 - **Placeholders** — `"/slide[N]/placeholder[title]"` / `placeholder[body]`. Available only when the slide uses a layout with placeholders (not `layout=blank`).
 - **Groups** (LEAD) — address children via `"/slide[N]/group[@name=G]/shape[1]"`. Survives reordering better than positional indexes. `officecli help pptx group`.
 - **Zoom slide** (LEAD) — `--type zoom --prop targets="3,7,15"`. Section-navigation hub. Zoom is a runtime feature — `view html` shows the static geometry; the zoom interaction runs only in a live presentation viewer. `officecli help pptx zoom`.
+- **Slide comments** — reviewer annotations anchored at `/slide[N]/comment[M]`. Full lifecycle (`add / set / get / query / remove`). Props: `text`, `author`, `initials` (auto-derived), `date` (ISO 8601, defaults to UtcNow), `x` / `y` (EMU anchor).
+  ```bash
+  officecli add "$FILE" "/slide[2]" --type comment --prop author="Alice" --prop text="Tighten this bullet" --prop x=20cm --prop y=3cm
+  officecli query "$FILE" 'comment' --json | jq '.data.results | length'   # count all review comments
+  officecli remove "$FILE" "/slide[2]/comment[1]"                           # resolve after addressing
+  ```
+  → `officecli help pptx comment`.
 
 ### Raw-set escape hatch (L1 / L2 / L3)
 
@@ -477,7 +484,8 @@ Grid math for 4 boxes across a 33.87cm slide with 1.5cm margins: `gap = (33.87 �
 
 ```bash
 # Use explicit slide index — [last()] is rejected in some resident versions (see Pitfalls).
-N_SLIDE=$(officecli get "$FILE" --depth 0 | grep -c '"path": "/slide\[')
+# COUNT slides via query (works on closed AND resident-open files; get --depth 0 default output is not JSON).
+N_SLIDE=$(officecli query "$FILE" 'slide' --json | jq '.data.results | length')
 officecli add "$FILE" / --type slide --prop layout=blank --prop background=FFFFFF
 SLIDE=$((N_SLIDE + 1))
 
@@ -686,7 +694,9 @@ officecli raw "$FILE" slide 2>/dev/null | grep -E '<a:rPr[^>]*>.*<a:hlinkClick' 
   { echo "REJECT Gate 3: hyperlink rPr (C-P-1) — clean with raw-set remove //a:rPr/a:hlinkClick"; exit 1; } || echo "Gate 3 OK"
 
 # Gate 4 — slide-order sanity. Must match your build plan.
-SLIDE_COUNT=$(officecli get "$FILE" --depth 0 | grep -c '"path": "/slide\[')
+# COUNT via query (works closed or open; plain `get --depth 0` default output is NOT JSON and grep returns 0).
+SLIDE_COUNT=$(officecli query "$FILE" 'slide' --json | jq '.data.results | length')
+if [ "$SLIDE_COUNT" -lt 1 ]; then echo "REJECT Gate 4: zero slides"; exit 1; fi
 echo "Gate 4: total slides = $SLIDE_COUNT"
 # Dump titles in order to compare to your narrative outline:
 officecli query "$FILE" 'shape[@name=Title]' --format 'path: %p text: %t' 2>/dev/null || \
