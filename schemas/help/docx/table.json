@@ -46,6 +46,16 @@
       "readback": "per-column grid widths, not aggregated",
       "enforcement": "strict"
     },
+    "direction": {
+      "type": "enum",
+      "values": ["rtl", "ltr"],
+      "aliases": ["dir", "bidi"],
+      "description": "Reading direction (Arabic / Hebrew). 'rtl' writes <w:bidiVisual/> on tblPr (mirrors column order); 'ltr' clears it. Distinct from per-cell textDirection.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop direction=rtl"],
+      "readback": "rtl when set, key absent otherwise",
+      "enforcement": "report"
+    },
     "alignment": {
       "type": "enum",
       "values": ["left", "center", "right"],
