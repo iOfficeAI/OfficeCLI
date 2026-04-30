@@ -54,7 +54,7 @@ Help is pinned to the installed CLI version. When this skill and help disagree, 
 **Shell quoting (zsh / bash).** docx paths contain `[]`, some prop values contain `$`. Both are shell metacharacters. Rules:
 
 - ALWAYS quote element paths: `"/body/p[1]"`, not `/body/p[1]`.
-- Use **single quotes** for any prop value containing `$`: `--prop text='$50M'`.
+- Use **single quotes** for any prop value containing `$`: `--prop text='$50M'`. The rule holds at any length — a 200-word body paragraph containing `$50M` needs the whole value inside single quotes, same as a three-word heading: `--prop text='In Q4 we hit $50M ARR, up 18% YoY — the strongest quarter since inception...'`. Mixing `'... $var ...'` and `"... $50 ..."` on long strings is where shell-leak silently strips `$50` → nothing.
 - NEVER hand-write `\$`, `\t`, `\n` inside executable examples. The CLI does not interpret backslash escapes; they will land in your file as literal characters. In a cell / paragraph text, a real newline goes through the JSON layer (`batch` heredoc with `"\n"` inside the JSON string).
 
 **Incremental execution.** Run commands one at a time and read each exit code. `officecli` mutates the file on every call; a 50-command script that fails at command 3 will cascade silently. One command → check output → continue. After any structural op (new style, table, TOC, section break) run `get` on it before stacking more on top.
@@ -211,7 +211,7 @@ officecli set doc.docx "/body/tbl[1]/tr[1]" --prop header=true --prop c1=Quarter
 officecli set doc.docx "/body/tbl[1]/tr[1]/tc[1]/p[1]/r[1]" --prop bold=true
 ```
 
-Row-level `set` supports `height`, `header`, and `c1 / c2 / ... / cN` text shortcuts — `cN` generalises, use as many as the table has columns (earlier skill versions falsely capped at `c3`; 5-column matrices work fine). Cell formatting (bold, fill, color) goes on the cell's paragraph / run. For per-cell borders, use the paragraph-level `pbdr.*` dotted-attr on the cell's inner paragraph instead of cell-level `border.bottom` (the cell-level border prop currently places `<w:tcBorders>` in the wrong XML position and fails `validate` — see Known Issues).
+Row-level `set` supports `height`, `header`, and `c1 / c2 / ... / cN` text shortcuts — `cN` generalises to any column count, use as many as the table has columns (a 7-column matrix accepts `c1` through `c7`). Cell formatting (bold, fill, color) goes on the cell's paragraph / run. For per-cell borders, use the paragraph-level `pbdr.*` dotted-attr on the cell's inner paragraph instead of cell-level `border.bottom` (the cell-level border prop currently places `<w:tcBorders>` in the wrong XML position and fails `validate` — see Known Issues).
 
 ### Lists (bullets, numbered, multi-level)
 
@@ -257,7 +257,9 @@ Fields are live values computed at render time. Two props carry all the info: `f
 | `mergefield` | template merge token | `--prop fieldType=mergefield --prop name=CustomerName` |
 | `ref` | cross-reference to a bookmark | `--prop fieldType=ref --prop name=bookmarkName` |
 
-The full `fieldType` enum (13 values: `page`, `pagenum`, `pagenumber`, `numpages`, `date`, `author`, `title`, `time`, `filename`, `section`, `sectionpages`, `mergefield`, `ref`) is in `officecli help docx field`. **There is NO `fieldInstr`, `seq`, or `pageref` fieldType** — old skill versions showed these; they will error. Numbered captions (`SEQ Figure`) and `PAGEREF` cross-refs currently require `raw-set` with a `<w:fldChar>` chain.
+The full `fieldType` enum (30+ values: `page`, `pagenum`, `pagenumber`, `numpages`, `date`, `time`, `author`, `title`, `filename`, `section`, `sectionpages`, `mergefield`, `ref`, `pageref`, `noteref`, `seq`, `styleref`, `docproperty`, `if`, `createdate`, `savedate`, `printdate`, `edittime`, `lastsavedby`, `subject`, `numwords`, `numchars`, `revnum`, `template`, `comments`, `keywords`) is in `officecli help docx field`. **There is NO `fieldInstr` fieldType** — use the `instr` prop (alias `instruction`) to inject raw field instruction text when typed shortcuts fall short. Picture switches (`MERGEFIELD Amount \# "#,##0.00"`, `DATE \@ "yyyy年MM月"`) go via `--prop instr='...'` on mergefield and via `--prop format='yyyy-MM-dd'` on date/time (mergefield's `format` prop is ignored with a warning — use `instr` instead).
+
+**SEQ / PAGEREF cached-value trap.** `seq` and `pageref` are CLI-expressible (`--prop fieldType=seq --prop identifier=Figure`, `--prop fieldType=pageref --prop name=bookmark`) and pass `validate`, but every instance emits cached `<w:t>` of `1` regardless of position — so three `SEQ Figure` captions render as `Figure 1 / Figure 1 / Figure 1` in viewers that do not recompute on open. Set `<w:updateFields w:val="true"/>` in settings (via `raw-set`) and/or patch the cached `<w:t>` after each SEQ. Academic papers with multiple figures/tables: see the `officecli-academic-paper` skill for the full SEQ patch recipe.
 
 For a standalone MERGEFIELD inside a paragraph:
 
@@ -308,7 +310,7 @@ officecli get doc.docx "/tableofcontents" --depth 2   # alias, same target
 **TOC delivery step — treat this as mandatory before handing the file off.** **The live TOC field is a placeholder until recalculated.** Some viewers show the real heading list on first open; others show the literal string `Update field to see table of contents` until the reader recalculates. Two workarounds — pick one based on who reads the file:
 
 - **Recipients who will open in a viewer that recalculates (or who will press F9)**: add a visible instruction ("Press F9 to refresh the TOC and page numbers"). No further action needed.
-- **Recipients who cannot / will not recalculate**: use the **static TOC fallback — see Report-level recipes (f) below**. No CLI-only pipeline currently populates `<w:sdtContent>` with the cached heading rows that Word writes on save. `raw-set` on `//w:sdt/w:sdtContent` is theoretically possible but requires reconstructing the exact per-heading XML (with correct bookmarks, PAGEREF chains, and cached page numbers) and has not worked reliably. Hand-write the static fallback instead.
+- **Recipients who cannot / will not recalculate**: use the **static TOC fallback — see Report-level recipes (f) below**. No CLI-only pipeline currently populates `<w:sdtContent>` with the cached heading rows that Word writes on save. Headless conversion tools cannot pre-render the TOC on Word's behalf — their TOC handling and pagination differ, so relying on them to "fill" the TOC for a Word recipient is unsafe. `raw-set` on `//w:sdt/w:sdtContent` is theoretically possible but requires reconstructing the exact per-heading XML (with correct bookmarks, PAGEREF chains, and cached page numbers) and has not worked reliably. Hand-write the static fallback instead.
 
 Ship-check: `officecli query "$FILE" 'p:contains("Update field to see")'` must return empty whenever the reader won't recalculate. If it matches, the TOC is unpopulated — switch to recipe (f).
 
@@ -449,7 +451,7 @@ officecli add "$FILE" /body --type pagebreak --index <N>
 officecli set "$FILE" "/body/p[<N+1>]" --prop pageBreakBefore=true
 ```
 
-Neither alone guarantees a break in every client. Observed on officecli 1.0.60: `pageBreakBefore` alone left 9 chapters mashed into 6 pages in one viewer; `--type pagebreak` alone has also been seen to flake. The redundant pair closes the gap.
+Neither alone guarantees a break in every client. Observed on officecli 1.0.60: `pageBreakBefore` alone left 9 chapters mashed into 6 pages in one viewer; `--type pagebreak` alone has also been seen to flake, especially when the file is PDF-converted by a headless renderer. **Recommendation: prefer `pageBreakBefore=true` (more reliable across viewers) and add `--type pagebreak` as the secondary guarantee.** The redundant pair closes the gap.
 
 **`break=newPage` alias (1.0.61+).** The paragraph / section prop `--prop break=newPage` is a shorter alias that maps to `pageBreakBefore=true` (accepts `newPage | page | nextPage | pageBreak`). Same underlying XML, same behavior — so the belt-and-suspenders rule still applies: use `add --type pagebreak` before the heading AND set `pageBreakBefore=true` / `break=newPage` on the heading paragraph itself. ⚠️ `pageBreakBefore`/`break=` passed to `add` may be silently dropped — always apply it via a subsequent `set`.
 
@@ -478,6 +480,8 @@ officecli add doc.docx "/body/p[3]" --type footnote --prop text="See Appendix A 
 `--type equation` always creates a standalone `/body/oMathPara[N]` block — never an inline run, even if you pass a paragraph path. For inline math inside running text, `raw-set` an `<m:oMath>` (not `<m:oMathPara>`) as a run child. Bibliography with hanging indent: `firstLineIndent=-720 indent=720` per entry (dotted `ind.hanging` is not canonical — see Known Issues).
 
 **docx vs academic-paper skill — when to switch.** Stay in docx for: chapter drafts, ≤ 3 footnotes, ≤ 2 equations, no bibliography, no cross-refs. Switch to `academic-paper` when you need ANY of: citation styles (APA / Chicago / Harvard / IEEE / GB 7714), in-text ↔ reference list auto-linking, numbered equations with `\ref`, "List of Figures", auto-updating "see Section 3.2" cross-refs, or author-year ↔ numeric style toggles.
+
+**docx vs word-form skill — when to switch.** Stay in docx for any report, letter, memo, or proposal. Switch to `officecli-word-form` when the document's purpose is **data capture** — fillable intake forms, contracts / SOWs with user-fill slots, HR onboarding forms, medical questionnaires, compliance checklists, mail-merge templates. Those carry `<w:sdt>` content controls, `<w:ffData>` legacy form fields, or `documentProtection=forms`, none of which this skill teaches.
 
 **Comments and tracked changes.** Bulk accept/reject: `set / --prop accept-changes=all` (or `reject-changes=all`). Locate individual changes with `query ins` and `query del` — NOT `query trackedchange` (CLI bug C-D-1). Adding an `<w:ins>` or `<w:del>` from scratch requires `raw-set`. Add a comment with `add "/body/p[4]" --type comment --prop author=... --prop text=...`. Reply threading (`parentId`) and `done=true` resolution are UNSUPPORTED — see C-D-2 / C-D-5 for `raw-set` workarounds.
 
@@ -519,29 +523,28 @@ Your first document is almost never correct. Treat QA as a bug hunt, not a confi
 
 ### Delivery Gate (run before handing off — any failure = REJECT, do NOT deliver)
 
-The three checks below are the automated half of the QA cycle; they catch the five defect classes: schema errors, shell-escape leaks, TOC placeholder visible to reader, static-text footer instead of live PAGE, and unreplaced template tokens. Copy-paste this block, substitute your file, and refuse to declare done until every command prints OK.
+Copy-paste this block, set `FILE`, and refuse to declare done until every gate prints its OK line. `REJECT` aborts with exit 1 — the file is NOT deliverable.
 
 ```bash
-FILE="doc.docx"
+FILE="your-file.docx"
 
 # Gate 1 — schema. Any error = REJECT.
 officecli close "$FILE" 2>/dev/null
-officecli validate "$FILE" | grep -q "no errors found" || { echo "REJECT: validate failed"; exit 1; }
+officecli validate "$FILE" | grep -q "no errors found" || { echo "REJECT Gate 1: validate failed"; exit 1; }
+echo "Gate 1 OK"
 
-# Gate 2 — token leak via CLI text-layer view. Greps for tokens that must NEVER appear in a delivered file.
-officecli view "$FILE" text | \
-  grep -nE '(\$[A-Za-z_]+\$|\{\{[^}]+\}\}|<TODO>|xxxx|lorem|Update field to see|\\[\$tn])' && \
-  { echo "REJECT: token leak (see line(s) above)"; exit 1; } || echo "Gate 2 OK"
+# Gate 2 — token leak (shell-escape / template tokens / TOC placeholder / literal \$ \t \n).
+# COUNT-then-if pattern: grep -c never false-PASSes.
+LEAK=$(officecli view "$FILE" text | grep -cE '(\$[A-Za-z_]+\$|\{\{[^}]+\}\}|<TODO>|xxxx|lorem|Update field to see|\\[\$tn])')
+[ "$LEAK" -eq 0 ] && echo "Gate 2 OK" || { echo "REJECT Gate 2: $LEAK token-leak line(s)"; officecli view "$FILE" text | grep -nE '(\$[A-Za-z_]+\$|\{\{[^}]+\}\}|<TODO>|xxxx|lorem|Update field to see|\\[\$tn])'; exit 1; }
 
-# Gate 3 — live-field structural spot-check. A footer showing the literal word "Page" with no live PAGE field is a static run.
-# Use `query` (operates on semantic elements) OR `raw` (inspects the XML part) — both reveal fldChar.
-officecli query "$FILE" 'field[fieldType=page]' | grep -q . || \
-  officecli raw "$FILE" "/footer[1]" 2>/dev/null | grep -q fldChar || \
-  { echo "REJECT: no live PAGE field found"; exit 1; }
+# Gate 3 — live PAGE field exists when a footer is expected.
+FLD=$(officecli query "$FILE" 'field[fieldType=page]' --json | jq '.data.results | length')
+[ "$FLD" -ge 1 ] && echo "Gate 3 OK" || { echo "REJECT Gate 3: no live PAGE field"; exit 1; }
 echo "Delivery Gate PASS"
 ```
 
-The greps above catch common failure classes: `$...$` catches shell-escape leaks (e.g. `US$22B` becoming `USM` when zsh eats the `$`), `{{...}}` catches unmigrated template tokens, `Update field to see` catches the unpopulated-TOC placeholder, `\$`/`\t`/`\n` catches shell-escape literals dropped into text. Every gate must print its success message before you declare the file delivered.
+Every gate must print its OK line before you declare the file delivered.
 
 ### Field / cached-value spot-check
 

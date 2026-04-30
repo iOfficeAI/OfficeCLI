@@ -11,89 +11,91 @@ The Agent uses this table to quickly select a reference style based on the topic
 
 ---
 
+**Primary hex column**: bg / fg / accent — sampled from each style's `build.sh`. Use this to eyeball-match a user-specified brand color before opening any `style.md`. `-` = style has only `style.md` (no build script to extract from).
+
 ## Dark Palette (dark)
 
-| Directory                | Style Name               | Best For                                                        | Mood                                    |
-| ------------------------ | ------------------------ | --------------------------------------------------------------- | --------------------------------------- |
-| dark--liquid-flow        | Liquid Light             | Brand upgrades, creative launches, fashion showcases            | Fluid, dreamy, avant-garde              |
-| dark--premium-navy       | Premium Navy & Gold      | High-end corporate, annual strategy, board presentations        | Authoritative, refined, premium         |
-| dark--investor-pitch     | Investor Pitch Pro       | Investor pitches, fundraising decks, business plans             | Professional, trustworthy, composed     |
-| dark--cosmic-neon        | Cosmic Neon              | Science talks, futuristic topics, physics, cosmic themes        | Sci-fi, mysterious, futuristic, neon    |
-| dark--editorial-story    | Editorial Magazine Story | Brand storytelling, editorial magazines, content releases       | Narrative, artistic, premium            |
-| dark--tech-cosmos        | Tech Cosmos              | Tech talks, architecture reviews, scientific presentations      | Futuristic, scientific, cosmic          |
-| dark--blueprint-grid     | Blueprint Grid           | Technical planning, engineering blueprints, system architecture | Precise, professional, engineered       |
-| dark--diagonal-cut       | Diagonal Industrial Cut  | Industrial, engineering, construction, manufacturing            | Rugged, powerful, bold                  |
-| dark--spotlight-stage    | Spotlight Stage          | Keynotes, launch events, TED-style talks, galas                 | Dramatic, focused, theatrical           |
-| dark--cyber-future       | Cyber Future             | Futuristic topics, tech vision, cyberpunk, AI/robotics          | Futuristic, cyberpunk, immersive        |
-| dark--circle-digital     | Dark Digital Agency      | Digital marketing, creative agencies, tech companies            | Modern, dark-cool, digital              |
-| dark--architectural-plan | Architectural Plan       | Architectural design, business plans, real estate development   | Professional, structured, architectural |
-| dark--luxury-minimal     | Luxury Minimal           | Luxury brands, premium products, high-end corporate             | Luxurious, minimalist, sophisticated    |
-| dark--space-odyssey      | Space Odyssey            | Space/astronomy, science education, exploration narratives      | Cosmic, inspiring, epic, exploratory    |
-| dark--neon-productivity  | Neon Productivity        | Productivity talks, tech workshops, motivation, startups        | Energetic, modern, vibrant              |
-| dark--midnight-blueprint | Midnight Blueprint       | Architecture firms, professional services, luxury real estate   | Sophisticated, architectural, premium   |
-| dark--sage-grain         | Sage Grain               | Creative agencies, boutique consultancies, organic brands       | Organic, sophisticated, artisanal       |
-| dark--obsidian-amber     | Obsidian Amber           | Finance, investment, luxury services, premium consulting        | Premium, sophisticated, powerful        |
-| dark--velvet-rose        | Velvet Rose              | Luxury brands, premium fashion, high-end retail                 | Luxurious, elegant, refined             |
-| dark--aurora-softedge    | Aurora Softedge          | Design portfolios, creative showcases, art galleries            | Aurora-like, dreamy, artistic           |
+| Directory                | Style Name               | Primary hex (bg / fg / accent) | Best For                                                        | Mood                                    |
+| ------------------------ | ------------------------ | ------------------------------ | --------------------------------------------------------------- | --------------------------------------- |
+| dark--liquid-flow        | Liquid Light             | `#0F0F2D / #6C63FF / #48E5C2`  | Brand upgrades, creative launches, fashion showcases            | Fluid, dreamy, avant-garde              |
+| dark--premium-navy       | Premium Navy & Gold      | `#0C1B33 / #C9A84C / #1E3A5F`  | High-end corporate, annual strategy, board presentations        | Authoritative, refined, premium         |
+| dark--investor-pitch     | Investor Pitch Pro       | `#1A1A2E / #0F3460 / #16213E`  | Investor pitches, fundraising decks, business plans             | Professional, trustworthy, composed     |
+| dark--cosmic-neon        | Cosmic Neon              | `#050510 / #8A2BE2 / #00FFFF`  | Science talks, futuristic topics, physics, cosmic themes        | Sci-fi, mysterious, futuristic, neon    |
+| dark--editorial-story    | Editorial Magazine Story | `#FFFFFF / #2C3E50 / #E74C3C`  | Brand storytelling, editorial magazines, content releases       | Narrative, artistic, premium            |
+| dark--tech-cosmos        | Tech Cosmos              | `-`                            | Tech talks, architecture reviews, scientific presentations      | Futuristic, scientific, cosmic          |
+| dark--blueprint-grid     | Blueprint Grid           | `#1B3A5C / #4A90D9 / #FFFFFF`  | Technical planning, engineering blueprints, system architecture | Precise, professional, engineered       |
+| dark--diagonal-cut       | Diagonal Industrial Cut  | `#1A1A1A / #FF6600 / #FFCC00`  | Industrial, engineering, construction, manufacturing            | Rugged, powerful, bold                  |
+| dark--spotlight-stage    | Spotlight Stage          | `#0A0A0A / #FFFFFF / #FFE0B2`  | Keynotes, launch events, TED-style talks, galas                 | Dramatic, focused, theatrical           |
+| dark--cyber-future       | Cyber Future             | `#0B0C10 / #66FCF1 / #1F2833`  | Futuristic topics, tech vision, cyberpunk, AI/robotics          | Futuristic, cyberpunk, immersive        |
+| dark--circle-digital     | Dark Digital Agency      | `#0D0E11 / #171A20 / #22252E`  | Digital marketing, creative agencies, tech companies            | Modern, dark-cool, digital              |
+| dark--architectural-plan | Architectural Plan       | `#FFFFFF / #18293B / #B5D5E3`  | Architectural design, business plans, real estate development   | Professional, structured, architectural |
+| dark--luxury-minimal     | Luxury Minimal           | `#111111 / #D4AF37 / #FFFFFF`  | Luxury brands, premium products, high-end corporate             | Luxurious, minimalist, sophisticated    |
+| dark--space-odyssey      | Space Odyssey            | `#0A0E27 / #1E3A5F / #4A5FFF`  | Space/astronomy, science education, exploration narratives      | Cosmic, inspiring, epic, exploratory    |
+| dark--neon-productivity  | Neon Productivity        | `#0B0F1A / #2BE4A8 / #FFB020`  | Productivity talks, tech workshops, motivation, startups        | Energetic, modern, vibrant              |
+| dark--midnight-blueprint | Midnight Blueprint       | `#080B2A / #181B55 / #131650`  | Architecture firms, professional services, luxury real estate   | Sophisticated, architectural, premium   |
+| dark--sage-grain         | Sage Grain               | `#1E2720 / #FFFFFF / #D9B88F`  | Creative agencies, boutique consultancies, organic brands       | Organic, sophisticated, artisanal       |
+| dark--obsidian-amber     | Obsidian Amber           | `-`                            | Finance, investment, luxury services, premium consulting        | Premium, sophisticated, powerful        |
+| dark--velvet-rose        | Velvet Rose              | `-`                            | Luxury brands, premium fashion, high-end retail                 | Luxurious, elegant, refined             |
+| dark--aurora-softedge    | Aurora Softedge          | `-`                            | Design portfolios, creative showcases, art galleries            | Aurora-like, dreamy, artistic           |
 
 ## Light Palette (light)
 
-| Directory                   | Style Name               | Best For                                                  | Mood                                |
-| --------------------------- | ------------------------ | --------------------------------------------------------- | ----------------------------------- |
-| light--minimal-corporate    | Minimal Corporate Report | Annual reports, work summaries, business proposals        | Professional, clean, composed       |
-| light--minimal-product      | Minimal Product Showcase | Product launches, tech showcases, brand introductions     | Modern, minimalist, premium         |
-| light--project-proposal     | Project Proposal         | Project kickoffs, business proposals, bid presentations   | Professional, trustworthy, rigorous |
-| light--bold-type            | Bold Typography          | Editorial layouts, magazine-style, brand manuals          | Bold, modern, editorial             |
-| light--isometric-clean      | Isometric Clean Tech     | Tech products, SaaS platforms, data presentations         | Fresh, modern, techy                |
-| light--spring-launch        | Spring Launch Fresh      | Spring launches, new product releases, seasonal marketing | Fresh, natural, vibrant             |
-| light--training-interactive | Interactive Training     | Corporate training, online courses, knowledge sharing     | Educational, interactive, friendly  |
-| light--watercolor-wash      | Watercolor Wash          | Art, cultural creative, tea ceremony, weddings            | Soft, poetic, artistic              |
-| light--firmwise-saas        | Firmwise SaaS            | SaaS platforms, productivity tools, B2B software          | Clean, efficient, trustworthy       |
-| light--glassmorphism-vc     | Glassmorphism VC         | VC funds, investment decks, fintech, startup pitches      | Modern, premium, sophisticated      |
-| light--fluid-gradient       | Fluid Gradient           | AI/tech products, SaaS platforms, modern software         | Fluid, tech-forward, dynamic        |
+| Directory                   | Style Name               | Primary hex (bg / fg / accent) | Best For                                                  | Mood                                |
+| --------------------------- | ------------------------ | ------------------------------ | --------------------------------------------------------- | ----------------------------------- |
+| light--minimal-corporate    | Minimal Corporate Report | `#FFFFFF / #E8EEF4 / #1E3A5F`  | Annual reports, work summaries, business proposals        | Professional, clean, composed       |
+| light--minimal-product      | Minimal Product Showcase | `#FAFAFA / #00B894 / #2D3436`  | Product launches, tech showcases, brand introductions     | Modern, minimalist, premium         |
+| light--project-proposal     | Project Proposal         | `#E8EEF4 / #1E3A5F / #D4A84B`  | Project kickoffs, business proposals, bid presentations   | Professional, trustworthy, rigorous |
+| light--bold-type            | Bold Typography          | `#F2F2F2 / #1A1A1A / #E8E8E8`  | Editorial layouts, magazine-style, brand manuals          | Bold, modern, editorial             |
+| light--isometric-clean      | Isometric Clean Tech     | `#F0F4F8 / #E8ECF1 / #4A90D9`  | Tech products, SaaS platforms, data presentations         | Fresh, modern, techy                |
+| light--spring-launch        | Spring Launch Fresh      | `#E8F5E9 / #4CAF50 / #8BC34A`  | Spring launches, new product releases, seasonal marketing | Fresh, natural, vibrant             |
+| light--training-interactive | Interactive Training     | `#FFF9E6 / #FF6B6B / #4ECDC4`  | Corporate training, online courses, knowledge sharing     | Educational, interactive, friendly  |
+| light--watercolor-wash      | Watercolor Wash          | `#FFFDF7 / #7AADCF / #E8A87C`  | Art, cultural creative, tea ceremony, weddings            | Soft, poetic, artistic              |
+| light--firmwise-saas        | Firmwise SaaS            | `#EFF2F7 / #7B3FF2 / #FFFFFF`  | SaaS platforms, productivity tools, B2B software          | Clean, efficient, trustworthy       |
+| light--glassmorphism-vc     | Glassmorphism VC         | `-`                            | VC funds, investment decks, fintech, startup pitches      | Modern, premium, sophisticated      |
+| light--fluid-gradient       | Fluid Gradient           | `-`                            | AI/tech products, SaaS platforms, modern software         | Fluid, tech-forward, dynamic        |
 
 ## Warm Palette (warm)
 
-| Directory                | Style Name         | Best For                                                          | Mood                             |
-| ------------------------ | ------------------ | ----------------------------------------------------------------- | -------------------------------- |
-| warm--earth-organic      | Earth & Sage       | Eco-friendly, sustainability, organic brands                      | Warm, sincere, natural           |
-| warm--minimal-brand      | Minimal Brand      | Brand introductions, product launches, premium brand showcases    | Warm, refined, minimalist        |
-| warm--brand-refresh      | Brand Refresh      | Brand launches, corporate image updates, creative proposals       | Fashionable, colorful, modern    |
-| warm--creative-marketing | Creative Marketing | Marketing campaigns, ad creatives, poster-style PPTs              | Bold, impactful, expressive      |
-| warm--playful-organic    | Playful Organic    | Lifestyle, pet/animal topics, children's education, storytelling  | Warm, playful, friendly          |
-| warm--sunset-mosaic      | Sunset Mosaic      | Engineering, infrastructure, B2B corporate, construction          | Professional, warm, grounded     |
-| warm--coral-culture      | Coral Culture      | Company culture decks, HR presentations, team showcases           | Warm, cultural, human-centered   |
-| warm--monument-editorial | Monument Editorial | Architecture, luxury brands, editorial magazines, studio branding | Monumental, refined, typographic |
-| warm--vital-bloom        | Vital Bloom        | Wellness apps, yoga studios, mindful living, organic brands       | Organic, vibrant, healthy        |
-| warm--bloom-academy      | Bloom Academy      | Education, e-learning, children's content, playful branding       | Playful, educational, friendly   |
+| Directory                | Style Name         | Primary hex (bg / fg / accent) | Best For                                                          | Mood                             |
+| ------------------------ | ------------------ | ------------------------------ | ----------------------------------------------------------------- | -------------------------------- |
+| warm--earth-organic      | Earth & Sage       | `#F5F0E8 / #8B6F47 / #A8C686`  | Eco-friendly, sustainability, organic brands                      | Warm, sincere, natural           |
+| warm--minimal-brand      | Minimal Brand      | `-`                            | Brand introductions, product launches, premium brand showcases    | Warm, refined, minimalist        |
+| warm--brand-refresh      | Brand Refresh      | `#F5F0E8 / #162040 / #1A6BFF`  | Brand launches, corporate image updates, creative proposals       | Fashionable, colorful, modern    |
+| warm--creative-marketing | Creative Marketing | `-`                            | Marketing campaigns, ad creatives, poster-style PPTs              | Bold, impactful, expressive      |
+| warm--playful-organic    | Playful Organic    | `#FFF8E7 / #3D3B3C / #FFFFFF`  | Lifestyle, pet/animal topics, children's education, storytelling  | Warm, playful, friendly          |
+| warm--sunset-mosaic      | Sunset Mosaic      | `-`                            | Engineering, infrastructure, B2B corporate, construction          | Professional, warm, grounded     |
+| warm--coral-culture      | Coral Culture      | `-`                            | Company culture decks, HR presentations, team showcases           | Warm, cultural, human-centered   |
+| warm--monument-editorial | Monument Editorial | `-`                            | Architecture, luxury brands, editorial magazines, studio branding | Monumental, refined, typographic |
+| warm--vital-bloom        | Vital Bloom        | `-`                            | Wellness apps, yoga studios, mindful living, organic brands       | Organic, vibrant, healthy        |
+| warm--bloom-academy      | Bloom Academy      | `-`                            | Education, e-learning, children's content, playful branding       | Playful, educational, friendly   |
 
 ## Vivid Palette (vivid)
 
-| Directory                | Style Name              | Best For                                              | Mood                            |
-| ------------------------ | ----------------------- | ----------------------------------------------------- | ------------------------------- |
-| vivid--candy-stripe      | Rainbow Candy Stripe    | Event celebrations, holidays, children's education    | Joyful, lively, rainbow         |
-| vivid--playful-marketing | Vibrant Youth Marketing | Marketing campaigns, new product promos, sales events | Youthful, energetic, passionate |
-| vivid--energy-neon       | Energy Neon             | Conferences, energy summits, tech events, editorial   | Energetic, impactful, modern    |
-| vivid--pink-editorial    | Pink Editorial          | Annual reports, data journalism, editorial showcases  | Contemporary, editorial, bold   |
-| vivid--bauhaus-electric  | Bauhaus Electric        | Creative agencies, design studios, bold branding      | Bold, energetic, electric       |
+| Directory                | Style Name              | Primary hex (bg / fg / accent) | Best For                                              | Mood                            |
+| ------------------------ | ----------------------- | ------------------------------ | ----------------------------------------------------- | ------------------------------- |
+| vivid--candy-stripe      | Rainbow Candy Stripe    | `#FFFFFF / #FF5252 / #FF7B39`  | Event celebrations, holidays, children's education    | Joyful, lively, rainbow         |
+| vivid--playful-marketing | Vibrant Youth Marketing | `#FFFFFF / #FF6B6B / #4ECDC4`  | Marketing campaigns, new product promos, sales events | Youthful, energetic, passionate |
+| vivid--energy-neon       | Energy Neon             | `#E8E8E8 / #00FF41 / #111111`  | Conferences, energy summits, tech events, editorial   | Energetic, impactful, modern    |
+| vivid--pink-editorial    | Pink Editorial          | `#160B33 / #7B2D52 / #C85080`  | Annual reports, data journalism, editorial showcases  | Contemporary, editorial, bold   |
+| vivid--bauhaus-electric  | Bauhaus Electric        | `-`                            | Creative agencies, design studios, bold branding      | Bold, energetic, electric       |
 
 ## Black & White (bw)
 
-| Directory         | Style Name    | Best For                                                     | Mood                           |
-| ----------------- | ------------- | ------------------------------------------------------------ | ------------------------------ |
-| bw--mono-line     | Minimal Line  | Minimalist corporate, academic reports, consulting proposals | Calm, restrained, professional |
-| bw--swiss-bauhaus | Swiss Bauhaus | Design agencies, architecture firms, art exhibitions         | Rational, rigorous, classic    |
-| bw--brutalist-raw | Brutalist Raw | Avant-garde art shows, experimental design, indie brands     | Rebellious, rugged, impactful  |
-| bw--swiss-system  | Swiss System  | Corporate, finance, consulting, professional services        | Clean, systematic, bold        |
+| Directory         | Style Name    | Primary hex (bg / fg / accent) | Best For                                                     | Mood                           |
+| ----------------- | ------------- | ------------------------------ | ------------------------------------------------------------ | ------------------------------ |
+| bw--mono-line     | Minimal Line  | `#FFFFFF / #1A1A1A / #C8C8C8`  | Minimalist corporate, academic reports, consulting proposals | Calm, restrained, professional |
+| bw--swiss-bauhaus | Swiss Bauhaus | `#E63322 / #1C1C1C / #F5F5F5`  | Design agencies, architecture firms, art exhibitions         | Rational, rigorous, classic    |
+| bw--brutalist-raw | Brutalist Raw | `#FFFFFF / #000000 / #FF0000`  | Avant-garde art shows, experimental design, indie brands     | Rebellious, rugged, impactful  |
+| bw--swiss-system  | Swiss System  | `#FFFFFF / #000000 / #FF0000`  | Corporate, finance, consulting, professional services        | Clean, systematic, bold        |
 
 ## Mixed Palette (mixed)
 
-| Directory                   | Style Name           | Best For                                                | Mood                              |
-| --------------------------- | -------------------- | ------------------------------------------------------- | --------------------------------- |
-| mixed--duotone-split        | Duotone Split        | Brand launches, architectural design, premium showcases | Bold, architectural, minimal      |
-| mixed--chromatic-aberration | Chromatic Aberration | Tech startups, AI platforms, creative technology        | Futuristic, glitch, cyber         |
-| mixed--bauhaus-blocks       | Bauhaus Color Block  | Creative studios, design portfolios, branding agencies  | Bold, modernist, geometric        |
-| mixed--spectral-grid        | Spectral Grid        | Creative tech, innovation showcases, design conferences | Vibrant, innovative, experimental |
+| Directory                   | Style Name           | Primary hex (bg / fg / accent) | Best For                                                | Mood                              |
+| --------------------------- | -------------------- | ------------------------------ | ------------------------------------------------------- | --------------------------------- |
+| mixed--duotone-split        | Duotone Split        | `#FFFFFF / #2D3436 / #E17055`  | Brand launches, architectural design, premium showcases | Bold, architectural, minimal      |
+| mixed--chromatic-aberration | Chromatic Aberration | `#050814 / #0A1030 / #00F5E4`  | Tech startups, AI platforms, creative technology        | Futuristic, glitch, cyber         |
+| mixed--bauhaus-blocks       | Bauhaus Color Block  | `#F0EBE0 / #1D5C38 / #F4C040`  | Creative studios, design portfolios, branding agencies  | Bold, modernist, geometric        |
+| mixed--spectral-grid        | Spectral Grid        | `-`                            | Creative tech, innovation showcases, design conferences | Vibrant, innovative, experimental |
 
 ---
 
