@@ -24,6 +24,26 @@ public partial class WordHandler
 
         var author = properties.GetValueOrDefault("author", "officecli");
         var initials = properties.GetValueOrDefault("initials", author[..1]);
+
+        // Pre-validate user-supplied strings for invalid XML 1.0 chars
+        // (U+0001..U+001F minus tab/LF/CR). Without this, a C0 control char
+        // in author/initials/text would let us append the comment to the
+        // comments part, then explode at Save() — producing an orphaned
+        // comment with no anchor in the body (torn write).
+        static void RejectIllegalXmlChars(string field, string value)
+        {
+            for (int i = 0; i < value.Length; i++)
+            {
+                char c = value[i];
+                if (c == '\t' || c == '\n' || c == '\r') continue;
+                if (c < 0x20)
+                    throw new ArgumentException(
+                        $"'{field}' contains an illegal XML 1.0 control character (U+{(int)c:X04}); allowed C0 chars are tab/LF/CR only.");
+            }
+        }
+        RejectIllegalXmlChars("text", commentText);
+        RejectIllegalXmlChars("author", author);
+        RejectIllegalXmlChars("initials", initials);
         var commentsPart = _doc.MainDocumentPart!.WordprocessingCommentsPart
             ?? _doc.MainDocumentPart.AddNewPart<WordprocessingCommentsPart>();
         commentsPart.Comments ??= new Comments();
