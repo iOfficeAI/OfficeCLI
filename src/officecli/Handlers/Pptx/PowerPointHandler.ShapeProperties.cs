@@ -1107,10 +1107,20 @@ public partial class PowerPointHandler
                             break;
                         }
                         handledByRun = true;
+                        // CONSISTENCY(lang-clear): empty lang/altLang clears the
+                        // attribute entirely (mirrors Word lang.latin="" semantics).
+                        // Writing lang="" produces invalid OOXML — Office and
+                        // BCP-47 require either a non-empty tag or no attribute.
+                        bool clearAttr = (key.Equals("lang", StringComparison.OrdinalIgnoreCase)
+                                          || key.Equals("altLang", StringComparison.OrdinalIgnoreCase))
+                                         && string.IsNullOrEmpty(value);
                         foreach (var run in runs)
                         {
                             var rPr = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
-                            rPr.SetAttribute(new OpenXmlAttribute("", key, "", value));
+                            if (clearAttr)
+                                rPr.RemoveAttribute(key, "");
+                            else
+                                rPr.SetAttribute(new OpenXmlAttribute("", key, "", value));
                         }
                     }
                     if (handledByRun) break;
