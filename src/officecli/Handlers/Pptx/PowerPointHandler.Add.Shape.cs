@@ -155,7 +155,10 @@ public partial class PowerPointHandler
                     foreach (var para in newShape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
-                        pProps.RightToLeft = rtl;
+                        // Clear semantics: direction=ltr strips the rtl attribute
+                        // rather than writing rtl="0" on every fresh paragraph.
+                        if (rtl) pProps.RightToLeft = true;
+                        else pProps.RightToLeft = null;
                     }
                     var dirBodyPr = newShape.TextBody?.Elements<Drawing.BodyProperties>().FirstOrDefault();
                     // For ltr (schema default), strip the attribute rather

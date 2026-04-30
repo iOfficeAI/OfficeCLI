@@ -108,7 +108,9 @@ public partial class PowerPointHandler
         foreach (var para in notesShape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
         {
             var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
-            pProps.RightToLeft = rtl;
+            // Clear semantics: direction=ltr strips the rtl attribute.
+            if (rtl) pProps.RightToLeft = true;
+            else pProps.RightToLeft = null;
         }
         var bodyPr = notesShape.TextBody?.Elements<Drawing.BodyProperties>().FirstOrDefault();
         if (bodyPr != null)

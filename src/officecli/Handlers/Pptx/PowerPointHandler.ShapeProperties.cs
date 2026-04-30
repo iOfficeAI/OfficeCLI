@@ -466,7 +466,14 @@ public partial class PowerPointHandler
                     foreach (var para in shape.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
-                        pProps.RightToLeft = rtl;
+                        // Clear semantics: direction=ltr removes the rtl attribute
+                        // entirely rather than writing rtl="0" (the schema default
+                        // is ltr; an explicit "0" pollutes every freshly-added
+                        // paragraph). Mirror Word direction=ltr clear behavior.
+                        if (rtl)
+                            pProps.RightToLeft = true;
+                        else
+                            pProps.RightToLeft = null;
                     }
                     var dirBodyPr = shape.TextBody?.Elements<Drawing.BodyProperties>().FirstOrDefault();
                     // OpenXml SDK doesn't expose rtlCol as a typed property on
@@ -1425,7 +1432,9 @@ public partial class PowerPointHandler
                     foreach (var para in cell.TextBody?.Elements<Drawing.Paragraph>() ?? Enumerable.Empty<Drawing.Paragraph>())
                     {
                         var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
-                        pProps.RightToLeft = rtl;
+                        // Clear semantics: direction=ltr strips the attribute.
+                        if (rtl) pProps.RightToLeft = true;
+                        else pProps.RightToLeft = null;
                     }
                     break;
                 }
