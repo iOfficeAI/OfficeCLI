@@ -992,6 +992,12 @@ public partial class WordHandler
                 var anchorPath = FindCommentAnchorPath(comment.Id.Value);
                 if (anchorPath != null) node.Format["anchoredTo"] = anchorPath;
             }
+            // R21-WB-1: surface direction from the first content paragraph's
+            // pPr.BiDi so the cascade (already applied by ApplyCommentFormatKeys)
+            // round-trips through Get. Mirrors footnote/endnote readback above.
+            var cmtBidi = comment.Descendants<Paragraph>().FirstOrDefault()?.ParagraphProperties?.GetFirstChild<BiDi>();
+            if (cmtBidi != null)
+                node.Format["direction"] = TryReadOnOff(cmtBidi.Val) == true ? "rtl" : "ltr";
             return node;
         }
 

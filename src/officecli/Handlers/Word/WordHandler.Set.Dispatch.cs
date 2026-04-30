@@ -551,6 +551,22 @@ public partial class WordHandler
         {
             var lk = key.ToLowerInvariant();
             if (lk == "text" || lk == "author" || lk == "initials" || lk == "date") continue;
+            // R21-WB-1c: direction is the canonical key for comment paragraph
+            // bidi. Use explicit-override semantics so direction=ltr leaves a
+            // readable <w:bidi w:val="0"/> marker (mirrors legacy rtl=false
+            // pattern in ApplyRunFormatting); otherwise Get readback after an
+            // explicit ltr Set would surface no key at all.
+            if (lk == "direction" || lk == "dir" || lk == "bidi")
+            {
+                pProps.RemoveAllChildren<BiDi>();
+                bool dirRtl = ParseDirectionRtl(value);
+                pProps.BiDi = dirRtl
+                    ? new BiDi()
+                    : new BiDi { Val = DocumentFormat.OpenXml.OnOffValue.FromBoolean(false) };
+                if (dirRtl) ApplyRunFormatting(markRPr, "rtl", "true");
+                else markRPr.RemoveAllChildren<RightToLeftText>();
+                continue;
+            }
             if (ApplyParagraphLevelProperty(pProps, key, value)) continue;
             bool runApplied = false;
             foreach (var run in contentRuns)
