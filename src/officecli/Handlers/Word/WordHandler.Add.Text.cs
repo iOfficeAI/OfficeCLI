@@ -478,6 +478,7 @@ public partial class WordHandler
             "keepnext", "keepwithnext", "keeplines", "keeptogether",
             "pagebreakbefore", "break",
             "numid", "numId", "ilvl", "numlevel", "numLevel",
+            "liststyle", "listStyle", "start", "level", "listLevel", "listlevel",
             "outlinelevel", "outlineLevel",
             "tabs", "tabstops",
             "border", "borders", "shd", "shading",
