@@ -28,28 +28,28 @@
       "type": "length",
       "add": true, "set": true, "get": true,
       "examples": ["--prop x=2cm"],
-      "readback": "EMU / unit-qualified",
+      "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
     },
     "y": {
       "type": "length",
       "add": true, "set": true, "get": true,
       "examples": ["--prop y=2cm"],
-      "readback": "EMU / unit-qualified",
+      "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
     },
     "width": {
       "type": "length",
       "add": true, "set": true, "get": true,
       "examples": ["--prop width=8cm"],
-      "readback": "EMU / unit-qualified",
+      "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
     },
     "height": {
       "type": "length",
       "add": true, "set": true, "get": true,
       "examples": ["--prop height=4.5cm"],
-      "readback": "EMU / unit-qualified",
+      "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
     },
     "name": {

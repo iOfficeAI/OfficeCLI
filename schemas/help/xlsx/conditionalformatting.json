@@ -36,7 +36,7 @@
     },
     "fill": {
       "type": "color",
-      "description": "fill (background) color for matched cells.",
+      "description": "background fill color for matched cells. Use this for cellIs, text, top/bottom, and formula rules.",
       "add": true, "set": true, "get": true,
       "examples": ["--prop fill=FFFF00"],
       "readback": "#-prefixed hex",
@@ -61,7 +61,7 @@
     },
     "color": {
       "type": "color",
-      "description": "highlight color (cellIs / text rules).",
+      "description": "bar color for dataBar rules only. For cellIs/text/formula rules, use 'fill' instead.",
       "add": true, "set": true, "get": true,
       "examples": ["--prop color=#FFFF00"],
       "readback": "#-prefixed hex",

@@ -25,30 +25,34 @@
     },
     "x": {
       "type": "length",
+      "description": "anchor column index (0-based, e.g. x=2 means column C).",
       "add": true, "set": true, "get": true,
       "examples": ["--prop x=0"],
-      "readback": "anchor col / EMU",
+      "readback": "anchor column index (0-based integer)",
       "enforcement": "report"
     },
     "y": {
       "type": "length",
+      "description": "anchor row index (0-based, e.g. y=4 means row 5).",
       "add": true, "set": true, "get": true,
       "examples": ["--prop y=0"],
-      "readback": "anchor row / EMU",
+      "readback": "anchor row index (0-based integer)",
       "enforcement": "report"
     },
     "width": {
       "type": "length",
+      "description": "column span — number of columns the picture spans.",
       "add": true, "set": true, "get": true,
       "examples": ["--prop width=5"],
-      "readback": "cell span / EMU",
+      "readback": "column span (integer)",
       "enforcement": "report"
     },
     "height": {
       "type": "length",
+      "description": "row span — number of rows the picture spans.",
       "add": true, "set": true, "get": true,
       "examples": ["--prop height=5"],
-      "readback": "cell span / EMU",
+      "readback": "row span (integer)",
       "enforcement": "report"
     },
     "alt": {

@@ -45,14 +45,14 @@
       "type": "length",
       "add": true, "set": true, "get": true,
       "examples": ["--prop width=3in"],
-      "readback": "EMU / unit-qualified",
+      "readback": "unit-qualified length from inline style (e.g. \"5cm\")",
       "enforcement": "report"
     },
     "height": {
       "type": "length",
       "add": true, "set": true, "get": true,
       "examples": ["--prop height=2in"],
-      "readback": "EMU / unit-qualified",
+      "readback": "unit-qualified length from inline style (e.g. \"5cm\")",
       "enforcement": "report"
     }
   }
