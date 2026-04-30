@@ -670,14 +670,17 @@ public partial class WordHandler
             if (pPr != null)
             {
                 if (pPr.Justification?.Val?.Value != null) styleNode.Format["alignment"] = pPr.Justification.Val.InnerText;
-                // direction: <w:bidi/> on style pPr maps to canonical
-                // direction=rtl. Mirrors paragraph readback canonical key.
-                // Also expose under schema-canonical `bidi` (CONSISTENCY:
-                // schema-contract — schemas/help/docx/style.json `bidi`).
+                // direction: <w:bidi/> on style pPr maps to direction=rtl,
+                // <w:bidi w:val="false"/> to direction=ltr (explicit cancel of
+                // an inherited basedOn bidi). R20-bt-1: previously any non-null
+                // BiDi was reported as rtl, which broke the basedOn-cancel
+                // pattern. Also expose under schema-canonical `bidi`
+                // (CONSISTENCY: schemas/help/docx/style.json `bidi`).
                 if (pPr.BiDi != null)
                 {
-                    styleNode.Format["direction"] = "rtl";
-                    styleNode.Format["bidi"] = true;
+                    var on = TryReadOnOff(pPr.BiDi.Val);
+                    styleNode.Format["direction"] = on == true ? "rtl" : "ltr";
+                    styleNode.Format["bidi"] = on == true;
                 }
                 if (pPr.SpacingBetweenLines != null)
                 {
