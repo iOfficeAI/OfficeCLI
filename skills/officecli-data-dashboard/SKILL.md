@@ -93,7 +93,7 @@ All `officecli-xlsx` requirements apply (→ see officecli-xlsx §Requirements f
 - **10+ rows on Data sheet → ≥ 1 CF rule on a numeric column.** A 20-row table with zero visual scanning aid is a quality miss.
 - **Dashboard value columns sized to the widest expected cachedValue — not a fixed 22.** Rule of thumb at 24pt bold + currency numFmt: `width ≈ ceil((visible_chars + 2) × 1.3)`. A KPI holding `¥1,958,414,250` (14 visible chars with currency + commas) needs `width ≥ 28`; a 4-digit KPI still needs `width ≥ 22` as the floor. Hardcoding `22` for a 10+ digit KPI is how `###` ships to the user.
 - **Sparkline row height ≥ 20.** A sparkline in a default 15pt row is a flat squiggle — set `/Dashboard/row[N] height=22` (or 24 when paired with a 24pt KPI value cell in the same row).
-- **Print / PDF deliverables set `_xlnm.Print_Area` scoped to Dashboard** + hide non-Dashboard sheets + add `<pageSetup fitToPage/>`. Without all three, exported PDF emits every sheet and Dashboard lands on page 2+. See §Print-ready delivery for the exact commands.
+- **Print deliverables set `_xlnm.Print_Area` scoped to Dashboard** + hide non-Dashboard sheets + add `<pageSetup fitToPage/>`. Without all three, the print pipeline emits every sheet and Dashboard lands on page 2+. See §Print-ready delivery for the exact commands.
 
 ## Quick Start
 
@@ -228,13 +228,13 @@ A card is a label cell + a value cell. The label is small gray (font.size=9, fon
 
 ### Chart width budget by title length
 
-At the `dashboard` preset's default title font, the chart plot-box width (in column units) must stay ahead of the title string, or the title clips mid-word. Rule of thumb: `chart.width ≥ ceil(title.length × 0.18)`. A 35-character title ("Department: Year-End Headcount vs Attrition Rate") needs `width ≥ 7`; be safer and use 10–12. If the anchor cannot be widened, shorten the title to ≤ 25 characters — clipped titles in a board-ready PDF are indefensible.
+At the `dashboard` preset's default title font, the chart plot-box width (in column units) must stay ahead of the title string, or the title clips mid-word. Rule of thumb: `chart.width ≥ ceil(title.length × 0.18)`. A 35-character title ("Department: Year-End Headcount vs Attrition Rate") needs `width ≥ 7`; be safer and use 10–12. If the anchor cannot be widened, shorten the title to ≤ 25 characters — clipped titles in a board-ready deliverable are indefensible.
 
 `officecli get chart[N]` does not expose numeric `width` on 1.0.63 — it returns `.data.format.anchor` (e.g. `"A6:K21"`). Derive column span from letters (A→K = 10 cols) for Gate 2.
 
-### Print-ready delivery (board-pack / investor-send / one-pager PDF)
+### Print-ready delivery (board-pack / investor-send / one-pager)
 
-Triggers: ask contains "print" / "PDF" / "一页" / "董事会" / "投资人". Four artefacts on the Dashboard sheet; non-Dashboard sheets hidden so the PDF converter emits one page only.
+Triggers: ask contains "print" / "一页" / "董事会" / "投资人". Four artefacts on the Dashboard sheet; non-Dashboard sheets hidden so the print pipeline emits one page only.
 
 ```bash
 # 1. Print_Area scoped to Dashboard (xlnm convention).
@@ -249,7 +249,7 @@ for S in Sheet1 Summary; do
 done
 ```
 
-Delete any `Print_Area` set on Data / Summary sheets — conflicting scopes emit multi-page PDFs.
+Delete any `Print_Area` set on Data / Summary sheets — conflicting scopes emit multi-page output.
 
 ## QA (REQUIRED — Delivery Gate)
 
@@ -364,7 +364,7 @@ if echo "$USER_REQ" | grep -qiE 'print|一页|投资人|董事会|board'; then
 fi
 ```
 
-The user opens the file in their target viewer (Office / WPS / Numbers) for the final print preview — the skill does not render PDFs.
+The user opens the file in their target viewer (Office / WPS / Numbers) for the final print preview — the skill does not render export artefacts.
 
 **Gate 8 — Formula sanity (cachedValue real, not stale/error).** `fullCalcOnLoad=true` refreshes at runtime, NOT build-time cache — so every formula cell must carry a non-empty, non-zero, non-error `cachedValue` now.
 

@@ -88,9 +88,9 @@ INPUTS=$(officecli query "$FILE" '/Assumptions/cell[type=Number]' --json | jq '[
 [ "$INPUTS" -ge 5 ] && echo "Assumptions has $INPUTS hardcoded drivers" || echo "WARN: Assumptions has only $INPUTS inputs"
 ```
 
-## Print / PDF delivery (board / IC / LP)
+## Print delivery (board / IC / LP)
 
-When the ask contains "print" / "PDF" / "一页" / "董事会" / "投资人" / "IC memo" / "LP update", the PDF converter must emit **only** the Outputs zone. Two artefacts:
+When the ask contains "print" / "一页" / "董事会" / "投资人" / "IC memo" / "LP update", the print pipeline must emit **only** the Outputs zone. Two artefacts:
 
 ```bash
 # 1. Print_Area scoped to the Outputs sheet (Summary or Dashboard).
@@ -103,7 +103,7 @@ done
 officecli raw-set "$FILE" /Summary --xpath "//x:worksheet" --action prepend --xml '<sheetPr xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><pageSetUpPr fitToPage="1"/></sheetPr>'
 ```
 
-Delete any `Print_Area` set on Calc sheets — conflicting scopes emit multi-page PDFs with Assumptions / statement sheets leaking.
+Delete any `Print_Area` set on Calc sheets — conflicting scopes emit multi-page output with Assumptions / statement sheets leaking.
 
 ## Build-order & cache-drift rule (critical for 3-statement)
 
