@@ -10,6 +10,9 @@
     "sqref": { "type":"string", "aliases":["range","ref"], "add":true, "get":true, "description":"target cell range", "examples":["--prop sqref=A1:A10"], "enforcement":"report" },
     "iconset": { "type":"enum", "values":["3arrows","3arrowsGray","3flags","3trafficLights1","3trafficLights2","3signs","3symbols","3symbols2","4arrows","4arrowsGray","4rating","4redToBlack","4trafficLights","5arrows","5arrowsGray","5rating","5quarters"], "aliases":["icons"], "add":true, "get":true, "description":"icon set name", "readback":"icon set token", "examples":["--prop iconset=3arrows"], "enforcement":"report" },
     "reverse": { "type":"bool", "add":true, "get":false, "description":"reverse icon order", "examples":["--prop reverse=true"], "enforcement":"report" },
-    "showValue": { "type":"bool", "add":true, "get":false, "description":"show cell value alongside icon (default true)", "examples":["--prop showValue=false"], "enforcement":"report" }
+    "showValue": { "type":"bool", "add":true, "get":false, "description":"show cell value alongside icon (default true)", "examples":["--prop showValue=false"], "enforcement":"report" },
+    "ruleType": { "type":"string", "add":false, "set":false, "get":true, "description":"raw OOXML rule type string (e.g. \"dataBar\"). Emitted on every CF rule.", "readback":"OOXML rule type token", "enforcement":"report" },
+    "cfType": { "type":"string", "add":false, "set":false, "get":true, "description":"normalized CF type string. Emitted on every CF rule.", "readback":"normalized CF type token", "enforcement":"report" },
+    "dxfId": { "type":"number", "add":false, "set":false, "get":true, "description":"differential format id referencing dxf styles. Emitted only when present on the rule.", "readback":"integer", "enforcement":"report" }
   }
 }

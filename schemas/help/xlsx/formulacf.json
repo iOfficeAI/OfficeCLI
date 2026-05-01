@@ -17,6 +17,9 @@
     "font.strike": { "type":"bool", "add":true, "get":false, "description":"strikethrough via dxf.", "examples":["--prop font.strike=true"], "enforcement":"report" },
     "font.size": { "type":"font-size", "add":true, "get":false, "description":"font size via dxf.", "examples":["--prop font.size=12pt"], "enforcement":"report" },
     "font.name": { "type":"string", "add":true, "get":false, "description":"font family via dxf.", "examples":["--prop font.name=Arial"], "enforcement":"report" },
-    "stopIfTrue": { "type":"bool", "add":true, "get":false, "description":"stop evaluating subsequent CF rules when this rule applies.", "examples":["--prop stopIfTrue=true"], "enforcement":"report" }
+    "stopIfTrue": { "type":"bool", "add":true, "get":false, "description":"stop evaluating subsequent CF rules when this rule applies.", "examples":["--prop stopIfTrue=true"], "enforcement":"report" },
+    "ruleType": { "type":"string", "add":false, "set":false, "get":true, "description":"raw OOXML rule type string (e.g. \"dataBar\"). Emitted on every CF rule.", "readback":"OOXML rule type token", "enforcement":"report" },
+    "cfType": { "type":"string", "add":false, "set":false, "get":true, "description":"normalized CF type string. Emitted on every CF rule.", "readback":"normalized CF type token", "enforcement":"report" },
+    "dxfId": { "type":"number", "add":false, "set":false, "get":true, "description":"differential format id referencing dxf styles. Emitted only when present on the rule.", "readback":"integer", "enforcement":"report" }
   }
 }

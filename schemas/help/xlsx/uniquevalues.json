@@ -11,6 +11,9 @@
     "fill": { "type":"color", "add":true, "get":false, "description":"background fill via dxf.", "examples":["--prop fill=FFFF00"], "enforcement":"report" },
     "font.color": { "type":"color", "add":true, "get":false, "description":"font color via dxf.", "examples":["--prop font.color=FF0000"], "enforcement":"report" },
     "font.bold": { "type":"bool", "add":true, "get":false, "description":"bold via dxf.", "examples":["--prop font.bold=true"], "enforcement":"report" },
-    "stopIfTrue": { "type":"bool", "add":true, "get":false, "description":"stop evaluating subsequent CF rules when this rule applies.", "examples":["--prop stopIfTrue=true"], "enforcement":"report" }
+    "stopIfTrue": { "type":"bool", "add":true, "get":false, "description":"stop evaluating subsequent CF rules when this rule applies.", "examples":["--prop stopIfTrue=true"], "enforcement":"report" },
+    "ruleType": { "type":"string", "add":false, "set":false, "get":true, "description":"raw OOXML rule type string (e.g. \"dataBar\"). Emitted on every CF rule.", "readback":"OOXML rule type token", "enforcement":"report" },
+    "cfType": { "type":"string", "add":false, "set":false, "get":true, "description":"normalized CF type string. Emitted on every CF rule.", "readback":"normalized CF type token", "enforcement":"report" },
+    "dxfId": { "type":"number", "add":false, "set":false, "get":true, "description":"differential format id referencing dxf styles. Emitted only when present on the rule.", "readback":"integer", "enforcement":"report" }
   }
 }

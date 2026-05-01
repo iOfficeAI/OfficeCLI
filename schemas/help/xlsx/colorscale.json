@@ -12,6 +12,9 @@
     "maxcolor": { "type":"color", "aliases":["maxColor"], "add":true, "get":true, "description":"high-end color (default 63BE7B).", "examples":["--prop maxcolor=63BE7B"], "readback":"#-prefixed uppercase hex (key: maxColor)", "enforcement":"report" },
     "midcolor": { "type":"color", "aliases":["midColor"], "add":true, "get":true, "description":"midpoint color (omit for 2-stop scale).", "examples":["--prop midcolor=FFEB84"], "readback":"#-prefixed uppercase hex (key: midColor)", "enforcement":"report" },
     "midpoint": { "type":"number", "aliases":["midPoint"], "add":true, "get":false, "description":"midpoint percentile (default 50). Only meaningful when midcolor is set.", "examples":["--prop midpoint=50"], "enforcement":"report" },
-    "stopIfTrue": { "type":"bool", "add":true, "get":false, "description":"stop evaluating subsequent CF rules when this rule applies.", "examples":["--prop stopIfTrue=true"], "enforcement":"report" }
+    "stopIfTrue": { "type":"bool", "add":true, "get":false, "description":"stop evaluating subsequent CF rules when this rule applies.", "examples":["--prop stopIfTrue=true"], "enforcement":"report" },
+    "ruleType": { "type":"string", "add":false, "set":false, "get":true, "description":"raw OOXML rule type string (e.g. \"dataBar\"). Emitted on every CF rule.", "readback":"OOXML rule type token", "enforcement":"report" },
+    "cfType": { "type":"string", "add":false, "set":false, "get":true, "description":"normalized CF type string. Emitted on every CF rule.", "readback":"normalized CF type token", "enforcement":"report" },
+    "dxfId": { "type":"number", "add":false, "set":false, "get":true, "description":"differential format id referencing dxf styles. Emitted only when present on the rule.", "readback":"integer", "enforcement":"report" }
   }
 }

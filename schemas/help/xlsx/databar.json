@@ -18,6 +18,9 @@
     "minLength": { "type":"number", "add":true, "get":true, "description":"minimum bar length (% of cell, default 0).", "examples":["--prop minLength=10"], "readback":"integer percentage", "enforcement":"report" },
     "maxLength": { "type":"number", "add":true, "get":true, "description":"maximum bar length (% of cell, default 100).", "examples":["--prop maxLength=90"], "readback":"integer percentage", "enforcement":"report" },
     "direction": { "type":"enum", "values":["leftToRight","rightToLeft","context","ltr","rtl"], "add":true, "get":true, "description":"bar direction (x14 extension).", "examples":["--prop direction=leftToRight"], "readback":"OOXML direction token", "enforcement":"report" },
-    "stopIfTrue": { "type":"bool", "add":true, "get":false, "description":"stop evaluating subsequent CF rules when this rule applies.", "examples":["--prop stopIfTrue=true"], "enforcement":"report" }
+    "stopIfTrue": { "type":"bool", "add":true, "get":false, "description":"stop evaluating subsequent CF rules when this rule applies.", "examples":["--prop stopIfTrue=true"], "enforcement":"report" },
+    "ruleType": { "type":"string", "add":false, "set":false, "get":true, "description":"raw OOXML rule type string (e.g. \"dataBar\"). Emitted on every CF rule.", "readback":"OOXML rule type token", "enforcement":"report" },
+    "cfType": { "type":"string", "add":false, "set":false, "get":true, "description":"normalized CF type string. Emitted on every CF rule.", "readback":"normalized CF type token", "enforcement":"report" },
+    "dxfId": { "type":"number", "add":false, "set":false, "get":true, "description":"differential format id referencing dxf styles. Emitted only when present on the rule.", "readback":"integer", "enforcement":"report" }
   }
 }
