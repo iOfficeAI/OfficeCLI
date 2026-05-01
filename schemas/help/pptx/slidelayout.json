@@ -14,7 +14,7 @@
   "paths": {
     "positional": ["/slidemaster[N]/slidelayout[M]", "/slidelayout[M]"]
   },
-  "note": "Slide layout definition. Referenced by slides via the 'layout' property. Read-only here; mutate by editing the template file.",
+  "note": "Slide layout definition. Referenced by slides via the 'layout' property. Read-only here; mutate by editing the template file. Access via path /slidelayout[N]; 'help pptx slidelayout' is the canonical lookup — 'layout' is not accepted as an element alias.",
   "properties": {
     "name": {
       "type": "string",

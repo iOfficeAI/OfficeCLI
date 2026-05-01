@@ -13,7 +13,7 @@
   "paths": {
     "positional": ["/SheetName/pivottable[N]"]
   },
-  "note": "Aliases: pivot. 'source' required (e.g. Sheet1!A1:D100). External workbook refs rejected. Position auto-placed after source if omitted. Field axes (rows/cols/filters/values) take comma-separated field names; values use 'Field:agg' tuples.",
+  "note": "Aliases: pivot. 'source' required (e.g. Sheet1!A1:D100). External workbook refs rejected. Position auto-placed after source if omitted. Field axes (rows/cols/filters/values) take comma-separated field names; values use 'Field:agg' tuples. Query returns child nodes typed pivotfield/pivotrow/pivotcolumn/pivotdata — these are read-only structural nodes, not independently addressable elements; no Add/Set/Remove is supported on them.",
   "properties": {
     "source": {
       "type": "string",

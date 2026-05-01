@@ -65,6 +65,13 @@
       "examples": ["--prop direction=in"],
       "readback": "packed into the 'animation' key value as 'effectName-class-direction-duration' (e.g. 'fly-entrance-left-500'); no standalone 'direction' key is emitted on Get",
       "enforcement": "report"
+    },
+    "presetId": {
+      "type": "number",
+      "add": false, "set": false, "get": true,
+      "description": "raw OOXML preset id for the animation effect. Emitted when the effect has a recognized preset.",
+      "readback": "integer",
+      "enforcement": "report"
     }
   }
 }

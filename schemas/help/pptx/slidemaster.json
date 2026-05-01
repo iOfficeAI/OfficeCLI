@@ -14,7 +14,7 @@
   "paths": {
     "positional": ["/slidemaster[N]"]
   },
-  "note": "Slide master definition. Children: slideLayout references. Currently read-only — masters are created by templates, not user Add.",
+  "note": "Slide master definition. Children: slideLayout references. Currently read-only — masters are created by templates, not user Add. Access via path /slidemaster[N]; 'help pptx slidemaster' is the canonical lookup — 'master' is not accepted as an element alias.",
   "properties": {
     "name": {
       "type": "string",
