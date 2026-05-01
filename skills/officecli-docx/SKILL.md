@@ -272,6 +272,8 @@ Verified: canonical form passes `validate` and renders `«customer_name»` on op
 
 **MERGEFIELD templates: do NOT render placeholder literals.** If a template shows `{{customer_name}}` or `$NAME$` as body text, a human recipient sees the literal token — that is a failed template. Either (a) insert a real MERGEFIELD via the `field` type above, which Word replaces at mail-merge time, or (b) put literal tokens only inside an obvious instruction paragraph ("Replace `{{customer_name}}` before sending"). See Requirements for Outputs → Visual delivery floor.
 
+**Forms / fillable documents.** For interactive or fillable forms (SDT content controls, legacy FormField checkbox/text/dropdown, `protection=forms`, role-gated locks, MERGEFIELD-driven contracts and SOWs), use the dedicated `officecli-word-form` skill — it covers Path A/B/C, raw-set bridges for SDT items, and per-field lock inventory.
+
 ### Headers & Footers (page numbering)
 
 The single-command pattern — the CLI injects `<w:fldChar>` so you do not compose the field by hand:
