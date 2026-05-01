@@ -1368,7 +1368,7 @@ public partial class WordHandler
                     var ns = style.NextParagraphStyle ?? style.AppendChild(new NextParagraphStyle());
                     ns.Val = value;
                     break;
-                case "align":
+                case "align" or "alignment":
                     var pPr = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
                     pPr.Justification = new Justification { Val = ParseJustification(value) };
                     break;

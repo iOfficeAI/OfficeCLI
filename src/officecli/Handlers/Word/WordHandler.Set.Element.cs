@@ -215,7 +215,7 @@ public partial class WordHandler
             switch (key.ToLowerInvariant())
             {
                 // === run-special-content writes ===
-                case "align" when ptabEl != null:
+                case "align" or "alignment" when ptabEl != null:
                     ptabEl.Alignment = ParsePtabAlignment(value);
                     break;
                 case "relativeto" when ptabEl != null:
@@ -1206,7 +1206,7 @@ public partial class WordHandler
                         tcPr.Shading = shd;
                     }
                     break;
-                case "align":
+                case "align" or "alignment":
                     var alignVal = ParseJustification(value);
                     // Apply alignment to ALL paragraphs in the cell, not just the first
                     foreach (var cellAlignPara in cell.Elements<Paragraph>())
@@ -1482,7 +1482,7 @@ public partial class WordHandler
                     var tblStyle = tblPr.TableStyle ?? (tblPr.TableStyle = new TableStyle());
                     tblStyle.Val = value;
                     break;
-                case "align":
+                case "align" or "alignment":
                     tblPr.TableJustification = new TableJustification
                     {
                         Val = value.ToLowerInvariant() switch

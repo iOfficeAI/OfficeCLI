@@ -29,7 +29,7 @@ public partial class WordHandler
         else if (properties.TryGetValue("styleName", out var styleName)
             || properties.TryGetValue("stylename", out styleName))
             pProps.ParagraphStyleId = new ParagraphStyleId { Val = ResolveStyleIdFromName(styleName) ?? styleName };
-        if (properties.TryGetValue("align", out var alignment))
+        if (properties.TryGetValue("align", out var alignment) || properties.TryGetValue("alignment", out alignment))
             pProps.Justification = new Justification { Val = ParseJustification(alignment) };
         // Reading direction (Arabic / Hebrew). 'rtl' enables <w:bidi/> AND
         // writes <w:rtl/> on the paragraph mark (so any later runs added
@@ -500,7 +500,7 @@ public partial class WordHandler
         {
             "type", "text", "html", "anchor", "anchorId", "anchorid",
             "style", "styleid", "stylename",
-            "align", "direction", "dir", "bidi",
+            "align", "alignment", "direction", "dir", "bidi",
             "firstlineindent", "leftindent", "indentleft", "indent",
             "rightindent", "indentright", "hangingindent", "hanging",
             "spacebefore", "spaceafter", "linespacing", "lineSpacing",
@@ -1212,7 +1212,7 @@ public partial class WordHandler
         if (parent is not Paragraph para)
             throw new ArgumentException("ptab parent must be a paragraph (got " + parent.GetType().Name + ").");
 
-        if (!properties.TryGetValue("align", out var alignment) || string.IsNullOrWhiteSpace(alignment))
+        if (!(properties.TryGetValue("align", out var alignment) || properties.TryGetValue("alignment", out alignment)) || string.IsNullOrWhiteSpace(alignment))
             throw new ArgumentException("ptab requires 'alignment' property (left, center, or right).");
 
         var ptab = new PositionalTab { Alignment = ParsePtabAlignment(alignment) };

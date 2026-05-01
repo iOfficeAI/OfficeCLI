@@ -469,7 +469,7 @@ public partial class WordHandler
         // Style paragraph properties
         var stylePPr = new StyleParagraphProperties();
         bool hasPPr = false;
-        if (properties.TryGetValue("align", out var sAlign))
+        if (properties.TryGetValue("align", out var sAlign) || properties.TryGetValue("alignment", out sAlign))
         {
             stylePPr.Justification = new Justification { Val = ParseJustification(sAlign) };
             hasPPr = true;
@@ -658,7 +658,7 @@ public partial class WordHandler
             "id", "styleId", "styleid",
             "name", "styleName", "stylename",
             "type", "basedon", "basedOn", "next",
-            "align", "spacebefore", "spaceBefore",
+            "align", "alignment", "spacebefore", "spaceBefore",
             "spaceafter", "spaceAfter", "font", "size", "bold", "italic", "color",
             "direction", "dir", "bidi",
             "font.ascii", "font.hAnsi", "font.eastAsia", "font.cs",
@@ -1304,7 +1304,7 @@ public partial class WordHandler
         AssignParaId(hPara);
         var hPProps = new ParagraphProperties();
 
-        if (properties.TryGetValue("align", out var hAlign))
+        if (properties.TryGetValue("align", out var hAlign) || properties.TryGetValue("alignment", out hAlign))
             hPProps.Justification = new Justification { Val = ParseJustification(hAlign) };
         // Reading direction (Arabic / Hebrew). Parsed here, applied at the
         // end of paragraph build via ApplyDirectionCascade (cascades to all
@@ -1467,7 +1467,7 @@ public partial class WordHandler
         AssignParaId(fPara);
         var fPProps = new ParagraphProperties();
 
-        if (properties.TryGetValue("align", out var fAlign))
+        if (properties.TryGetValue("align", out var fAlign) || properties.TryGetValue("alignment", out fAlign))
             fPProps.Justification = new Justification { Val = ParseJustification(fAlign) };
         // Reading direction (Arabic / Hebrew) — mirrors AddHeader. Applied
         // at end of paragraph build via ApplyDirectionCascade.

@@ -672,7 +672,7 @@ public partial class WordHandler
             // Create a new paragraph containing the field
             var fNewPara = new Paragraph();
             var fPProps = new ParagraphProperties();
-            if (properties.TryGetValue("align", out var fAlign))
+            if (properties.TryGetValue("align", out var fAlign) || properties.TryGetValue("alignment", out fAlign))
                 fPProps.Justification = new Justification { Val = ParseJustification(fAlign) };
             fNewPara.AppendChild(fPProps);
             fNewPara.AppendChild(fieldRunBegin);

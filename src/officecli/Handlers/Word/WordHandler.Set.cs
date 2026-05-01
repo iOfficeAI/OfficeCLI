@@ -42,7 +42,7 @@ public partial class WordHandler
                 var k = key.ToLowerInvariant();
                 if (k is "find" or "replace" or "scope" or "regex") continue;
                 // Paragraph-level properties go to paraProps
-                if (k is "style" or "align" or "firstlineindent" or "leftindent" or "indentleft"
+                if (k is "style" or "align" or "alignment" or "firstlineindent" or "leftindent" or "indentleft"
                     or "indent" or "rightindent" or "indentright" or "hangingindent" or "spacebefore"
                     or "spaceafter" or "linespacing" or "keepnext" or "keeplines" or "pagebreakbefore"
                     or "widowcontrol" or "liststyle" or "start" or "text" or "formula"
@@ -573,7 +573,7 @@ public partial class WordHandler
                 var resolved = ResolveStyleIdFromName(value);
                 pProps.ParagraphStyleId = new ParagraphStyleId { Val = resolved ?? value };
                 return true;
-            case "align":
+            case "align" or "alignment":
                 pProps.Justification = new Justification { Val = ParseJustification(value) };
                 return true;
             case "firstlineindent":

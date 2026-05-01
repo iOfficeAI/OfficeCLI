@@ -184,7 +184,7 @@ public partial class WordHandler
                 "style" => GetStyleName(para),
                 "styleid" => para.ParagraphProperties?.ParagraphStyleId?.Val?.Value,
                 "stylename" => GetStyleName(para),
-                "align" => para.ParagraphProperties?.Justification?.Val != null
+                "align" or "alignment" => para.ParagraphProperties?.Justification?.Val != null
                     ? para.ParagraphProperties.Justification.Val.InnerText : null,
                 "firstlineindent" => para.ParagraphProperties?.Indentation?.FirstLine?.Value,
                 "numId" or "numid" => para.ParagraphProperties?.NumberingProperties?.NumberingId?.Val?.HasValue == true
@@ -318,7 +318,7 @@ public partial class WordHandler
                 "italic" => run.RunProperties?.Italic != null ? "true" : "false",
                 // CONSISTENCY(run-special-content): structural inline-element
                 // attributes mirror what Get exposes in node.Format.
-                "align" => run.GetFirstChild<PositionalTab>()?.Alignment?.HasValue == true
+                "align" or "alignment" => run.GetFirstChild<PositionalTab>()?.Alignment?.HasValue == true
                     ? run.GetFirstChild<PositionalTab>()!.Alignment!.InnerText : null,
                 "relativeto" => run.GetFirstChild<PositionalTab>()?.RelativeTo?.HasValue == true
                     ? run.GetFirstChild<PositionalTab>()!.RelativeTo!.InnerText : null,
