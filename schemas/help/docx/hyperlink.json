@@ -16,7 +16,10 @@
     ]
   },
   "note": "Aliases: link. Exactly one of 'url' (external) or 'anchor' (internal bookmark ref) is required. Colors default to theme Hyperlink (or 0563C1 fallback) with single underline.",
-  "extends": "_shared/hyperlink",
+  "extends": [
+    "_shared/hyperlink",
+    "_shared/hyperlink.docx-xlsx"
+  ],
   "properties": {
     "anchor": {
       "type": "string",

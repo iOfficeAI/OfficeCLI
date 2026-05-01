@@ -10,14 +10,13 @@
       ],
       "add": true,
       "set": true,
-      "get": true,
+      "get": false,
       "examples": [
         "--prop border.all=\"1pt solid FF0000\"",
         "--prop border=\"single;1pt;000000\"",
         "--prop border.all=none",
         "--prop border.all=\"single;4;FF0000\""
       ],
-      "readback": "WIDTH DASH COLOR (only when all four outer edges agree)",
       "enforcement": "report"
     },
     "border.bottom": {
@@ -30,7 +29,6 @@
         "--prop border.bottom=\"2pt solid 000000\"",
         "--prop border.bottom=\"double;6;0000FF\""
       ],
-      "readback": "n/a (read per-cell)",
       "enforcement": "report"
     },
     "border.horizontal": {
@@ -47,7 +45,6 @@
         "--prop border.horizontal=\"1pt solid CCCCCC\"",
         "--prop border.horizontal=\"single;4;CCCCCC\""
       ],
-      "readback": "not aggregated at table level — inspect per-cell border.top/bottom",
       "enforcement": "report"
     },
     "border.left": {
@@ -55,12 +52,11 @@
       "description": "outer left edge: applies to the left of column-1 cells in every row only. Format same as border.all. Cross-format note: docx only accepts the semicolon form 'STYLE;SIZE;COLOR' — pptx is more lenient.",
       "add": true,
       "set": true,
-      "get": true,
+      "get": false,
       "examples": [
         "--prop border.left=\"1pt solid 808080\"",
         "--prop border.left=\"single;4\""
       ],
-      "readback": "WIDTH DASH COLOR aggregated across column 1's left",
       "enforcement": "report"
     },
     "border.right": {
@@ -68,12 +64,11 @@
       "description": "outer right edge: applies to the right of last-column cells in every row only. Format same as border.all. Cross-format note: docx only accepts the semicolon form 'STYLE;SIZE;COLOR' — pptx is more lenient.",
       "add": true,
       "set": true,
-      "get": true,
+      "get": false,
       "examples": [
         "--prop border.right=\"1pt solid 808080\"",
         "--prop border.right=\"single;4\""
       ],
-      "readback": "WIDTH DASH COLOR aggregated across last column's right",
       "enforcement": "report"
     },
     "border.top": {
@@ -86,7 +81,6 @@
         "--prop border.top=\"2pt solid 000000\"",
         "--prop border.top=\"single;4;000000\""
       ],
-      "readback": "n/a (read per-cell)",
       "enforcement": "report"
     },
     "border.vertical": {
@@ -103,7 +97,6 @@
         "--prop border.vertical=\"1pt solid CCCCCC\"",
         "--prop border.vertical=\"single;4;CCCCCC\""
       ],
-      "readback": "not aggregated at table level — inspect per-cell border.left/right",
       "enforcement": "report"
     },
     "cols": {

@@ -17,10 +17,7 @@
     ]
   },
   "note": "Aliases: link. Attached to a shape (shape-wide link) or to a run (inline link). Exactly one of 'url' or 'slide' is required.",
-  "extends": [
-    "_shared/hyperlink",
-    "_shared/hyperlink.pptx-xlsx"
-  ],
+  "extends": "_shared/hyperlink",
   "properties": {
     "slide": {
       "type": "int",

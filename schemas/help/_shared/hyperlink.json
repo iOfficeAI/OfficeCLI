@@ -2,22 +2,5 @@
   "$schema": "../_schema.json",
   "element": "hyperlink",
   "shared_base": true,
-  "properties": {
-    "url": {
-      "type": "string",
-      "description": "absolute external URL. Parsed as Uri.TryCreate(UriKind.Absolute).",
-      "aliases": [
-        "href",
-        "link"
-      ],
-      "add": true,
-      "set": true,
-      "get": true,
-      "examples": [
-        "--prop url=https://example.com"
-      ],
-      "readback": "target URL for external links",
-      "enforcement": "report"
-    }
-  }
+  "properties": {}
 }
