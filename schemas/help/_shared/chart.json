@@ -3,6 +3,21 @@
   "element": "chart",
   "shared_base": true,
   "properties": {
+    "alpha": {
+      "type": "number",
+      "aliases": [
+        "transparency",
+        "opacity"
+      ],
+      "add": true,
+      "set": true,
+      "get": false,
+      "description": "series fill transparency (0..100, percent). 'transparency' is inverse of 'opacity'/'alpha' (transparency=30 ≡ opacity=70).",
+      "examples": [
+        "--prop transparency=30",
+        "--prop opacity=70"
+      ]
+    },
     "areafill": {
       "type": "string",
       "aliases": [
@@ -1318,21 +1333,6 @@
       "description": "waterfall: subtotal/total bar color. Add-time only.",
       "examples": [
         "--prop totalColor=4472C4"
-      ]
-    },
-    "transparency": {
-      "type": "number",
-      "aliases": [
-        "opacity",
-        "alpha"
-      ],
-      "add": true,
-      "set": true,
-      "get": false,
-      "description": "series fill transparency (0..100, percent). 'transparency' is inverse of 'opacity'/'alpha' (transparency=30 ≡ opacity=70).",
-      "examples": [
-        "--prop transparency=30",
-        "--prop opacity=70"
       ]
     },
     "trendline": {

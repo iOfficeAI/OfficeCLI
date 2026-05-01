@@ -12,37 +12,68 @@
     "remove": true
   },
   "paths": {
-    "stable":     ["/styles/StyleId"]
+    "stable": [
+      "/styles/StyleId"
+    ]
   },
   "note": "Style type defaults to paragraph. 'id' must be unique in styles.xml; duplicate id rejected if explicit, else auto-suffixed. Built-in ids (Normal, Heading1..9, Title, Subtitle, Quote, IntenseQuote, ListParagraph, NoSpacing, TOCHeading) bypass the customStyle=true flag. Path forms /style[@name=NAME] and /style[N] are NOT supported — only /styles/StyleId resolves; navigation does not handle a bare 'style' top-level segment.",
   "properties": {
     "id": {
       "type": "string",
       "description": "w:styleId (unique, immutable identity). Aliases fall through to 'name' when 'id' is omitted. Renaming after Add would require rewriting every paragraph/run/basedOn reference in the document; not supported.",
-      "aliases": ["styleId", "styleid"],
-      "add": true, "set": false, "get": true,
-      "examples": ["--prop id=MyAccent", "--prop styleId=MyAccent"],
+      "aliases": [
+        "styleId",
+        "styleid"
+      ],
+      "add": true,
+      "set": false,
+      "get": true,
+      "examples": [
+        "--prop id=MyAccent",
+        "--prop styleId=MyAccent"
+      ],
       "readback": "StyleId value",
       "enforcement": "strict"
     },
     "name": {
       "type": "string",
       "description": "display name. Defaults to 'id' when omitted.",
-      "aliases": ["styleName", "stylename"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop name=\"My Accent\"", "--prop styleName=\"My Accent\""],
+      "aliases": [
+        "styleName",
+        "stylename"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop name=\"My Accent\"",
+        "--prop styleName=\"My Accent\""
+      ],
       "readback": "StyleName.Val",
       "enforcement": "report"
     },
     "type": {
       "type": "enum",
-      "values": ["paragraph", "character", "table", "numbering"],
+      "values": [
+        "paragraph",
+        "character",
+        "table",
+        "numbering"
+      ],
       "aliases": {
-        "character": ["char"],
-        "paragraph": ["para"]
+        "character": [
+          "char"
+        ],
+        "paragraph": [
+          "para"
+        ]
       },
-      "add": true, "set": false, "get": true,
-      "examples": ["--prop type=paragraph"],
+      "add": true,
+      "set": false,
+      "get": true,
+      "examples": [
+        "--prop type=paragraph"
+      ],
       "readback": "one of values (innerText of StyleValues)",
       "enforcement": "report",
       "note": "Style type is fixed at creation — changing a style's type after Add would orphan every paragraph/run that already references it. Recreate the style if you need a different type."
@@ -50,15 +81,23 @@
     "basedOn": {
       "type": "string",
       "description": "parent style id to inherit from. Must be an existing w:styleId (not display name). Inherited properties are overridden by properties defined on this style.",
-      "aliases": ["basedon"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop basedOn=Normal"],
+      "aliases": [
+        "basedon"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop basedOn=Normal"
+      ],
       "readback": "BasedOn.Val",
       "enforcement": "report"
     },
     "basedOn.path": {
       "type": "string",
-      "add": false, "set": false, "get": true,
+      "add": false,
+      "set": false,
+      "get": true,
       "description": "resolved path to the parent style node (get-only). Shortcut: use basedOn to Set.",
       "readback": "/styles/{styleId}",
       "enforcement": "report"
@@ -66,368 +105,698 @@
     "next": {
       "type": "string",
       "description": "next-paragraph style id.",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop next=Normal"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop next=Normal"
+      ],
       "readback": "NextParagraphStyle.Val",
       "enforcement": "report"
     },
     "alignment": {
       "type": "enum",
-      "values": ["left", "center", "right", "justify", "both", "distribute"],
-      "aliases": ["align"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop alignment=center"],
+      "values": [
+        "left",
+        "center",
+        "right",
+        "justify",
+        "both",
+        "distribute"
+      ],
+      "aliases": [
+        "align"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop alignment=center"
+      ],
       "readback": "one of values",
       "enforcement": "report"
     },
     "spaceBefore": {
       "type": "length",
-      "aliases": ["spacebefore"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop spaceBefore=12pt"],
+      "aliases": [
+        "spacebefore"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop spaceBefore=12pt"
+      ],
       "readback": "unit-qualified",
       "enforcement": "report"
     },
     "spaceAfter": {
       "type": "length",
-      "aliases": ["spaceafter"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop spaceAfter=6pt"],
+      "aliases": [
+        "spaceafter"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop spaceAfter=6pt"
+      ],
       "readback": "unit-qualified",
       "enforcement": "report"
     },
     "font": {
       "type": "string",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop font=\"Calibri\""],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop font=\"Calibri\""
+      ],
       "readback": "font name",
       "enforcement": "report"
     },
     "size": {
       "type": "font-size",
       "description": "font size. Accepts bare number or pt-suffixed.",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop size=14"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop size=14"
+      ],
       "readback": "unit-qualified pt",
       "enforcement": "report"
     },
     "bold": {
       "type": "bool",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop bold=true"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop bold=true"
+      ],
       "readback": "true/false",
       "enforcement": "report"
     },
     "italic": {
       "type": "bool",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop italic=true"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop italic=true"
+      ],
       "readback": "true/false",
       "enforcement": "report"
     },
     "color": {
       "type": "color",
       "description": "font color. Accepts #RRGGBB, RRGGBB, named colors (red, blue…), rgb(r,g,b), or 3-char shorthand (F00).",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop color=#FF0000"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop color=#FF0000"
+      ],
       "readback": "#-prefixed uppercase hex",
       "enforcement": "report"
     },
     "underline": {
       "type": "string",
       "description": "underline style (true/false, single, double, thick, dotted, dash, wavy, none, ...). Applied to the style's rPr.",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop underline=single", "--prop underline=double"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop underline=single",
+        "--prop underline=double"
+      ],
       "readback": "underline style or true/false",
       "enforcement": "report"
     },
     "strike": {
       "type": "bool",
       "description": "single-line strikethrough on the style's rPr.",
-      "aliases": ["strikethrough"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop strike=true"],
+      "aliases": [
+        "strikethrough"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop strike=true"
+      ],
       "readback": "true/false",
       "enforcement": "report"
     },
     "dstrike": {
       "type": "bool",
       "description": "double-line strikethrough on the style's rPr.",
-      "aliases": ["doublestrike"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop dstrike=true"],
+      "aliases": [
+        "doublestrike"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop dstrike=true"
+      ],
       "readback": "true/false",
       "enforcement": "report"
     },
     "highlight": {
       "type": "string",
       "description": "highlight color (yellow, green, cyan, magenta, blue, red, darkBlue, darkCyan, darkGreen, darkMagenta, darkRed, darkYellow, darkGray, lightGray, black, white, none).",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop highlight=yellow"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop highlight=yellow"
+      ],
       "readback": "highlight color name",
       "enforcement": "report"
     },
     "caps": {
       "type": "bool",
       "description": "all-caps display on the style's rPr.",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop caps=true"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop caps=true"
+      ],
       "readback": "true/false",
       "enforcement": "report"
     },
     "smallCaps": {
       "type": "bool",
       "description": "small-caps display on the style's rPr.",
-      "aliases": ["smallcaps"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop smallCaps=true"],
+      "aliases": [
+        "smallcaps"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop smallCaps=true"
+      ],
       "readback": "true/false",
       "enforcement": "report"
     },
     "vanish": {
       "type": "bool",
       "description": "hidden text on the style's rPr.",
-      "aliases": ["hidden"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop vanish=true"],
+      "aliases": [
+        "hidden"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop vanish=true"
+      ],
       "readback": "true/false",
       "enforcement": "report"
     },
     "rtl": {
-      "type": "bool",
-      "description": "right-to-left run layout on the style's rPr.",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop rtl=true"],
-      "readback": "true/false",
+      "type": "enum",
+      "values": [
+        "rtl",
+        "ltr"
+      ],
+      "aliases": [
+        "dir",
+        "direction"
+      ],
+      "description": "Paragraph reading direction (Arabic / Hebrew). 'rtl' writes <w:bidi/> on the style pPr; equivalent to bidi=true in canonical form.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop direction=rtl"
+      ],
+      "readback": "rtl | ltr",
       "enforcement": "report"
     },
     "vertAlign": {
       "type": "enum",
-      "values": ["superscript", "subscript", "baseline"],
+      "values": [
+        "superscript",
+        "subscript",
+        "baseline"
+      ],
       "description": "vertical text alignment (superscript/subscript) on the style's rPr.",
-      "aliases": ["vertalign", "verticalAlign"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop vertAlign=superscript"],
+      "aliases": [
+        "vertalign",
+        "verticalAlign"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop vertAlign=superscript"
+      ],
       "readback": "one of values",
       "enforcement": "report"
     },
     "charSpacing": {
       "type": "length",
       "description": "character spacing (letter-spacing) on the style's rPr.",
-      "aliases": ["charspacing", "letterSpacing", "letterspacing"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop charSpacing=2pt"],
+      "aliases": [
+        "charspacing",
+        "letterSpacing",
+        "letterspacing"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop charSpacing=2pt"
+      ],
       "readback": "unit-qualified pt",
       "enforcement": "report"
     },
     "shading": {
       "type": "color",
       "description": "background shading fill color on the style's rPr (or pPr for paragraph styles).",
-      "aliases": ["shd"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop shading=#FFFF00"],
+      "aliases": [
+        "shd"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop shading=#FFFF00"
+      ],
       "readback": "#-prefixed uppercase hex",
       "enforcement": "report"
     },
     "lineSpacing": {
       "type": "string",
       "description": "line spacing — multiplier (1.5x, 150%) or fixed (18pt). Applied to the style's pPr.",
-      "aliases": ["linespacing"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop lineSpacing=1.5x", "--prop lineSpacing=18pt"],
+      "aliases": [
+        "linespacing"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop lineSpacing=1.5x",
+        "--prop lineSpacing=18pt"
+      ],
       "readback": "\"<N>x\" or \"<N>pt\"",
       "enforcement": "report"
     },
     "contextualSpacing": {
       "type": "bool",
       "description": "suppress spacing between paragraphs of the same style.",
-      "aliases": ["contextualspacing"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop contextualSpacing=true"],
+      "aliases": [
+        "contextualspacing"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop contextualSpacing=true"
+      ],
       "readback": "true/false",
       "enforcement": "report"
     },
     "outlineLvl": {
       "type": "int",
       "description": "outline level (0-9, 0=Heading 1). Drives TOC and Navigator. Applied to the style's pPr.",
-      "aliases": ["outlinelvl", "outlineLevel", "outlinelevel"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop outlineLvl=0"],
+      "aliases": [
+        "outlinelvl",
+        "outlineLevel",
+        "outlinelevel"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop outlineLvl=0"
+      ],
       "readback": "integer 0-9",
       "enforcement": "report"
     },
     "kinsoku": {
       "type": "bool",
       "description": "kinsoku (CJK line-break rules) toggle. Applied to the style's pPr.",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop kinsoku=true"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop kinsoku=true"
+      ],
       "readback": "true/false",
       "enforcement": "report"
     },
     "snapToGrid": {
       "type": "bool",
       "description": "snap to document grid for CJK layout. Applied to the style's pPr. Add/Set only — Get does not surface this back today.",
-      "aliases": ["snaptogrid"],
-      "add": true, "set": true, "get": false,
-      "examples": ["--prop snapToGrid=false"],
+      "aliases": [
+        "snaptogrid"
+      ],
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop snapToGrid=false"
+      ],
       "readback": "n/a",
       "enforcement": "report"
     },
     "wordWrap": {
       "type": "bool",
       "description": "allow word-break for non-CJK text inside CJK lines. Applied to the style's pPr. Add/Set only — Get does not surface this back today.",
-      "aliases": ["wordwrap"],
-      "add": true, "set": true, "get": false,
-      "examples": ["--prop wordWrap=true"],
+      "aliases": [
+        "wordwrap"
+      ],
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop wordWrap=true"
+      ],
       "readback": "n/a",
       "enforcement": "report"
     },
     "autoSpaceDE": {
       "type": "bool",
       "description": "auto spacing between East-Asian and Latin text. Applied to the style's pPr.",
-      "aliases": ["autospacede"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop autoSpaceDE=true"],
+      "aliases": [
+        "autospacede"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop autoSpaceDE=true"
+      ],
       "readback": "true/false",
       "enforcement": "report"
     },
     "autoSpaceDN": {
       "type": "bool",
       "description": "auto spacing between East-Asian text and numbers. Applied to the style's pPr.",
-      "aliases": ["autospacedn"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop autoSpaceDN=true"],
+      "aliases": [
+        "autospacedn"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop autoSpaceDN=true"
+      ],
       "readback": "true/false",
       "enforcement": "report"
     },
     "bidi": {
       "type": "bool",
       "description": "right-to-left paragraph direction. Applied to the style's pPr.",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop bidi=true"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop bidi=true"
+      ],
       "readback": "true/false",
-      "enforcement": "report"
-    },
-    "direction": {
-      "type": "enum",
-      "values": ["rtl", "ltr"],
-      "aliases": ["dir"],
-      "description": "Paragraph reading direction (Arabic / Hebrew). 'rtl' writes <w:bidi/> on the style pPr; equivalent to bidi=true in canonical form.",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop direction=rtl"],
-      "readback": "rtl | ltr",
       "enforcement": "report"
     },
     "overflowPunct": {
       "type": "bool",
       "description": "allow punctuation to hang outside the text margin (CJK). Applied to the style's pPr.",
-      "aliases": ["overflowpunct"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop overflowPunct=true"],
+      "aliases": [
+        "overflowpunct"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop overflowPunct=true"
+      ],
       "readback": "true/false",
       "enforcement": "report"
     },
     "topLinePunct": {
       "type": "bool",
       "description": "compress punctuation at the start of a line (CJK). Applied to the style's pPr. Add/Set only — Get does not surface this back today.",
-      "aliases": ["toplinepunct"],
-      "add": true, "set": true, "get": false,
-      "examples": ["--prop topLinePunct=true"],
+      "aliases": [
+        "toplinepunct"
+      ],
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop topLinePunct=true"
+      ],
       "readback": "n/a",
       "enforcement": "report"
     },
     "suppressAutoHyphens": {
       "type": "bool",
       "description": "disable automatic hyphenation in this style. Add/Set only — Get does not surface this back today.",
-      "aliases": ["suppressautohyphens"],
-      "add": true, "set": true, "get": false,
-      "examples": ["--prop suppressAutoHyphens=true"],
+      "aliases": [
+        "suppressautohyphens"
+      ],
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop suppressAutoHyphens=true"
+      ],
       "readback": "n/a",
       "enforcement": "report"
     },
     "suppressLineNumbers": {
       "type": "bool",
       "description": "exclude this paragraph style from line numbering. Add/Set only — Get does not surface this back today.",
-      "aliases": ["suppresslinenumbers"],
-      "add": true, "set": true, "get": false,
-      "examples": ["--prop suppressLineNumbers=true"],
+      "aliases": [
+        "suppresslinenumbers"
+      ],
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop suppressLineNumbers=true"
+      ],
       "readback": "n/a",
       "enforcement": "report"
     },
     "keepNext": {
       "type": "bool",
       "description": "keep this paragraph on the same page as the next.",
-      "aliases": ["keepnext"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop keepNext=true"],
+      "aliases": [
+        "keepnext"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop keepNext=true"
+      ],
       "readback": "true/false",
       "enforcement": "report"
     },
     "keepLines": {
       "type": "bool",
       "description": "keep all lines of this paragraph together on one page.",
-      "aliases": ["keeplines"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop keepLines=true"],
+      "aliases": [
+        "keeplines"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop keepLines=true"
+      ],
       "readback": "true/false",
       "enforcement": "report"
     },
     "pageBreakBefore": {
       "type": "bool",
       "description": "force a page break before each paragraph using this style.",
-      "aliases": ["pagebreakbefore"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop pageBreakBefore=true"],
+      "aliases": [
+        "pagebreakbefore"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop pageBreakBefore=true"
+      ],
       "readback": "true/false",
       "enforcement": "report"
     },
     "widowControl": {
       "type": "bool",
       "description": "prevent widows and orphans (single isolated lines).",
-      "aliases": ["widowcontrol"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop widowControl=true"],
+      "aliases": [
+        "widowcontrol"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop widowControl=true"
+      ],
       "readback": "true/false",
       "enforcement": "report"
     },
     "pbdr": {
       "type": "string",
       "description": "paragraph border. Sub-keys: pbdr.top / pbdr.bottom / pbdr.left / pbdr.right / pbdr.between / pbdr.bar / pbdr.all. Value form: 'style:size:color' (e.g. 'single:6:#FF0000'). Set-only — Get does not surface paragraph borders on the style today.",
-      "aliases": ["border"],
-      "add": false, "set": true, "get": false,
-      "examples": ["--prop pbdr.bottom=single:6:#FF0000", "--prop pbdr.all=single:4:auto"],
+      "aliases": [
+        "border"
+      ],
+      "add": false,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop pbdr.bottom=single:6:#FF0000",
+        "--prop pbdr.all=single:4:auto"
+      ],
       "readback": "n/a",
       "enforcement": "report"
     },
     "numId": {
       "type": "int",
       "description": "numbering instance ID this style references. Paragraphs using --prop style=<id> inherit numbering through ResolveNumPrFromStyle without their own numPr — the canonical multi-level outline pattern (Heading1..9). Requires the numId to already exist in /numbering.",
-      "aliases": ["numid"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop numId=3"],
+      "aliases": [
+        "numid"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop numId=3"
+      ],
       "readback": "integer numId on style/pPr/numPr",
       "enforcement": "report"
     },
     "ilvl": {
       "type": "int",
       "description": "list level (0-8) for the style-borne numPr.",
-      "aliases": ["numLevel", "numlevel"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop ilvl=0"],
+      "aliases": [
+        "numLevel",
+        "numlevel"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop ilvl=0"
+      ],
       "readback": "integer 0-8",
       "enforcement": "report"
     },
-    "effective.alignment":         { "type":"string", "add":false, "set":false, "get":true, "description":"resolved paragraph alignment after walking basedOn → linked → docDefaults.", "readback":"alignment token (left|center|right|both|distribute)", "enforcement":"report" },
-    "effective.alignment.src":     { "type":"string", "add":false, "set":false, "get":true, "description":"source pointer for effective.alignment (style id chain).", "readback":"style id or `docDefaults`", "enforcement":"report" },
-    "effective.direction":         { "type":"string", "add":false, "set":false, "get":true, "description":"resolved paragraph reading direction (rtl|ltr).", "readback":"`rtl` | `ltr`", "enforcement":"report" },
-    "effective.direction.src":     { "type":"string", "add":false, "set":false, "get":true, "description":"source pointer for effective.direction.", "readback":"style id or `docDefaults`", "enforcement":"report" },
-    "effective.highlight":         { "type":"string", "add":false, "set":false, "get":true, "description":"resolved highlight color name (yellow|green|cyan|...) inherited from the style chain.", "readback":"highlight token", "enforcement":"report" },
-    "effective.lineSpacing":       { "type":"string", "add":false, "set":false, "get":true, "description":"resolved line spacing (`<N>x` or `<N>pt`).", "readback":"unit-qualified spacing", "enforcement":"report" },
-    "effective.lineSpacing.src":   { "type":"string", "add":false, "set":false, "get":true, "description":"source pointer for effective.lineSpacing.", "readback":"style id or `docDefaults`", "enforcement":"report" },
-    "effective.spaceBefore":       { "type":"string", "add":false, "set":false, "get":true, "description":"resolved space-before (unit-qualified).", "readback":"unit-qualified length", "enforcement":"report" },
-    "effective.spaceBefore.src":   { "type":"string", "add":false, "set":false, "get":true, "description":"source pointer for effective.spaceBefore.", "readback":"style id or `docDefaults`", "enforcement":"report" },
-    "effective.spaceAfter":        { "type":"string", "add":false, "set":false, "get":true, "description":"resolved space-after (unit-qualified).", "readback":"unit-qualified length", "enforcement":"report" },
-    "effective.spaceAfter.src":    { "type":"string", "add":false, "set":false, "get":true, "description":"source pointer for effective.spaceAfter.", "readback":"style id or `docDefaults`", "enforcement":"report" },
-    "effective.strike":            { "type":"bool",   "add":false, "set":false, "get":true, "description":"true when strike-through is inherited from the style chain.", "readback":"true|false", "enforcement":"report" }
+    "effective.alignment": {
+      "type": "string",
+      "add": false,
+      "set": false,
+      "get": true,
+      "description": "resolved paragraph alignment after walking basedOn → linked → docDefaults.",
+      "readback": "alignment token (left|center|right|both|distribute)",
+      "enforcement": "report"
+    },
+    "effective.alignment.src": {
+      "type": "string",
+      "add": false,
+      "set": false,
+      "get": true,
+      "description": "source pointer for effective.alignment (style id chain).",
+      "readback": "style id or `docDefaults`",
+      "enforcement": "report"
+    },
+    "effective.direction": {
+      "type": "string",
+      "add": false,
+      "set": false,
+      "get": true,
+      "description": "resolved paragraph reading direction (rtl|ltr).",
+      "readback": "`rtl` | `ltr`",
+      "enforcement": "report"
+    },
+    "effective.direction.src": {
+      "type": "string",
+      "add": false,
+      "set": false,
+      "get": true,
+      "description": "source pointer for effective.direction.",
+      "readback": "style id or `docDefaults`",
+      "enforcement": "report"
+    },
+    "effective.highlight": {
+      "type": "string",
+      "add": false,
+      "set": false,
+      "get": true,
+      "description": "resolved highlight color name (yellow|green|cyan|...) inherited from the style chain.",
+      "readback": "highlight token",
+      "enforcement": "report"
+    },
+    "effective.lineSpacing": {
+      "type": "string",
+      "add": false,
+      "set": false,
+      "get": true,
+      "description": "resolved line spacing (`<N>x` or `<N>pt`).",
+      "readback": "unit-qualified spacing",
+      "enforcement": "report"
+    },
+    "effective.lineSpacing.src": {
+      "type": "string",
+      "add": false,
+      "set": false,
+      "get": true,
+      "description": "source pointer for effective.lineSpacing.",
+      "readback": "style id or `docDefaults`",
+      "enforcement": "report"
+    },
+    "effective.spaceBefore": {
+      "type": "string",
+      "add": false,
+      "set": false,
+      "get": true,
+      "description": "resolved space-before (unit-qualified).",
+      "readback": "unit-qualified length",
+      "enforcement": "report"
+    },
+    "effective.spaceBefore.src": {
+      "type": "string",
+      "add": false,
+      "set": false,
+      "get": true,
+      "description": "source pointer for effective.spaceBefore.",
+      "readback": "style id or `docDefaults`",
+      "enforcement": "report"
+    },
+    "effective.spaceAfter": {
+      "type": "string",
+      "add": false,
+      "set": false,
+      "get": true,
+      "description": "resolved space-after (unit-qualified).",
+      "readback": "unit-qualified length",
+      "enforcement": "report"
+    },
+    "effective.spaceAfter.src": {
+      "type": "string",
+      "add": false,
+      "set": false,
+      "get": true,
+      "description": "source pointer for effective.spaceAfter.",
+      "readback": "style id or `docDefaults`",
+      "enforcement": "report"
+    },
+    "effective.strike": {
+      "type": "bool",
+      "add": false,
+      "set": false,
+      "get": true,
+      "description": "true when strike-through is inherited from the style chain.",
+      "readback": "true|false",
+      "enforcement": "report"
+    }
   }
 }
