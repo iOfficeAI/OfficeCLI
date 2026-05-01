@@ -85,6 +85,12 @@ internal static partial class ChartHelper
             var minorUnitEl = axis.GetFirstChild<C.MinorUnit>();
             if (minorUnitEl?.Val?.HasValue == true)
                 node.Format["minorUnit"] = minorUnitEl.Val.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            // DisplayUnits — value axis label units (axis-level reader; chart-level Reader emits same key)
+            var dispUnitsEl = axis.GetFirstChild<C.DisplayUnits>();
+            var builtInUnit = dispUnitsEl?.GetFirstChild<C.BuiltInUnit>()?.Val;
+            if (builtInUnit?.HasValue == true)
+                node.Format["dispUnits"] = builtInUnit.InnerText;
         }
 
         // NumberingFormat — applies to any axis role per schema (chart-axis.json `format`)

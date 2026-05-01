@@ -26,6 +26,7 @@
     "majorGridlines": { "type": "bool",   "description": "show or hide major gridlines. Applies to all roles.", "set": true, "get": true, "examples": ["--prop majorGridlines=true"], "enforcement": "report" },
     "minorGridlines": { "type": "bool",   "description": "show or hide minor gridlines. Applies to all roles.", "set": true, "get": true, "examples": ["--prop minorGridlines=false"], "enforcement": "report" },
     "majorUnit": { "type":"number", "add":false, "set":true, "get":true, "description":"major tick interval on the value axis. Applies to role=value|value2.", "readback":"numeric interval", "examples":["--prop majorUnit=20"], "enforcement":"report" },
-    "minorUnit": { "type":"number", "add":false, "set":true, "get":true, "description":"minor tick interval on the value axis. Applies to role=value|value2.", "readback":"numeric interval", "examples":["--prop minorUnit=5"], "enforcement":"report" }
+    "minorUnit": { "type":"number", "add":false, "set":true, "get":true, "description":"minor tick interval on the value axis. Applies to role=value|value2.", "readback":"numeric interval", "examples":["--prop minorUnit=5"], "enforcement":"report" },
+    "dispUnits": { "type":"enum", "values":["hundreds","thousands","tenThousands","hundredThousands","millions","tenMillions","hundredMillions","billions","trillions"], "add":false, "set":true, "get":true, "description":"display units for value axis labels. Applies to role=value|value2.", "readback":"display unit token", "examples":["--prop dispUnits=thousands"], "enforcement":"report" }
   }
 }

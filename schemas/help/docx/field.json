@@ -85,12 +85,12 @@
       "readback": "instruction switches",
       "enforcement": "report"
     },
-    "instr": {
+    "instruction": {
       "type": "string",
       "description": "Raw field instruction text. Bypasses fieldType-specific helpers — useful for arbitrary fields not covered by the typed shortcuts.",
-      "aliases": ["instruction", "code"],
+      "aliases": ["instr", "code"],
       "add": true, "set": true, "get": true,
-      "examples": ["--prop instr=' DATE \\@ \"yyyy年MM月\" '"],
+      "examples": ["--prop instruction=' DATE \\@ \"yyyy年MM月\" '"],
       "readback": "instrText element text content",
       "enforcement": "report"
     }
