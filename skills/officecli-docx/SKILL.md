@@ -123,7 +123,7 @@ officecli add "$FILE" /body --type paragraph --prop text="Q4 2026 Review" --prop
 officecli add "$FILE" /body --type paragraph --prop text="Revenue grew 18% year-over-year, ahead of plan." --prop size=11pt --prop spaceAfter=8pt
 officecli add "$FILE" /body --type paragraph --prop text="Key Drivers" --prop style=Heading2 --prop size=14pt --prop bold=true --prop spaceBefore=12pt --prop spaceAfter=6pt
 officecli add "$FILE" /body --type paragraph --prop text="Enterprise renewals, upsell, and a new EMEA region." --prop size=11pt
-officecli add "$FILE" / --type footer --prop type=default --prop alignment=center --prop size=9pt --prop text="Page " --prop field=page
+officecli add "$FILE" / --type footer --prop type=default --prop align=center --prop size=9pt --prop text="Page " --prop field=page
 officecli close "$FILE"
 officecli validate "$FILE"
 ```
@@ -279,7 +279,7 @@ The single-command pattern — the CLI injects `<w:fldChar>` so you do not compo
 officecli add doc.docx / --type footer --prop type=first --prop text=""
 
 # Default footer with live page number
-officecli add doc.docx / --type footer --prop type=default --prop alignment=center --prop size=9pt --prop text="Page " --prop field=page
+officecli add doc.docx / --type footer --prop type=default --prop align=center --prop size=9pt --prop text="Page " --prop field=page
 ```
 
 When both a first-page footer and a default footer exist, the default footer is `/footer[2]`. If only a default footer, it is `/footer[1]`. **Verify**: `get --depth 3` must show `fldChar` children, not just a run with literal text `"Page"`. `view outline` prints "Footer: Page" for both live fields AND static text — do not rely on it.
@@ -350,13 +350,13 @@ Four patterns that come up on every long-form report and aren't covered by the Q
 **(a) Rich cover page — hit the ≥ 60% filled floor.** A bare title + date cover reads as unfinished. Stack a confidentiality banner, title, subtitle, client/project/date block, and a 3-line key-themes strip:
 
 ```bash
-officecli add "$FILE" /body --type paragraph --prop text="CONFIDENTIAL — CLIENT USE ONLY" --prop alignment=center --prop size=9pt --prop color=C00000 --prop spaceAfter=24pt
-officecli add "$FILE" /body --type paragraph --prop text="Strategic Growth Review" --prop style=Title --prop size=32pt --prop bold=true --prop alignment=center --prop font=Cambria --prop spaceAfter=8pt
-officecli add "$FILE" /body --type paragraph --prop text="FY26 Outlook and Scenario Planning" --prop italic=true --prop size=16pt --prop alignment=center --prop spaceAfter=36pt
-officecli add "$FILE" /body --type paragraph --prop text='Prepared for: Acme Corp. Leadership Team' --prop alignment=center --prop size=11pt
-officecli add "$FILE" /body --type paragraph --prop text='Engagement: 2026-04 — 2026-06' --prop alignment=center --prop size=11pt
-officecli add "$FILE" /body --type paragraph --prop text='Author: Advisory Partners' --prop alignment=center --prop size=11pt --prop spaceAfter=36pt
-officecli add "$FILE" /body --type paragraph --prop text="Key themes: 1) margin resilience, 2) EMEA expansion, 3) capital allocation." --prop alignment=center --prop italic=true --prop size=10pt
+officecli add "$FILE" /body --type paragraph --prop text="CONFIDENTIAL — CLIENT USE ONLY" --prop align=center --prop size=9pt --prop color=C00000 --prop spaceAfter=24pt
+officecli add "$FILE" /body --type paragraph --prop text="Strategic Growth Review" --prop style=Title --prop size=32pt --prop bold=true --prop align=center --prop font=Cambria --prop spaceAfter=8pt
+officecli add "$FILE" /body --type paragraph --prop text="FY26 Outlook and Scenario Planning" --prop italic=true --prop size=16pt --prop align=center --prop spaceAfter=36pt
+officecli add "$FILE" /body --type paragraph --prop text='Prepared for: Acme Corp. Leadership Team' --prop align=center --prop size=11pt
+officecli add "$FILE" /body --type paragraph --prop text='Engagement: 2026-04 — 2026-06' --prop align=center --prop size=11pt
+officecli add "$FILE" /body --type paragraph --prop text='Author: Advisory Partners' --prop align=center --prop size=11pt --prop spaceAfter=36pt
+officecli add "$FILE" /body --type paragraph --prop text="Key themes: 1) margin resilience, 2) EMEA expansion, 3) capital allocation." --prop align=center --prop italic=true --prop size=10pt
 # Force the next section to start on a new page — belt-and-suspenders for cross-viewer reliability
 # (pageBreakBefore alone is unreliable across viewers; --type pagebreak alone also flakes)
 officecli add "$FILE" /body --type pagebreak
@@ -366,7 +366,7 @@ officecli set "$FILE" "/body/p[last()]" --prop pageBreakBefore=true
 **(b) Page X of Y footer — composite PAGE + NUMPAGES.** Add the footer paragraph first, then three child ops build `Page <X> of <Y>` in one paragraph. Visual outcome: footer reads `Page 3 of 12` with both numbers live. This is the official `officecli help docx footer` recipe.
 
 ```bash
-officecli add "$FILE" / --type footer --prop type=default --prop text="Page " --prop alignment=center --prop size=9pt
+officecli add "$FILE" / --type footer --prop type=default --prop text="Page " --prop align=center --prop size=9pt
 officecli add "$FILE" "/footer[1]/p[1]" --type field --prop fieldType=page
 officecli add "$FILE" "/footer[1]/p[1]" --type run --prop text=" of "
 officecli add "$FILE" "/footer[1]/p[1]" --type field --prop fieldType=numpages
@@ -398,7 +398,7 @@ Verified: without step 1, step 2's run-level `set` errors because empty cells ha
 ```bash
 # Right-align number columns (cols 2-4), paragraph-level
 for row in 2 3 4 5; do for col in 2 3 4; do
-  officecli set "$FILE" "/body/tbl[1]/tr[$row]/tc[$col]/p[1]" --prop alignment=right
+  officecli set "$FILE" "/body/tbl[1]/tr[$row]/tc[$col]/p[1]" --prop align=right
 done; done
 # Total row (row 5) bold + bottom border on the data paragraphs
 for col in 1 2 3 4; do

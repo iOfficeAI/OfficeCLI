@@ -11,7 +11,7 @@ echo "Output file: $OUT"
 
 # ==================== Create base document ====================
 officecli create "$OUT"
-officecli add "$OUT" /body --type paragraph --prop text="Complex Textbox Examples" --prop style=Heading1 --prop alignment=center
+officecli add "$OUT" /body --type paragraph --prop text="Complex Textbox Examples" --prop style=Heading1 --prop align=center
 officecli add "$OUT" /body --type paragraph --prop text="The following contains multiple complex textbox scenarios for testing textbox behavior under various conditions."
 
 # ==================== Scenario 1: Basic Textbox (with border and background + VML Fallback) ====================

@@ -18,7 +18,7 @@ echo "=========================================="
 
 officecli create "$DOCX"
 officecli open "$DOCX"
-officecli add "$DOCX" /body --type paragraph --prop text="Complex Table Examples" --prop style=Heading1 --prop alignment=center
+officecli add "$DOCX" /body --type paragraph --prop text="Complex Table Examples" --prop style=Heading1 --prop align=center
 officecli add "$DOCX" /body --type paragraph --prop text=""
 
 # -- Table 1: Project Progress Tracker (vertical merge vmerge) --
@@ -87,53 +87,53 @@ officecli add "$DOCX" /body --type table --prop rows=8 --prop cols=5
 # Header row 1 - gridspan=2 automatically removes merged tc
 officecli set "$DOCX" '/body/tbl[2]/tr[1]/tc[1]' --prop text="Category" --prop bold=true --prop shd=2E75B6 --prop color=FFFFFF --prop vmerge=restart --prop valign=center
 officecli set "$DOCX" '/body/tbl[2]/tr[1]/tc[2]' --prop text="Line Item" --prop bold=true --prop shd=2E75B6 --prop color=FFFFFF --prop vmerge=restart --prop valign=center
-officecli set "$DOCX" '/body/tbl[2]/tr[1]/tc[3]' --prop text="Amount (10K USD)" --prop bold=true --prop shd=2E75B6 --prop color=FFFFFF --prop gridspan=2 --prop alignment=center
+officecli set "$DOCX" '/body/tbl[2]/tr[1]/tc[3]' --prop text="Amount (10K USD)" --prop bold=true --prop shd=2E75B6 --prop color=FFFFFF --prop gridspan=2 --prop align=center
 # gridspan=2 removed original tc[4], original tc[5] becomes tc[4]
 officecli set "$DOCX" '/body/tbl[2]/tr[1]/tc[4]' --prop text="Notes" --prop bold=true --prop shd=2E75B6 --prop color=FFFFFF --prop vmerge=restart --prop valign=center
 
 # Header row 2
 officecli set "$DOCX" '/body/tbl[2]/tr[2]/tc[1]' --prop text="" --prop vmerge=continue --prop shd=2E75B6
 officecli set "$DOCX" '/body/tbl[2]/tr[2]/tc[2]' --prop text="" --prop vmerge=continue --prop shd=2E75B6
-officecli set "$DOCX" '/body/tbl[2]/tr[2]/tc[3]' --prop text="Budget" --prop bold=true --prop shd=5B9BD5 --prop color=FFFFFF --prop alignment=center
-officecli set "$DOCX" '/body/tbl[2]/tr[2]/tc[4]' --prop text="Actual" --prop bold=true --prop shd=5B9BD5 --prop color=FFFFFF --prop alignment=center
+officecli set "$DOCX" '/body/tbl[2]/tr[2]/tc[3]' --prop text="Budget" --prop bold=true --prop shd=5B9BD5 --prop color=FFFFFF --prop align=center
+officecli set "$DOCX" '/body/tbl[2]/tr[2]/tc[4]' --prop text="Actual" --prop bold=true --prop shd=5B9BD5 --prop color=FFFFFF --prop align=center
 officecli set "$DOCX" '/body/tbl[2]/tr[2]/tc[5]' --prop text="" --prop vmerge=continue --prop shd=2E75B6
 
 # Revenue (merge 3 rows)
 officecli set "$DOCX" '/body/tbl[2]/tr[3]/tc[1]' --prop text="Revenue" --prop vmerge=restart --prop valign=center --prop shd=DEEAF6 --prop bold=true
 officecli set "$DOCX" '/body/tbl[2]/tr[3]/tc[2]' --prop text="Product Sales"
-officecli set "$DOCX" '/body/tbl[2]/tr[3]/tc[3]' --prop text="500.00" --prop alignment=right
-officecli set "$DOCX" '/body/tbl[2]/tr[3]/tc[4]' --prop text="523.50" --prop alignment=right --prop color=00B050
+officecli set "$DOCX" '/body/tbl[2]/tr[3]/tc[3]' --prop text="500.00" --prop align=right
+officecli set "$DOCX" '/body/tbl[2]/tr[3]/tc[4]' --prop text="523.50" --prop align=right --prop color=00B050
 officecli set "$DOCX" '/body/tbl[2]/tr[3]/tc[5]' --prop text="Exceeded"
 
 officecli set "$DOCX" '/body/tbl[2]/tr[4]/tc[1]' --prop text="" --prop vmerge=continue --prop shd=DEEAF6
 officecli set "$DOCX" '/body/tbl[2]/tr[4]/tc[2]' --prop text="Consulting Services"
-officecli set "$DOCX" '/body/tbl[2]/tr[4]/tc[3]' --prop text="200.00" --prop alignment=right
-officecli set "$DOCX" '/body/tbl[2]/tr[4]/tc[4]' --prop text="185.30" --prop alignment=right --prop color=FF0000
+officecli set "$DOCX" '/body/tbl[2]/tr[4]/tc[3]' --prop text="200.00" --prop align=right
+officecli set "$DOCX" '/body/tbl[2]/tr[4]/tc[4]' --prop text="185.30" --prop align=right --prop color=FF0000
 officecli set "$DOCX" '/body/tbl[2]/tr[4]/tc[5]' --prop text="Below target"
 
 officecli set "$DOCX" '/body/tbl[2]/tr[5]/tc[1]' --prop text="" --prop vmerge=continue --prop shd=DEEAF6
 officecli set "$DOCX" '/body/tbl[2]/tr[5]/tc[2]' --prop text="Tech Licensing"
-officecli set "$DOCX" '/body/tbl[2]/tr[5]/tc[3]' --prop text="80.00" --prop alignment=right
-officecli set "$DOCX" '/body/tbl[2]/tr[5]/tc[4]' --prop text="92.00" --prop alignment=right --prop color=00B050
+officecli set "$DOCX" '/body/tbl[2]/tr[5]/tc[3]' --prop text="80.00" --prop align=right
+officecli set "$DOCX" '/body/tbl[2]/tr[5]/tc[4]' --prop text="92.00" --prop align=right --prop color=00B050
 officecli set "$DOCX" '/body/tbl[2]/tr[5]/tc[5]' --prop text="New partners"
 
 # Expenses (merge 3 rows)
 officecli set "$DOCX" '/body/tbl[2]/tr[6]/tc[1]' --prop text="Expenses" --prop vmerge=restart --prop valign=center --prop shd=FFF2CC --prop bold=true
 officecli set "$DOCX" '/body/tbl[2]/tr[6]/tc[2]' --prop text="Labor Cost"
-officecli set "$DOCX" '/body/tbl[2]/tr[6]/tc[3]' --prop text="320.00" --prop alignment=right
-officecli set "$DOCX" '/body/tbl[2]/tr[6]/tc[4]' --prop text="335.00" --prop alignment=right --prop color=FF0000
+officecli set "$DOCX" '/body/tbl[2]/tr[6]/tc[3]' --prop text="320.00" --prop align=right
+officecli set "$DOCX" '/body/tbl[2]/tr[6]/tc[4]' --prop text="335.00" --prop align=right --prop color=FF0000
 officecli set "$DOCX" '/body/tbl[2]/tr[6]/tc[5]' --prop text="New hires"
 
 officecli set "$DOCX" '/body/tbl[2]/tr[7]/tc[1]' --prop text="" --prop vmerge=continue --prop shd=FFF2CC
 officecli set "$DOCX" '/body/tbl[2]/tr[7]/tc[2]' --prop text="Operating Expenses"
-officecli set "$DOCX" '/body/tbl[2]/tr[7]/tc[3]' --prop text="150.00" --prop alignment=right
-officecli set "$DOCX" '/body/tbl[2]/tr[7]/tc[4]' --prop text="142.80" --prop alignment=right --prop color=00B050
+officecli set "$DOCX" '/body/tbl[2]/tr[7]/tc[3]' --prop text="150.00" --prop align=right
+officecli set "$DOCX" '/body/tbl[2]/tr[7]/tc[4]' --prop text="142.80" --prop align=right --prop color=00B050
 officecli set "$DOCX" '/body/tbl[2]/tr[7]/tc[5]' --prop text="Cost savings"
 
 officecli set "$DOCX" '/body/tbl[2]/tr[8]/tc[1]' --prop text="" --prop vmerge=continue --prop shd=FFF2CC
 officecli set "$DOCX" '/body/tbl[2]/tr[8]/tc[2]' --prop text="R&D Investment"
-officecli set "$DOCX" '/body/tbl[2]/tr[8]/tc[3]' --prop text="180.00" --prop alignment=right
-officecli set "$DOCX" '/body/tbl[2]/tr[8]/tc[4]' --prop text="195.50" --prop alignment=right
+officecli set "$DOCX" '/body/tbl[2]/tr[8]/tc[3]' --prop text="180.00" --prop align=right
+officecli set "$DOCX" '/body/tbl[2]/tr[8]/tc[4]' --prop text="195.50" --prop align=right
 officecli set "$DOCX" '/body/tbl[2]/tr[8]/tc[5]' --prop text="Strategic investment"
 
 # -- Table 3: Skill Assessment Matrix (color heatmap) --
@@ -143,20 +143,20 @@ officecli add "$DOCX" /body --type paragraph --prop text="3. Skill Assessment Ma
 officecli add "$DOCX" /body --type table --prop rows=6 --prop cols=7
 
 # Header
-officecli set "$DOCX" '/body/tbl[3]/tr[1]/tc[1]' --prop text="Name/Skill" --prop bold=true --prop shd=002060 --prop color=FFFFFF --prop alignment=center
+officecli set "$DOCX" '/body/tbl[3]/tr[1]/tc[1]' --prop text="Name/Skill" --prop bold=true --prop shd=002060 --prop color=FFFFFF --prop align=center
 for col_data in "2:Python" "3:Java" "4:Frontend" "5:Database" "6:DevOps" "7:AI/ML"; do
     col="${col_data%%:*}"; name="${col_data#*:}"
-    officecli set "$DOCX" "/body/tbl[3]/tr[1]/tc[$col]" --prop text="$name" --prop bold=true --prop shd=002060 --prop color=FFFFFF --prop alignment=center
+    officecli set "$DOCX" "/body/tbl[3]/tr[1]/tc[$col]" --prop text="$name" --prop bold=true --prop shd=002060 --prop color=FFFFFF --prop align=center
 done
 
 # Colors: Expert=00B050(dark green) Proficient=92D050(light green) Familiar=FFC000(yellow) Beginner=FF0000(red)
 fill_skill_row() {
     local row=$1 person=$2; shift 2
-    officecli set "$DOCX" "/body/tbl[3]/tr[$row]/tc[1]" --prop text="$person" --prop bold=true --prop shd=D6DCE4 --prop alignment=center
+    officecli set "$DOCX" "/body/tbl[3]/tr[$row]/tc[1]" --prop text="$person" --prop bold=true --prop shd=D6DCE4 --prop align=center
     local col=2
     for cell in "$@"; do
         local text="${cell%%:*}" color="${cell#*:}"
-        officecli set "$DOCX" "/body/tbl[3]/tr[$row]/tc[$col]" --prop text="$text" --prop shd="$color" --prop color=FFFFFF --prop alignment=center --prop bold=true
+        officecli set "$DOCX" "/body/tbl[3]/tr[$row]/tc[$col]" --prop text="$text" --prop shd="$color" --prop color=FFFFFF --prop align=center --prop bold=true
         ((col++))
     done
 }

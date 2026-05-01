@@ -10,7 +10,7 @@ $CLI create "$OUT"
 $CLI open "$OUT"
 
 # ==================== Title ====================
-$CLI add "$OUT" /body --type paragraph --prop text="Complex Math/Chemistry/Physics Formula Collection" --prop style=Heading1 --prop alignment=center
+$CLI add "$OUT" /body --type paragraph --prop text="Complex Math/Chemistry/Physics Formula Collection" --prop style=Heading1 --prop align=center
 
 # ==================== I. Algebra ====================
 $CLI add "$OUT" /body --type paragraph --prop text="I. Algebra" --prop style=Heading2
