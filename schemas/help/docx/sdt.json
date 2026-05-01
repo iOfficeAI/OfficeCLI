@@ -47,6 +47,20 @@
       "examples": ["--prop text=\"[Enter name]\""],
       "readback": "concatenated text",
       "enforcement": "report"
+    },
+    "id": {
+      "type": "number",
+      "description": "OOXML SdtId value; source of @sdtId in stable path /sdt[@sdtId=N].",
+      "add": false, "set": false, "get": true,
+      "readback": "integer",
+      "enforcement": "report"
+    },
+    "editable": {
+      "type": "bool",
+      "description": "false when SdtContentLockingValues.SdtContentLocked is set on this content control.",
+      "add": false, "set": false, "get": true,
+      "readback": "true | false",
+      "enforcement": "report"
     }
   }
 }

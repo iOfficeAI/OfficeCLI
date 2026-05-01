@@ -80,6 +80,13 @@
       "add": true, "set": true, "get": false,
       "examples": ["--prop size.cs=14pt"],
       "enforcement": "report"
+    },
+    "id": {
+      "type": "number",
+      "description": "OOXML endnote id; source of @endnoteId in stable path /endnote[@endnoteId=N].",
+      "add": false, "set": false, "get": true,
+      "readback": "integer",
+      "enforcement": "report"
     }
   }
 }

@@ -11,9 +11,9 @@
     "remove": true
   },
   "paths": {
-    "positional": ["/SheetName/validation[N]"]
+    "positional": ["/SheetName/dataValidation[N]"]
   },
-  "note": "Aliases: datavalidation. Target cell range via 'ref'. Type determines which of formula1/formula2 are used.",
+  "note": "Aliases: datavalidation. Target cell range via 'ref'. Type determines which of formula1/formula2 are used. Alias 'validation' accepted in path segments by query/set/remove (e.g. /SheetName/validation[N]); Add and Get echo back the canonical 'dataValidation[N]' form.",
   "properties": {
     "type": {
       "type": "enum",

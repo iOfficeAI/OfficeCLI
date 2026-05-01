@@ -56,6 +56,13 @@
       "examples": ["--prop alt=\"Company logo\""],
       "readback": "string",
       "enforcement": "report"
+    },
+    "id": {
+      "type": "number",
+      "description": "OOXML drawing id.",
+      "add": false, "set": false, "get": true,
+      "readback": "integer",
+      "enforcement": "report"
     }
   }
 }
