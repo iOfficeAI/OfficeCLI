@@ -1,0 +1,17 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "colorscale",
+  "parent": "sheet",
+  "operations": {"add": true, "get": true},
+  "paths": {"positional": ["/SheetName/cf[N]"]},
+  "note": "Conditional formatting 2-/3-stop color scale. Add via `add /Sheet1/cf --type colorscale --prop sqref=A1:A10 --prop mincolor=F8696B --prop maxcolor=63BE7B`. Lookup: Add.Cf.cs:266 (AddColorScale); Get: Query.cs:500.",
+  "properties": {
+    "sqref": { "type":"string", "aliases":["range","ref"], "add":true, "get":true, "description":"target cell range. Get readback uses canonical key `ref`.", "examples":["--prop sqref=A1:A10"], "enforcement":"report" },
+    "mincolor": { "type":"color", "aliases":["minColor"], "add":true, "get":true, "description":"low-end color (default F8696B).", "examples":["--prop mincolor=F8696B"], "readback":"#-prefixed uppercase hex (key: minColor)", "enforcement":"report" },
+    "maxcolor": { "type":"color", "aliases":["maxColor"], "add":true, "get":true, "description":"high-end color (default 63BE7B).", "examples":["--prop maxcolor=63BE7B"], "readback":"#-prefixed uppercase hex (key: maxColor)", "enforcement":"report" },
+    "midcolor": { "type":"color", "aliases":["midColor"], "add":true, "get":true, "description":"midpoint color (omit for 2-stop scale).", "examples":["--prop midcolor=FFEB84"], "readback":"#-prefixed uppercase hex (key: midColor)", "enforcement":"report" },
+    "midpoint": { "type":"number", "aliases":["midPoint"], "add":true, "get":false, "description":"midpoint percentile (default 50). Only meaningful when midcolor is set.", "examples":["--prop midpoint=50"], "enforcement":"report" },
+    "stopIfTrue": { "type":"bool", "add":true, "get":false, "description":"stop evaluating subsequent CF rules when this rule applies.", "examples":["--prop stopIfTrue=true"], "enforcement":"report" }
+  }
+}

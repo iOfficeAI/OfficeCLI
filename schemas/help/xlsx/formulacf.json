@@ -1,0 +1,22 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "formulacf",
+  "parent": "sheet",
+  "operations": {"add": true, "get": true},
+  "paths": {"positional": ["/SheetName/cf[N]"]},
+  "note": "Formula-based conditional formatting. Add via `add /Sheet1/cf --type formula --prop sqref=A1:A10 --prop formula=\"$A1>100\" --prop fill=FFFF00`. Lookup: Add.Cf.cs:382 (AddFormulaCf); Get: Query.cs:536.",
+  "properties": {
+    "sqref": { "type":"string", "aliases":["range","ref"], "add":true, "get":true, "description":"target cell range. Get readback uses canonical key `ref`.", "examples":["--prop sqref=A1:A10"], "enforcement":"report" },
+    "formula": { "type":"string", "add":true, "get":true, "description":"formula expression evaluated per-cell (without leading '='). Required.", "examples":["--prop formula=\"$A1>100\"","--prop formula=\"MOD(ROW(),2)=0\""], "readback":"formula text as stored", "enforcement":"report" },
+    "fill": { "type":"color", "add":true, "get":false, "description":"background fill color applied via differential format (dxf).", "examples":["--prop fill=FFFF00"], "enforcement":"report" },
+    "font.color": { "type":"color", "add":true, "get":false, "description":"font color via dxf.", "examples":["--prop font.color=FF0000"], "enforcement":"report" },
+    "font.bold": { "type":"bool", "add":true, "get":false, "description":"bold via dxf.", "examples":["--prop font.bold=true"], "enforcement":"report" },
+    "font.italic": { "type":"bool", "add":true, "get":false, "description":"italic via dxf.", "examples":["--prop font.italic=true"], "enforcement":"report" },
+    "font.underline": { "type":"bool", "add":true, "get":false, "description":"underline via dxf.", "examples":["--prop font.underline=true"], "enforcement":"report" },
+    "font.strike": { "type":"bool", "add":true, "get":false, "description":"strikethrough via dxf.", "examples":["--prop font.strike=true"], "enforcement":"report" },
+    "font.size": { "type":"font-size", "add":true, "get":false, "description":"font size via dxf.", "examples":["--prop font.size=12pt"], "enforcement":"report" },
+    "font.name": { "type":"string", "add":true, "get":false, "description":"font family via dxf.", "examples":["--prop font.name=Arial"], "enforcement":"report" },
+    "stopIfTrue": { "type":"bool", "add":true, "get":false, "description":"stop evaluating subsequent CF rules when this rule applies.", "examples":["--prop stopIfTrue=true"], "enforcement":"report" }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "cfextended",
+  "parent": "sheet",
+  "operations": {"add": true, "get": true},
+  "paths": {"positional": ["/SheetName/cf[N]"]},
+  "note": "Catch-all CF dispatch for sub-types not exposed by their own --type alias: belowAverage, containsBlanks, notContainsBlanks, containsErrors, notContainsErrors, contains, notContains, beginsWith, endsWith. Pass `--prop type=<subtype>` to select. Lookup: Add.Cf.cs:557 (AddCfExtended). Most subtypes share Query.cs readback through `cfType` (Query.cs:464+).",
+  "properties": {
+    "sqref": { "type":"string", "aliases":["range","ref"], "add":true, "get":true, "description":"target cell range. Get readback uses canonical key `ref`.", "examples":["--prop sqref=A1:A100"], "enforcement":"report" },
+    "type": { "type":"enum", "values":["belowAverage","containsBlanks","notContainsBlanks","containsErrors","notContainsErrors","contains","notContains","beginsWith","endsWith"], "add":true, "get":false, "description":"subtype selector. Required.", "examples":["--prop type=containsBlanks","--prop type=beginsWith"], "enforcement":"report" },
+    "text": { "type":"string", "add":true, "get":true, "description":"substring for contains/notContains/beginsWith/endsWith subtypes.", "examples":["--prop text=error"], "readback":"matched substring (when subtype emits it)", "enforcement":"report" },
+    "fill": { "type":"color", "add":true, "get":false, "description":"background fill via dxf.", "examples":["--prop fill=FFCCCC"], "enforcement":"report" },
+    "font.color": { "type":"color", "add":true, "get":false, "description":"font color via dxf.", "examples":["--prop font.color=FF0000"], "enforcement":"report" },
+    "font.bold": { "type":"bool", "add":true, "get":false, "description":"bold via dxf.", "examples":["--prop font.bold=true"], "enforcement":"report" },
+    "stopIfTrue": { "type":"bool", "add":true, "get":false, "description":"stop evaluating subsequent CF rules when this rule applies.", "examples":["--prop stopIfTrue=true"], "enforcement":"report" }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "dateoccurring",
+  "parent": "sheet",
+  "operations": {"add": true, "get": true},
+  "paths": {"positional": ["/SheetName/cf[N]"]},
+  "note": "Match dates falling in a named time period. Aliases for type: timeperiod. Add via `add /Sheet1/cf --type dateoccurring --prop sqref=A1:A100 --prop period=last7Days`. Lookup: Add.Cf.cs:669 (AddCfExtended `dateoccurring` case); Get: Query.cs:597.",
+  "properties": {
+    "sqref": { "type":"string", "aliases":["range","ref"], "add":true, "get":true, "description":"target cell range. Get readback uses canonical key `ref`.", "examples":["--prop sqref=A1:A100"], "enforcement":"report" },
+    "period": { "type":"enum", "values":["today","yesterday","tomorrow","last7Days","thisWeek","lastWeek","nextWeek","thisMonth","lastMonth","nextMonth"], "aliases":["timePeriod","timeperiod"], "add":true, "get":true, "description":"time period token (default today).", "examples":["--prop period=last7Days","--prop period=today"], "readback":"OOXML time-period token", "enforcement":"report" },
+    "fill": { "type":"color", "add":true, "get":false, "description":"background fill via dxf.", "examples":["--prop fill=FFCCCC"], "enforcement":"report" },
+    "font.color": { "type":"color", "add":true, "get":false, "description":"font color via dxf.", "examples":["--prop font.color=FF0000"], "enforcement":"report" },
+    "font.bold": { "type":"bool", "add":true, "get":false, "description":"bold via dxf.", "examples":["--prop font.bold=true"], "enforcement":"report" },
+    "stopIfTrue": { "type":"bool", "add":true, "get":false, "description":"stop evaluating subsequent CF rules when this rule applies.", "examples":["--prop stopIfTrue=true"], "enforcement":"report" }
+  }
+}

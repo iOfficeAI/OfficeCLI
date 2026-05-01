@@ -1,0 +1,23 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "databar",
+  "parent": "sheet",
+  "operations": {"add": true, "get": true},
+  "paths": {"positional": ["/SheetName/cf[N]"]},
+  "note": "Conditional formatting data bar rule. Add via `add /Sheet1/cf --type databar --prop sqref=A1:A10`. Lookup: Add.Cf.cs:84 (AddDataBar); Get readback: Query.cs:464.",
+  "properties": {
+    "sqref": { "type":"string", "aliases":["range","ref"], "add":true, "get":true, "description":"target cell range. Get readback uses canonical key `ref`.", "examples":["--prop sqref=A1:A10"], "enforcement":"report" },
+    "min": { "type":"string", "add":true, "get":false, "description":"data bar lower bound (omit for auto-min).", "examples":["--prop min=0"], "enforcement":"report" },
+    "max": { "type":"string", "add":true, "get":false, "description":"data bar upper bound (omit for auto-max).", "examples":["--prop max=100"], "enforcement":"report" },
+    "color": { "type":"color", "add":true, "get":true, "description":"primary bar color (default 638EC6).", "examples":["--prop color=4472C4"], "readback":"#-prefixed uppercase hex or 'themeN'", "enforcement":"report" },
+    "showValue": { "type":"bool", "add":true, "get":true, "description":"show cell value alongside the bar (default true).", "examples":["--prop showValue=false"], "readback":"true | false (only emitted when false)", "enforcement":"report" },
+    "negativeColor": { "type":"color", "add":true, "get":true, "description":"negative-value bar color (x14 extension, default FF0000).", "examples":["--prop negativeColor=FF0000"], "readback":"#-prefixed uppercase hex", "enforcement":"report" },
+    "axisColor": { "type":"color", "add":true, "get":true, "description":"axis color (x14 extension, default 000000).", "examples":["--prop axisColor=000000"], "readback":"#-prefixed uppercase hex", "enforcement":"report" },
+    "axisPosition": { "type":"enum", "values":["automatic","middle","none"], "add":true, "get":false, "description":"axis position for negative values (x14 extension, default automatic).", "examples":["--prop axisPosition=middle"], "enforcement":"report" },
+    "minLength": { "type":"number", "add":true, "get":true, "description":"minimum bar length (% of cell, default 0).", "examples":["--prop minLength=10"], "readback":"integer percentage", "enforcement":"report" },
+    "maxLength": { "type":"number", "add":true, "get":true, "description":"maximum bar length (% of cell, default 100).", "examples":["--prop maxLength=90"], "readback":"integer percentage", "enforcement":"report" },
+    "direction": { "type":"enum", "values":["leftToRight","rightToLeft","context","ltr","rtl"], "add":true, "get":true, "description":"bar direction (x14 extension).", "examples":["--prop direction=leftToRight"], "readback":"OOXML direction token", "enforcement":"report" },
+    "stopIfTrue": { "type":"bool", "add":true, "get":false, "description":"stop evaluating subsequent CF rules when this rule applies.", "examples":["--prop stopIfTrue=true"], "enforcement":"report" }
+  }
+}

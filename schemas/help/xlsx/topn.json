@@ -1,0 +1,19 @@
+{
+  "$schema": "../_schema.json",
+  "format": "xlsx",
+  "element": "topn",
+  "parent": "sheet",
+  "operations": {"add": true, "get": true},
+  "paths": {"positional": ["/SheetName/cf[N]"]},
+  "note": "Top-N or bottom-N rank conditional formatting. Add via `add /Sheet1/cf --type topn --prop sqref=A1:A100 --prop rank=10`. Aliases for type: top10, top. Lookup: Add.Cf.cs:577 (AddCfExtended `topn` case); Get: Query.cs:545.",
+  "properties": {
+    "sqref": { "type":"string", "aliases":["range","ref"], "add":true, "get":true, "description":"target cell range. Get readback uses canonical key `ref`.", "examples":["--prop sqref=A1:A100"], "enforcement":"report" },
+    "rank": { "type":"number", "aliases":["top","bottomN","value"], "add":true, "get":true, "description":"number (or percent) of items to highlight. Default 10. Required >= 1.", "examples":["--prop rank=10"], "readback":"integer", "enforcement":"report" },
+    "percent": { "type":"bool", "add":true, "get":true, "description":"interpret rank as a percentage (true) or absolute count (false, default).", "examples":["--prop percent=true"], "readback":"true | false (only emitted when true)", "enforcement":"report" },
+    "bottom": { "type":"bool", "add":true, "get":true, "description":"highlight bottom-N instead of top-N (default false).", "examples":["--prop bottom=true"], "readback":"true | false (only emitted when true)", "enforcement":"report" },
+    "fill": { "type":"color", "add":true, "get":false, "description":"background fill via dxf.", "examples":["--prop fill=FFFF00"], "enforcement":"report" },
+    "font.color": { "type":"color", "add":true, "get":false, "description":"font color via dxf.", "examples":["--prop font.color=FF0000"], "enforcement":"report" },
+    "font.bold": { "type":"bool", "add":true, "get":false, "description":"bold via dxf.", "examples":["--prop font.bold=true"], "enforcement":"report" },
+    "stopIfTrue": { "type":"bool", "add":true, "get":false, "description":"stop evaluating subsequent CF rules when this rule applies.", "examples":["--prop stopIfTrue=true"], "enforcement":"report" }
+  }
+}
