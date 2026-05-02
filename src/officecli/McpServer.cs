@@ -185,14 +185,22 @@ public static class McpServer
             // Unified tool: route by "command" arg; legacy: route by tool name
             var toolName = name == "officecli" && args.ValueKind == JsonValueKind.Object && args.TryGetProperty("command", out var cmd)
                 ? cmd.GetString() ?? name : name;
-            var result = ExecuteTool(toolName, args);
+            var contents = ExecuteToolMulti(toolName, args);
             return WriteJson(w =>
             {
                 w.WriteStartObject();
                 Rpc(w, id);
                 w.WriteStartObject("result");
                 w.WriteStartArray("content");
-                w.WriteStartObject(); w.WriteString("type", "text"); w.WriteString("text", result); w.WriteEndObject();
+                foreach (var c in contents)
+                {
+                    w.WriteStartObject();
+                    w.WriteString("type", c.Type);
+                    if (c.Text != null) w.WriteString("text", c.Text);
+                    if (c.Data != null) w.WriteString("data", c.Data);
+                    if (c.MimeType != null) w.WriteString("mimeType", c.MimeType);
+                    w.WriteEndObject();
+                }
                 w.WriteEndArray();
                 w.WriteBoolean("isError", false);
                 w.WriteEndObject();
@@ -217,6 +225,88 @@ public static class McpServer
     }
 
     // ==================== Tool Execution ====================
+
+    /// <summary>
+    /// MCP content block. Most tool responses are a single text block; screenshot
+    /// returns a text caption + an image block (base64 PNG). Fields not relevant
+    /// to a given Type are left null and omitted on serialization.
+    /// </summary>
+    private sealed record McpContent(string Type, string? Text = null, string? Data = null, string? MimeType = null);
+
+    /// <summary>
+    /// Multi-modal wrapper around <see cref="ExecuteTool"/>. Special-cases
+    /// view+screenshot (returns text caption + base64 PNG); everything else
+    /// gets the legacy single-text path. Lets us add image responses without
+    /// touching the ~50 string-returning case branches.
+    /// </summary>
+    private static IReadOnlyList<McpContent> ExecuteToolMulti(string name, JsonElement args)
+    {
+        if (name == "view" && args.ValueKind == JsonValueKind.Object
+            && args.TryGetProperty("mode", out var m) && m.ValueKind == JsonValueKind.String)
+        {
+            var mode = m.GetString() ?? "";
+            if (mode is "screenshot" or "p")
+                return RunScreenshot(args);
+        }
+        return new[] { new McpContent("text", Text: ExecuteTool(name, args)) };
+    }
+
+    /// <summary>
+    /// Render the document as HTML, headless-screenshot to PNG, return both a
+    /// text caption (with the saved tmp PNG path, for agents with fs access)
+    /// and the base64 PNG (for MCP-only agents). Mirrors the CLI's
+    /// <c>view &lt;file&gt; screenshot</c> path; same backend probing
+    /// (playwright → chrome → firefox) via <see cref="HtmlScreenshot"/>.
+    /// </summary>
+    private static IReadOnlyList<McpContent> RunScreenshot(JsonElement args)
+    {
+        string Arg(string key) => args.TryGetProperty(key, out var v) ? v.GetString() ?? "" : "";
+        int? ArgIntOpt(string key) => args.TryGetProperty(key, out var v) && v.TryGetInt32(out var i) ? i : null;
+        int ArgInt(string key, int def) => ArgIntOpt(key) ?? def;
+
+        var file = Arg("file");
+        if (string.IsNullOrEmpty(file)) throw new ArgumentException("file= required for screenshot");
+        var start = ArgIntOpt("start");
+        var end = ArgIntOpt("end");
+        var width = ArgInt("screenshot_width", 1600);
+        var height = ArgInt("screenshot_height", 1200);
+        var grid = ArgInt("grid", 0);
+
+        using var handler = DocumentHandlerFactory.Open(file);
+        string? html = null;
+        if (handler is Handlers.PowerPointHandler ppt)
+        {
+            var pStart = start ?? 1;
+            var pEnd = end ?? pStart;
+            html = ppt.ViewAsHtml(pStart, pEnd, grid, width);
+        }
+        else if (handler is Handlers.ExcelHandler ex) html = ex.ViewAsHtml();
+        else if (handler is Handlers.WordHandler wh) html = wh.ViewAsHtml();
+
+        if (html == null)
+            throw new ArgumentException("Screenshot mode is only supported for .pptx, .xlsx, and .docx files.");
+
+        var stem = Path.GetFileNameWithoutExtension(file);
+        var tmpHtml = Path.Combine(Path.GetTempPath(), $"officecli_preview_{stem}_{Guid.NewGuid():N}.html");
+        File.WriteAllText(tmpHtml, html);
+        var pngPath = Path.Combine(Path.GetTempPath(), $"officecli_screenshot_{stem}_{Guid.NewGuid():N}.png");
+        var r = OfficeCli.Core.HtmlScreenshot.Capture(tmpHtml, pngPath, width, height);
+        try { File.Delete(tmpHtml); } catch { /* ignore */ }
+        if (!r.Ok)
+            throw new InvalidOperationException(
+                "No headless browser available. Install Chrome/Edge/Chromium or Firefox, "
+                + "or `pip install playwright && playwright install chromium`."
+                + (r.Error != null ? $" Last error: {r.Error}" : ""));
+
+        var bytes = File.ReadAllBytes(pngPath);
+        var b64 = Convert.ToBase64String(bytes);
+        var caption = $"Screenshot saved to {pngPath} ({bytes.Length} bytes, backend: {r.Backend}).";
+        return new[]
+        {
+            new McpContent("text", Text: caption),
+            new McpContent("image", Data: b64, MimeType: "image/png"),
+        };
+    }
 
     private static string ExecuteTool(string name, JsonElement args)
     {
@@ -527,7 +617,7 @@ Paths are 1-based: /slide[1]/shape[2], /body/p[3], /Sheet1/A1.
 
     private const string ToolDescription = @"Create, read, and modify Office documents (.docx, .xlsx, .pptx).
 
-Commands: create (file), view (file, mode: text|annotated|outline|stats|issues|html|svg|forms), get (file, path, depth), query (file, selector), set (file, path, props[]), add (file, parent, type, props[], index/after/before), remove (file, path), move (file, path, to, index/after/before), swap (file, path, path2), validate (file), batch (file, commands), raw (file, part), help (format: docx|xlsx|pptx, optional type=<element> for full schema), load_skill (name: pptx|word|excel|morph-ppt|morph-ppt-3d|pitch-deck|academic-paper|data-dashboard|financial-model — returns the skill's SKILL.md guidance).
+Commands: create (file), view (file, mode: text|annotated|outline|stats|issues|html|svg|screenshot|forms), get (file, path, depth), query (file, selector), set (file, path, props[]), add (file, parent, type, props[], index/after/before), remove (file, path), move (file, path, to, index/after/before), swap (file, path, path2), validate (file), batch (file, commands), raw (file, part), help (format: docx|xlsx|pptx, optional type=<element> for full schema), load_skill (name: pptx|word|excel|morph-ppt|morph-ppt-3d|pitch-deck|academic-paper|data-dashboard|financial-model — returns the skill's SKILL.md guidance).
 
 Paths are 1-based: /slide[1]/shape[2], /body/p[3], /Sheet1/A1. Props are key=value strings. Call help with format= to list elements, then help with format= and type= to drill into a specific element's schema (properties, aliases, examples).";
 
@@ -564,7 +654,11 @@ Paths are 1-based: /slide[1]/shape[2], /body/p[3], /Sheet1/A1. Props are key=val
         w.WriteStartObject("items"); w.WriteString("type", "string"); w.WriteEndObject();
         w.WriteString("description", "key=value pairs (e.g. bold=true, color=FF0000, text=Hello)"); w.WriteEndObject();
         // mode
-        w.WriteStartObject("mode"); w.WriteString("type", "string"); w.WriteString("description", "View mode: text, annotated, outline, stats, issues, html, svg (pptx), forms (docx)"); w.WriteEndObject();
+        w.WriteStartObject("mode"); w.WriteString("type", "string"); w.WriteString("description", "View mode: text, annotated, outline, stats, issues, html, svg (pptx), screenshot (PNG via headless browser; needs playwright/chrome/firefox; takes seconds), forms (docx)"); w.WriteEndObject();
+        // screenshot_width / screenshot_height / grid (screenshot mode)
+        w.WriteStartObject("screenshot_width"); w.WriteString("type", "number"); w.WriteString("description", "Viewport width for screenshot mode (default 1600)"); w.WriteEndObject();
+        w.WriteStartObject("screenshot_height"); w.WriteString("type", "number"); w.WriteString("description", "Viewport height for screenshot mode (default 1200)"); w.WriteEndObject();
+        w.WriteStartObject("grid"); w.WriteString("type", "number"); w.WriteString("description", "Tile slides into N-column thumbnail grid (screenshot mode, pptx only; 0 = off)"); w.WriteEndObject();
         // depth
         w.WriteStartObject("depth"); w.WriteString("type", "number"); w.WriteString("description", "Child depth for get (default 1)"); w.WriteEndObject();
         // index
