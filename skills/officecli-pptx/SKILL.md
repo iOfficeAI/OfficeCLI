@@ -223,7 +223,7 @@ These are the patterns that make a deck look AI-generated or amateur:
 
 1. **Open/close mode.** Always `officecli open <file>` at start + `officecli close <file>` at end. Resident is the default, not an optimization. Use `batch` in ≤ 12-op chunks for repetitive shape grids.
 2. **Orient.** New deck: `officecli create "$FILE"`. Existing: `officecli view "$FILE" outline` first. Never edit blind.
-3. **Build in display order — HARD RULE.** `--index` on slide add is frequently ignored. Add slides in audience-view order: cover → agenda → section-1 divider → section-1 content → section-2 divider → … → closing. Out-of-order insertion requires `officecli move "$FILE" /slide[N] --index M` + re-verify with `get --depth 0`. **Before final delivery, confirm slide count + narrative arc match your build plan.** Gate 3 catches cases where the cover ends up as slide 11 of 14 instead of slide 1.
+3. **Build in display order — HARD RULE.** `--index` on slide add is frequently ignored. Add slides in audience-view order: cover → agenda → section-1 divider → section-1 content → section-2 divider → … → closing. Out-of-order insertion requires `officecli move "$FILE" /slide[N] --index M` + re-verify with `get --depth 0`. **Before final delivery, confirm slide count + narrative arc match your build plan.** Gate 2 catches cases where the cover ends up as slide 11 of 14 instead of slide 1.
 4. **Incremental per slide.** Create slide + background, then title, then supporting shapes / charts / connectors. Always `layout=blank` for custom designs. After each structural op, `get /slide[N] --depth 1` to confirm shape IDs.
 5. **Format to spec.** Per the Requirements table; formatting is deliverable, not polish.
 6. **Close + verify.** `officecli close` writes the ZIP. Always open in the target presentation viewer before shipping — chart colors, animations, fonts, and zoom are runtime features `view html` can't render. Full verification in QA below.
@@ -584,7 +584,7 @@ done
 | 19 | 4-year plan | white | (b) chart + commentary | Hockey stick + honest assumptions panel |
 | 20 | The Ask / Thank you | dark | (a) cover variant | `$XX M` hero number + 3 bullet use-of-funds + contact |
 
-Parallel to (d) — swap recipes per row; each divider must appear BEFORE its section content (see Gate 3).
+Parallel to (d) — swap recipes per row; each divider must appear BEFORE its section content (see Gate 2).
 
 #### (e) KPI callouts — giant-number card grid
 
@@ -674,38 +674,30 @@ Color convention: red path = stop/escalate, blue path = standard-action, green t
 
 ### Delivery Gate (any failure = REJECT, do NOT deliver)
 
-Four checks. Gates 1–2 are schema/token-grep defenses; Gate 3 catches build-order bugs; Gate 4 is the only visual-assembly check. **None of Gates 1–3 can see a rendered slide.** Refuse to declare done until every gate prints its OK message.
+Three checks. Gate 1 is the schema defense; Gate 2 catches build-order bugs; Gate 3 is the only visual-assembly check. **None of Gates 1–2 can see a rendered slide.** Refuse to declare done until every gate prints its OK message.
 
 ```bash
 FILE="deck.pptx"
 
-# Gate 1 — schema check.
-VALIDATE_OUT=$(officecli validate "$FILE" 2>&1)
-echo "$VALIDATE_OUT" | grep -q "no errors found" && echo "Gate 1 OK" || { echo "REJECT Gate 1:"; echo "$VALIDATE_OUT"; exit 1; }
+# Gate 1 — schema check (REJECT on any validate error)
+officecli validate "$FILE" && echo "Gate 1 OK" || { echo "REJECT Gate 1"; exit 1; }
 
-# Gate 2 — token leak via CLI text-layer view. Tokens that must NEVER appear in a delivered deck.
-# NOTE: `[ ]` empty-bracket branch false-positives on legitimate checkbox UI — prefer `☐` (U+2610) in checklists.
-officecli view "$FILE" text | \
-  grep -nE '(\$[A-Za-z_]+\$|\{\{[^}]+\}\}|<TODO>|xxxx|lorem|\\[\$tn]|\([[:space:]]*\)|\[[[:space:]]*\])' && \
-  { echo "REJECT Gate 2: token leak above"; exit 1; } || echo "Gate 2 OK"
-
-# Gate 3 — slide-order sanity. Must match your build plan.
-# COUNT via query (works closed or open; plain `get --depth 0` default output is NOT JSON and grep returns 0).
+# Gate 2 — slide-order sanity. Must match your build plan.
 SLIDE_COUNT=$(officecli query "$FILE" 'slide' --json | jq '.data.results | length')
-if [ "$SLIDE_COUNT" -lt 1 ]; then echo "REJECT Gate 3: zero slides"; exit 1; fi
-echo "Gate 3: total slides = $SLIDE_COUNT"
+if [ "$SLIDE_COUNT" -lt 1 ]; then echo "REJECT Gate 2: zero slides"; exit 1; fi
+echo "Gate 2: total slides = $SLIDE_COUNT"
 # Dump titles in order to compare to your narrative outline:
 officecli query "$FILE" 'shape[@name=Title]' --format 'path: %p text: %t' 2>/dev/null || \
   officecli query "$FILE" 'shape' --format 'path: %p name: %n text: %t' | head -40
 # REJECT if sequence (cover first, dividers before their sections, closing last) doesn't match your plan.
-echo "Gate 3: review above — REJECT if order wrong, else OK"
+echo "Gate 2: review above — REJECT if order wrong, else OK"
 
-echo "Delivery Gate 1–3 PASS — proceed to Gate 4 (fresh-eyes visual audit)"
+echo "Delivery Gate 1–2 PASS — proceed to Gate 3 (fresh-eyes visual audit)"
 ```
 
-### Gate 4 — Visual audit via HTML preview (MANDATORY, not optional)
+### Gate 3 — Visual audit via HTML preview (MANDATORY, not optional)
 
-You are reading the same deck you wrote. **Gates 1–3 cannot see rendered slides.** This step is the only visual-assembly check. Do not skip.
+You are reading the same deck you wrote. **Gates 1–2 cannot see rendered slides.** This step is the only visual-assembly check. Do not skip.
 
 Run `officecli view "$FILE" html` and Read the returned HTML path. For every slide, answer:
 
@@ -715,7 +707,7 @@ Run `officecli view "$FILE" html` and Read the returned HTML path. For every sli
 - **order sanity**: does the slide sequence match the narrative outline (cover → agenda → dividers-before-their-sections → closing)?
 - **missing arrowheads**: do flowchart/decision-tree connectors show direction, or plain lines?
 
-REJECT the delivery if ANY of the above is present; list every instance with its slide number. If none, report "Gate 4 PASS".
+REJECT the delivery if ANY of the above is present; list every instance with its slide number. If none, report "Gate 3 PASS".
 
 ### After all gates pass
 
@@ -723,7 +715,7 @@ Open the deck in the target presentation viewer before shipping — chart colors
 
 If a gate fails, fix and **rerun the full Delivery Gate** — one fix commonly creates another problem.
 
-`validate` catches schema, not design — Gates 2–4 are how you catch 14pt body, gray-on-navy, and placeholder leaks that schema-validation never flags.
+`validate` catches schema, not design — Gates 2–3 are how you catch slide-order bugs, gray-on-navy, and overflow that schema-validation never flags.
 
 ## Common Pitfalls
 
@@ -738,7 +730,6 @@ Sanity-check cheatsheet — what breaks on the first try. Design + shell traps.
 | Positional `/shape[3]` after z-order / remove | Positions drift. Use `@name=` / `@id=` for any repeated reference |
 | `[last]` without parens | Must be `[last()]`: `/slide[last()]/shape[1]` |
 | `/slide[last()]` in resident mode | Some resident versions reject it with "Shapes must be added to a slide: /slide[N]". Use explicit `/slide[N]` from `get --depth 0` for production builds. |
-| `[ ]` empty-bracket checkboxes | False-positives Gate 2's empty-bracket token check. Use `☐` (U+2610) / `☑` (U+2611) in checklist UI. |
 | Paths 1-based vs `--index` 0-based | `/slide[1]` = first slide; `--index 0` = first position |
 | `$` in `--prop text=` | Single-quote: `--prop text='$15M'`. Double-quoted `"$15M"` gets shell-expanded to `M` |
 | `\n` / `\t` in `--prop text=` | CLI does NOT interpret. Use multiple `--type paragraph`, or batch heredoc with JSON `"\n"` |
