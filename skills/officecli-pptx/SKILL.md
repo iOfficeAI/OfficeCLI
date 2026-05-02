@@ -590,18 +590,9 @@ Parallel to (d) — swap recipes per row; each divider must appear BEFORE its se
 
 **Visual outcome.** Three (or four) giant numbers across a row, each with a one-line unit sublabel + small percent-change chip + one-line takeaway underneath. This is the single most common exec-deck element.
 
-**Text-fit cheatsheet** (pre-compute to avoid wrap). Georgia ≈ `0.9 × size_pt × (char_count / 28)` cm; Calibri ≈ `0.65 ×`. Corollaries for a **7.19cm** card (4 across) vs a **9.76cm** card (3 across):
+**KPI value sizing.** 60pt Georgia bold fits ~5 chars in a 9.78cm card (`$84.2`, `118%`, `24.5`). For values that don't fit (`$84.2M`), split: `$84.2` as the big number, `USD millions` as the sublabel — never shrink the font to chase the unit suffix, it just wraps.
 
-| Card width | Font | Max size | Max chars of KPI value |
-|---|---|---|---|
-| 7.19cm | Georgia | 48pt | 5 (`$84.2`, `118%`, `24.5`) |
-| 7.19cm | Calibri | 48pt | 6 (`$84.2M`) |
-| 9.76cm | Georgia | 60pt | 5–6 |
-| 9.76cm | Calibri | 60pt | 7 |
-
-**Rule.** If the KPI is `$84.2M`, put `$84.2` as the big number and `USD millions` as the sublabel. Do not chase a bigger font into the unit suffix — it will wrap.
-
-Grid math for 3 cards across, 1.5cm margins, 0.76cm gap: `usable = 33.87 − 3 − 2·0.76 = 29.35`, `col_width = 29.35 / 3 = 9.78cm`. x-positions: `1.5, 12.04, 22.58`.
+Grid math for 3 cards across, 1.5cm margins, 0.76cm gap: `col_width = (33.87 − 3 − 2·0.76) / 3 = 9.78cm`. x-positions: `1.5, 12.04, 22.58`.
 
 ```bash
 # 3 KPI cards (navy fill, white number, ice-blue sublabel, terracotta pct chip for the watch-card).
@@ -633,36 +624,29 @@ Use the accent color (terracotta here) on the single "watch" card so the audienc
 Layout: diamond at top-center (x=13.94, y=2cm, 6×3cm). YES branch at x=3cm y=7.5cm; NO branch at x=24.87cm y=7.5cm; terminal at x=13.94cm y=13cm.
 
 ```bash
-# One batch: diamond + YES box + NO box + terminal box + YES/NO labels.
+# Each box carries its own text via valign=middle (no separate text-overlay shape).
 cat <<EOF | officecli batch "$FILE"
 [
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"name":"Decide","preset":"diamond","fill":"1E2761","line":"none","x":"13.94cm","y":"2cm","width":"6cm","height":"3cm"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"Hazardous energy present?","x":"13.94cm","y":"2.8cm","width":"6cm","height":"1.4cm","font":"Calibri","size":"14","bold":"true","color":"FFFFFF","align":"center","fill":"none"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"name":"YesBox","preset":"roundRect","fill":"B85042","line":"none","x":"3cm","y":"7.5cm","width":"8cm","height":"3cm"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"Lockout + Tagout + Verify","x":"3cm","y":"8.3cm","width":"8cm","height":"1.4cm","font":"Calibri","size":"16","bold":"true","color":"FFFFFF","align":"center","fill":"none"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"name":"NoBox","preset":"roundRect","fill":"CADCFC","line":"none","x":"22.87cm","y":"7.5cm","width":"8cm","height":"3cm"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"Proceed with standard PPE","x":"22.87cm","y":"8.3cm","width":"8cm","height":"1.4cm","font":"Calibri","size":"16","bold":"true","color":"1E2761","align":"center","fill":"none"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"name":"Done","preset":"roundRect","fill":"2C5F2D","line":"none","x":"13.94cm","y":"13cm","width":"6cm","height":"2.5cm"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"Begin service","x":"13.94cm","y":"13.6cm","width":"6cm","height":"1.2cm","font":"Calibri","size":"16","bold":"true","color":"FFFFFF","align":"center","fill":"none"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"YES","x":"6.5cm","y":"5.8cm","width":"2cm","height":"1cm","font":"Calibri","size":"14","bold":"true","color":"B85042","align":"center","fill":"none"}},
-  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"NO","x":"25.5cm","y":"5.8cm","width":"2cm","height":"1cm","font":"Calibri","size":"14","bold":"true","color":"1E2761","align":"center","fill":"none"}}
+  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"name":"Decide","preset":"diamond","fill":"1E2761","line":"none","x":"13.94cm","y":"2cm","width":"6cm","height":"3cm","text":"Hazardous energy present?","font":"Calibri","size":"14","bold":"true","color":"FFFFFF","align":"center","valign":"middle"}},
+  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"name":"YesBox","preset":"roundRect","fill":"B85042","line":"none","x":"3cm","y":"7.5cm","width":"8cm","height":"3cm","text":"Lockout + Tagout + Verify","font":"Calibri","size":"16","bold":"true","color":"FFFFFF","align":"center","valign":"middle"}},
+  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"name":"NoBox","preset":"roundRect","fill":"CADCFC","line":"none","x":"22.87cm","y":"7.5cm","width":"8cm","height":"3cm","text":"Proceed with standard PPE","font":"Calibri","size":"16","bold":"true","color":"1E2761","align":"center","valign":"middle"}},
+  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"name":"Done","preset":"roundRect","fill":"2C5F2D","line":"none","x":"13.94cm","y":"13cm","width":"6cm","height":"2.5cm","text":"Begin service","font":"Calibri","size":"16","bold":"true","color":"FFFFFF","align":"center","valign":"middle"}},
+  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"YES","x":"6.5cm","y":"5.8cm","width":"2cm","height":"1cm","font":"Calibri","size":"14","bold":"true","color":"B85042","align":"center"}},
+  {"command":"add","parent":"/slide[$SLIDE]","type":"shape","props":{"text":"NO","x":"25.5cm","y":"5.8cm","width":"2cm","height":"1cm","font":"Calibri","size":"14","bold":"true","color":"1E2761","align":"center"}}
 ]
 EOF
 
 # 4 connectors: Decide→YesBox, Decide→NoBox, YesBox→Done, NoBox→Done.
-# Arrowhead via --prop tailEnd=triangle on add (diamonds diverge — preset=rightArrow fallback does NOT work here).
 for pair in "Decide YesBox" "Decide NoBox" "YesBox Done" "NoBox Done"; do
   A=$(echo $pair | cut -d' ' -f1); B=$(echo $pair | cut -d' ' -f2)
-  FROM_ID=$(officecli query "$FILE" "shape[name=$A]" --json | jq -r '.data.results[0].format.id')
-  TO_ID=$(officecli query "$FILE"   "shape[name=$B]" --json | jq -r '.data.results[0].format.id')
   officecli add "$FILE" "/slide[$SLIDE]" --type connector \
-    --prop "from=/slide[$SLIDE]/shape[@id=$FROM_ID]" \
-    --prop "to=/slide[$SLIDE]/shape[@id=$TO_ID]" \
+    --prop "from=/slide[$SLIDE]/shape[@name=$A]" \
+    --prop "to=/slide[$SLIDE]/shape[@name=$B]" \
     --prop shape=elbow --prop color=333333 --prop tailEnd=triangle
 done
 ```
 
-Color convention: red path = stop/escalate, blue path = standard-action, green terminal = safe end-state. **Every connector carries `--prop tailEnd=triangle`** — without arrowheads, trainees can read a decision tree backwards (a real life-safety risk in training / compliance decks). For diamonds, the `preset=rightArrow` overlay does NOT substitute — edges diverge left and right, not horizontally.
+Color convention: red path = stop/escalate, blue path = standard-action, green terminal = safe end-state. Trainees reading a decision tree backwards is a real life-safety risk — every connector needs an arrowhead.
 
 ## QA (Required)
 
