@@ -231,7 +231,7 @@ These are the patterns that make a deck look AI-generated or amateur:
 
 ## Quick Start
 
-Minimal viable deck: cover slide + one content slide + notes. `$FILE` stands in for your filename — adapt, don't copy-paste.
+Minimal viable deck: cover + one content slide + notes. `$FILE` stands in for your filename.
 
 ```bash
 FILE="deck.pptx"
@@ -242,26 +242,23 @@ officecli open "$FILE"
 officecli add "$FILE" / --type slide --prop layout=blank --prop background=1E2761
 officecli add "$FILE" /slide[1] --type shape --prop text="FY26 Strategic Review" \
   --prop x=2cm --prop y=7cm --prop width=29.87cm --prop height=3cm \
-  --prop font=Georgia --prop size=44 --prop bold=true --prop color=FFFFFF --prop align=center --prop fill=none
-officecli add "$FILE" /slide[1] --type shape --prop text="Prepared for the Board — April 2026" \
-  --prop x=2cm --prop y=10.5cm --prop width=29.87cm --prop height=1.5cm \
-  --prop font=Calibri --prop size=18 --prop color=CADCFC --prop align=center --prop fill=none
+  --prop font=Georgia --prop size=44 --prop bold=true --prop color=FFFFFF --prop align=center
 
 # Content — white fill, title + body + notes
 officecli add "$FILE" / --type slide --prop layout=blank --prop background=FFFFFF
 officecli add "$FILE" /slide[2] --type shape --prop text="Revenue grew 18% YoY" \
   --prop x=1.5cm --prop y=1.2cm --prop width=30cm --prop height=2cm \
-  --prop font=Georgia --prop size=36 --prop bold=true --prop color=1E2761 --prop fill=none
-officecli add "$FILE" /slide[2] --type shape --prop text="Enterprise renewals and the new EMEA region drove the beat; NRR held at 118%." \
+  --prop font=Georgia --prop size=36 --prop bold=true --prop color=1E2761
+officecli add "$FILE" /slide[2] --type shape --prop text="Enterprise renewals + new EMEA region drove the beat; NRR held at 118%." \
   --prop x=1.5cm --prop y=4cm --prop width=30cm --prop height=3cm \
-  --prop font=Calibri --prop size=20 --prop color=333333 --prop fill=none
-officecli add "$FILE" /slide[2] --type notes --prop text="Lead with the 18% beat, walk renewals, preview EMEA section."
+  --prop font=Calibri --prop size=20 --prop color=333333
+officecli add "$FILE" /slide[2] --type notes --prop text="Lead with the 18% beat, preview EMEA."
 
 officecli close "$FILE"
 officecli validate "$FILE"
 ```
 
-Verified: `validate` clean; titles ≥ 36pt, body 20pt, slide 2 has notes. Shape of every build: open → slide+background → title → body → notes → close → validate.
+Shape of every build: open → slide+background → title → body → notes → close → validate.
 
 ## Reading & Analysis
 
@@ -441,30 +438,26 @@ Six patterns that aren't obvious from the primitives: (a) cover + section divide
 
 #### (a) Executive cover + section divider
 
-**Visual outcome.** Cover: dark navy fill, centered 44pt title, 18pt ice-blue meta line, thin brand band at the bottom. Section divider: same dark fill, large translucent "02" (120pt, 15% opacity) behind a 40pt title — the number becomes a background graphic, the title carries the message.
+**Visual outcome.** Cover: dark navy fill, centered 44pt title, 18pt ice-blue meta line. Section divider: same dark fill, large translucent "02" (120pt, 15% opacity) behind a 40pt title — the number becomes a background graphic, the title carries the message.
 
 ```bash
 # Cover
 officecli add "$FILE" / --type slide --prop layout=blank --prop background=1E2761
-officecli add "$FILE" "/slide[last()]" --type shape --prop name=CoverBand \
-  --prop preset=rect --prop fill=CADCFC --prop line=none \
-  --prop x=0cm --prop y=18.4cm --prop width=33.87cm --prop height=0.65cm
 officecli add "$FILE" "/slide[last()]" --type shape --prop text="Strategic Growth Review" \
   --prop x=2cm --prop y=7cm --prop width=29.87cm --prop height=3cm \
-  --prop font=Georgia --prop size=44 --prop bold=true --prop color=FFFFFF --prop align=center --prop fill=none
+  --prop font=Georgia --prop size=44 --prop bold=true --prop color=FFFFFF --prop align=center
 officecli add "$FILE" "/slide[last()]" --type shape --prop text="Prepared for Acme Leadership — FY26 Outlook" \
   --prop x=2cm --prop y=11cm --prop width=29.87cm --prop height=1.2cm \
-  --prop font=Calibri --prop size=18 --prop color=CADCFC --prop align=center --prop fill=none
+  --prop font=Calibri --prop size=18 --prop color=CADCFC --prop align=center
 
 # Section divider — translucent number added FIRST (stays behind), title last (stays on top)
 officecli add "$FILE" / --type slide --prop layout=blank --prop background=1E2761
 officecli add "$FILE" "/slide[last()]" --type shape --prop text="02" \
   --prop x=2cm --prop y=3cm --prop width=29.87cm --prop height=10cm \
-  --prop font=Georgia --prop size=120 --prop bold=true \
-  --prop color=FFFFFF --prop opacity=0.15 --prop align=center --prop fill=none
+  --prop font=Georgia --prop size=120 --prop bold=true --prop color=FFFFFF --prop opacity=0.15 --prop align=center
 officecli add "$FILE" "/slide[last()]" --type shape --prop text="Financial Performance" \
   --prop x=2cm --prop y=7.5cm --prop width=29.87cm --prop height=2.5cm \
-  --prop font=Georgia --prop size=40 --prop bold=true --prop color=FFFFFF --prop align=center --prop fill=none
+  --prop font=Georgia --prop size=40 --prop bold=true --prop color=FFFFFF --prop align=center
 ```
 
 **Z-order.** Later-added shapes are on top. Add background decoration FIRST, titles LAST. If the order got flipped, fix with `--prop zorder=back/front` — but that renumbers siblings, so re-`get --depth 1` before stacking more.
