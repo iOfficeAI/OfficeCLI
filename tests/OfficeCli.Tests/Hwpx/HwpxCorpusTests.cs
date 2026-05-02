@@ -1,6 +1,6 @@
 // Plan 86: Corpus Smoke Validation
 // Runs open → view text → validate on real HWPX samples.
-// Corpus directory is optional (local-only, .gitignore) — tests skip if absent.
+// Corpus directory is optional (local-only, .gitignore) — tests no-op if absent.
 
 using OfficeCli.Handlers;
 
@@ -25,58 +25,65 @@ public class HwpxCorpusTests
         return null;
     }
 
-    public static IEnumerable<object[]> CorpusFiles()
+    private static IEnumerable<(string Name, string Path)> GetFiles()
     {
         var dir = GetCorpusDir();
         if (dir == null) yield break;
         foreach (var f in Directory.GetFiles(dir, "*.hwpx"))
-            yield return [Path.GetFileName(f), f];
+            yield return (Path.GetFileName(f), f);
     }
 
-    [Theory]
-    [MemberData(nameof(CorpusFiles))]
-    public void Smoke_Open(string name, string path)
+    [Fact]
+    public void Smoke_Open()
     {
-        // Just open — should not throw
-        using var handler = new HwpxHandler(path, editable: false);
-        Assert.NotNull(handler);
+        foreach (var (name, path) in GetFiles())
+        {
+            using var handler = new HwpxHandler(path, editable: false);
+            Assert.NotNull(handler);
+        }
     }
 
-    [Theory]
-    [MemberData(nameof(CorpusFiles))]
-    public void Smoke_ViewText(string name, string path)
+    [Fact]
+    public void Smoke_ViewText()
     {
-        using var handler = new HwpxHandler(path, editable: false);
-        var text = handler.ViewAsText();
-        // Real documents should have some text
-        Assert.False(string.IsNullOrEmpty(text), $"{name}: ViewAsText returned empty");
+        foreach (var (name, path) in GetFiles())
+        {
+            using var handler = new HwpxHandler(path, editable: false);
+            var text = handler.ViewAsText();
+            Assert.False(string.IsNullOrEmpty(text), $"{name}: ViewAsText returned empty");
+        }
     }
 
-    [Theory]
-    [MemberData(nameof(CorpusFiles))]
-    public void Smoke_ViewMarkdown(string name, string path)
+    [Fact]
+    public void Smoke_ViewMarkdown()
     {
-        using var handler = new HwpxHandler(path, editable: false);
-        var md = handler.ViewAsMarkdown();
-        Assert.NotNull(md);
+        foreach (var (name, path) in GetFiles())
+        {
+            using var handler = new HwpxHandler(path, editable: false);
+            var md = handler.ViewAsMarkdown();
+            Assert.NotNull(md);
+        }
     }
 
-    [Theory]
-    [MemberData(nameof(CorpusFiles))]
-    public void Smoke_ViewForms(string name, string path)
+    [Fact]
+    public void Smoke_ViewForms()
     {
-        using var handler = new HwpxHandler(path, editable: false);
-        var forms = handler.ViewAsForms(auto: true);
-        Assert.NotNull(forms);
+        foreach (var (name, path) in GetFiles())
+        {
+            using var handler = new HwpxHandler(path, editable: false);
+            var forms = handler.ViewAsForms(auto: true);
+            Assert.NotNull(forms);
+        }
     }
 
-    [Theory]
-    [MemberData(nameof(CorpusFiles))]
-    public void Smoke_Validate(string name, string path)
+    [Fact]
+    public void Smoke_Validate()
     {
-        using var handler = new HwpxHandler(path, editable: false);
-        // Should not crash — warnings/errors are OK
-        var errors = handler.Validate();
-        Assert.NotNull(errors);
+        foreach (var (name, path) in GetFiles())
+        {
+            using var handler = new HwpxHandler(path, editable: false);
+            var errors = handler.Validate();
+            Assert.NotNull(errors);
+        }
     }
 }

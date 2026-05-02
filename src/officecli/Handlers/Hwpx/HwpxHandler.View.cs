@@ -446,7 +446,7 @@ public partial class HwpxHandler
                     var label = f.Label.Length > labelW ? f.Label[..(labelW - 1)] + "\u2026" : f.Label.PadRight(labelW);
                     var value = f.Value.Length > valueW ? f.Value[..(valueW - 1)] + "\u2026" : f.Value.PadRight(valueW);
                     var path = f.Path.Length > pathW ? f.Path[..(pathW - 1)] + "\u2026" : f.Path.PadRight(pathW);
-                    sb.AppendLine($"  {label}  {value}  {path}  {f.Strategy}");
+                    sb.AppendLine($"  {label}  {value}  {path}  [auto:{f.Strategy}]");
                 }
             }
 
@@ -508,7 +508,7 @@ public partial class HwpxHandler
                     ["strategy"] = f.Strategy
                 });
             }
-            result["forms"] = autoFields;
+            result["autoRecognized"] = autoFields;
         }
 
         return result;
