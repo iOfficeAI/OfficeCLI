@@ -365,7 +365,9 @@ public partial class ExcelHandler
                     // Auto-detect formula: value starting with '=' is treated as formula
                     if (effectiveValue.StartsWith('=') && effectiveValue.Length > 1)
                         goto case "formula";
-                    var cellValue = effectiveValue.Replace("\\n", "\n"); // Support escaped newlines
+                    // CONSISTENCY(escape-sequences): mirror PPTX/Word — interpret
+                    // \n and \t two-char escapes as real newline / tab.
+                    var cellValue = effectiveValue.Replace("\\n", "\n").Replace("\\t", "\t");
                     cell.CellFormula = null; // Clear formula when explicit value is set
                     // If cell is already boolean type, convert true/false to 1/0
                     if (cell.DataType?.Value == CellValues.Boolean)

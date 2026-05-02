@@ -1106,7 +1106,12 @@ public partial class WordHandler
         // resident process saves a corrupt DOM and surfaces "save failed — data may
         // be lost" only on close, costing the user their edits.
         Core.ParseHelpers.ValidateXmlText(text, "text");
-        var s = text.Replace("\r\n", "\n").Replace("\r", "\n");
+        // CONSISTENCY(escape-sequences): cross-handler convention — `\n` / `\t`
+        // two-char escapes in --prop text= are interpreted as real newline /
+        // tab. Mirrors PPTX shape-text and Excel cell-value handling. CRLF/CR
+        // collapsed afterwards so all break forms route through <w:br/>.
+        var s = text.Replace("\\n", "\n").Replace("\\t", "\t");
+        s = s.Replace("\r\n", "\n").Replace("\r", "\n");
         int start = 0;
         for (int i = 0; i < s.Length; i++)
         {

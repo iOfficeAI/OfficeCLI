@@ -1159,15 +1159,17 @@ public partial class PowerPointHandler
             new Drawing.BodyProperties(),
             new Drawing.ListStyle()
         );
-        var lines = text.Replace("\\n", "\n").Split('\n');
+        // CONSISTENCY(escape-sequences): \n splits into paragraphs, \t becomes
+        // <a:tab/> elements as paragraph children between text runs.
+        var lines = text.Replace("\\n", "\n").Replace("\\t", "\t").Split('\n');
         foreach (var line in lines)
         {
-            body.AppendChild(new Drawing.Paragraph(
-                new Drawing.Run(
-                    new Drawing.RunProperties { Language = "en-US" },
-                    new Drawing.Text { Text = line }
-                )
+            var para = new Drawing.Paragraph();
+            AppendLineWithTabs(para, line, seg => new Drawing.Run(
+                new Drawing.RunProperties { Language = "en-US" },
+                new Drawing.Text { Text = seg }
             ));
+            body.AppendChild(para);
         }
         shape.TextBody = body;
         return shape;

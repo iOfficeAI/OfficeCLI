@@ -266,9 +266,25 @@ public partial class PowerPointHandler
                     };
                 }
 
-                newRun.RunProperties = rProps;
-                newRun.Text = new Drawing.Text { Text = paraText.Replace("\\n", "\n") };
-                newPara.Append(newRun);
+                // CONSISTENCY(escape-sequences): \n still routes as raw newline
+                // inside a single <a:t> (paragraph-level only adds one paragraph
+                // here), but \t expands to <a:tab/> siblings between text runs
+                // so tabular text round-trips through PowerPoint.
+                var paraTextResolved = paraText.Replace("\\n", "\n").Replace("\\t", "\t");
+                if (paraTextResolved.Contains('\t'))
+                {
+                    AppendLineWithTabs(newPara, paraTextResolved, seg => new Drawing.Run
+                    {
+                        RunProperties = (Drawing.RunProperties)rProps.CloneNode(true),
+                        Text = new Drawing.Text { Text = seg }
+                    });
+                }
+                else
+                {
+                    newRun.RunProperties = rProps;
+                    newRun.Text = new Drawing.Text { Text = paraTextResolved };
+                    newPara.Append(newRun);
+                }
 
                 if (index.HasValue && index.Value >= 0)
                 {
@@ -381,7 +397,12 @@ public partial class PowerPointHandler
                     rProps.Baseline = IsTruthy(rSub) ? -25000 : 0;
 
                 newRun.RunProperties = rProps;
-                newRun.Text = new Drawing.Text { Text = runText.Replace("\\n", "\n") };
+                // CONSISTENCY(escape-sequences): match shape-text path (\n and \t
+                // two-char escapes resolved). Run-add stays single-element, so
+                // tabs land as raw chars inside <a:t> rather than <a:tab/>;
+                // higher-level shape-text Add/Set splits on \t into separate
+                // runs with <a:tab/> siblings.
+                newRun.Text = new Drawing.Text { Text = runText.Replace("\\n", "\n").Replace("\\t", "\t") };
 
                 // Insert run at specified index, or append
                 if (index.HasValue)
@@ -412,5 +433,28 @@ public partial class PowerPointHandler
                 return $"/slide[{runSlideIdx}]/{BuildElementPathSegment("shape", runShape, runShapeIdx)}/paragraph[{targetParaIdx}]/run[{runCount}]";
     }
 
-
+    // CONSISTENCY(escape-sequences): cross-handler convention — \t in paragraph
+    // text becomes an <a:tab/> element placed as a paragraph child between
+    // text-bearing <a:r> runs (the SDK has no strongly-typed class for it,
+    // so we emit OpenXmlUnknownElement). Caller has already split on real
+    // '\n' chars; this helper handles real '\t' chars within a single line.
+    // `runFactory` builds an <a:r> for a literal text segment; the helper
+    // appends runs and tabs to `paragraph` in left-to-right order.
+    internal static void AppendLineWithTabs(
+        Drawing.Paragraph paragraph,
+        string line,
+        Func<string, Drawing.Run> runFactory)
+    {
+        const string aNs = "http://schemas.openxmlformats.org/drawingml/2006/main";
+        var segments = line.Split('\t');
+        for (int i = 0; i < segments.Length; i++)
+        {
+            if (i > 0)
+                paragraph.AppendChild(new OpenXmlUnknownElement("a", "tab", aNs));
+            // Always emit a run per segment (including empty) so run formatting
+            // is preserved on both sides of the tab. PowerPoint tolerates empty
+            // <a:r><a:t/></a:r>.
+            paragraph.AppendChild(runFactory(segments[i]));
+        }
+    }
 }

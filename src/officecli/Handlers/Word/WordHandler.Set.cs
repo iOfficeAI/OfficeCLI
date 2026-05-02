@@ -389,7 +389,10 @@ public partial class WordHandler
                     var newRun = new Run();
                     if (existingRProps != null)
                         newRun.AppendChild(existingRProps);
-                    newRun.AppendChild(new Text(value) { Space = SpaceProcessingModeValues.Preserve });
+                    // CONSISTENCY(text-breaks): route through AppendTextWithBreaks
+                    // so \n/\t in value become <w:br/>/<w:tab/>, matching Add and
+                    // body-paragraph Set behavior (WordHandler.Set.Element.cs).
+                    AppendTextWithBreaks(newRun, value);
                     if (firstFieldRun != null)
                         firstPara.InsertBefore(newRun, firstFieldRun);
                     else
