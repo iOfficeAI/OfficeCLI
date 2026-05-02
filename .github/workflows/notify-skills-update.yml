@@ -1,0 +1,33 @@
+# Notify cli-jaw-skills repo when OfficeCLI skills change
+#
+# Trigger: push to skills/** on main/agent branches
+# What it does: sends repository_dispatch to cli-jaw-skills repo
+#
+# Required secret: SKILLS_SYNC_TOKEN
+#   - GitHub PAT with repo scope for lidge-jun/cli-jaw-skills
+#   - Set in OfficeCLI repo Settings → Secrets → Actions
+
+name: Notify Skills Update
+
+on:
+  push:
+    branches: [main, agent]
+    paths:
+      - 'skills/**'
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger cli-jaw-skills sync
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.SKILLS_SYNC_TOKEN }}
+          repository: lidge-jun/cli-jaw-skills
+          event-type: officecli-skills-updated
+          client-payload: |
+            {
+              "ref": "${{ github.ref }}",
+              "sha": "${{ github.sha }}",
+              "message": "${{ github.event.head_commit.message }}"
+            }

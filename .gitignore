@@ -1,0 +1,20 @@
+# Build output
+build-local/
+bin/
+obj/
+*.user
+*.suo
+*.pdb
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db

@@ -331,24 +331,8 @@ public partial class PowerPointHandler
                     };
                 }
 
-                // CONSISTENCY(escape-sequences): \n still routes as raw newline
-                // inside a single <a:t> (paragraph-level only adds one paragraph
-                // here), but \t expands to <a:tab/> siblings between text runs
-                // so tabular text round-trips through PowerPoint.
-                if (paraText.Contains('\t'))
-                {
-                    AppendLineWithTabs(newPara, paraText, seg => new Drawing.Run
-                    {
-                        RunProperties = (Drawing.RunProperties)rProps.CloneNode(true),
-                        Text = new Drawing.Text { Text = seg }
-                    });
-                }
-                else
-                {
-                    newRun.RunProperties = rProps;
-                    newRun.Text = new Drawing.Text { Text = paraText };
-                    newPara.Append(newRun);
-                }
+                foreach (var segmentedRun in BuildSegmentedRuns(paraText, rProps))
+                    newPara.Append(segmentedRun);
 
                 if (index.HasValue && index.Value >= 0)
                 {
@@ -645,8 +629,6 @@ public partial class PowerPointHandler
                 }
                 if (properties.TryGetValue("smtId", out var smtIdRaw))
                 {
-                    // ST_UnsignedInt-ish — accept any integer string; let
-                    // ParseHelpers normalize (matches the Set int-attr path).
                     var smtIdVal = OfficeCli.Core.ParseHelpers.SafeParseInt(smtIdRaw, "smtId");
                     if (smtIdVal < 0)
                         throw new ArgumentException($"Invalid smtId '{smtIdRaw}' (must be non-negative).");
@@ -654,49 +636,51 @@ public partial class PowerPointHandler
                         "", "smtId", "", smtIdVal.ToString(System.Globalization.CultureInfo.InvariantCulture)));
                 }
 
-                newRun.RunProperties = rProps;
-                // Hyperlink on the new run. Schema declares link.add=true with
-                // parent "shape|run" — without this branch the shape-level Add
-                // path accepts link= but `add ... --type run --prop link=...`
-                // reports UNSUPPORTED, forcing callers into a second Set call.
-                // Tooltip is paired with link (matches the AddShape / AddPicture
-                // / AddGroup pattern).
+                var insertedRuns = BuildSegmentedRuns(runText, rProps);
                 if (properties.TryGetValue("link", out var rLink))
-                    ApplyRunHyperlink(runSlidePart, newRun, rLink, properties.GetValueOrDefault("tooltip"));
-                // CONSISTENCY(escape-sequences): match shape-text path (\n and \t
-                // two-char escapes resolved). Run-add stays single-element, so
-                // tabs land as raw chars inside <a:t> rather than <a:tab/>;
-                // higher-level shape-text Add/Set splits on \t into separate
-                // runs with <a:tab/> siblings.
-                newRun.Text = new Drawing.Text { Text = runText };
+                {
+                    var firstRun = insertedRuns.FirstOrDefault();
+                    if (firstRun != null)
+                        ApplyRunHyperlink(runSlidePart, firstRun, rLink, properties.GetValueOrDefault("tooltip"));
+                }
 
-                // Insert run at specified index, or append
+                // Insert runs at specified index, or append
                 if (index.HasValue)
                 {
                     var existingRuns = targetPara.Elements<Drawing.Run>().ToList();
                     if (index.Value >= 0 && index.Value < existingRuns.Count)
-                        existingRuns[index.Value].InsertBeforeSelf(newRun);
+                    {
+                        var insertRef = existingRuns[index.Value];
+                        foreach (var segmentedRun in insertedRuns)
+                            insertRef.InsertBeforeSelf(segmentedRun);
+                    }
                     else
                     {
                         var endParaRun2 = targetPara.GetFirstChild<Drawing.EndParagraphRunProperties>();
-                        if (endParaRun2 != null)
-                            targetPara.InsertBefore(newRun, endParaRun2);
-                        else
-                            targetPara.Append(newRun);
+                        foreach (var segmentedRun in insertedRuns)
+                        {
+                            if (endParaRun2 != null)
+                                targetPara.InsertBefore(segmentedRun, endParaRun2);
+                            else
+                                targetPara.Append(segmentedRun);
+                        }
                     }
                 }
                 else
                 {
                     var endParaRun = targetPara.GetFirstChild<Drawing.EndParagraphRunProperties>();
-                    if (endParaRun != null)
-                        targetPara.InsertBefore(newRun, endParaRun);
-                    else
-                        targetPara.Append(newRun);
+                    foreach (var segmentedRun in insertedRuns)
+                    {
+                        if (endParaRun != null)
+                            targetPara.InsertBefore(segmentedRun, endParaRun);
+                        else
+                            targetPara.Append(segmentedRun);
+                    }
                 }
 
                 var runCount = targetPara.Elements<Drawing.Run>().Count();
                 GetSlide(runSlidePart).Save();
-                return $"/slide[{runSlideIdx}]/{BuildElementPathSegment("shape", runShape, runShapeIdx)}/paragraph[{targetParaIdx}]/run[{runCount}]";
+                return $"/slide[{runSlideIdx}]/{BuildElementPathSegment("shape", runShape, runShapeIdx)}/paragraph[{targetParaIdx}]/run[{runCount - insertedRuns.Count + 1}]";
     }
 
     // CONSISTENCY(escape-sequences): cross-handler convention — \t in paragraph

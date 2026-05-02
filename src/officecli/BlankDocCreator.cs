@@ -26,9 +26,12 @@ public static class BlankDocCreator
             case ".pptx":
                 CreatePowerPoint(path);
                 break;
+            case ".hwpx":
+                CreateHwpx(path);
+                break;
             default:
                 if (TryCreateViaPlugin(path, ext)) break;
-                throw new NotSupportedException($"Unsupported file type: {ext}. Supported: .docx, .xlsx, .pptx, or any extension served by an installed format-handler plugin that implements `create`.");
+                throw new NotSupportedException($"Unsupported file type: {ext}. Supported: .docx, .xlsx, .pptx, .hwpx, or any extension served by an installed format-handler plugin that implements `create`.");
         }
     }
 
@@ -599,6 +602,19 @@ public static class BlankDocCreator
         presentationPart.Presentation.Save();
 
         OfficeCliMetadata.StampOnCreate(doc);
+    }
+
+    private static void CreateHwpx(string path)
+    {
+        var asm = typeof(BlankDocCreator).Assembly;
+        // Try multiple resource name conventions
+        var resourceName = asm.GetManifestResourceNames()
+            .FirstOrDefault(n => n.EndsWith("base.hwpx", StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("Embedded base.hwpx template not found in assembly resources.");
+
+        using var stream = asm.GetManifestResourceStream(resourceName)!;
+        using var fs = File.Create(path);
+        stream.CopyTo(fs);
     }
 
     private static Shape CreateLayoutPlaceholder(uint id, string name, PlaceholderValues phType,

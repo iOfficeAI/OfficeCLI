@@ -73,8 +73,18 @@ public static class DocumentHandlerFactory
             ".docx" => new WordHandler(filePath, editable),
             ".xlsx" => new ExcelHandler(filePath, editable),
             ".pptx" => new PowerPointHandler(filePath, editable),
-            _      => TryOpenViaPlugin(filePath, ext, editable)
-                   ?? throw UnsupportedTypeException(ext)
+            ".hwpx" => new HwpxHandler(filePath, editable),
+            ".hwp" => throw new CliException(
+                "Binary .hwp files require pyhwp for reading. " +
+                "Convert to .hwpx in Hancom Office, or install pyhwp and convert: " +
+                "pip install pyhwp && hwp5txt input.hwp > output.txt")
+            {
+                Code = "unsupported_format",
+                Suggestion = "Save as .hwpx in Hancom Office (File → Save As → HWPX)",
+                Help = "pip install pyhwp && hwp5txt input.hwp > output.txt"
+            },
+            _ => TryOpenViaPlugin(filePath, ext, editable)
+                ?? throw UnsupportedTypeException(ext)
         };
     }
 
@@ -181,12 +191,12 @@ public static class DocumentHandlerFactory
 
     private static CliException UnsupportedTypeException(string ext) =>
         new CliException(
-            $"Unsupported file type: {ext}. Supported: .docx, .xlsx, .pptx. " +
+            $"Unsupported file type: {ext}. Supported: .docx, .xlsx, .pptx, .hwpx. " +
             $"Other formats may be opened via plugins — run `officecli plugins list` to see installed plugins, " +
             $"or see docs/plugin-protocol.md for installation paths.")
         {
             Code = "unsupported_type",
-            ValidValues = [".docx", ".xlsx", ".pptx"]
+            ValidValues = [".docx", ".xlsx", ".pptx", ".hwpx"]
         };
 
     private static bool IsEncodingException(Exception ex)

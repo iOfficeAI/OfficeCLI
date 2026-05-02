@@ -590,7 +590,6 @@ public partial class WordHandler
 
         if (properties.TryGetValue("text", out var text))
         {
-            var run = new Run();
             var rProps = new RunProperties();
             // Per-script font slots (font.latin / font.ea / font.cs) write
             // to ascii+hAnsi / eastAsia / cs respectively. Bare 'font'

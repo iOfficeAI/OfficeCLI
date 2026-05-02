@@ -120,11 +120,13 @@ static partial class CommandBuilder
 
     private static Command BuildCreateCommand(Option<bool> jsonOption)
     {
-        var createFileArg = new Argument<string>("file") { Description = "Output file path (.docx, .xlsx, .pptx)" };
-        var createTypeOpt = new Option<string>("--type") { Description = "Document type (docx, xlsx, pptx) — optional, inferred from file extension" };
+        var createFileArg = new Argument<string>("file") { Description = "Output file path (.docx, .xlsx, .pptx, .hwpx)" };
+        var createTypeOpt = new Option<string>("--type") { Description = "Document type (docx, xlsx, pptx, hwpx) — optional, inferred from file extension" };
         var createForceOpt = new Option<bool>("--force") { Description = "Overwrite an existing file." };
         var createLocaleOpt = new Option<string>("--locale") { Description = "Locale tag (e.g. zh-CN, ja, ko, ar, he) — sets per-script default fonts in docDefaults. Without it, host application's UI-locale fallback applies. Currently only honored for .docx." };
         var createMinimalOpt = new Option<bool>("--minimal") { Description = "(.docx only) Skip Word's Normal.dotm-style baseline (Calibri 11pt + Normal style + theme1.xml) and emit a raw OOXML-spec docx instead. Use for testing edge cases or producing maximally compact output. Without this flag, the doc carries Word-aligned defaults so it renders identically in Word, other producers, and the cli preview." };
+        var fromMarkdownOpt = new Option<FileInfo?>("--from-markdown") { Description = "Import content from a Markdown file (.md) into the new document (hwpx only)" };
+        var alignOpt = new Option<string?>("--align") { Description = "Text alignment for imported content: justify (default), left, center, right" };
         var createCommand = new Command("create", "Create a blank Office document");
         createCommand.Aliases.Add("new");
         createCommand.Add(createFileArg);
@@ -132,6 +134,8 @@ static partial class CommandBuilder
         createCommand.Add(createForceOpt);
         createCommand.Add(createLocaleOpt);
         createCommand.Add(createMinimalOpt);
+        createCommand.Add(fromMarkdownOpt);
+        createCommand.Add(alignOpt);
         createCommand.Add(jsonOption);
 
         createCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
@@ -141,6 +145,7 @@ static partial class CommandBuilder
             var force = result.GetValue(createForceOpt);
             var locale = result.GetValue(createLocaleOpt);
             var minimal = result.GetValue(createMinimalOpt);
+            var fromMarkdown = result.GetValue(fromMarkdownOpt);
 
             // If file has no extension but --type is provided, append it
             if (!string.IsNullOrEmpty(type) && string.IsNullOrEmpty(Path.GetExtension(file)))
@@ -189,6 +194,21 @@ static partial class CommandBuilder
             }
 
             OfficeCli.BlankDocCreator.Create(file, locale, minimal);
+
+            // Plan 85: Import Markdown content into the new document (hwpx only)
+            if (fromMarkdown != null)
+            {
+                if (!Path.GetExtension(file).Equals(".hwpx", StringComparison.OrdinalIgnoreCase))
+                    throw new CliException("--from-markdown is only supported for .hwpx files.")
+                        { Code = "unsupported_type" };
+
+                var mdContent = File.ReadAllText(fromMarkdown.FullName, Encoding.UTF8);
+                var align = result.GetValue(alignOpt);
+                using var handler = new OfficeCli.Handlers.HwpxHandler(Path.GetFullPath(file), editable: true);
+                var blockCount = handler.ImportMarkdown(mdContent, align);
+                if (!json)
+                    Console.WriteLine($"Imported {blockCount} blocks from {fromMarkdown.Name}");
+            }
             var fullCreatedPath = Path.GetFullPath(file);
 
             // Best-effort: auto-start a short-lived resident process so
@@ -233,7 +253,7 @@ static partial class CommandBuilder
 
     private static Command BuildMergeCommand(Option<bool> jsonOption)
     {
-        var mergeTemplateArg = new Argument<string>("template") { Description = "Template file path (.docx, .xlsx, .pptx) with {{key}} placeholders" };
+        var mergeTemplateArg = new Argument<string>("template") { Description = "Template file path (.docx, .xlsx, .pptx, .hwpx) with {{key}} placeholders" };
         var mergeOutputArg = new Argument<string>("output") { Description = "Output file path" };
         var mergeDataOpt = new Option<string>("--data") { Description = "JSON data or path to .json file", Required = true };
         var mergeCommand = new Command("merge", "Merge template with JSON data, replacing {{key}} placeholders");

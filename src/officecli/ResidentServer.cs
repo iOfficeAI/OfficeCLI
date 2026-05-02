@@ -987,6 +987,11 @@ public class ResidentServer : IDisposable
     {
         if (!WatchServer.IsWatching(_filePath)) return;
 
+        if (_handler is OfficeCli.Handlers.HwpxHandler hwpx)
+        {
+            WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "full", FullHtml = hwpx.ViewAsHtml() });
+            return;
+        }
         if (_handler is OfficeCli.Handlers.ExcelHandler excel)
         {
             string? scrollTo = null;
@@ -1023,6 +1028,11 @@ public class ResidentServer : IDisposable
     {
         if (!WatchServer.IsWatching(_filePath)) return;
 
+        if (_handler is OfficeCli.Handlers.HwpxHandler hwpx)
+        {
+            WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "full", FullHtml = hwpx.ViewAsHtml() });
+            return;
+        }
         if (_handler is OfficeCli.Handlers.WordHandler word)
         {
             var html = word.ViewAsHtml();
@@ -1066,6 +1076,8 @@ public class ResidentServer : IDisposable
             fullHtml = excel.ViewAsHtml();
         else if (_handler is OfficeCli.Handlers.WordHandler word)
             fullHtml = word.ViewAsHtml();
+        else if (_handler is OfficeCli.Handlers.HwpxHandler hwpx)
+            fullHtml = hwpx.ViewAsHtml();
         if (fullHtml != null)
             WatchNotifier.NotifyIfWatching(_filePath, new WatchMessage { Action = "full", FullHtml = fullHtml });
     }
@@ -1301,8 +1313,11 @@ public class ResidentServer : IDisposable
                 Console.WriteLine(OutputFormatter.FormatIssues(_handler.ViewAsIssues(issueType, limit), format));
             else if (modeKey is "forms" or "f")
             {
+                var auto = req.Args.TryGetValue("auto", out var a) && a == "true";
                 if (_handler is OfficeCli.Handlers.WordHandler wordFormsHandler)
                     Console.WriteLine(wordFormsHandler.ViewAsFormsJson().ToJsonString(OutputFormatter.PublicJsonOptions));
+                else if (_handler is OfficeCli.Handlers.HwpxHandler hwpxFormsHandler)
+                    Console.WriteLine(hwpxFormsHandler.ViewAsFormsJson(auto).ToJsonString(OutputFormatter.PublicJsonOptions));
                 else if (_handler is OfficeCli.Core.Plugins.FormatHandlerProxy formsProxy)
                 {
                     var formsJson = formsProxy.ViewAsFormsJson();
@@ -1312,18 +1327,26 @@ public class ResidentServer : IDisposable
                         Console.WriteLine(formsJson.ToJsonString(OutputFormatter.PublicJsonOptions));
                 }
                 else
-                    Console.Error.WriteLine("Forms view is only supported for .docx files.");
+                    Console.Error.WriteLine("Forms view is only supported for .docx and .hwpx files.");
+            }
+            else if (modeKey is "tables" or "tbl")
+            {
+                if (_handler is OfficeCli.Handlers.HwpxHandler hwpxTblRes)
+                    Console.WriteLine(hwpxTblRes.ViewAsTablesJson().ToJsonString(OutputFormatter.PublicJsonOptions));
+                else Console.Error.WriteLine("Tables view is only supported for .hwpx files.");
+            }
+            else if (modeKey is "objects" or "obj")
+            {
+                if (_handler is OfficeCli.Handlers.HwpxHandler hwpxObjRes)
+                    Console.WriteLine(hwpxObjRes.ViewAsObjectsJson(
+                        req.Args.TryGetValue("object-type", out var ot2) ? ot2 : null).ToJsonString(OutputFormatter.PublicJsonOptions));
+                else Console.Error.WriteLine("Objects view is only supported for .hwpx files.");
             }
             else
-                // Unknown mode is a caller bug, not a successful view: throw
-                // the same CliException CommandBuilder.View.cs raises in the
-                // direct-mode path so the envelope reports success=false /
-                // code=invalid_value instead of stdout-ing the error message
-                // as the view payload.
-                throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms")
+                throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms, tables, markdown, objects, styles")
                 {
                     Code = "invalid_value",
-                    ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "pdf", "forms"]
+                    ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "pdf", "forms", "tables", "markdown", "objects", "styles"]
                 };
         }
         else
@@ -1348,22 +1371,44 @@ public class ResidentServer : IDisposable
                     output = _handler switch
                     {
                         OfficeCli.Handlers.WordHandler wfh => wfh.ViewAsForms(),
+                        OfficeCli.Handlers.HwpxHandler hfh => hfh.ViewAsForms(
+                            req.Args.TryGetValue("auto", out var a2) && a2 == "true"),
                         OfficeCli.Core.Plugins.FormatHandlerProxy fp
                             => fp.ViewAsFormsJson()?.ToJsonString(OutputFormatter.PublicJsonOptions)
                                ?? throw new OfficeCli.Core.CliException("Forms view is not supported by the format-handler plugin.")
                                    { Code = "unsupported_type" },
-                        _ => throw new OfficeCli.Core.CliException("Forms view is only supported for .docx files.")
+                        _ => throw new OfficeCli.Core.CliException("Forms view is only supported for .docx and .hwpx files.")
                         {
                             Code = "unsupported_type",
-                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "pdf", "forms"]
+                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "pdf", "forms", "tables", "markdown", "objects", "styles"]
                         }
                     };
                     break;
+                case "tables" or "tbl":
+                    output = _handler is OfficeCli.Handlers.HwpxHandler htbl
+                        ? htbl.ViewAsTables()
+                        : throw new OfficeCli.Core.CliException("Tables view is only supported for .hwpx files.") { Code = "unsupported_type" };
+                    break;
+                case "markdown" or "md":
+                    output = _handler is OfficeCli.Handlers.HwpxHandler hmd
+                        ? hmd.ViewAsMarkdown()
+                        : throw new OfficeCli.Core.CliException("Markdown view is only supported for .hwpx files.") { Code = "unsupported_type" };
+                    break;
+                case "objects" or "obj":
+                    output = _handler is OfficeCli.Handlers.HwpxHandler hobj
+                        ? hobj.ViewAsObjects(req.Args.TryGetValue("object-type", out var ot) ? ot : null)
+                        : throw new OfficeCli.Core.CliException("Objects view is only supported for .hwpx files.") { Code = "unsupported_type" };
+                    break;
+                case "styles":
+                    output = _handler is OfficeCli.Handlers.HwpxHandler hstyle
+                        ? hstyle.ViewAsStyles()
+                        : throw new OfficeCli.Core.CliException("Styles view is only supported for .hwpx files.") { Code = "unsupported_type" };
+                    break;
                 default:
-                    throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms")
+                    throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms, tables, markdown, objects, styles")
                     {
                         Code = "invalid_value",
-                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "pdf", "forms"]
+                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "pdf", "forms", "tables", "markdown", "objects", "styles"]
                     };
             }
             Console.WriteLine(output);
