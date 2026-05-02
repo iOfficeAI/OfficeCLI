@@ -84,10 +84,11 @@ internal static class TemplateMerger
             ".docx" => MergeDocx(outputPath, data),
             ".xlsx" => MergeXlsx(outputPath, data),
             ".pptx" => MergePptx(outputPath, data),
+            ".hwpx" => MergeHwpx(outputPath, data),
             _ => throw new CliException($"Unsupported file type for merge: {ext}")
             {
                 Code = "unsupported_type",
-                ValidValues = [".docx", ".xlsx", ".pptx"]
+                ValidValues = [".docx", ".xlsx", ".pptx", ".hwpx"]
             }
         };
     }
@@ -209,6 +210,36 @@ internal static class TemplateMerger
             }
         }
 
+        return unresolved.OrderBy(x => x).ToList();
+    }
+
+    private static MergeResult MergeHwpx(string filePath, Dictionary<string, string> data)
+    {
+        using (var handler = new Handlers.HwpxHandler(filePath, editable: true))
+        {
+            foreach (var kvp in data)
+            {
+                var placeholder = "{{" + kvp.Key + "}}";
+                handler.Set("/", new Dictionary<string, string>
+                {
+                    ["find"] = placeholder,
+                    ["replace"] = kvp.Value
+                });
+            }
+        }
+
+        var unresolved = ScanUnresolvedHwpx(filePath);
+        var usedKeys = data.Keys.Where(k => !unresolved.Contains(k)).ToList();
+        return new MergeResult(usedKeys.Count, unresolved, usedKeys);
+    }
+
+    private static List<string> ScanUnresolvedHwpx(string filePath)
+    {
+        var unresolved = new HashSet<string>();
+        using var handler = new Handlers.HwpxHandler(filePath, editable: false);
+        var text = handler.ViewAsText();
+        foreach (System.Text.RegularExpressions.Match match in PlaceholderPattern.Matches(text))
+            unresolved.Add(match.Groups[1].Value);
         return unresolved.OrderBy(x => x).ToList();
     }
 

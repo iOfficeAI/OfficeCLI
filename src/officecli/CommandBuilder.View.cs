@@ -11,8 +11,8 @@ static partial class CommandBuilder
 {
     private static Command BuildViewCommand(Option<bool> jsonOption)
     {
-        var viewFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.docx, .xlsx, .pptx)" };
-        var viewModeArg = new Argument<string>("mode") { Description = "View mode: text, annotated, outline, stats, issues, html, svg, screenshot, forms" };
+        var viewFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.docx, .xlsx, .pptx, .hwpx)" };
+        var viewModeArg = new Argument<string>("mode") { Description = "View mode: text, annotated, outline, stats, issues, html, svg, screenshot, forms, tables, objects" };
         var startLineOpt = new Option<int?>("--start") { Description = "Start line/paragraph number" };
         var endLineOpt = new Option<int?>("--end") { Description = "End line/paragraph number" };
         var maxLinesOpt = new Option<int?>("--max-lines") { Description = "Maximum number of lines/rows/slides to output (truncates with total count)" };
@@ -28,6 +28,8 @@ static partial class CommandBuilder
         var gridOpt = new Option<int>("--grid") { Description = "Tile slides into an N-column thumbnail grid (screenshot mode, pptx only; 0 = off)", DefaultValueFactory = _ => 0 };
         var renderOpt = new Option<string>("--render") { Description = "Screenshot rendering path (docx only): auto (default; native on Windows w/ Word, html elsewhere), native (force OS-native, error if unavailable), html", DefaultValueFactory = _ => "auto" };
         var withPagesOpt = new Option<bool>("--page-count") { Description = "stats mode (docx only): also report total page count via Word repagination (Win + Word required; slow on long docs)" };
+        var autoOpt = new Option<bool>("--auto") { Description = "Auto-recognize label-value fields in tables (hwpx forms only)" };
+        var objectTypeOpt = new Option<string?>("--object-type") { Description = "Object type filter: picture, field, bookmark, equation, formfield (hwpx objects mode)" };
 
         var viewCommand = new Command("view", "View document in different modes");
         viewCommand.Add(viewFileArg);
@@ -46,6 +48,8 @@ static partial class CommandBuilder
         viewCommand.Add(gridOpt);
         viewCommand.Add(renderOpt);
         viewCommand.Add(withPagesOpt);
+        viewCommand.Add(autoOpt);
+        viewCommand.Add(objectTypeOpt);
         viewCommand.Add(jsonOption);
 
         viewCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
@@ -68,6 +72,8 @@ static partial class CommandBuilder
             if (renderMode is not ("auto" or "native" or "html"))
                 throw new OfficeCli.Core.CliException($"Invalid --render value: {renderMode}. Valid: auto, native, html") { Code = "invalid_render", ValidValues = ["auto", "native", "html"] };
             var withPages = result.GetValue(withPagesOpt);
+            var autoRecognize = result.GetValue(autoOpt);
+            var objectTypeFilter = result.GetValue(objectTypeOpt);
 
             // Try resident first
             if (TryResident(file.FullName, req =>
@@ -89,6 +95,8 @@ static partial class CommandBuilder
                 if (gridCols > 0) req.Args["grid"] = gridCols.ToString();
                 if (renderMode != "auto") req.Args["render"] = renderMode;
                 if (withPages) req.Args["page-count"] = "true";
+                if (autoRecognize) req.Args["auto"] = "true";
+                if (objectTypeFilter != null) req.Args["object-type"] = objectTypeFilter;
             }, json) is {} rc) return rc;
 
             var format = json ? OutputFormat.Json : OutputFormat.Text;
@@ -112,6 +120,8 @@ static partial class CommandBuilder
                     html = excelHandler.ViewAsHtml();
                 else if (handler is OfficeCli.Handlers.WordHandler wordHandler)
                     html = wordHandler.ViewAsHtml(pageFilter);
+                else if (handler is OfficeCli.Handlers.HwpxHandler hwpxHandler)
+                    html = hwpxHandler.ViewAsHtml();
 
                 if (html != null)
                 {
@@ -141,10 +151,10 @@ static partial class CommandBuilder
                 }
                 else
                 {
-                    throw new OfficeCli.Core.CliException("HTML preview is only supported for .pptx, .xlsx, and .docx files.")
+                    throw new OfficeCli.Core.CliException("HTML preview is only supported for .pptx, .xlsx, .docx, and .hwpx files.")
                     {
                         Code = "unsupported_type",
-                        Suggestion = "Use a .pptx, .xlsx, or .docx file, or use mode 'text' or 'annotated' for other formats.",
+                        Suggestion = "Use a .pptx, .xlsx, .docx, or .hwpx file, or use mode 'text' or 'annotated' for other formats.",
                         ValidValues = ["text", "annotated", "outline", "stats", "issues"]
                     };
                 }
@@ -350,18 +360,36 @@ static partial class CommandBuilder
                 {
                     if (handler is OfficeCli.Handlers.WordHandler wordFormsHandler)
                         Console.WriteLine(OutputFormatter.WrapEnvelope(wordFormsHandler.ViewAsFormsJson().ToJsonString(OutputFormatter.PublicJsonOptions)));
+                    else if (handler is OfficeCli.Handlers.HwpxHandler hwpxFormsHandler)
+                        Console.WriteLine(OutputFormatter.WrapEnvelope(hwpxFormsHandler.ViewAsFormsJson(autoRecognize).ToJsonString(OutputFormatter.PublicJsonOptions)));
                     else
-                        throw new OfficeCli.Core.CliException("Forms view is only supported for .docx files.")
+                        throw new OfficeCli.Core.CliException("Forms view is only supported for .docx and .hwpx files.")
                         {
                             Code = "unsupported_type",
                             ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "forms"]
                         };
                 }
+                else if (modeKey is "tables" or "tbl")
+                {
+                    if (handler is OfficeCli.Handlers.HwpxHandler hwpxTblHandler)
+                        Console.WriteLine(OutputFormatter.WrapEnvelope(hwpxTblHandler.ViewAsTablesJson().ToJsonString(OutputFormatter.PublicJsonOptions)));
+                    else
+                        throw new OfficeCli.Core.CliException("Tables view is only supported for .hwpx files.")
+                        { Code = "unsupported_type" };
+                }
+                else if (modeKey is "objects" or "obj")
+                {
+                    if (handler is OfficeCli.Handlers.HwpxHandler hwpxObjHandler)
+                        Console.WriteLine(OutputFormatter.WrapEnvelope(hwpxObjHandler.ViewAsObjectsJson(objectTypeFilter).ToJsonString(OutputFormatter.PublicJsonOptions)));
+                    else
+                        throw new OfficeCli.Core.CliException("Objects view is only supported for .hwpx files.")
+                        { Code = "unsupported_type" };
+                }
                 else
-                    throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms")
+                    throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, forms, tables, objects")
                     {
                         Code = "invalid_value",
-                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "forms"]
+                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "forms", "tables"]
                     };
             }
             else
@@ -375,12 +403,43 @@ static partial class CommandBuilder
                         ? $"Pages: {withPagesValue}\n" + handler.ViewAsStats()
                         : handler.ViewAsStats(),
                     "issues" or "i" => OutputFormatter.FormatIssues(handler.ViewAsIssues(issueType, limit), OutputFormat.Text),
-                    "forms" or "f" => handler is OfficeCli.Handlers.WordHandler wfh
-                        ? wfh.ViewAsForms()
-                        : throw new OfficeCli.Core.CliException("Forms view is only supported for .docx files.")
+                    "styles" => handler is OfficeCli.Handlers.HwpxHandler hsh
+                        ? hsh.ViewAsStyles()
+                        : throw new OfficeCli.Core.CliException("Styles view is only supported for .hwpx files.")
                         {
                             Code = "unsupported_type",
-                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "forms"]
+                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "styles", "tables"]
+                        },
+                    "tables" or "tbl" => handler is OfficeCli.Handlers.HwpxHandler htbl
+                        ? htbl.ViewAsTables()
+                        : throw new OfficeCli.Core.CliException("Tables view is only supported for .hwpx files.")
+                        {
+                            Code = "unsupported_type",
+                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "styles", "tables", "markdown"]
+                        },
+                    "markdown" or "md" => handler is OfficeCli.Handlers.HwpxHandler hmd
+                        ? hmd.ViewAsMarkdown()
+                        : throw new OfficeCli.Core.CliException("Markdown view is only supported for .hwpx files.")
+                        {
+                            Code = "unsupported_type",
+                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "styles", "tables", "markdown", "objects"]
+                        },
+                    "objects" or "obj" => handler is OfficeCli.Handlers.HwpxHandler hobj
+                        ? hobj.ViewAsObjects(objectTypeFilter)
+                        : throw new OfficeCli.Core.CliException("Objects view is only supported for .hwpx files.")
+                        {
+                            Code = "unsupported_type",
+                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "styles", "tables", "markdown", "objects"]
+                        },
+                    "forms" or "f" => handler switch
+                        {
+                            OfficeCli.Handlers.WordHandler wfh => wfh.ViewAsForms(),
+                            OfficeCli.Handlers.HwpxHandler hfh => hfh.ViewAsForms(autoRecognize),
+                            _ => throw new OfficeCli.Core.CliException("Forms view is only supported for .docx and .hwpx files.")
+                            {
+                                Code = "unsupported_type",
+                                ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "forms"]
+                            }
                         },
                     _ => throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms")
                     {

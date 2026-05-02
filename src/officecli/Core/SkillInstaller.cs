@@ -32,6 +32,7 @@ internal static class SkillInstaller
     // Guide name → skill folder name mapping
     private static readonly Dictionary<string, string> SkillMap = new(StringComparer.OrdinalIgnoreCase)
     {
+        ["hwpx"]            = "officecli-hwpx",
         ["pptx"]            = "officecli-pptx",
         ["word"]            = "officecli-docx",
         ["excel"]           = "officecli-xlsx",

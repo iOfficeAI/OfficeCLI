@@ -17,7 +17,7 @@ static partial class CommandBuilder
         var jsonOption = new Option<bool>("--json") { Description = "Output as JSON (AI-friendly)" };
 
         var rootCommand = new RootCommand("""
-            officecli: AI-friendly CLI for Office documents (.docx, .xlsx, .pptx)
+            officecli: AI-friendly CLI for Office documents (.docx, .xlsx, .pptx, .hwpx)
 
             Run 'officecli help' for the schema-driven capability reference (formats, elements, properties).
             See the Commands section below for the full list of subcommands.
@@ -137,6 +137,7 @@ static partial class CommandBuilder
         rootCommand.Add(BuildImportCommand(jsonOption));
         rootCommand.Add(BuildCreateCommand(jsonOption));
         rootCommand.Add(BuildMergeCommand(jsonOption));
+        rootCommand.Add(BuildCompareCommand(jsonOption));
 
         foreach (var stub in BuildIntegrationStubCommands())
             rootCommand.Add(stub);
@@ -573,6 +574,7 @@ static partial class CommandBuilder
                     OfficeCli.Handlers.PowerPointHandler ppt => ppt.Swap(item.Path, item.To),
                     OfficeCli.Handlers.WordHandler word => word.Swap(item.Path, item.To),
                     OfficeCli.Handlers.ExcelHandler excel => excel.Swap(item.Path, item.To),
+                    OfficeCli.Handlers.HwpxHandler hwpx => hwpx.Swap(item.Path, item.To),
                     _ => throw new InvalidOperationException("swap not supported for this document type")
                 };
                 return $"Swapped {p1} <-> {p2}";
@@ -1191,6 +1193,11 @@ static partial class CommandBuilder
             WatchNotifier.NotifyIfWatching(filePath, new WatchMessage { Action = "full", FullHtml = word.ViewAsHtml(), ScrollTo = scrollTo });
             return;
         }
+        if (handler is OfficeCli.Handlers.HwpxHandler hwpx)
+        {
+            WatchNotifier.NotifyIfWatching(filePath, new WatchMessage { Action = "full", FullHtml = hwpx.ViewAsHtml() });
+            return;
+        }
         if (handler is not OfficeCli.Handlers.PowerPointHandler ppt) return;
         var slideNum = WatchMessage.ExtractSlideNum(changedPath);
         if (slideNum > 0)
@@ -1212,6 +1219,11 @@ static partial class CommandBuilder
     {
         if (!WatchServer.IsWatching(filePath)) return;
 
+        if (handler is OfficeCli.Handlers.HwpxHandler hwpx)
+        {
+            WatchNotifier.NotifyIfWatching(filePath, new WatchMessage { Action = "full", FullHtml = hwpx.ViewAsHtml() });
+            return;
+        }
         if (handler is OfficeCli.Handlers.ExcelHandler excel)
         {
             WatchNotifier.NotifyIfWatching(filePath, new WatchMessage { Action = "full", FullHtml = excel.ViewAsHtml() });

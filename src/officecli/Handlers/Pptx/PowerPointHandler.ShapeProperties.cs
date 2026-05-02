@@ -183,8 +183,7 @@ public partial class PowerPointHandler
                     var textLines = resolved.Split('\n');
                     if (runs.Count == 1 && textLines.Length == 1 && !textLines[0].Contains('\t'))
                     {
-                        // Single run, single line, no tabs: just replace text
-                        runs[0].Text = new Drawing.Text { Text = textLines[0] };
+                        ReplaceRunWithSegmentedRuns(runs[0], textLines[0]);
                     }
                     else
                     {
@@ -201,18 +200,7 @@ public partial class PowerPointHandler
 
                             foreach (var textLine in textLines)
                             {
-                                var newPara = new Drawing.Paragraph();
-                                if (paraProps != null)
-                                    newPara.ParagraphProperties = paraProps.CloneNode(true) as Drawing.ParagraphProperties;
-                                AppendLineWithTabs(newPara, textLine, seg =>
-                                {
-                                    var r = new Drawing.Run();
-                                    if (runProps != null)
-                                        r.RunProperties = runProps.CloneNode(true) as Drawing.RunProperties;
-                                    r.Text = new Drawing.Text { Text = seg };
-                                    return r;
-                                });
-                                textBody.Append(newPara);
+                                textBody.Append(BuildParagraphWithSegmentedRuns(textLine, runProps, paraProps));
                             }
                         }
                     }
@@ -1254,11 +1242,7 @@ public partial class PowerPointHandler
                             new Drawing.BodyProperties(), new Drawing.ListStyle());
                         foreach (var line in lines)
                         {
-                            var para = new Drawing.Paragraph();
-                            AppendLineWithTabs(para, line, seg => new Drawing.Run(
-                                new Drawing.RunProperties { Language = "en-US" },
-                                new Drawing.Text { Text = seg }));
-                            textBody.AppendChild(para);
+                            textBody.AppendChild(BuildParagraphWithSegmentedRuns(line));
                         }
                         cell.PrependChild(textBody);
                     }
@@ -1268,19 +1252,7 @@ public partial class PowerPointHandler
                         var runProps = firstRun?.RunProperties?.CloneNode(true) as Drawing.RunProperties;
                         textBody.RemoveAllChildren<Drawing.Paragraph>();
                         foreach (var line in lines)
-                        {
-                            var para = new Drawing.Paragraph();
-                            AppendLineWithTabs(para, line, seg =>
-                            {
-                                var r = new Drawing.Run();
-                                r.RunProperties = runProps != null
-                                    ? runProps.CloneNode(true) as Drawing.RunProperties
-                                    : new Drawing.RunProperties { Language = "en-US" };
-                                r.Text = new Drawing.Text { Text = seg };
-                                return r;
-                            });
-                            textBody.Append(para);
-                        }
+                            textBody.Append(BuildParagraphWithSegmentedRuns(line, runProps));
                     }
                     break;
                 }
