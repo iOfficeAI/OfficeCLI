@@ -200,6 +200,41 @@ Each animation is a cognitive interrupt. Limits:
 
 → Presets: `officecli help pptx animation`.
 
+### Layout patterns & data display
+
+Vary layout across slides — repeating the same pattern makes every slide feel identical. Pick one per slide from these building blocks:
+
+| Pattern | When to use | Key measurement |
+|---|---|---|
+| **Two-column** (text left, visual right) | Concept + evidence; feature + screenshot | Each col ≈ 14-15cm; gap 1cm |
+| **Icon rows** (icon in filled circle + bold header + description) | Feature lists, benefits, team roles | Icon circle 1.5-2cm; 3-4 rows max |
+| **2×2 or 2×3 grid** (card tiles) | Quadrant analysis, SWOT, option comparison | Gap ≥ 0.76cm; consistent card height |
+| **Half-bleed image** (full left or right half, content overlay on other side) | Hero moments, case study openers | Image 16-17cm wide; content column ≥ 14cm |
+| **Large stat callout** (60-72pt number + ≤5-word sublabel below) | Single KPI, milestone, market size | Use shape, NOT a chart; sublabel 14-16pt muted |
+
+**Data display quick rules:**
+- One big number reads faster than a chart — use a `shape` with 60-72pt bold for a single KPI.
+- Comparison columns (before/after, A vs B) beat a table for 2-3 options.
+- Timelines and process flows: numbered step shapes + connectors, not a bullet list.
+
+### Visual motif commitment
+
+Pick ONE distinctive element before slide 1 and carry it to every slide. Examples: rounded image frames, section numbers in filled circles, a thick single-side border band, diagonal accent strips. If you could swap the motif out for a completely different design and nothing would look wrong, you haven't committed — you've just applied a style to one slide.
+
+Write it in your build plan first: `## Motif: numbered circles in brand color`. Then enforce it on every slide.
+
+### What to avoid (common design mistakes)
+
+These are the patterns that make a deck look AI-generated or amateur:
+
+- **NEVER place a decorative line under slide titles.** Underline stripes below headings are the single most common AI-slide tell. Use whitespace or background color change instead.
+- **Don't repeat the same layout across consecutive slides.** Alternate between two-column, callout, grid, and half-bleed patterns. Same layout = same visual rhythm = audience tunes out.
+- **Don't center body text.** Left-align all paragraphs, lists, card descriptions. Center only slide titles and hero numbers.
+- **Don't default to blue** because it feels "professional." Pick the palette that fits the topic — finance reads navy, sustainability reads forest, energy reads coral.
+- **Don't use inconsistent spacing.** Choose either 0.76cm or 1.27cm as your inter-block gap and use it everywhere. Mixed gaps look unfinished.
+- **Don't create text-only slides.** If a slide has only a title and bullets, add a supporting shape, chart, icon, or image. A purely textual slide is a Word paragraph.
+- **Don't style one slide and leave the rest plain.** Commit fully or keep it simple throughout — partial styling reads as abandoned.
+
 ## Common Workflow
 
 1. **Open/close mode.** Always `officecli open <file>` at start + `officecli close <file>` at end. Resident is the default, not an optimization. Use `batch` in ≤ 12-op chunks for repetitive shape grids.
