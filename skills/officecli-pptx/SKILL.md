@@ -42,7 +42,7 @@ officecli help pptx <verb> <element>        # Verb-scoped (e.g. add shape, set s
 officecli help pptx <element> --json        # Machine-readable schema
 ```
 
-Help reflects the installed CLI version. When skill and help disagree, **help is authoritative**. Triggers to run help immediately: `UNSUPPORTED props:` warning, unknown animation preset, `connector.shape=` enum (drifts — C-P-5), prop-vs-alias (`lineWidth` vs `line.width`, `color` vs `font.color`).
+Help reflects the installed CLI version. When skill and help disagree, **help is authoritative**. Triggers to run help immediately: `UNSUPPORTED props:` warning, unknown animation preset, `connector.shape=` enum drifts, prop-vs-alias (`lineWidth` vs `line.width`, `color` vs `font.color`).
 
 ## Mental Model & Inheritance
 
@@ -389,7 +389,7 @@ officecli add "$FILE" /slide[3] --type chart --prop chartType=column \
   --prop x=2cm --prop y=4cm --prop width=20cm --prop height=10cm
 ```
 
-Gotchas: (1) series cannot be added after creation — include all series at `add` time or `remove` + re-add. (2) `gap` / `gapwidth` are ignored at `add` — `set` after creation. (3) chart titles with `()`, `[]`, `TBD` ship as literal text — replace before delivery. (4) some viewers normalize chart colors to theme defaults — verify in the target presentation viewer (C-P-7).
+Gotchas: (1) series cannot be added after creation — include all series at `add` time or `remove` + re-add. (2) `gap` / `gapwidth` are ignored at `add` — `set` after creation. (3) chart titles with `()`, `[]`, `TBD` ship as literal text — replace before delivery. (4) some viewers normalize chart colors to theme defaults — verify in the target presentation viewer.
 
 ### Pictures
 
@@ -405,7 +405,7 @@ Confirm with `officecli query "$FILE" 'picture:no-alt'` — must be empty before
 
 Draws a line between two shapes or free coordinates. CLI-native props: `shape`, `from`, `to`, `x`, `y`, `width`, `height`, `color`, `headEnd`, `tailEnd` (values: `triangle|arrow|stealth|diamond|oval|none`). `line=`, `lineWidth=`, `lineDash=` are UNSUPPORTED — use raw-set `a:ln` for custom line styling.
 
-- `shape` enum: short form `straight | elbow | curve`, or storage form `straightConnector1 | bentConnector3 | curvedConnector3 | line`. `bentConnector2` / `curvedConnector2` are REJECTED (C-P-5).
+- `shape` enum: short form `straight | elbow | curve`, or storage form `straightConnector1 | bentConnector3 | curvedConnector3 | line`. `bentConnector2` / `curvedConnector2` are rejected.
 - `from=`/`to=` accept the same shape-ref forms as the rest of the CLI: bare integer (shape ID), `/slide[N]/shape[M]` (positional), `/slide[N]/shape[@id=M]`, or `/slide[N]/shape[@name=Foo]`.
 - Arrowheads via `--prop tailEnd=triangle` (or `headEnd=` for reverse direction) — **requires CLI 1.0.63+**. On older 1.0.60–1.0.62 the `tailEnd=` / `headEnd=` props were UNSUPPORTED on connector; fall back to raw-set `<a:tailEnd type="triangle" w="med" len="med"/>` on `/connector[@id=ID]/spPr/ln`. Accepted values: `triangle | arrow | stealth | diamond | oval | none` (plus `closed`/`open`/`circle`, parsed by `ParseLineEndType`). For custom arrow size `w`/`len` on any version, use raw-set.
 
@@ -426,7 +426,7 @@ officecli add "$FILE" /slide[5] --type connector \
 
 ### Animations (LEAD)
 
-One preset per slide, ≤ 600ms. Set via shape-level prop (authoritative; deep-path readback is stale — C-P-3):
+One preset per slide, ≤ 600ms. Set via shape-level prop or via deep-path `add --type animation`:
 
 ```bash
 officecli set "$FILE" "/slide[2]/shape[@name=HeroCard]" --prop animation=fade-entrance-400
@@ -459,14 +459,6 @@ officecli set "$FILE" "/slide[7]/shape[@name=DocsBtn]" --prop link=https://examp
   officecli remove "$FILE" "/slide[2]/comment[1]"                           # resolve after addressing
   ```
   → `officecli help pptx comment`.
-
-### Raw-set escape hatch (L1 / L2 / L3)
-
-- **L1** — high-level props (`--prop fill=`, `--prop size=`): your default.
-- **L2** — dotted-attr fallback (`line.width`, `text.padding`, `fill.alpha`): when L1 lacks the knob.
-- **L3** — `raw-set` with XML: last resort. Required for `a:ln` line styling, `a:custGeom` custom paths.
-
-Hex colors never start with `#`: `FF0000`, not `#FF0000`.
 
 ### Deck-level recipes
 
@@ -577,7 +569,7 @@ for pair in "Step1 Step2" "Step2 Step3" "Step3 Step4"; do
 done
 ```
 
-`shape=elbow` is the canonical short form. `bentConnector3` also works as storage name; `bentConnector2` is **rejected** (C-P-5). `query --json` wraps results in `.data.results[]` — `.[0].id` is WRONG, use `.data.results[0].format.id`.
+`shape=elbow` is the canonical short form. `bentConnector3` also works as storage name; `bentConnector2` is **rejected**. `query --json` wraps results in `.data.results[]` — `.[0].id` is WRONG, use `.data.results[0].format.id`.
 
 #### (d) Quarterly review deck skeleton (10-slide blueprint)
 
@@ -731,7 +723,7 @@ Five checks. Gates 1–2 are schema/token-grep defenses; Gate 3 catches build-or
 ```bash
 FILE="deck.pptx"
 
-# Gate 1 — schema. Whitelist only the benign ChartShapeProperties warnings (C-P-2).
+# Gate 1 — schema. Whitelist only the benign ChartShapeProperties warnings (gray-area schema; renders fine).
 officecli close "$FILE" 2>/dev/null
 VALIDATE_OUT=$(officecli validate "$FILE" 2>&1)
 echo "$VALIDATE_OUT" | grep -q "no errors found" && echo "Gate 1 OK" || {
@@ -788,18 +780,9 @@ REJECT the delivery if ANY of the above is present; list every instance with its
 
 When something looks broken, attribute it first: **[AGENT-ERROR]** (deck itself is wrong — fix the deck), **[RENDERER-BUG]** (deck is correct; a specific viewer renders it differently — don't chase), or **[SKILL gap]** (rule missing — open an issue).
 
-### CLI bug backlog
-
-| # | Symptom | Workaround |
-|---|---|---|
-| **C-P-2** | `validate` reports `ChartShapeProperties` schema warnings (1 per chart). Renders correctly everywhere. | Whitelist in Gate 1. Do not chase. |
-| **C-P-3** | `get /slide[N]/shape[@name=X]/animation[1]` returns stale `duration` after `set animation=...`. | Trust shape-level readback: `get "/slide[N]/shape[@name=X]" --json \| jq .animation`. |
-| **C-P-5** | `shape=bentConnector2` / `curvedConnector2` rejected. Only 3 short + 3 specific storage names accepted. | Use short form `straight \| elbow \| curve`, or storage `straightConnector1 \| bentConnector3 \| curvedConnector3 \| line`. |
-| **C-P-7** | [RENDERER-BUG] Some viewers normalize chart series colors to theme defaults, ignoring `seriesN.color=`. | Verify chart colors in the user's target presentation viewer. `view html` respects colors as the officecli-layer ground truth. |
-
 ### Renderer honesty
 
-`officecli view html` = structural QA (overflow, placeholders, hierarchy) — Read the returned HTML path. Some features are runtime-only or viewer-specific and only render faithfully in a live presentation viewer: chart series colors (C-P-7), font substitution, animation, zoom, shadow / glow / soft fill, slide-number fields. **Ground-truth layering:** `view html` for officecli-layer structure, then open in the user's target presentation viewer for runtime / color fidelity.
+`officecli view html` = structural QA (overflow, placeholders, hierarchy) — Read the returned HTML path. Some features are runtime-only or viewer-specific and only render faithfully in a live presentation viewer: chart series colors (some viewers normalize to theme defaults), font substitution, animation, zoom, shadow / glow / soft fill, slide-number fields. **Ground-truth layering:** `view html` for officecli-layer structure, then open in the user's target presentation viewer for runtime / color fidelity.
 
 ### Schema-invalid on current CLI — disabled APIs + working forms
 
@@ -845,11 +828,11 @@ Quirks: keep arrays **≤ 12 ops** (larger = ~1-in-15 "Failed to send to residen
 
 ## Advanced capability index
 
-Single-verb where pptxgenjs / raw-XML would need hand-work: `help <element> --json`, CSS queries (`shape:contains / picture:no-alt / shape[fill=]`), `@name=` / `@id=` selectors, `view html`, gradient + image backgrounds, zoom slides, animation CRUD, `@id=` connectors, hyperlink + tooltip, groups, resident + batch heredoc, `raw-set` L3, master/layout background override. When in doubt: `officecli help pptx <element> --json`.
+Single-verb where pptxgenjs / raw-XML would need hand-work: `help <element> --json`, CSS queries (`shape:contains / picture:no-alt / shape[fill=]`), `@name=` / `@id=` selectors, `view html`, gradient + image backgrounds, zoom slides, animation CRUD, `@id=` connectors, hyperlink + tooltip, groups, resident + batch heredoc, `raw-set` for raw XML, master/layout background override. When in doubt: `officecli help pptx <element> --json`.
 
 ## Common Pitfalls
 
-Sanity-check cheatsheet — what breaks on the first try. CLI-bug pitfalls (connector enum, animation duration readback) are covered in Known Issues C-P-2/3/5/7; this table is the design + shell traps.
+Sanity-check cheatsheet — what breaks on the first try. Design + shell traps.
 
 | Pitfall | Correct approach |
 |---|---|
