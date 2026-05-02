@@ -24,9 +24,12 @@ public partial class WordHandler
             else
                 CjkHelper.ClearWordRunCjk(rPr);
 
-            runs.Add(new Run(
-                rPr,
-                new Text(segmentText) { Space = SpaceProcessingModeValues.Preserve }));
+            // Route segment text through AppendTextWithBreaks so that '\n' (w:br)
+            // and '\t' (w:tab) inside a CJK segment round-trip through Word
+            // instead of collapsing to a space — matches upstream plain-run path.
+            var run = new Run(rPr);
+            AppendTextWithBreaks(run, segmentText);
+            runs.Add(run);
         }
 
         return runs;
