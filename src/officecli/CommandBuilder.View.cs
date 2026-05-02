@@ -4,6 +4,7 @@
 using System.CommandLine;
 using OfficeCli.Core;
 using OfficeCli.Handlers;
+using OfficeCli.Handlers.Hwp;
 
 namespace OfficeCli;
 
@@ -101,6 +102,10 @@ static partial class CommandBuilder
 
             var format = json ? OutputFormat.Json : OutputFormat.Text;
             var cols = colsStr != null ? new HashSet<string>(colsStr.Split(',').Select(c => c.Trim().ToUpperInvariant())) : null;
+
+            // Binary .hwp: route through HWP engine (bridge when experimental, else unsupported)
+            if (string.Equals(Path.GetExtension(file.FullName), ".hwp", StringComparison.OrdinalIgnoreCase))
+                return HandleHwpView(file.FullName, mode, pageFilter, json);
 
             using var handler = DocumentHandlerFactory.Open(file.FullName);
 
@@ -487,5 +492,107 @@ static partial class CommandBuilder
         if (p > slideCount)
             throw new ArgumentException($"--page {p} out of range (total slides: {slideCount}).");
         return (p, p);
+    }
+
+    private static int HandleHwpView(string filePath, string mode, string? pageFilter, bool json)
+    {
+        var modeKey = mode.Trim().ToLowerInvariant();
+
+        if (!HwpEngineSelector.IsExperimentalBridgeEnabled())
+        {
+            var formatKey = HwpCapabilityConstants.FormatHwp;
+            throw new HwpEngineException(
+                "Binary .hwp view requires OFFICECLI_HWP_ENGINE=rhwp-experimental.",
+                HwpCapabilityConstants.ReasonBridgeNotEnabled,
+                "Set OFFICECLI_HWP_ENGINE=rhwp-experimental and install rhwp-officecli-bridge.",
+                [HwpCapabilityConstants.OperationReadText, HwpCapabilityConstants.OperationRenderSvg],
+                formatKey,
+                modeKey is "text" or "t" ? HwpCapabilityConstants.OperationReadText
+                    : modeKey is "svg" or "g" ? HwpCapabilityConstants.OperationRenderSvg
+                    : null,
+                HwpCapabilityConstants.EngineNone,
+                HwpCapabilityConstants.ModeNone);
+        }
+
+        var operation = modeKey is "text" or "t" ? HwpCapabilityConstants.OperationReadText
+            : modeKey is "svg" or "g" ? HwpCapabilityConstants.OperationRenderSvg
+            : null;
+        var engine = HwpEngineSelector.GetEngine(HwpCapabilityConstants.FormatHwp, operation);
+        var fileInfo = new FileInfo(filePath);
+        var ct = CancellationToken.None;
+
+        if (modeKey is "text" or "t")
+        {
+            var request = new HwpReadRequest(HwpFormat.Hwp, filePath, fileInfo.Length, json);
+            var result = engine.ReadTextAsync(request, ct).GetAwaiter().GetResult();
+            if (json)
+            {
+                var envelope = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["success"] = true,
+                    ["data"] = new System.Text.Json.Nodes.JsonObject
+                    {
+                        ["text"] = result.Text,
+                        ["engine"] = result.Engine,
+                        ["engineVersion"] = result.EngineVersion
+                    },
+                    ["warnings"] = HwpCapabilityJsonMapper.ToJsonArray(result.Warnings)
+                };
+                Console.WriteLine(envelope.ToJsonString(OfficeCli.Core.OutputFormatter.PublicJsonOptions));
+            }
+            else
+            {
+                Console.WriteLine(result.Text);
+            }
+            return 0;
+        }
+
+        if (modeKey is "svg" or "g")
+        {
+            var outDir = Path.Combine(Path.GetTempPath(), $"officecli_hwp_svg_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(outDir);
+            var request = new HwpRenderRequest(
+                HwpFormat.Hwp, filePath, outDir,
+                pageFilter ?? "all", fileInfo.Length, json);
+            var result = engine.RenderSvgAsync(request, ct).GetAwaiter().GetResult();
+            if (json)
+            {
+                var pagesArr = new System.Text.Json.Nodes.JsonArray();
+                foreach (var p in result.Pages)
+                    pagesArr.Add((System.Text.Json.Nodes.JsonNode?)new System.Text.Json.Nodes.JsonObject
+                    {
+                        ["page"] = p.Page, ["path"] = p.SvgPath, ["sha256"] = p.Sha256
+                    });
+                var envelope = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["success"] = true,
+                    ["data"] = new System.Text.Json.Nodes.JsonObject
+                    {
+                        ["pages"] = pagesArr,
+                        ["manifest"] = result.ManifestPath,
+                        ["engine"] = result.Engine,
+                        ["engineVersion"] = result.EngineVersion
+                    },
+                    ["warnings"] = HwpCapabilityJsonMapper.ToJsonArray(result.Warnings)
+                };
+                Console.WriteLine(envelope.ToJsonString(OfficeCli.Core.OutputFormatter.PublicJsonOptions));
+            }
+            else
+            {
+                foreach (var p in result.Pages)
+                    Console.WriteLine($"Page {p.Page}: {p.SvgPath}");
+            }
+            return 0;
+        }
+
+        throw new HwpEngineException(
+            $"Binary .hwp view mode '{mode}' is not supported. Use 'text' or 'svg'.",
+            HwpCapabilityConstants.ReasonUnsupportedOperation,
+            null,
+            [HwpCapabilityConstants.OperationReadText, HwpCapabilityConstants.OperationRenderSvg],
+            HwpCapabilityConstants.FormatHwp,
+            null,
+            HwpCapabilityConstants.EngineRhwpBridge,
+            HwpCapabilityConstants.ModeExperimental);
     }
 }

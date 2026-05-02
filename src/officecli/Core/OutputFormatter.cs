@@ -50,6 +50,14 @@ internal class ErrorResult
     public string? Help { get; set; }
     [JsonPropertyName("validValues")]
     public string[]? ValidValues { get; set; }
+    [JsonPropertyName("format")]
+    public string? Format { get; set; }
+    [JsonPropertyName("operation")]
+    public string? Operation { get; set; }
+    [JsonPropertyName("engine")]
+    public string? Engine { get; set; }
+    [JsonPropertyName("engineMode")]
+    public string? EngineMode { get; set; }
 }
 
 internal class CliWarning
@@ -232,6 +240,16 @@ internal static class OutputFormatter
             result.Suggestion = cli.Suggestion;
             result.Help = cli.Help;
             result.ValidValues = cli.ValidValues;
+        }
+        else if (ex is OfficeCli.Handlers.Hwp.HwpEngineException hwp)
+        {
+            result.Code = hwp.Error.Code;
+            result.Suggestion = hwp.Error.Suggestion;
+            result.ValidValues = hwp.Error.ValidValues;
+            result.Format = hwp.Error.Format;
+            result.Operation = hwp.Error.Operation;
+            result.Engine = hwp.Error.Engine;
+            result.EngineMode = hwp.Error.EngineMode;
         }
         else
         {
