@@ -100,6 +100,8 @@ Stay in **pptx v2 base** for any deck without cross-slide motion (board reviews,
 
 Use this skill when the user asks for morph motion AND ≥ 2 consecutive slides share a visual element that transforms. Target-viewer caveat: morph needs PowerPoint 365 / Keynote / WPS — if the user is LibreOffice-only, warn first (see §Renderer honesty).
 
+**Speaker notes rule.** Every content slide (non-cover, non-closing) MUST carry speaker notes via `officecli add "$FILE" /slide[N] --type notes --prop text='…'`. Missing notes = not shippable — inherits pptx v2 §Hard rules (H7). Morph decks tend to be visually minimal, so notes carry the narration.
+
 ## What is Morph? (core mechanics)
 
 PowerPoint's Morph transition creates smooth motion by interpolating shape properties between adjacent slides, matched by **identical shape names**.
@@ -150,6 +152,8 @@ officecli add "$FILE" "/slide[3]" --type shape --prop 'name=!!actor-metric' \
 **Content (`#sN-*`) is added fresh per slide.** Because text changes every slide, Morph has no meaningful pairing to do on titles / body — it cross-fades them. This is why `#sN-*` get different names per slide (they are intentionally unpaired) and must be ghosted on slide N+1. Scene actors (`!!`) carry the continuity; content (`#`) carries the message.
 
 ## Morph Pair Planning (pre-code, REQUIRED)
+
+Before planning morph pairs, if the deck's audience / purpose / narrative is underspecified, run the planning prompt in `reference/decision-rules.md` to emit a `brief.md` first — a morph arc without a narrative spine collapses into "slide with motion", not "story with motion".
 
 Plan every transition in a table inside `brief.md` **before** writing any `officecli add`. Renaming shapes mid-build is the #1 cause of ghost accumulation bugs.
 
@@ -423,6 +427,53 @@ Run `officecli view "$FILE" html` and Read the returned HTML path. For every sli
 
 Static screenshots from any renderer **cannot verify morph motion** (the motion only exists at runtime). Use Gate 5b queries above to prove pair correctness; use a live viewer to prove motion quality.
 
+## Ghost Discipline & Actor Lifecycle
+
+**Every `!!actor-*` and `#sN-*` shape must be managed across EVERY slide, not just its "exit" slide.**
+
+### The Per-Slide Ghosting Rule
+
+When building a multi-slide morph deck:
+1. **Slide N: Introduce `!!actor-ring` (visible at x=0cm)**
+2. **Slide N+1: Add new content. Before finishing, ghost `!!actor-ring` to `x=36cm`.**
+3. **Slide N+2: Add more content. Re-ghost `!!actor-ring` to `x=36cm` again.** (Not optional — even though it was already off-screen, each slide is a fresh canvas.)
+4. **Slide N+3: If `!!actor-ring` should be visible again, move it back to x=0cm or its new position.**
+
+**Why:** Each slide's shape list is independent. Moving a shape off-canvas on slide N does NOT carry over to slide N+1 — if you forget to re-ghost it, it will re-appear at its original position on N+1.
+
+### Workflow Pattern (Bash)
+
+```bash
+# After adding new content shapes to slide $SLIDE:
+for ACTOR in "!!actor-ring" "!!actor-dot" "!!actor-accent-bar"; do
+  officecli set "$FILE" "/slide[$SLIDE]/shape[@name=$ACTOR]" --prop x=36cm || true
+done
+```
+
+Or in a build loop:
+
+```bash
+for SLIDE_NUM in 3 4 5 6 7 8 9 10 11; do
+  # Add content specific to this slide
+  officecli add "$FILE" "/slide[$SLIDE_NUM]" --type shape ...
+  
+  # IMMEDIATELY ghost all old actors (M-2 prevention)
+  officecli set "$FILE" "/slide[$SLIDE_NUM]/shape[@name=!!actor-ring]" --prop x=36cm || true
+  officecli set "$FILE" "/slide[$SLIDE_NUM]/shape[@name=!!actor-dot]" --prop x=36cm || true
+done
+```
+
+### Detection: Ghost Count Gate
+
+`morph-helpers.py final-check` counts all shapes at `x ≥ 34cm`. If count > 50, it prints:
+```
+REJECT: Found 135 accumulated ghosts — likely M-2 ghost accumulation.
+Run: officecli query deck.pptx 'shape[x>=34cm]' --json | jq '.data.results | length'
+Expected ≤ 50 (roughly 4–5 active actors × 10–12 slides).
+```
+
+**Fix:** Review the build log, ensure every slide re-ghosts all actors that should not appear in it. Re-run final-check. If still > 50, use `morph-helpers.py clean-accumulation deck.pptx` (see reference section).
+
 ## Common Morph Pitfalls (design + workflow traps)
 
 Base pptx pitfalls (shell quoting, zsh `[N]` globbing, hex `#` prefix, `\n` in prop text) → see pptx v2 §Common Pitfalls. These are the morph-specific traps:
@@ -432,6 +483,7 @@ Base pptx pitfalls (shell quoting, zsh `[N]` globbing, hex `#` prefix, `\n` in p
 | `!!scene-card` and `!!actor-card` in the same deck | Names must be unique across prefixes. Rename: `!!scene-card-bg` vs `!!actor-card-content` |
 | Renaming shapes mid-build after some slides are already done | Ghost accumulation bug waiting to happen. Stop, redraw the §Morph Pair Planning table, rerun affected slides |
 | Placing `!!actor-*` into the content core without planning an exit | Every `!!actor-*` needs a ghost slide. Plan it in the pair table BEFORE coding |
+| **Ghost accumulation (M-2): forgetting to re-ghost `!!actor-*` on later slides** | **CRITICAL:** When you add new content to slide N+1, ALL `!!actor-*` from slide N that should not be visible must be moved to `x=36cm` again. Do NOT assume they stay off-screen once ghosted — each slide is independent. Build pattern: `for each new slide: add content shapes → then loop: set each active !!actor-* to x=36cm`. `morph-helpers.py final-check` will REJECT if ghost count exceeds 50. |
 | Forgetting `transition=morph` on a slide | Silent fade. Gate 5b-morph-2 (no motion) catches it; fix via `set /slide[N] --prop transition=morph` |
 | Using `@name=` path on a morph slide after `transition=morph` was set | Selector breaks (M-1). Switch to index paths `/slide[N]/shape[K]` |
 | Adjacent slides visually identical | Morph has nothing to interpolate — collapses to plain fade. Apply §Scene-actor spatial rule and move ≥ 3 shapes by ≥ 5cm / ≥ 15° |
@@ -452,7 +504,7 @@ Base pptx bugs C-P-1..7 (hyperlink rPr, chart ChartShapeProperties warning, anim
 | # | Symptom | Workaround |
 |---|---|---|
 | **M-1** | After `officecli set '/slide[N]' --prop transition=morph`, every shape on that slide has `!!` auto-prepended to its name (`#s1-title` → `!!#s1-title`). Name-path selectors like `/slide[N]/shape[@name=#s1-title]` stop matching silently. **Selector filter caveat:** after auto-prefix, `!!#sN-caption` coexists alongside `!!actor-*` — filtering "scene actors" with `startswith("!!")` produces false matches on auto-prefixed content. Always filter with `startswith("!!actor-")` or `startswith("!!scene-")`, never bare `startswith("!!")`. | Use **index paths** after morph is set: `get /slide[N] --depth 1` to list shapes, then address via `/slide[N]/shape[K]`. Keep a shape-index comment at the top of the build script. |
-| **M-2** | Ghost accumulation — `!!actor-*` introduced on slide 3 stays visible on slides 4, 5, 6 unless explicitly ghosted. `final-check` helper does NOT detect this. | Plan exit slide in the §Morph Pair Planning table; run Gate 5b-morph-1 query before delivery. |
+| **M-2 🚨** | **Ghost accumulation — `!!actor-*` introduced on slide 3 stays visible on slides 4, 5, 6 unless EXPLICITLY ghosted every page.** `final-check` helper detects this and rejects if ghost count > 50. | **MANDATORY per-slide rule:** After you add new content to a slide, immediately set ALL active `!!actor-*` from previous slides to `x=36cm` (or explicitly position them visible if they belong in the current context). Example: `officecli set /slide[4]/shape[@name=!!actor-ring] --prop x=36cm`. Run after EVERY slide addition, not just at the end. See §Ghost Discipline & Actor Lifecycle below. |
 | **M-3** | Section-transition boundary — on the first slide of a new topic section, previous-section `!!actor-*` shapes visibly linger. No command errors; only visual clutter. | On every section-start slide, explicitly ghost ALL `!!actor-*` from the previous section to `x=36cm`. Scene shapes (`!!scene-*`) stay. |
 | **M-4** | `officecli help pptx slide` lists `transition=` but NO sub-props for duration / delay / easing of the transition itself. Agents sometimes invent `morph.duration=` / `transition.delay=` — they are rejected as UNSUPPORTED. | Accept defaults (morph ~1s, linear ease). For custom speed, use `raw-set` to add the `spd` attribute on `<p:transition>` — see M-4 example block below. Help does not list sub-props; `raw-set` is the only path. |
 | **M-5** | `[RENDERER-BUG]` LibreOffice / Google Slides web viewer render morph slides as plain fade (no interpolation). | Test in PowerPoint 365 / Keynote / WPS. Not a skill defect — do not chase. |

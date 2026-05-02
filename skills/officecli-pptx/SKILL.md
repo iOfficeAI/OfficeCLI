@@ -101,6 +101,15 @@ Before declaring done, the per-slide render (see QA) MUST satisfy:
 
 If any fails, STOP and fix before declaring done.
 
+### Hard rules — typography / contrast / notes / KPI fit
+
+These four fire on live-room failure modes that the Requirements table alone has not stopped in practice. Each is principle + exception + why.
+
+- **Body floors at 18pt** (absolute floor 16pt for tiny sublabels; 18pt is the working floor for all paragraph and card body text per the Requirements table). Exceptions are non-primary-read elements only: chart axis labels, legends, footer / page number, and KPI sublabels of ≤ 5 words (e.g. "Active users", "MoM growth"). Full descriptive sentences never qualify — shrink the sentence or split the slide, do not shrink the font. "The cards won't fit" is never a reason to drop below floor; it is a reason to drop cards.
+- **Dark backgrounds force near-white body.** When fill brightness < 30% (`1E2761`, `36454F`, `000000`, deep forest / berry / cherry), every run of body text, card body, chart series fill, and icon color must be `FFFFFF` or brightness > 80%. Mid-gray (`6B7B8D` ≈ 44%) reads fine on a laptop screen and disappears under projector glare. Check with `view html` after the dark-fill pass.
+- **Content slides carry speaker notes.** Every slide that is neither cover nor closing must have `--type notes --prop text="..."`. The speaker needs a script; the audience should not read the slide verbatim. Missing notes on a content slide is not shippable.
+- **KPI text fits the card — pre-compute, don't eyeball.** In a 7cm-wide card at 60pt Georgia bold, values with `$` and `.` (wide glyphs) wrap at 4 characters. `$9.4M` breaks the card; use `$9M` + "USD millions" sublabel, or move to the 3-card 9.78cm layout. Upper bound: `max_size_pt ≈ card_width_cm × denom`, where denom = 10 for 1–2 chars, 7 for 3–4 chars, 5 for 5+ chars.
+
 ### Hard rules worth repeating
 
 - **`layout=blank` is the default for custom designs.** Titles become plain `shape` elements, not placeholders. `view outline` / `view issues` reporting `(untitled)` / `Slide has no title` is **expected**, not a defect. Use `layout=title` + `placeholder[title]` only when screen-reader outline compatibility matters.
@@ -128,18 +137,43 @@ Standard widescreen is **33.87 × 19.05cm**. Treat it as a 12-column grid intern
 
 → See Requirements table above. Non-negotiable floors.
 
+### Font pairings
+
+Two fonts max — one for headings, one for body. Pair by document register, not by novelty. "Best For" is a prompt, not a decree; if the topic matches a row, use it as the default and move on.
+
+| Header | Body | Best For |
+|---|---|---|
+| Georgia | Calibri | Formal business, finance, executive reports |
+| Arial Black | Arial | Bold marketing, product launches |
+| Calibri | Calibri Light | Clean corporate, minimal design |
+| Cambria | Calibri | Traditional professional, legal, academic |
+| Trebuchet MS | Calibri | Friendly tech, startups, SaaS |
+| Impact | Arial | Bold headlines, event decks, keynotes |
+| Palatino | Garamond | Elegant editorial, luxury, nonprofit |
+| Consolas | Calibri | Developer tools, technical / engineering |
+
+Set both fonts explicitly on every shape (`--prop font=Georgia` on title shapes, `--prop font=Calibri` on body shapes) — theme-default inheritance drifts between masters. `officecli help pptx shape` shows the `font` prop.
+
 ### Color and contrast
 
-One dominant color does 60–70% of visual weight, two supporting tones, one accent used sparingly. Never use 4+ colors in body content.
+One dominant color does 60–70% of visual weight, two supporting tones, one accent used sparingly. Never use 4+ colors in body content. Columns are: **Primary** (dominant — the one color you see first), **Secondary** (the supporting tone), **Accent** (sparing, one-hit emphasis), **Text** (body on light fills), **Muted** (captions / axis labels / footer).
 
-| Theme | Dominant | Supporting | Accent | Dark body |
-|---|---|---|---|---|
-| Executive navy | `1E2761` | `CADCFC` | `FFFFFF` | `333333` |
-| Forest & moss | `2C5F2D` | `97BC62` | `F5F5F5` | `2D2D2D` |
-| Warm terracotta | `B85042` | `E7E8D1` | `A7BEAE` | `3D2B2B` |
-| Charcoal minimal | `36454F` | `F2F2F2` | `212121` | `333333` |
+| Theme | Primary | Secondary | Accent | Text | Muted |
+|---|---|---|---|---|---|
+| Coral Energy | `F96167` | `F9E795` | `2F3C7E` | `333333` | `8B7E6A` |
+| Midnight Executive | `1E2761` | `CADCFC` | `FFFFFF` | `333333` | `8899BB` |
+| Forest & Moss | `2C5F2D` | `97BC62` | `F5F5F5` | `2D2D2D` | `6B8E6B` |
+| Charcoal Minimal | `36454F` | `F2F2F2` | `212121` | `333333` | `7A8A94` |
+| Warm Terracotta | `B85042` | `E7E8D1` | `A7BEAE` | `3D2B2B` | `8C7B75` |
+| Berry & Cream | `6D2E46` | `A26769` | `ECE2D0` | `3D2233` | `8C6B7A` |
+| Ocean Gradient | `065A82` | `1C7293` | `21295C` | `2B3A4E` | `6B8FAA` |
+| Teal Trust | `028090` | `00A896` | `02C39A` | `2D3B3B` | `5E8C8C` |
+| Sage Calm | `84B59F` | `69A297` | `50808E` | `2D3D35` | `7A9488` |
+| Cherry Bold | `990011` | `FCF6F5` | `2F3C7E` | `333333` | `8B6B6B` |
 
-On dark backgrounds (fill brightness < 30%), text and chart series MUST be white or > 80%-bright. Mid-gray is invisible on projection.
+Pick by topic, not by default — finance reads Midnight Executive, a product launch reads Coral Energy, safety / LOTO reads Cherry Bold. If the closest named theme is not quite right, blend (e.g. Forest primary + gold `D4A843` accent). Use **Text** on light fills, **Muted** for captions / axis / footer, `FFFFFF` or Secondary for body on dark fills.
+
+On dark backgrounds (fill brightness < 30%), text and chart series MUST be white or > 80%-bright. Mid-gray is invisible on projection — see Hard rules above.
 
 ### Chart-choice decision table
 
@@ -169,8 +203,8 @@ Each animation is a cognitive interrupt. Limits:
 ## Common Workflow
 
 1. **Open/close mode.** Always `officecli open <file>` at start + `officecli close <file>` at end. Resident is the default, not an optimization. Use `batch` in ≤ 12-op chunks for repetitive shape grids.
-2. **Orient.** New deck: `officecli create deck.pptx`. Existing: `officecli view deck.pptx outline` first. Never edit blind.
-3. **Build in display order — HARD RULE.** `--index` on slide add is frequently ignored. Add slides in audience-view order: cover → agenda → section-1 divider → section-1 content → section-2 divider → … → closing. Out-of-order insertion requires `officecli move deck.pptx /slide[N] --index M` + re-verify with `get --depth 0`. **Before final delivery, confirm slide count + narrative arc match your build plan.** Gate 4 catches cases where the cover ends up as slide 11 of 14 instead of slide 1.
+2. **Orient.** New deck: `officecli create "$FILE"`. Existing: `officecli view "$FILE" outline` first. Never edit blind.
+3. **Build in display order — HARD RULE.** `--index` on slide add is frequently ignored. Add slides in audience-view order: cover → agenda → section-1 divider → section-1 content → section-2 divider → … → closing. Out-of-order insertion requires `officecli move "$FILE" /slide[N] --index M` + re-verify with `get --depth 0`. **Before final delivery, confirm slide count + narrative arc match your build plan.** Gate 4 catches cases where the cover ends up as slide 11 of 14 instead of slide 1.
 4. **Incremental per slide.** Create slide + background, then title, then supporting shapes / charts / connectors. Always `layout=blank` for custom designs. After each structural op, `get /slide[N] --depth 1` to confirm shape IDs.
 5. **Format to spec.** Explicit title ≥ 36pt, body ≥ 18pt, colors from one palette, connectors via `@id=`. Formatting is deliverable, not polish.
 6. **Close + verify in target viewer.** `officecli close` writes the ZIP. `view html` — Read the returned HTML path — is OK for structural QA; **always open in the target presentation viewer before shipping** — chart colors, animations, font substitution, zoom are runtime features that only the live viewer renders faithfully.
@@ -215,21 +249,21 @@ Verified: `validate` clean; titles ≥ 36pt, body 20pt, slide 2 has notes. Shape
 Start wide, then narrow. `outline` first, `view text` / `get` / `query` once you know where to look.
 
 ```bash
-officecli view deck.pptx outline          # slide count, titles, shape counts (undercounts tables/charts)
-officecli view deck.pptx annotated        # complete per-slide breakdown with fonts, sizes, tables, charts
-officecli view deck.pptx text --start 1 --end 5   # text dump (does NOT extract table cells — use get)
-officecli view deck.pptx issues           # empty slides, overflow hints
-officecli view deck.pptx stats            # counts + missing alt (remember false-positive zero — C-P picture alt note)
+officecli view "$FILE" outline          # slide count, titles, shape counts (undercounts tables/charts)
+officecli view "$FILE" annotated        # complete per-slide breakdown with fonts, sizes, tables, charts
+officecli view "$FILE" text --start 1 --end 5   # text dump (does NOT extract table cells — use get)
+officecli view "$FILE" issues           # empty slides, overflow hints
+officecli view "$FILE" stats            # counts + missing alt (remember false-positive zero — C-P picture alt note)
 ```
 
 **Inspect one element.** XPath-style paths, 1-based. ALWAYS quote.
 
 ```bash
-officecli get deck.pptx "/slide[1]" --depth 1              # shape list with IDs and names
-officecli get deck.pptx "/slide[1]/shape[@name=Title]"     # @name selector (LEAD — stable across reorderings)
-officecli get deck.pptx "/slide[1]/shape[@id=10007]"       # @id selector (also stable)
-officecli get deck.pptx "/slide[1]/chart[1]"               # chart data + config
-officecli get deck.pptx "/slide[1]/table[1]" --depth 3     # table rows / cells
+officecli get "$FILE" "/slide[1]" --depth 1              # shape list with IDs and names
+officecli get "$FILE" "/slide[1]/shape[@name=Title]"     # @name selector (LEAD — stable across reorderings)
+officecli get "$FILE" "/slide[1]/shape[@id=10007]"       # @id selector (also stable)
+officecli get "$FILE" "/slide[1]/chart[1]"               # chart data + config
+officecli get "$FILE" "/slide[1]/table[1]" --depth 3     # table rows / cells
 ```
 
 Add `--json` for machine output. Use `[last()]` for "the last": `/slide[last()]/shape[1]`.
@@ -237,11 +271,11 @@ Add `--json` for machine output. Use `[last()]` for "the last": `/slide[last()]/
 **Query across the deck.** CSS-like selectors; operators `=`, `!=`, `~=`, `>=`, `<=`, `[attr]`:
 
 ```bash
-officecli query deck.pptx 'shape:contains("Revenue")'
-officecli query deck.pptx 'picture:no-alt'                 # accessibility gap
-officecli query deck.pptx 'shape[fill=1E2761]'             # color match
-officecli query deck.pptx 'shape[width>=10cm]'             # numeric
-officecli query deck.pptx 'animation'                      # every animation in the deck
+officecli query "$FILE" 'shape:contains("Revenue")'
+officecli query "$FILE" 'picture:no-alt'                 # accessibility gap
+officecli query "$FILE" 'shape[fill=1E2761]'             # color match
+officecli query "$FILE" 'shape[width>=10cm]'             # numeric
+officecli query "$FILE" 'animation'                      # every animation in the deck
 ```
 
 **`query --json` output schema.** Results wrap in `.data.results[]`. To extract the first result's ID: `jq -r '.data.results[0].format.id'` — NOT `.[0].id`. Shape name is `.name`; fill is `.format.fill`; textColor is `.format.textColor`. Verify with `query ... --json | jq .data.results[0]` on an unknown shape.
@@ -249,9 +283,9 @@ officecli query deck.pptx 'animation'                      # every animation in 
 **Visual preview (LEAD).**
 
 ```bash
-officecli view deck.pptx html                # prints an HTML preview path; Read it for per-slide visual audit (best structural ground truth)
-officecli view deck.pptx svg --start 3 --end 3   # single slide SVG (charts + gradients do NOT render in SVG)
-officecli watch deck.pptx                     # live preview for the human user — they open it at their discretion
+officecli view "$FILE" html                # prints an HTML preview path; Read it for per-slide visual audit (best structural ground truth)
+officecli view "$FILE" svg --start 3 --end 3   # single slide SVG (charts + gradients do NOT render in SVG)
+officecli watch "$FILE"                     # live preview for the human user — they open it at their discretion
 ```
 
 `view html` is the best structural check. Not final ground truth for runtime-only features (animations, zoom) — see Renderer Honesty.
@@ -265,9 +299,9 @@ Verbs: `add` / `set` / `remove` / `move` / `swap` / `batch` / `raw-set`. Ninety 
 A slide is `/slide[N]`. Always pass `layout=blank` for custom designs. Background: solid, gradient, or image.
 
 ```bash
-officecli add deck.pptx / --type slide --prop layout=blank --prop background=1E2761                 # solid
-officecli add deck.pptx / --type slide --prop layout=blank --prop "background=1E2761-CADCFC-180"   # gradient (start-end-angle)
-officecli add deck.pptx / --type slide --prop layout=blank --prop "background.image=hero.jpg"      # image background (LEAD)
+officecli add "$FILE" / --type slide --prop layout=blank --prop background=1E2761                 # solid
+officecli add "$FILE" / --type slide --prop layout=blank --prop "background=1E2761-CADCFC-180"   # gradient (start-end-angle)
+officecli add "$FILE" / --type slide --prop layout=blank --prop "background.image=hero.jpg"      # image background (LEAD)
 ```
 
 → Full background prop list (image, tiling, alpha, scale): `officecli help pptx background`.
@@ -277,7 +311,7 @@ officecli add deck.pptx / --type slide --prop layout=blank --prop "background.im
 A `shape` holds text, fill, border, position, and optional animation / link.
 
 ```bash
-officecli add deck.pptx /slide[2] --type shape --prop name=Title --prop text="Key Insight" \
+officecli add "$FILE" /slide[2] --type shape --prop name=Title --prop text="Key Insight" \
   --prop x=2cm --prop y=2cm --prop width=20cm --prop height=3cm \
   --prop font=Georgia --prop size=36 --prop bold=true --prop color=1E2761 --prop fill=none
 ```
@@ -294,11 +328,11 @@ A shape has paragraphs (`paragraph[K]`) and runs. For one-line text, `--prop tex
 
 ```bash
 # add --type paragraph accepts only text + align; styling goes through a follow-up set or an add --type run:
-officecli add deck.pptx "/slide[2]/shape[@name=Card1]" --type paragraph --prop text="First bullet"
-officecli set deck.pptx "/slide[2]/shape[@name=Card1]/paragraph[1]" --prop bold=true --prop size=20 --prop color=FFFFFF
+officecli add "$FILE" "/slide[2]/shape[@name=Card1]" --type paragraph --prop text="First bullet"
+officecli set "$FILE" "/slide[2]/shape[@name=Card1]/paragraph[1]" --prop bold=true --prop size=20 --prop color=FFFFFF
 
 # Styled run in one step:
-officecli add deck.pptx "/slide[2]/shape[@name=Card1]/paragraph[1]" --type run \
+officecli add "$FILE" "/slide[2]/shape[@name=Card1]/paragraph[1]" --type run \
   --prop text=" (inline detail)" --prop size=14 --prop italic=true --prop color=8899BB
 ```
 
@@ -310,12 +344,12 @@ Chart types via `officecli help pptx chart` — column, bar, line, pie, doughnut
 
 ```bash
 # (a) compact inline — quick demo charts
-officecli add deck.pptx /slide[3] --type chart --prop chartType=column \
+officecli add "$FILE" /slide[3] --type chart --prop chartType=column \
   --prop "data=Revenue:42,45,48;Growth:2,7,7" --prop "categories=Q1,Q2,Q3" \
   --prop x=2cm --prop y=4cm --prop width=20cm --prop height=10cm --prop title="FY26"
 
 # (b) dotted per-series — multi-series with explicit brand colors (typical case)
-officecli add deck.pptx /slide[3] --type chart --prop chartType=column \
+officecli add "$FILE" /slide[3] --type chart --prop chartType=column \
   --prop series1.name=Revenue --prop series1.values="42,45,48" --prop series1.color=1E2761 \
   --prop series2.name=Growth  --prop series2.values="2,7,7"    --prop series2.color=CADCFC \
   --prop categories="Q1,Q2,Q3" \
@@ -328,12 +362,12 @@ Gotchas: (1) series cannot be added after creation — include all series at `ad
 
 ```bash
 # add --prop alt= is rejected (UNSUPPORTED, C-P-7). Two-step workflow:
-officecli add deck.pptx /slide[4] --type picture --prop src=hero.jpg \
+officecli add "$FILE" /slide[4] --type picture --prop src=hero.jpg \
   --prop x=1cm --prop y=1cm --prop width=32cm --prop height=18cm
-officecli set deck.pptx "/slide[4]/picture[1]" --prop alt="Product hero, gradient lit from right"
+officecli set "$FILE" "/slide[4]/picture[1]" --prop alt="Product hero, gradient lit from right"
 ```
 
-Confirm with `officecli query deck.pptx 'picture:no-alt'` — must be empty before delivery (but remember `view stats` is a false-positive zero because alt auto-fills to filename).
+Confirm with `officecli query "$FILE" 'picture:no-alt'` — must be empty before delivery (but remember `view stats` is a false-positive zero because alt auto-fills to filename).
 
 ### Connectors (LEAD — flowcharts / decision trees first-class)
 
@@ -366,9 +400,9 @@ officecli add "$FILE" /slide[5] --type connector \
 One preset per slide, ≤ 600ms. Set via shape-level prop (authoritative; deep-path readback is stale — C-P-3):
 
 ```bash
-officecli set deck.pptx "/slide[2]/shape[@name=HeroCard]" --prop animation=fade-entrance-400
-officecli get deck.pptx "/slide[2]/shape[@name=HeroCard]" --json | jq .animation
-officecli set deck.pptx "/slide[2]/shape[@name=HeroCard]" --prop animation=none    # remove (C-P-4)
+officecli set "$FILE" "/slide[2]/shape[@name=HeroCard]" --prop animation=fade-entrance-400
+officecli get "$FILE" "/slide[2]/shape[@name=HeroCard]" --json | jq .animation
+officecli set "$FILE" "/slide[2]/shape[@name=HeroCard]" --prop animation=none    # remove (C-P-4)
 ```
 
 **Get round-trip (1.0.58+).** `get animation[N]` now returns the `trigger` field as well — `onClick | afterPrevious | withPrevious` — so Add/Set and Get round-trip. Verify with `officecli get "$FILE" "/slide[N]/shape[@name=X]/animation[1]" --json | jq '.trigger,.duration'` if you need to confirm the read-back matches what you set.
@@ -378,14 +412,14 @@ officecli set deck.pptx "/slide[2]/shape[@name=HeroCard]" --prop animation=none 
 ### Hyperlinks, tooltips, slide-jump
 
 ```bash
-officecli set deck.pptx "/slide[7]/shape[@name=NavBtn]" --prop link=slide:2 --prop tooltip="Back to Agenda"
-officecli set deck.pptx "/slide[7]/shape[@name=DocsBtn]" --prop link=https://example.com
+officecli set "$FILE" "/slide[7]/shape[@name=NavBtn]" --prop link=slide:2 --prop tooltip="Back to Agenda"
+officecli set "$FILE" "/slide[7]/shape[@name=DocsBtn]" --prop link=https://example.com
 ```
 
 **CRITICAL ordering** (C-P-1): on a shape that already has run-level styling (`bold`/`color`/`font`/`size`), setting `link=` + `tooltip=` emits schema-invalid XML. Fix:
 
 1. Set `link=` + `tooltip=` BEFORE any run-level styling. OR
-2. Post-hoc cleanup: `officecli raw-set deck.pptx /slide[N] --xpath //a:rPr/a:hlinkClick --action remove`.
+2. Post-hoc cleanup: `officecli raw-set "$FILE" /slide[N] --xpath //a:rPr/a:hlinkClick --action remove`.
 
 ### Tables, placeholders, groups, zoom — one-liners
 
@@ -655,17 +689,17 @@ Color convention: red path = stop/escalate, blue path = standard-action, green t
 
 ### Minimum cycle before "done"
 
-1. `officecli view deck.pptx issues` + `view annotated` — empty slides, overflow hints, size violations (< 36pt title, < 18pt body). `"Slide has no title"` on `layout=blank` is expected, not a defect.
-2. `officecli view deck.pptx html` — Read the returned HTML path for a per-slide visual audit. Walk every slide for alignment, overflow, placeholder leaks, one clear focal point.
+1. `officecli view "$FILE" issues` + `view annotated` — empty slides, overflow hints, size violations (< 36pt title, < 18pt body). `"Slide has no title"` on `layout=blank` is expected, not a defect.
+2. `officecli view "$FILE" html` — Read the returned HTML path for a per-slide visual audit. Walk every slide for alignment, overflow, placeholder leaks, one clear focal point.
 3. Query for known defect classes:
    ```bash
-   officecli query deck.pptx 'shape:contains("lorem")'
-   officecli query deck.pptx 'shape:contains("{{")'
-   officecli query deck.pptx 'shape:contains("TODO")'
-   officecli query deck.pptx 'picture:no-alt'
+   officecli query "$FILE" 'shape:contains("lorem")'
+   officecli query "$FILE" 'shape:contains("{{")'
+   officecli query "$FILE" 'shape:contains("TODO")'
+   officecli query "$FILE" 'picture:no-alt'
    ```
-4. `officecli close deck.pptx && officecli validate deck.pptx` — schema check. NEVER run validate against a resident-open file (spurious errors).
-5. **Open the deck in the target presentation viewer before shipping.** `view html` (Read the returned HTML path) catches overflow and placeholders; the target viewer is ground truth for chart colors, fonts, zoom, and animations (these are runtime features). For human preview, run `officecli watch deck.pptx` — the user opens the live preview at their own discretion — or have them open the `.pptx` directly in PowerPoint / Keynote / WPS.
+4. `officecli close "$FILE" && officecli validate "$FILE"` — schema check. NEVER run validate against a resident-open file (spurious errors).
+5. **Open the deck in the target presentation viewer before shipping.** `view html` (Read the returned HTML path) catches overflow and placeholders; the target viewer is ground truth for chart colors, fonts, zoom, and animations (these are runtime features). For human preview, run `officecli watch "$FILE"` — the user opens the live preview at their own discretion — or have them open the `.pptx` directly in PowerPoint / Keynote / WPS.
 6. If anything failed, fix, then **rerun the full cycle**. One fix commonly creates another problem.
 
 ### Delivery Gate (any failure = REJECT, do NOT deliver)
@@ -740,7 +774,7 @@ When something looks broken, attribute it first: **[AGENT-ERROR]** (deck itself 
 
 | # | Symptom | Workaround |
 |---|---|---|
-| **C-P-1** | Hyperlink `link=`+`tooltip=` on a shape with pre-existing run-level styling (`bold/color/font/size`) emits schema-invalid `<a:rPr><a:hlinkClick>`. | Set `link=`+`tooltip=` **BEFORE** any run-level styling. Post-hoc cleanup: `officecli raw-set deck.pptx /slide[N] --xpath //a:rPr/a:hlinkClick --action remove`. Gate 3 in the Delivery Gate catches it. |
+| **C-P-1** | Hyperlink `link=`+`tooltip=` on a shape with pre-existing run-level styling (`bold/color/font/size`) emits schema-invalid `<a:rPr><a:hlinkClick>`. | Set `link=`+`tooltip=` **BEFORE** any run-level styling. Post-hoc cleanup: `officecli raw-set "$FILE" /slide[N] --xpath //a:rPr/a:hlinkClick --action remove`. Gate 3 in the Delivery Gate catches it. |
 | **C-P-2** | `validate` reports `ChartShapeProperties` schema warnings (1 per chart). Renders correctly everywhere. | Whitelist in Gate 1. Do not chase. |
 | **C-P-3** | `get /slide[N]/shape[@name=X]/animation[1]` returns stale `duration` after `set animation=...`. | Trust shape-level readback: `get "/slide[N]/shape[@name=X]" --json \| jq .animation`. |
 | **C-P-4** | `remove /slide[N]/shape[@id=X]/animation[1]` rejected (deep-path accepted by `add` but not `remove`). | Use `set --prop animation=none`, or overwrite with a new preset. |
@@ -783,7 +817,7 @@ If in doubt, `view text` after writing and compare character-for-character.
 `open`/`close` is the default (see Common Workflow step 1). For grids / timelines / skeletons, **batch** collapses many ops into one API call:
 
 ```bash
-cat <<'EOF' | officecli batch deck.pptx
+cat <<'EOF' | officecli batch "$FILE"
 [
   {"command":"add","parent":"/slide[1]","type":"shape","props":{"name":"Title","text":"FY26 Review","x":"2cm","y":"2cm","width":"30cm","height":"2cm","size":"36","bold":"true"}},
   {"command":"add","parent":"/slide[1]","type":"shape","props":{"name":"Body","text":"Revenue grew 18%","x":"2cm","y":"5cm","width":"30cm","height":"10cm","size":"20"}}
