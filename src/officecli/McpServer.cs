@@ -472,6 +472,26 @@ public static class McpServer
                     return $"{ex.Message}\n\nList available elements via: {{\"command\":\"help\",\"format\":\"{canonical}\"}}";
                 }
             }
+            case "load_skill":
+            {
+                // Return the embedded SKILL.md content for the named skill. Pure read
+                // — no install side-effect. CLI counterpart `officecli skill <name>`
+                // *also* installs to all detected agents, but in MCP context the
+                // caller IS an agent and writing to its peers' skill dirs would be
+                // an unrequested side-effect. Agents that want disk-resident skills
+                // run `officecli skills install` themselves.
+                var skill = Arg("name");
+                if (string.IsNullOrEmpty(skill))
+                    throw new ArgumentException($"name= required. Available: {OfficeCli.Core.SkillInstaller.KnownSkillsList()}");
+                try { return OfficeCli.Core.SkillInstaller.LoadSkillContent(skill); }
+                catch (ArgumentException ex)
+                {
+                    // CONSISTENCY(mcp-error): error message already includes the
+                    // truncated input via SkillInstaller; re-throw as-is so MCP
+                    // returns a structured error to the caller.
+                    throw new ArgumentException(ex.Message);
+                }
+            }
             default:
                 // CONSISTENCY(mcp-error): truncate caller-supplied value to prevent
                 // response amplification (echo arbitrary-length input back unchanged).
@@ -507,7 +527,7 @@ Paths are 1-based: /slide[1]/shape[2], /body/p[3], /Sheet1/A1.
 
     private const string ToolDescription = @"Create, read, and modify Office documents (.docx, .xlsx, .pptx).
 
-Commands: create (file), view (file, mode: text|annotated|outline|stats|issues|html|svg|forms), get (file, path, depth), query (file, selector), set (file, path, props[]), add (file, parent, type, props[], index/after/before), remove (file, path), move (file, path, to, index/after/before), swap (file, path, path2), validate (file), batch (file, commands), raw (file, part), help (format: docx|xlsx|pptx, optional type=<element> for full schema).
+Commands: create (file), view (file, mode: text|annotated|outline|stats|issues|html|svg|forms), get (file, path, depth), query (file, selector), set (file, path, props[]), add (file, parent, type, props[], index/after/before), remove (file, path), move (file, path, to, index/after/before), swap (file, path, path2), validate (file), batch (file, commands), raw (file, part), help (format: docx|xlsx|pptx, optional type=<element> for full schema), load_skill (name: pptx|word|excel|morph-ppt|morph-ppt-3d|pitch-deck|academic-paper|data-dashboard|financial-model — returns the skill's SKILL.md guidance).
 
 Paths are 1-based: /slide[1]/shape[2], /body/p[3], /Sheet1/A1. Props are key=value strings. Call help with format= to list elements, then help with format= and type= to drill into a specific element's schema (properties, aliases, examples).";
 
@@ -522,7 +542,7 @@ Paths are 1-based: /slide[1]/shape[2], /body/p[3], /Sheet1/A1. Props are key=val
         // command
         w.WriteStartObject("command"); w.WriteString("type", "string");
         w.WriteStartArray("enum");
-        foreach (var c in new[] { "create", "view", "get", "query", "set", "add", "remove", "move", "swap", "validate", "batch", "raw", "help" })
+        foreach (var c in new[] { "create", "view", "get", "query", "set", "add", "remove", "move", "swap", "validate", "batch", "raw", "help", "load_skill" })
             w.WriteStringValue(c);
         w.WriteEndArray();
         w.WriteString("description", "Command to execute");
@@ -567,6 +587,8 @@ Paths are 1-based: /slide[1]/shape[2], /body/p[3], /Sheet1/A1. Props are key=val
         w.WriteStartObject("part"); w.WriteString("type", "string"); w.WriteString("description", "Part path for raw (e.g. /document, /styles, /slide[1])"); w.WriteEndObject();
         // format
         w.WriteStartObject("format"); w.WriteString("type", "string"); w.WriteString("description", "Document format for help: xlsx, pptx, docx"); w.WriteEndObject();
+        // name (for load_skill)
+        w.WriteStartObject("name"); w.WriteString("type", "string"); w.WriteString("description", "Skill name for load_skill: pptx, word, excel, morph-ppt, morph-ppt-3d, pitch-deck, academic-paper, data-dashboard, financial-model"); w.WriteEndObject();
         w.WriteEndObject(); // end properties
         w.WriteStartArray("required"); w.WriteStringValue("command"); w.WriteEndArray();
         w.WriteEndObject(); // end inputSchema

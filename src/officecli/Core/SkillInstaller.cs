@@ -155,6 +155,25 @@ internal static class SkillInstaller
     /// <summary>True if <paramref name="key"/> is a known skill alias (in <see cref="SkillMap"/>).</summary>
     public static bool IsKnownSkill(string key) => SkillMap.ContainsKey(key);
 
+    /// <summary>All known skill aliases, sorted, comma-joined for error messages.</summary>
+    public static string KnownSkillsList() => string.Join(", ", SkillMap.Keys.OrderBy(k => k));
+
+    /// <summary>
+    /// Read-only counterpart of <see cref="LoadSkill"/> for MCP / programmatic use:
+    /// return the embedded SKILL.md content for <paramref name="skillName"/> with NO
+    /// install side-effect and NO stdout writes. Throws <see cref="ArgumentException"/>
+    /// on unknown skill or missing embedded resource.
+    /// </summary>
+    public static string LoadSkillContent(string skillName)
+    {
+        if (!SkillMap.TryGetValue(skillName, out var folder))
+            throw new ArgumentException($"Unknown skill: {skillName}. Available: {KnownSkillsList()}");
+        var content = LoadEmbeddedResource($"skills/{folder}/SKILL.md");
+        if (content == null)
+            throw new ArgumentException($"Embedded SKILL.md not found for '{skillName}'");
+        return content;
+    }
+
     /// <summary>
     /// Agent-friendly facade: ensure the skill is installed to all detected
     /// agents (idempotent, install summary on stderr) and print the SKILL.md
