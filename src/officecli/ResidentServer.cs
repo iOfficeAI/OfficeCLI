@@ -928,6 +928,50 @@ public class ResidentServer : IDisposable
             return;
         }
 
+        if (mode!.ToLowerInvariant() is "screenshot" or "p")
+        {
+            string? html = null;
+            var gridCols = req.GetIntArg("grid") ?? 0;
+            if (_handler is OfficeCli.Handlers.PowerPointHandler pptShotHandler)
+            {
+                var (pStart, pEnd) = ResolvePptHtmlPage(pageFilter, start, end, pptShotHandler);
+                html = pptShotHandler.ViewAsHtml(pStart, pEnd, gridCols, req.GetIntArg("screenshot-width") ?? 1600);
+            }
+            else if (_handler is OfficeCli.Handlers.ExcelHandler excelShotHandler)
+                html = excelShotHandler.ViewAsHtml();
+            else if (_handler is OfficeCli.Handlers.WordHandler wordShotHandler)
+                html = wordShotHandler.ViewAsHtml(pageFilter);
+            if (html == null)
+            {
+                Console.Error.WriteLine("Screenshot mode is only supported for .pptx, .xlsx, and .docx files.");
+                return;
+            }
+            var sw = req.GetIntArg("screenshot-width") ?? 1600;
+            var sh = req.GetIntArg("screenshot-height") ?? 1200;
+            var tmpHtml = Path.Combine(Path.GetTempPath(), $"officecli_preview_{Path.GetFileNameWithoutExtension(_filePath)}_{DateTime.Now:HHmmss}_{Guid.NewGuid():N}.html");
+            File.WriteAllText(tmpHtml, html);
+            var pngPath = req.GetArgOrNull("out") ?? Path.Combine(Path.GetTempPath(), $"officecli_screenshot_{Path.GetFileNameWithoutExtension(_filePath)}_{DateTime.Now:HHmmss}_{Guid.NewGuid():N}.png");
+            var rs = OfficeCli.Core.HtmlScreenshot.Capture(tmpHtml, pngPath, sw, sh);
+            try { File.Delete(tmpHtml); } catch { /* ignore */ }
+            if (!rs.Ok)
+            {
+                Console.Error.WriteLine("No headless browser available. Install Chrome/Edge/Chromium or Firefox, or `pip install playwright && playwright install chromium`."
+                    + (rs.Error != null ? $" Last error: {rs.Error}" : ""));
+                return;
+            }
+            Console.WriteLine(Path.GetFullPath(pngPath));
+            if (req.GetArgOrNull("browser") == "true")
+            {
+                try
+                {
+                    var psi = new System.Diagnostics.ProcessStartInfo(pngPath) { UseShellExecute = true };
+                    System.Diagnostics.Process.Start(psi);
+                }
+                catch { /* silently ignore */ }
+            }
+            return;
+        }
+
         if (mode!.ToLowerInvariant() is "svg" or "g")
         {
             if (_handler is OfficeCli.Handlers.PowerPointHandler pptSvgHandler)
@@ -983,7 +1027,7 @@ public class ResidentServer : IDisposable
                     Console.Error.WriteLine("Forms view is only supported for .docx files.");
             }
             else
-                Console.WriteLine($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, forms");
+                Console.WriteLine($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms");
         }
         else
         {
@@ -997,7 +1041,7 @@ public class ResidentServer : IDisposable
                 "forms" or "f" => _handler is OfficeCli.Handlers.WordHandler wfh
                     ? wfh.ViewAsForms()
                     : "Forms view is only supported for .docx files.",
-                _ => $"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, forms"
+                _ => $"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms"
             };
             Console.WriteLine(output);
         }

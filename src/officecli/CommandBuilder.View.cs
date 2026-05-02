@@ -12,7 +12,7 @@ static partial class CommandBuilder
     private static Command BuildViewCommand(Option<bool> jsonOption)
     {
         var viewFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.docx, .xlsx, .pptx)" };
-        var viewModeArg = new Argument<string>("mode") { Description = "View mode: text, annotated, outline, stats, issues, html, svg, forms" };
+        var viewModeArg = new Argument<string>("mode") { Description = "View mode: text, annotated, outline, stats, issues, html, svg, screenshot, forms" };
         var startLineOpt = new Option<int?>("--start") { Description = "Start line/paragraph number" };
         var endLineOpt = new Option<int?>("--end") { Description = "End line/paragraph number" };
         var maxLinesOpt = new Option<int?>("--max-lines") { Description = "Maximum number of lines/rows/slides to output (truncates with total count)" };
@@ -21,7 +21,11 @@ static partial class CommandBuilder
 
         var colsOpt = new Option<string?>("--cols") { Description = "Column filter, comma-separated (Excel only, e.g. A,B,C)" };
         var pageOpt = new Option<string?>("--page") { Description = "Page filter for html mode (e.g. 1, 2-5, 1,3,5)" };
-        var browserOpt = new Option<bool>("--browser") { Description = "Open HTML output in browser (html mode only)" };
+        var browserOpt = new Option<bool>("--browser") { Description = "Open output in browser (html / svg modes)" };
+        var outOpt = new Option<string?>("--out", "-o") { Description = "Output file path (screenshot mode; defaults to a temp file)" };
+        var screenshotWidthOpt = new Option<int>("--screenshot-width") { Description = "Screenshot viewport width (default 1600)", DefaultValueFactory = _ => 1600 };
+        var screenshotHeightOpt = new Option<int>("--screenshot-height") { Description = "Screenshot viewport height (default 1200)", DefaultValueFactory = _ => 1200 };
+        var gridOpt = new Option<int>("--grid") { Description = "Tile slides into an N-column thumbnail grid (screenshot mode, pptx only; 0 = off)", DefaultValueFactory = _ => 0 };
 
         var viewCommand = new Command("view", "View document in different modes");
         viewCommand.Add(viewFileArg);
@@ -34,6 +38,10 @@ static partial class CommandBuilder
         viewCommand.Add(colsOpt);
         viewCommand.Add(pageOpt);
         viewCommand.Add(browserOpt);
+        viewCommand.Add(outOpt);
+        viewCommand.Add(screenshotWidthOpt);
+        viewCommand.Add(screenshotHeightOpt);
+        viewCommand.Add(gridOpt);
         viewCommand.Add(jsonOption);
 
         viewCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
@@ -48,6 +56,10 @@ static partial class CommandBuilder
             var colsStr = result.GetValue(colsOpt);
             var pageFilter = result.GetValue(pageOpt);
             var browser = result.GetValue(browserOpt);
+            var outArg = result.GetValue(outOpt);
+            var screenshotWidth = result.GetValue(screenshotWidthOpt);
+            var screenshotHeight = result.GetValue(screenshotHeightOpt);
+            var gridCols = result.GetValue(gridOpt);
 
             // Try resident first
             if (TryResident(file.FullName, req =>
@@ -63,6 +75,10 @@ static partial class CommandBuilder
                 if (colsStr != null) req.Args["cols"] = colsStr;
                 if (pageFilter != null) req.Args["page"] = pageFilter;
                 if (browser) req.Args["browser"] = "true";
+                if (outArg != null) req.Args["out"] = outArg;
+                req.Args["screenshot-width"] = screenshotWidth.ToString();
+                req.Args["screenshot-height"] = screenshotHeight.ToString();
+                if (gridCols > 0) req.Args["grid"] = gridCols.ToString();
             }, json) is {} rc) return rc;
 
             var format = json ? OutputFormat.Json : OutputFormat.Text;
@@ -121,6 +137,59 @@ static partial class CommandBuilder
                         Suggestion = "Use a .pptx, .xlsx, or .docx file, or use mode 'text' or 'annotated' for other formats.",
                         ValidValues = ["text", "annotated", "outline", "stats", "issues"]
                     };
+                }
+                return 0;
+            }
+
+            if (mode.ToLowerInvariant() is "screenshot" or "p")
+            {
+                // Screenshot mode: render the same HTML preview as `view html`, then
+                // headless-screenshot the temp HTML to a PNG. Mirrors svg's pattern of
+                // a dedicated mode that produces a file + prints the path.
+                // --grid N tiles slides into an N-column thumbnail grid (pptx only).
+                string? html = null;
+                if (handler is OfficeCli.Handlers.PowerPointHandler pptHandler)
+                {
+                    var (pStart, pEnd) = ParsePptHtmlPage(pageFilter, start, end, pptHandler);
+                    html = pptHandler.ViewAsHtml(pStart, pEnd, gridCols, screenshotWidth);
+                }
+                else if (handler is OfficeCli.Handlers.ExcelHandler excelHandler)
+                    html = excelHandler.ViewAsHtml();
+                else if (handler is OfficeCli.Handlers.WordHandler wordHandler)
+                    html = wordHandler.ViewAsHtml(pageFilter);
+
+                if (html == null)
+                {
+                    throw new OfficeCli.Core.CliException("Screenshot mode is only supported for .pptx, .xlsx, and .docx files.")
+                    {
+                        Code = "unsupported_type",
+                        Suggestion = "Use a .pptx, .xlsx, or .docx file.",
+                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot"]
+                    };
+                }
+
+                // SECURITY: random token in temp filename — same rationale as the html/--browser path.
+                var tmpHtml = Path.Combine(Path.GetTempPath(), $"officecli_preview_{Path.GetFileNameWithoutExtension(file.Name)}_{DateTime.Now:HHmmss}_{Guid.NewGuid():N}.html");
+                File.WriteAllText(tmpHtml, html);
+                var pngPath = outArg ?? Path.Combine(Path.GetTempPath(), $"officecli_screenshot_{Path.GetFileNameWithoutExtension(file.Name)}_{DateTime.Now:HHmmss}_{Guid.NewGuid():N}.png");
+                var r = OfficeCli.Core.HtmlScreenshot.Capture(tmpHtml, pngPath, screenshotWidth, screenshotHeight);
+                try { File.Delete(tmpHtml); } catch { /* ignore */ }
+                if (!r.Ok)
+                {
+                    throw new OfficeCli.Core.CliException(
+                        "No headless browser available. Install Chrome/Edge/Chromium or Firefox, or `pip install playwright && playwright install chromium`."
+                        + (r.Error != null ? $" Last error: {r.Error}" : ""))
+                    { Code = "no_screenshot_backend" };
+                }
+                Console.WriteLine(Path.GetFullPath(pngPath));
+                if (browser)
+                {
+                    try
+                    {
+                        var psi = new System.Diagnostics.ProcessStartInfo(pngPath) { UseShellExecute = true };
+                        System.Diagnostics.Process.Start(psi);
+                    }
+                    catch { /* silently ignore if image viewer can't be opened */ }
                 }
                 return 0;
             }
@@ -186,7 +255,7 @@ static partial class CommandBuilder
                     {
                         Code = "unsupported_type",
                         Suggestion = "Use a .pptx file, or use mode 'text' or 'annotated' for other formats.",
-                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg"]
+                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot"]
                     };
                 }
                 return 0;
@@ -216,14 +285,14 @@ static partial class CommandBuilder
                         throw new OfficeCli.Core.CliException("Forms view is only supported for .docx files.")
                         {
                             Code = "unsupported_type",
-                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "forms"]
+                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "forms"]
                         };
                 }
                 else
-                    throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, forms")
+                    throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms")
                     {
                         Code = "invalid_value",
-                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "forms"]
+                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "forms"]
                     };
             }
             else
@@ -240,12 +309,12 @@ static partial class CommandBuilder
                         : throw new OfficeCli.Core.CliException("Forms view is only supported for .docx files.")
                         {
                             Code = "unsupported_type",
-                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "forms"]
+                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "forms"]
                         },
-                    _ => throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, forms")
+                    _ => throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms")
                     {
                         Code = "invalid_value",
-                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "forms"]
+                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "forms"]
                     }
                 };
                 Console.WriteLine(output);

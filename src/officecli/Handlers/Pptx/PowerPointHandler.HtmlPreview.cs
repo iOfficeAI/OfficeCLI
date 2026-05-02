@@ -69,7 +69,7 @@ public partial class PowerPointHandler
     /// Each slide is rendered as an absolutely-positioned div with CSS styling.
     /// Images are embedded as base64 data URIs.
     /// </summary>
-    public string ViewAsHtml(int? startSlide = null, int? endSlide = null)
+    public string ViewAsHtml(int? startSlide = null, int? endSlide = null, int gridCols = 0, int viewportPx = 1600)
     {
         ResetModel3DRenderState();
         var sb = new StringBuilder();
@@ -146,6 +146,23 @@ public partial class PowerPointHandler
         sb.AppendLine("<style>");
         sb.AppendLine(GenerateCss(slideWidthPt, slideHeightPt));
         sb.AppendLine("</style>");
+        if (gridCols > 0)
+        {
+            // Grid override for thumbnail-style screenshot. 1pt = 4/3 px;
+            // each cell gets viewportPx/cols width; scale slides to fit.
+            double slideNativePx = slideWidthPt * 4.0 / 3.0;
+            double padding = 24.0;
+            double gap = 12.0;
+            double cellPx = (viewportPx - padding - (gridCols - 1) * gap) / gridCols;
+            double scale = cellPx / slideNativePx;
+            sb.AppendLine("<style>");
+            sb.AppendLine(".sidebar,.sidebar-toggle,.toggle-zone,.slide-label,.slide-notes,.file-title{display:none !important}");
+            sb.AppendLine($".main{{display:grid !important;grid-template-columns:repeat({gridCols},1fr) !important;gap:{gap}px !important;padding:{padding / 2}px !important;margin-left:0 !important;align-items:start !important;justify-items:center !important;flex-direction:unset !important}}");
+            sb.AppendLine($".slide-container{{width:100% !important;align-items:flex-start !important}}");
+            sb.AppendLine($".slide-wrapper{{width:{cellPx:0.##}px !important;height:{cellPx / (slideWidthPt / slideHeightPt):0.##}px !important;overflow:hidden !important;display:block !important;position:relative !important}}");
+            sb.AppendLine($".slide{{transform:scale({scale:0.######}) !important;transform-origin:top left !important;position:absolute !important;top:0 !important;left:0 !important}}");
+            sb.AppendLine("</style>");
+        }
         // Auto-hide sidebar in headless/automated browsers (screenshot, Playwright, etc.)
         sb.AppendLine("<script>if(navigator.webdriver||/HeadlessChrome/.test(navigator.userAgent))document.documentElement.classList.add('headless')</script>");
         sb.AppendLine("</head>");
