@@ -64,7 +64,7 @@ These are the deliverable standards every deck MUST meet. Violating any one = no
 
 **One idea per slide.** If a slide needs a second title to explain what it covers, split it. Dense "everything about X" slides lose the audience inside 3 seconds. Use a section divider to group related one-idea slides, not a mega-slide.
 
-**Explicit type hierarchy — do NOT rely on theme defaults.** Theme defaults drift between masters. Set sizes explicitly on every text shape. **This is the single source of truth — Visual Floor, Design Principles, and Pitfalls all cross-link back here.**
+**Explicit type hierarchy — do NOT rely on theme defaults.** Theme defaults drift between masters. Set sizes explicitly on every text shape.
 
 | Element | Minimum | Typical | Min shape height |
 |---|---|---|---|
@@ -95,32 +95,26 @@ Before declaring done, the per-slide render (see QA) MUST satisfy:
 - **No text overflow inside shapes.** A 72pt KPI in a 4cm-tall box clips. Shrink the number, enlarge the box, or shorten the text — never trim content to fit.
 - **Cover slide is content-rich.** Title + subtitle + presenter/client block + date + a brand band or key-takeaway strap. A cover with 80% whitespace reads as a stub.
 - **Contrast floor.** On dark backgrounds (brightness < 30%), body text MUST be `FFFFFF` or > 80%-bright. Mid-gray on dark navy is invisible on projection.
-- **Animation restraint.** ≤ 1 animation per slide, ≤ 600ms, entrance/emphasis only (never `bounce`, `swivel`, `fly-from-edge`). Animation is a runtime feature — `view html` shows static geometry; the animation itself runs only when the `.pptx` is opened in a live presentation viewer.
+- **Animation restraint.** ≤ 1 per slide, ≤ 600ms — full rules in Animation restraint below.
 - **No `\$`, `\t`, `\n` literals in slide text.** If `view text` shows these, a shell-escape leaked — delete and re-enter via heredoc batch.
 
 If any fails, STOP and fix before declaring done.
 
 ### Hard rules — typography / contrast / notes / KPI fit
 
-These four fire on live-room failure modes that the Requirements table alone has not stopped in practice. Each is principle + exception + why.
-
 - **Body floors at 18pt** (absolute floor 16pt for tiny sublabels; 18pt is the working floor for all paragraph and card body text per the Requirements table). Exceptions are non-primary-read elements only: chart axis labels, legends, footer / page number, and KPI sublabels of ≤ 5 words (e.g. "Active users", "MoM growth"). Full descriptive sentences never qualify — shrink the sentence or split the slide, do not shrink the font. "The cards won't fit" is never a reason to drop below floor; it is a reason to drop cards.
 - **Dark backgrounds force near-white body.** When fill brightness < 30% (`1E2761`, `36454F`, `000000`, deep forest / berry / cherry), every run of body text, card body, chart series fill, and icon color must be `FFFFFF` or brightness > 80%. Mid-gray (`6B7B8D` ≈ 44%) reads fine on a laptop screen and disappears under projector glare. Check with `view html` after the dark-fill pass.
 - **Content slides carry speaker notes.** Every slide that is neither cover nor closing must have `--type notes --prop text="..."`. The speaker needs a script; the audience should not read the slide verbatim. Missing notes on a content slide is not shippable.
 - **KPI text fits the card — pre-compute, don't eyeball.** In a 7cm-wide card at 60pt Georgia bold, values with `$` and `.` (wide glyphs) wrap at 4 characters. `$9.4M` breaks the card; use `$9M` + "USD millions" sublabel, or move to the 3-card 9.78cm layout. Upper bound: `max_size_pt ≈ card_width_cm × denom`, where denom = 10 for 1–2 chars, 7 for 3–4 chars, 5 for 5+ chars.
 
-### Hard rules worth repeating
+### `layout=blank` and alt text
 
 - **`layout=blank` is the default for custom designs.** Titles become plain `shape` elements, not placeholders. `view outline` / `view issues` reporting `(untitled)` / `Slide has no title` is **expected**, not a defect. Use `layout=title` + `placeholder[title]` only when screen-reader outline compatibility matters.
 - **Alt text verification.** `view stats "Pictures without alt text: 0"` is a false-positive zero (alt auto-fills to filename) — verify via `view annotated`.
 
 ## Design Principles
 
-A deck is not a document. The audience has 3 seconds to get each slide before attention drifts.
-
-### The 3-second test
-
-Before adding anything, ask: "If the audience only reads the biggest element and glances once, do they get the point?" If they need to read the bullets, the biggest element is wrong. Promote the answer to the title, demote evidence to smaller supporting text.
+A deck is not a document. The audience has 3 seconds to get each slide. Before adding anything, ask: "If the audience reads only the biggest element and glances once, do they get the point?" If they have to read the bullets, the biggest element is wrong.
 
 ### Grid, margins, negative space
 
@@ -130,10 +124,6 @@ Standard widescreen is **33.87 × 19.05cm**. Treat it as a 12-column grid intern
 - **Inter-block gap ≥ 0.76cm** (0.3") between cards / columns / rows.
 - **≥ 20% negative space per slide.** Filling every pixel reads as amateur.
 - For card grids: `usable = 33.87 − 2·margin − (N−1)·gap`, then `col_width = usable / N`. Don't hand-pick x coordinates.
-
-### Type hierarchy — numbers, not vibes
-
-→ See Requirements table above. Non-negotiable floors.
 
 ### Font pairings
 
@@ -150,7 +140,7 @@ Two fonts max — one for headings, one for body. Pair by document register, not
 | Palatino | Garamond | Elegant editorial, luxury, nonprofit |
 | Consolas | Calibri | Developer tools, technical / engineering |
 
-Set both fonts explicitly on every shape (`--prop font=Georgia` on title shapes, `--prop font=Calibri` on body shapes) — theme-default inheritance drifts between masters. `officecli help pptx shape` shows the `font` prop.
+Set both fonts explicitly on every shape (`--prop font=Georgia` on title shapes, `--prop font=Calibri` on body shapes) — theme-default inheritance drifts between masters.
 
 ### Color and contrast
 
@@ -171,7 +161,7 @@ One dominant color does 60–70% of visual weight, two supporting tones, one acc
 
 Pick by topic, not by default — finance reads Midnight Executive, a product launch reads Coral Energy, safety / LOTO reads Cherry Bold. If the closest named theme is not quite right, blend (e.g. Forest primary + gold `D4A843` accent). Use **Text** on light fills, **Muted** for captions / axis / footer, `FFFFFF` or Secondary for body on dark fills.
 
-On dark backgrounds (fill brightness < 30%), text and chart series MUST be white or > 80%-bright. Mid-gray is invisible on projection — see Hard rules above.
+On dark backgrounds, text and chart series follow the Hard rules contrast floor above.
 
 ### Chart-choice decision table
 
@@ -196,8 +186,6 @@ Each animation is a cognitive interrupt. Limits:
 - Never: `bounce`, `swivel`, `fly-from-edge`, `spin`, multi-object choreography.
 - Animation is runtime-only — verify in a live presentation viewer.
 
-→ Presets: `officecli help pptx animation`.
-
 ### Layout patterns & data display
 
 Vary layout across slides — repeating the same pattern makes every slide feel identical. Pick one per slide from these building blocks:
@@ -217,9 +205,7 @@ Vary layout across slides — repeating the same pattern makes every slide feel 
 
 ### Visual motif commitment
 
-Pick ONE distinctive element before slide 1 and carry it to every slide. Examples: rounded image frames, section numbers in filled circles, a thick single-side border band, diagonal accent strips. If you could swap the motif out for a completely different design and nothing would look wrong, you haven't committed — you've just applied a style to one slide.
-
-Write it in your build plan first: `## Motif: numbered circles in brand color`. Then enforce it on every slide.
+Pick ONE distinctive element (rounded image frames, section numbers in filled circles, single-side border band, diagonal accent strips) and carry it to every slide. Declare it in your build plan first: `## Motif: numbered circles in brand color`.
 
 ### What to avoid (common design mistakes)
 
@@ -239,8 +225,8 @@ These are the patterns that make a deck look AI-generated or amateur:
 2. **Orient.** New deck: `officecli create "$FILE"`. Existing: `officecli view "$FILE" outline` first. Never edit blind.
 3. **Build in display order — HARD RULE.** `--index` on slide add is frequently ignored. Add slides in audience-view order: cover → agenda → section-1 divider → section-1 content → section-2 divider → … → closing. Out-of-order insertion requires `officecli move "$FILE" /slide[N] --index M` + re-verify with `get --depth 0`. **Before final delivery, confirm slide count + narrative arc match your build plan.** Gate 3 catches cases where the cover ends up as slide 11 of 14 instead of slide 1.
 4. **Incremental per slide.** Create slide + background, then title, then supporting shapes / charts / connectors. Always `layout=blank` for custom designs. After each structural op, `get /slide[N] --depth 1` to confirm shape IDs.
-5. **Format to spec.** Explicit title ≥ 36pt, body ≥ 18pt, colors from one palette, connectors via `@id=`. Formatting is deliverable, not polish.
-6. **Close + verify in target viewer.** `officecli close` writes the ZIP. `view html` — Read the returned HTML path — is OK for structural QA; **always open in the target presentation viewer before shipping** — chart colors, animations, font substitution, zoom are runtime features that only the live viewer renders faithfully.
+5. **Format to spec.** Per the Requirements table; formatting is deliverable, not polish.
+6. **Close + verify.** `officecli close` writes the ZIP. Always open in the target presentation viewer before shipping — chart colors, animations, fonts, and zoom are runtime features `view html` can't render. Full verification in QA below.
 7. **QA — assume there are problems.** Fix-and-verify until a cycle finds zero new issues.
 
 ## Quick Start
@@ -286,7 +272,7 @@ officecli view "$FILE" outline          # slide count, titles, shape counts (und
 officecli view "$FILE" annotated        # complete per-slide breakdown with fonts, sizes, tables, charts
 officecli view "$FILE" text --start 1 --end 5   # text dump (does NOT extract table cells — use get)
 officecli view "$FILE" issues           # empty slides, overflow hints
-officecli view "$FILE" stats            # counts + missing alt (remember false-positive zero — C-P picture alt note)
+officecli view "$FILE" stats            # counts + missing alt (false-positive zero — verify via view annotated)
 ```
 
 **Inspect one element.** XPath-style paths, 1-based. ALWAYS quote.
@@ -321,8 +307,6 @@ officecli view "$FILE" svg --start 3 --end 3   # single slide SVG (charts + grad
 officecli watch "$FILE"                     # live preview for the human user — they open it at their discretion
 ```
 
-`view html` is the best structural check. Not final ground truth for runtime-only features (animations, zoom) — see Renderer Honesty.
-
 ## Creating & Editing
 
 Verbs: `add` / `set` / `remove` / `move` / `swap` / `batch` / `raw-set`. Ninety percent of a deck is slides, shapes, text, a few charts, pictures, connectors.
@@ -337,8 +321,6 @@ officecli add "$FILE" / --type slide --prop layout=blank --prop "background=1E27
 officecli add "$FILE" / --type slide --prop layout=blank --prop "background.image=hero.jpg"      # image background (LEAD)
 ```
 
-→ Full background prop list (image, tiling, alpha, scale): `officecli help pptx background`.
-
 ### Shapes
 
 A `shape` holds text, fill, border, position, and optional animation / link.
@@ -352,8 +334,6 @@ officecli add "$FILE" /slide[2] --type shape --prop name=Title --prop text="Key 
 Positioning is explicit — no layout engine, you own the grid math. `--prop preset=` picks geometry (`rect`, `roundRect`, `ellipse`, `triangle`, `arrow`, `star5`, ...); custom `M...Z` paths are NOT supported at the high-level prop layer (use preset or raw-set `a:custGeom`). **Name shapes at creation** (`--prop name=HeroTitle`) and address later with `"/slide[N]/shape[@name=HeroTitle]"` — positional `/shape[3]` breaks after any z-order / remove.
 
 > **ID semantics.** IDs are assigned per-XML-element, not per-`add`-command. Paragraphs and runs consume IDs too — so the 4 IDs returned by 4 `add shape` calls are NOT guaranteed to be sequential (child paragraphs ate some). After a rebuild or remove-then-add, re-`get --depth 1` before referencing IDs. **Prefer `@name=` over `@id=`** — names are stable across all structural ops.
-
-→ `officecli help pptx shape` for the full prop list.
 
 ### Text inside shapes (paragraphs, runs, styling)
 
@@ -373,7 +353,7 @@ For real newlines inside one run, use a batch heredoc with JSON `"\n"`. Shell-qu
 
 ### Charts
 
-Chart types via `officecli help pptx chart` — column, bar, line, pie, doughnut, scatter, area, waterfall, funnel, boxWhisker. Pick per the Design Principles chart-choice table. Two data forms:
+Chart types: column, bar, line, pie, doughnut, scatter, area, waterfall, funnel, boxWhisker. Pick per the Design Principles chart-choice table. Two data forms:
 
 ```bash
 # (a) compact inline — quick demo charts
@@ -422,8 +402,6 @@ officecli add "$FILE" /slide[5] --type connector \
 
 **Every flow connector needs an arrowhead.** Without one, `bentConnector3` renders as a directionless line. Use `--prop tailEnd=triangle` on the connector add or set. `preset=rightArrow` overlay only works for horizontal flows; diamonds / decision trees with diverging edges need `tailEnd=`.
 
-→ `officecli help pptx connector`.
-
 ### Animations (LEAD)
 
 One preset per slide, ≤ 600ms. Set via shape-level prop or via deep-path `add --type animation`:
@@ -437,8 +415,6 @@ officecli remove "$FILE" "/slide[2]/shape[@name=HeroCard]/animation[1]"         
 
 **Get round-trip (1.0.58+).** `get animation[N]` now returns the `trigger` field as well — `onClick | afterPrevious | withPrevious` — so Add/Set and Get round-trip. Verify with `officecli get "$FILE" "/slide[N]/shape[@name=X]/animation[1]" --json | jq '.trigger,.duration'` if you need to confirm the read-back matches what you set.
 
-→ `officecli help pptx animation`.
-
 ### Hyperlinks, tooltips, slide-jump
 
 ```bash
@@ -450,15 +426,14 @@ officecli set "$FILE" "/slide[7]/shape[@name=DocsBtn]" --prop link=https://examp
 
 - **Tables** — `--type table --prop rows=N --prop cols=M`. Row-level `set` supports `height`, `header`, `c1/c2/c3`. Cell formatting lives on the cell paragraph / run. Populate rows BEFORE setting table-level font (font cascade gets reset by row ops).
 - **Placeholders** — `"/slide[N]/placeholder[title]"` / `placeholder[body]`. Available only when the slide uses a layout with placeholders (not `layout=blank`).
-- **Groups** (LEAD) — address children via `"/slide[N]/group[@name=G]/shape[1]"`. Survives reordering better than positional indexes. `officecli help pptx group`.
-- **Zoom slide** (LEAD) — `--type zoom --prop targets="3,7,15"`. Section-navigation hub. Zoom is a runtime feature — `view html` shows the static geometry; the zoom interaction runs only in a live presentation viewer. `officecli help pptx zoom`.
+- **Groups** (LEAD) — address children via `"/slide[N]/group[@name=G]/shape[1]"`. Survives reordering better than positional indexes.
+- **Zoom slide** (LEAD) — `--type zoom --prop targets="3,7,15"`. Section-navigation hub. Zoom is a runtime feature — `view html` shows the static geometry; the zoom interaction runs only in a live presentation viewer.
 - **Slide comments** — reviewer annotations anchored at `/slide[N]/comment[M]`. Full lifecycle (`add / set / get / query / remove`). Props: `text`, `author`, `initials` (auto-derived), `date` (ISO 8601, defaults to UtcNow), `x` / `y` (EMU anchor).
   ```bash
   officecli add "$FILE" "/slide[2]" --type comment --prop author="Alice" --prop text="Tighten this bullet" --prop x=20cm --prop y=3cm
   officecli query "$FILE" 'comment' --json | jq '.data.results | length'   # count all review comments
   officecli remove "$FILE" "/slide[2]/comment[1]"                           # resolve after addressing
   ```
-  → `officecli help pptx comment`.
 
 ### Deck-level recipes
 
@@ -772,9 +747,7 @@ Run `officecli view "$FILE" html` and Read the returned HTML path. For every sli
 
 REJECT the delivery if ANY of the above is present; list every instance with its slide number. If none, report "Gate 5 PASS".
 
-### Honest limit
-
-`validate` catches schema errors, not design errors. A deck can pass `validate` with 14pt body on every slide, five fonts, placeholder tokens in chart titles, animation on every slide, or gray text on navy. The QA cycle above — especially `view annotated`, `view html` (Read the returned HTML), and opening in the target presentation viewer — is how you catch what validation can't.
+`validate` catches schema, not design — Gates 2–5 are how you catch 14pt body, gray-on-navy, and placeholder leaks that schema-validation never flags.
 
 ## Known Issues & Pitfalls
 
@@ -799,27 +772,6 @@ Props that exit 0 at write time but produce bad XML on close.
 
 Grep disabled forms in your command log: `grep -nE '(add.*paragraph.*--prop (bold|size|color|font)=|showHeader=true|geometry="M|connector.*(line|lineWidth|lineDash)=)' commands.log`.
 
-## Performance: Resident Mode + Batch
-
-`open`/`close` is the default (see Common Workflow step 1). For grids / timelines / skeletons, **batch** collapses many ops into one API call:
-
-```bash
-cat <<'EOF' | officecli batch "$FILE"
-[
-  {"command":"add","parent":"/slide[1]","type":"shape","props":{"name":"Title","text":"FY26 Review","x":"2cm","y":"2cm","width":"30cm","height":"2cm","size":"36","bold":"true"}},
-  {"command":"add","parent":"/slide[1]","type":"shape","props":{"name":"Body","text":"Revenue grew 18%","x":"2cm","y":"5cm","width":"30cm","height":"10cm","size":"20"}}
-]
-EOF
-```
-
-`<<'EOF'` (single-quoted delimiter) disables all shell expansion — safe for `$`, `'`, `!`.
-
-Quirks: keep arrays **≤ 12 ops** (larger = ~1-in-15 "Failed to send to resident"); never `validate` while resident is open (spurious `drawing` errors — `close` first); `--index` on slide add is unreliable — see Common Workflow step 3. Batch supports: `add / set / get / query / remove / move / swap / view / raw / raw-set / validate`.
-
-## Advanced capability index
-
-Single-verb where pptxgenjs / raw-XML would need hand-work: `help <element> --json`, CSS queries (`shape:contains / picture:no-alt / shape[fill=]`), `@name=` / `@id=` selectors, `view html`, gradient + image backgrounds, zoom slides, animation CRUD, `@id=` connectors, hyperlink + tooltip, groups, resident + batch heredoc, `raw-set` for raw XML, master/layout background override. When in doubt: `officecli help pptx <element> --json`.
-
 ## Common Pitfalls
 
 Sanity-check cheatsheet — what breaks on the first try. Design + shell traps.
@@ -840,5 +792,3 @@ Sanity-check cheatsheet — what breaks on the first try. Design + shell traps.
 | Modifying a file open in PowerPoint | Close it in PowerPoint first |
 | Running `validate` while resident is open | Spurious errors. `officecli close` first |
 | `view issues "Slide has no title"` on `layout=blank` | Expected on blank layouts (titles are shapes, not placeholders). Not a defect |
-
-→ When in doubt: `officecli help pptx <element>`, `--json` for agents. Help is authoritative.
