@@ -46,7 +46,13 @@ Help reflects the installed CLI version. When skill and help disagree, **help is
 
 ## Shell & Execution Discipline
 
-**Shell quoting (zsh / bash).** ALWAYS quote element paths (`"/slide[1]/..."`). Single-quote values containing `$`. Never hand-write `\$` / `\t` / `\n` — CLI does not interpret them. Full rules in "Shell escape — three layers" below.
+**Shell quoting (zsh / bash).** ALWAYS quote element paths (`"/slide[1]/..."`) — zsh globs unquoted `[1]` to `no matches found`. CLI does NOT interpret `\$` / `\t` / `\n`; escapes happen at three layers, only one of which is yours:
+
+1. **Shell.** `$` in a value → single-quote the whole value: `--prop text='$15M'`. Double-quoted `"$15M"` gets shell-expanded to `M`.
+2. **JSON (batch).** Real newline in shape text goes via `"\n"` inside a `<<'EOF'` heredoc. Writing `\n` in shell-quoted `--prop text=` is a bug.
+3. **pptx.** A line break is `<a:br/>`, not `\n`. Prefer multiple `--type paragraph` adds over fighting escapes.
+
+If in doubt, `view text` after writing and compare character-for-character.
 
 **Incremental execution.** One command → check exit code → continue. A 50-command script that fails at command 3 cascades silently. After any structural op (new slide, chart, animation, connector) run `get` before stacking more.
 
@@ -792,16 +798,6 @@ Props that exit 0 at write time but produce bad XML on close.
 | Chart `--prop gap=/gapwidth=` on `add` | `set /slide[N]/chart[M] --prop gap=80` after creation |
 
 Grep disabled forms in your command log: `grep -nE '(add.*paragraph.*--prop (bold|size|color|font)=|showHeader=true|geometry="M|connector.*(line|lineWidth|lineDash)=)' commands.log`.
-
-### Shell escape — three layers
-
-CLI does NOT interpret `\$`, `\t`, `\n`.
-
-1. **Shell.** `$` in a value → single-quote the whole value: `--prop text='$15M'`. Unescaped `$15M` is stripped to `M`.
-2. **JSON (batch).** Real newline in shape text goes via `"\n"` inside a `<<'EOF'` heredoc. Writing `\n` in shell-quoted `--prop text=` is a bug.
-3. **pptx.** A line break is `<a:br/>`, not `\n`. Prefer multiple `--type paragraph` adds over fighting escapes.
-
-If in doubt, `view text` after writing and compare character-for-character.
 
 ## Performance: Resident Mode + Batch
 
