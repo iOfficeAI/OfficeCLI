@@ -9,7 +9,7 @@ public sealed partial class RhwpBridgeEngine
 {
     public async Task<HwpMutationResult> FillFieldAsync(HwpFillFieldRequest request, CancellationToken ct)
     {
-        if (request.Fields.Count == 0)
+        if (request.Fields.Count == 0 && request.FieldIds.Count == 0)
             throw new HwpEngineException(
                 "fill_field requires at least one field.",
                 HwpCapabilityConstants.ReasonUnsupportedOperation,
@@ -31,7 +31,7 @@ public sealed partial class RhwpBridgeEngine
             foreach (var field in request.Fields)
             {
                 index++;
-                var output = index == request.Fields.Count
+                var output = index == request.Fields.Count + request.FieldIds.Count
                     ? request.OutputPath
                     : Path.Combine(
                         Path.GetTempPath(),
@@ -42,6 +42,24 @@ public sealed partial class RhwpBridgeEngine
                 {
                     "set-field", "--format", formatArg, "--input", currentInput,
                     "--output", output, "--name", field.Key, "--value", field.Value, "--json"
+                };
+                lastOutputJson = await RunBridgeAsync(args, RenderSvgTimeoutMs, ct);
+                currentInput = output;
+            }
+            foreach (var field in request.FieldIds)
+            {
+                index++;
+                var output = index == request.Fields.Count + request.FieldIds.Count
+                    ? request.OutputPath
+                    : Path.Combine(
+                        Path.GetTempPath(),
+                        $"officecli-rhwp-field-{Guid.NewGuid():N}{Path.GetExtension(request.OutputPath)}");
+                if (index != request.Fields.Count + request.FieldIds.Count) tempFiles.Add(output);
+
+                var args = new[]
+                {
+                    "set-field", "--format", formatArg, "--input", currentInput,
+                    "--output", output, "--id", field.Key.ToString(), "--value", field.Value, "--json"
                 };
                 lastOutputJson = await RunBridgeAsync(args, RenderSvgTimeoutMs, ct);
                 currentInput = output;

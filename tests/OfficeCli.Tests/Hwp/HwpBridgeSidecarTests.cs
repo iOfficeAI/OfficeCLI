@@ -243,6 +243,33 @@ public class HwpBridgeSidecarTests : IDisposable
     }
 
     [Fact]
+    public void OfficeCliSetField_CanUseFieldId()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", "rhwp-experimental");
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", LocateBridgeDll());
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", CreateFakeRhwp());
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", CreateFakeRhwpApi());
+        var input = CreateInput(".hwp");
+        var output = CreateOutput(".hwp");
+
+        var (exitCode, stdout) = InvokeOfficeCli(
+            [
+                "set", input, "/field",
+                "--prop", "id=7",
+                "--prop", "value=김철수",
+                "--prop", $"output={output}",
+                "--json"
+            ]);
+
+        Assert.Equal(0, exitCode);
+        Assert.True(File.Exists(output));
+        var root = JsonNode.Parse(stdout)!;
+        Assert.True(root["success"]!.GetValue<bool>());
+        Assert.Contains("#7", root["message"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void OfficeCliSetText_RoutesBinaryHwpThroughRhwpBridge()
     {
         if (OperatingSystem.IsWindows()) return;

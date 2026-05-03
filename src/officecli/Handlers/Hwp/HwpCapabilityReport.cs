@@ -155,7 +155,10 @@ public sealed record HwpFillFieldRequest(
     string OutputPath,
     IReadOnlyDictionary<string, string> Fields,
     bool Json
-);
+)
+{
+    public IReadOnlyDictionary<int, string> FieldIds { get; init; } = new Dictionary<int, string>();
+}
 
 public sealed record HwpReplaceTextRequest(
     HwpFormat Format,

@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "message": "Updated HWP field '#1584999796' -> /Users/jun/Developer/new/700_projects/cli-jaw/officecli/tests/golden/hwp/rhwp-fields/field-set-company-id-cli.hwp",
+  "data": {
+    "outputPath": "/Users/jun/Developer/new/700_projects/cli-jaw/officecli/tests/golden/hwp/rhwp-fields/field-set-company-id-cli.hwp",
+    "engine": "rhwp-bridge",
+    "engineVersion": "rhwp-api 0.1.0",
+    "evidence": [
+      "rhwp-api set-field output file created; caller must verify round-trip before production use."
+    ]
+  },
+  "warnings": [
+    "experimental field mutation; verify round-trip before production use"
+  ]
+}
