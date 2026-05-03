@@ -32,11 +32,12 @@ fn run() -> Result<(), String> {
     let input = required(&options, "--input")?;
     let format = required(&options, "--format")?;
     let bytes = fs::read(input).map_err(|e| format!("input read failed: {e}"))?;
-    let doc = HwpDocument::from_bytes(&bytes).map_err(|e| format!("rhwp parse failed: {e}"))?;
+    let mut doc = HwpDocument::from_bytes(&bytes).map_err(|e| format!("rhwp parse failed: {e}"))?;
 
     match command {
         "list-fields" => list_fields(&doc, format),
         "get-field" => get_field(&doc, format, &options),
+        "set-field" => set_field(&mut doc, format, &options),
         _ => Err(format!("unsupported command: {command}")),
     }
 }
@@ -88,6 +89,52 @@ fn get_field(
     Ok(())
 }
 
+fn set_field(
+    doc: &mut HwpDocument,
+    format: &str,
+    options: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    let output = required(options, "--output")?;
+    let value = required(options, "--value")?;
+    let mutation_json = if let Some(name) = options.get("--name") {
+        doc.set_field_value_by_name(name, value)
+            .map_err(|e| format!("field name mutation failed: {e}"))?
+    } else if let Some(id) = options.get("--id") {
+        let id = id
+            .parse::<u32>()
+            .map_err(|e| format!("invalid --id value: {e}"))?;
+        doc.set_field_value_by_id(id, value)
+            .map_err(|e| format!("field id mutation failed: {e}"))?
+    } else {
+        return Err("missing --name or --id".to_string());
+    };
+
+    let bytes = match format {
+        "hwp" => doc
+            .export_hwp_with_adapter()
+            .map_err(|e| format!("HWP export failed: {e}"))?,
+        "hwpx" => doc
+            .export_hwpx_native()
+            .map_err(|e| format!("HWPX export failed: {e}"))?,
+        other => return Err(format!("unsupported --format: {other}")),
+    };
+    fs::write(output, bytes).map_err(|e| format!("output write failed: {e}"))?;
+
+    let field: Value = serde_json::from_str(&mutation_json)
+        .map_err(|e| format!("field mutation JSON parse failed: {e}"))?;
+    println!(
+        "{}",
+        json!({
+            "field": field,
+            "output": output,
+            "engineVersion": concat!("rhwp-api ", env!("CARGO_PKG_VERSION")),
+            "format": format,
+            "warnings": ["experimental field mutation; verify round-trip before production use"]
+        })
+    );
+    Ok(())
+}
+
 fn parse_options(args: &[String]) -> Result<BTreeMap<String, String>, String> {
     let mut options = BTreeMap::new();
     let mut index = 0;
@@ -121,6 +168,6 @@ fn required<'a>(options: &'a BTreeMap<String, String>, key: &str) -> Result<&'a 
 
 fn print_help() {
     println!(
-        "rhwp-field-bridge list-fields|get-field --format hwp|hwpx --input <path> [--name <field>] [--id <fieldId>] --json"
+        "rhwp-field-bridge list-fields|get-field|set-field --format hwp|hwpx --input <path> [--output <path>] [--name <field>] [--id <fieldId>] [--value <text>] --json"
     );
 }

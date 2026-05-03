@@ -1,0 +1,9 @@
+{
+  "success": true,
+  "data": {
+    "text": "\n\n마케팅 \n전략 기획서\n \n\n\n회사명\t\t: 리지테스트\n작성자\t\t: 여기에 입력\n부서명\t\t: 여기에 입력\nTel\t\t: 여기에 입력\nE-Mail\t: 여기에 입력\n목  차\n01  목차 입력\n02  목차 입력\n03  목차 입력\n04  목차 입력\n05  목차 입력\n01. 제목 입력\n\n",
+    "engine": "rhwp-bridge",
+    "engineVersion": "rhwp v0.7.9"
+  },
+  "warnings": []
+}
