@@ -40,6 +40,7 @@ fn run() -> Result<(), String> {
         "set-field" => set_field(&mut doc, format, &options),
         "replace-text" => replace_text(&mut doc, format, &options),
         "get-cell-text" => get_cell_text(&doc, format, &options),
+        "scan-cells" => scan_cells(&doc, format, &options),
         _ => Err(format!("unsupported command: {command}")),
     }
 }
@@ -205,6 +206,73 @@ fn get_cell_text(
     Ok(())
 }
 
+fn scan_cells(
+    doc: &HwpDocument,
+    format: &str,
+    options: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    let section = optional_usize(options, "--section")?.unwrap_or(0);
+    let max_parent_para = optional_usize(options, "--max-parent-para")?.unwrap_or(50);
+    let max_control = optional_usize(options, "--max-control")?.unwrap_or(4);
+    let max_cell = optional_usize(options, "--max-cell")?.unwrap_or(64);
+    let max_cell_para = optional_usize(options, "--max-cell-para")?.unwrap_or(4);
+    let count = optional_usize(options, "--count")?.unwrap_or(120);
+    let include_empty = options
+        .get("--include-empty")
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let mut cells = Vec::new();
+
+    for parent_para in 0..=max_parent_para {
+        for control in 0..=max_control {
+            for cell in 0..=max_cell {
+                for cell_para in 0..=max_cell_para {
+                    let result = doc.get_text_in_cell_native(
+                        section,
+                        parent_para,
+                        control,
+                        cell,
+                        cell_para,
+                        0,
+                        count,
+                    );
+                    if let Ok(text) = result {
+                        if include_empty || !text.is_empty() {
+                            cells.push(json!({
+                                "section": section,
+                                "parentPara": parent_para,
+                                "control": control,
+                                "cell": cell,
+                                "cellPara": cell_para,
+                                "text": text
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    println!(
+        "{}",
+        json!({
+            "cells": cells,
+            "count": cells.len(),
+            "limits": {
+                "section": section,
+                "maxParentPara": max_parent_para,
+                "maxControl": max_control,
+                "maxCell": max_cell,
+                "maxCellPara": max_cell_para
+            },
+            "engineVersion": concat!("rhwp-api ", env!("CARGO_PKG_VERSION")),
+            "format": format,
+            "warnings": ["bounded scan; absence from results is not proof that no table cell exists"]
+        })
+    );
+    Ok(())
+}
+
 fn write_document(doc: &mut HwpDocument, format: &str, output: &str) -> Result<(), String> {
     let bytes = match format {
         "hwp" => doc
@@ -267,6 +335,6 @@ fn optional_usize(options: &BTreeMap<String, String>, key: &str) -> Result<Optio
 
 fn print_help() {
     println!(
-        "rhwp-field-bridge list-fields|get-field|set-field|replace-text|get-cell-text --format hwp|hwpx --input <path> [--output <path>] [--name <field>] [--id <fieldId>] [--query <text>] [--value <text>] [--mode one|all] [--section N --parent-para N --control N --cell N --cell-para N --offset N --count N] --json"
+        "rhwp-field-bridge list-fields|get-field|set-field|replace-text|get-cell-text|scan-cells --format hwp|hwpx --input <path> [--output <path>] [--name <field>] [--id <fieldId>] [--query <text>] [--value <text>] [--mode one|all] [--section N --parent-para N --control N --cell N --cell-para N --offset N --count N] --json"
     );
 }
