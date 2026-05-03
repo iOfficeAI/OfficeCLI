@@ -39,6 +39,7 @@ fn run() -> Result<(), String> {
         "get-field" => get_field(&doc, format, &options),
         "set-field" => set_field(&mut doc, format, &options),
         "replace-text" => replace_text(&mut doc, format, &options),
+        "get-cell-text" => get_cell_text(&doc, format, &options),
         _ => Err(format!("unsupported command: {command}")),
     }
 }
@@ -167,6 +168,43 @@ fn replace_text(
     Ok(())
 }
 
+fn get_cell_text(
+    doc: &HwpDocument,
+    format: &str,
+    options: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    let section = required_usize(options, "--section")?;
+    let parent_para = required_usize(options, "--parent-para")?;
+    let control = required_usize(options, "--control")?;
+    let cell = required_usize(options, "--cell")?;
+    let cell_para = required_usize(options, "--cell-para")?;
+    let offset = optional_usize(options, "--offset")?.unwrap_or(0);
+    let count = optional_usize(options, "--count")?.unwrap_or(usize::MAX / 2);
+
+    let text = doc
+        .get_text_in_cell_native(section, parent_para, control, cell, cell_para, offset, count)
+        .map_err(|e| format!("cell text lookup failed: {e}"))?;
+    println!(
+        "{}",
+        json!({
+            "cell": {
+                "section": section,
+                "parentPara": parent_para,
+                "control": control,
+                "cell": cell,
+                "cellPara": cell_para,
+                "offset": offset,
+                "count": count,
+                "text": text
+            },
+            "engineVersion": concat!("rhwp-api ", env!("CARGO_PKG_VERSION")),
+            "format": format,
+            "warnings": []
+        })
+    );
+    Ok(())
+}
+
 fn write_document(doc: &mut HwpDocument, format: &str, output: &str) -> Result<(), String> {
     let bytes = match format {
         "hwp" => doc
@@ -211,8 +249,24 @@ fn required<'a>(options: &'a BTreeMap<String, String>, key: &str) -> Result<&'a 
         .ok_or_else(|| format!("missing required option: {key}"))
 }
 
+fn required_usize(options: &BTreeMap<String, String>, key: &str) -> Result<usize, String> {
+    required(options, key)?
+        .parse::<usize>()
+        .map_err(|e| format!("invalid {key} value: {e}"))
+}
+
+fn optional_usize(options: &BTreeMap<String, String>, key: &str) -> Result<Option<usize>, String> {
+    match options.get(key) {
+        Some(value) => value
+            .parse::<usize>()
+            .map(Some)
+            .map_err(|e| format!("invalid {key} value: {e}")),
+        None => Ok(None),
+    }
+}
+
 fn print_help() {
     println!(
-        "rhwp-field-bridge list-fields|get-field|set-field|replace-text --format hwp|hwpx --input <path> [--output <path>] [--name <field>] [--id <fieldId>] [--query <text>] [--value <text>] [--mode one|all] --json"
+        "rhwp-field-bridge list-fields|get-field|set-field|replace-text|get-cell-text --format hwp|hwpx --input <path> [--output <path>] [--name <field>] [--id <fieldId>] [--query <text>] [--value <text>] [--mode one|all] [--section N --parent-para N --control N --cell N --cell-para N --offset N --count N] --json"
     );
 }

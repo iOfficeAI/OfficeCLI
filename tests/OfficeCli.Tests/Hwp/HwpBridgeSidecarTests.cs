@@ -185,6 +185,29 @@ public class HwpBridgeSidecarTests : IDisposable
         Assert.Equal(2, root["replacement"]!["count"]!.GetValue<int>());
     }
 
+    [Fact]
+    public void GetCellText_DelegatesToRhwpApiBridge()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var bridgeDll = LocateBridgeDll();
+        var fakeApi = CreateFakeRhwpApi();
+        var input = CreateInput(".hwp");
+
+        var result = RunBridge(
+            bridgeDll,
+            CreateFakeRhwp(),
+            [
+                "get-cell-text", "--format", "hwp", "--input", input,
+                "--section", "0", "--parent-para", "2", "--control", "0",
+                "--cell", "1", "--cell-para", "0", "--json"
+            ],
+            fakeApi);
+
+        Assert.Equal(0, result.ExitCode);
+        var root = JsonNode.Parse(result.Stdout)!;
+        Assert.Equal("셀값", root["cell"]!["text"]!.GetValue<string>());
+    }
+
 
     [Fact]
     public async Task RhwpBridgeEngineFillField_CallsSetFieldAndReturnsMutationEvidence()
@@ -429,6 +452,10 @@ if [ "$cmd" = "replace-text" ]; then
   done
   printf 'fake hwp replace output' > "$output"
   printf '{"replacement":{"ok":true,"count":2},"output":"%s","engineVersion":"rhwp-api v0.test","format":"hwp","warnings":["experimental replace-text"]}\n' "$output"
+  exit 0
+fi
+if [ "$cmd" = "get-cell-text" ]; then
+  printf '%s\n' '{"cell":{"section":0,"parentPara":2,"control":0,"cell":1,"cellPara":0,"offset":0,"count":1000,"text":"셀값"},"engineVersion":"rhwp-api v0.test","format":"hwp","warnings":[]}'
   exit 0
 fi
 echo "unexpected api command: $cmd" >&2
