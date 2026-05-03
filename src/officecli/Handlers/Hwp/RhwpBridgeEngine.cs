@@ -11,7 +11,7 @@ namespace OfficeCli.Handlers.Hwp;
 /// field operations through the rhwp-officecli-bridge subprocess. Only active
 /// when OFFICECLI_HWP_ENGINE=rhwp-experimental.
 /// </summary>
-public sealed class RhwpBridgeEngine : IHwpEngine
+public sealed partial class RhwpBridgeEngine : IHwpEngine
 {
     private const string BridgeExecutableName = "rhwp-officecli-bridge";
     private const int CapabilitiesTimeoutMs = 2_000;
@@ -122,70 +122,6 @@ public sealed class RhwpBridgeEngine : IHwpEngine
         var output = await RunBridgeAsync(args.ToArray(), FieldReadTimeoutMs, ct);
         return ParseFieldReadResult(output);
     }
-
-    public async Task<HwpMutationResult> FillFieldAsync(HwpFillFieldRequest request, CancellationToken ct)
-    {
-        if (request.Fields.Count == 0)
-            throw new HwpEngineException(
-                "fill_field requires at least one field.",
-                HwpCapabilityConstants.ReasonUnsupportedOperation,
-                "Pass one or more field name/value pairs.",
-                [HwpCapabilityConstants.OperationFillField],
-                FormatKey(request.Format),
-                HwpCapabilityConstants.OperationFillField,
-                HwpCapabilityConstants.EngineRhwpBridge,
-                HwpCapabilityConstants.ModeExperimental);
-
-        var formatArg = FormatKey(request.Format);
-        var currentInput = request.InputPath;
-        var tempFiles = new List<string>();
-        string? lastOutputJson = null;
-
-        try
-        {
-            var index = 0;
-            foreach (var field in request.Fields)
-            {
-                index++;
-                var output = index == request.Fields.Count
-                    ? request.OutputPath
-                    : Path.Combine(
-                        Path.GetTempPath(),
-                        $"officecli-rhwp-field-{Guid.NewGuid():N}{Path.GetExtension(request.OutputPath)}");
-                if (index != request.Fields.Count) tempFiles.Add(output);
-
-                var args = new[]
-                {
-                    "set-field", "--format", formatArg, "--input", currentInput,
-                    "--output", output, "--name", field.Key, "--value", field.Value, "--json"
-                };
-                lastOutputJson = await RunBridgeAsync(args, RenderSvgTimeoutMs, ct);
-                currentInput = output;
-            }
-        }
-        finally
-        {
-            foreach (var tempFile in tempFiles)
-                try { File.Delete(tempFile); } catch { /* best effort */ }
-        }
-
-        if (!File.Exists(request.OutputPath))
-            throw new HwpEngineException(
-                "rhwp-officecli-bridge did not create the requested output file.",
-                HwpCapabilityConstants.ReasonBridgeExitNonZero,
-                engine: HwpCapabilityConstants.EngineRhwpBridge,
-                engineMode: HwpCapabilityConstants.ModeExperimental);
-
-        return ParseMutationResult(lastOutputJson ?? "{}", request.OutputPath);
-    }
-
-    public Task<HwpMutationResult> SaveOriginalAsync(HwpSaveOriginalRequest request, CancellationToken ct)
-        => Task.FromException<HwpMutationResult>(
-            MutationUnsupported(request.Format, HwpCapabilityConstants.OperationSaveOriginal));
-
-    public Task<HwpMutationResult> SaveAsHwpAsync(HwpSaveAsHwpRequest request, CancellationToken ct)
-        => Task.FromException<HwpMutationResult>(
-            MutationUnsupported(request.Format, HwpCapabilityConstants.OperationSaveAsHwp));
 
     private async Task<string> RunBridgeAsync(string[] args, int timeoutMs, CancellationToken ct)
     {
@@ -397,29 +333,6 @@ public sealed class RhwpBridgeEngine : IHwpEngine
             engineVersion, [], warnings);
     }
 
-    private static HwpMutationResult ParseMutationResult(string json, string outputPath)
-    {
-        JsonNode? node;
-        try { node = JsonNode.Parse(json); }
-        catch
-        {
-            throw new HwpEngineException(
-                "rhwp-officecli-bridge set-field produced unparseable JSON.",
-                HwpCapabilityConstants.ReasonBridgeInvalidJson,
-                engine: HwpCapabilityConstants.EngineRhwpBridge,
-                engineMode: HwpCapabilityConstants.ModeExperimental);
-        }
-
-        var engineVersion = node?["engineVersion"]?.GetValue<string>();
-        var warnings = ParseWarnings(node);
-        return new HwpMutationResult(
-            outputPath,
-            HwpCapabilityConstants.EngineRhwpBridge,
-            engineVersion,
-            ["rhwp-api set-field output file created; caller must verify round-trip before production use."],
-            warnings);
-    }
-
     private static string[] ParseWarnings(JsonNode? node)
     {
         var warnings = new List<string>();
@@ -464,30 +377,4 @@ public sealed class RhwpBridgeEngine : IHwpEngine
             ? "dotnet"
             : bridgePath;
 
-    private static string FormatKey(HwpFormat format)
-        => format == HwpFormat.Hwp
-            ? HwpCapabilityConstants.FormatHwp
-            : HwpCapabilityConstants.FormatHwpx;
-
-    private static HwpEngineException MutationUnsupported(HwpFormat format, string operation)
-    {
-        var formatKey = FormatKey(format);
-        var reason = operation switch
-        {
-            HwpCapabilityConstants.OperationFillField when format == HwpFormat.Hwp
-                => HwpCapabilityConstants.ReasonBinaryHwpMutationForbidden,
-            HwpCapabilityConstants.OperationSaveOriginal or HwpCapabilityConstants.OperationSaveAsHwp when format == HwpFormat.Hwp
-                => HwpCapabilityConstants.ReasonBinaryHwpWriteForbidden,
-            _ => HwpCapabilityConstants.ReasonRoundTripUnverified
-        };
-        return new HwpEngineException(
-            $"{formatKey} operation '{operation}' is not supported in Phase 0.5 (read/render only).",
-            reason,
-            "Use read_text or render_svg only in Phase 0.5.",
-            [HwpCapabilityConstants.OperationReadText, HwpCapabilityConstants.OperationRenderSvg],
-            formatKey,
-            operation,
-            HwpCapabilityConstants.EngineRhwpBridge,
-            HwpCapabilityConstants.ModeExperimental);
-    }
 }

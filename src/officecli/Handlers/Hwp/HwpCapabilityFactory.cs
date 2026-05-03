@@ -32,6 +32,7 @@ public static class HwpCapabilityFactory
             [HwpCapabilityConstants.OperationRenderSvg] = Unsupported(
                 HwpCapabilityConstants.ReasonUnsupportedOperation),
             [HwpCapabilityConstants.OperationFillField] = ExperimentalCustom(engineVersion, []),
+            [HwpCapabilityConstants.OperationReplaceText] = ExperimentalCustom(engineVersion, []),
             [HwpCapabilityConstants.OperationSaveOriginal] = ExperimentalCustom(engineVersion, []),
             [HwpCapabilityConstants.OperationSaveAsHwp] = Unsupported(
                 HwpCapabilityConstants.ReasonUnsupportedOperation)
@@ -54,6 +55,8 @@ public static class HwpCapabilityFactory
             [HwpCapabilityConstants.OperationRenderSvg] = Unsupported(
                 HwpCapabilityConstants.ReasonBridgeNotEnabled),
             [HwpCapabilityConstants.OperationFillField] = Unsupported(
+                HwpCapabilityConstants.ReasonBinaryHwpMutationForbidden),
+            [HwpCapabilityConstants.OperationReplaceText] = Unsupported(
                 HwpCapabilityConstants.ReasonBinaryHwpMutationForbidden),
             [HwpCapabilityConstants.OperationSaveOriginal] = Unsupported(
                 HwpCapabilityConstants.ReasonBinaryHwpWriteForbidden),

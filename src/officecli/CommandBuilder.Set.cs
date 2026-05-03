@@ -122,11 +122,18 @@ static partial class CommandBuilder
             if (string.Equals(extension, ".hwp", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(path, "/field", StringComparison.OrdinalIgnoreCase))
                 return HandleHwpFieldSet(file.FullName, HwpFormat.Hwp, properties, json);
+            if (string.Equals(extension, ".hwp", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(path, "/text", StringComparison.OrdinalIgnoreCase))
+                return HandleHwpTextReplace(file.FullName, HwpFormat.Hwp, properties, json);
 
             if (string.Equals(extension, ".hwpx", StringComparison.OrdinalIgnoreCase)
                 && HwpEngineSelector.IsExperimentalBridgeEnabled()
                 && string.Equals(path, "/field", StringComparison.OrdinalIgnoreCase))
                 return HandleHwpFieldSet(file.FullName, HwpFormat.Hwpx, properties, json);
+            if (string.Equals(extension, ".hwpx", StringComparison.OrdinalIgnoreCase)
+                && HwpEngineSelector.IsExperimentalBridgeEnabled()
+                && string.Equals(path, "/text", StringComparison.OrdinalIgnoreCase))
+                return HandleHwpTextReplace(file.FullName, HwpFormat.Hwpx, properties, json);
 
             if (TryResident(file.FullName, req =>
             {
@@ -372,6 +379,70 @@ static partial class CommandBuilder
         else
         {
             Console.WriteLine($"Updated HWP field '{fieldName}' -> {result.OutputPath}");
+            foreach (var warning in result.Warnings)
+                Console.Error.WriteLine($"WARNING: {warning}");
+        }
+        return 0;
+    }
+
+    private static int HandleHwpTextReplace(
+        string inputPath,
+        HwpFormat format,
+        Dictionary<string, string> properties,
+        bool json)
+    {
+        var query = FirstValue(properties, "find", "query", "old");
+        var value = FirstValue(properties, "value", "text", "new");
+        var output = FirstValue(properties, "output", "out");
+        var mode = FirstValue(properties, "mode") ?? "one";
+        var caseSensitiveRaw = FirstValue(properties, "case-sensitive", "caseSensitive") ?? "false";
+        if (string.IsNullOrEmpty(query) || value == null || string.IsNullOrWhiteSpace(output))
+        {
+            var message = "HWP text replace requires --prop find=<text> --prop value=<text> --prop output=<path>.";
+            if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(message));
+            else Console.Error.WriteLine(message);
+            return 1;
+        }
+
+        var outputPath = Path.GetFullPath(output);
+        var outputDir = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrEmpty(outputDir)) Directory.CreateDirectory(outputDir);
+
+        var formatKey = format == HwpFormat.Hwp
+            ? HwpCapabilityConstants.FormatHwp
+            : HwpCapabilityConstants.FormatHwpx;
+        var engine = HwpEngineSelector.GetEngine(formatKey, HwpCapabilityConstants.OperationReplaceText);
+        var request = new HwpReplaceTextRequest(
+            format,
+            inputPath,
+            outputPath,
+            query,
+            value,
+            mode,
+            bool.TryParse(caseSensitiveRaw, out var caseSensitive) && caseSensitive,
+            json);
+        var result = engine.ReplaceTextAsync(request, CancellationToken.None).GetAwaiter().GetResult();
+
+        if (json)
+        {
+            var envelope = new System.Text.Json.Nodes.JsonObject
+            {
+                ["success"] = true,
+                ["message"] = $"Replaced HWP text '{query}' -> {result.OutputPath}",
+                ["data"] = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["outputPath"] = result.OutputPath,
+                    ["engine"] = result.Engine,
+                    ["engineVersion"] = result.EngineVersion,
+                    ["evidence"] = HwpCapabilityJsonMapper.ToJsonArray(result.Evidence)
+                },
+                ["warnings"] = HwpCapabilityJsonMapper.ToJsonArray(result.Warnings)
+            };
+            Console.WriteLine(envelope.ToJsonString(OutputFormatter.PublicJsonOptions));
+        }
+        else
+        {
+            Console.WriteLine($"Replaced HWP text '{query}' -> {result.OutputPath}");
             foreach (var warning in result.Warnings)
                 Console.Error.WriteLine($"WARNING: {warning}");
         }

@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "message": "Replaced HWP text '행정안전부' -> /Users/jun/Developer/new/700_projects/cli-jaw/officecli/tests/golden/hwp/rhwp-fields/officecli-replace-hwpx-government.hwpx",
+  "data": {
+    "outputPath": "/Users/jun/Developer/new/700_projects/cli-jaw/officecli/tests/golden/hwp/rhwp-fields/officecli-replace-hwpx-government.hwpx",
+    "engine": "rhwp-bridge",
+    "engineVersion": "rhwp-api 0.1.0",
+    "evidence": [
+      "rhwp-api replace-text output file created; caller must verify round-trip before production use."
+    ]
+  },
+  "warnings": [
+    "experimental text replacement; verify round-trip before production use"
+  ]
+}
