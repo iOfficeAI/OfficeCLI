@@ -12,8 +12,8 @@ static partial class CommandBuilder
 {
     private static Command BuildViewCommand(Option<bool> jsonOption)
     {
-        var viewFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.docx, .xlsx, .pptx, .hwpx)" };
-        var viewModeArg = new Argument<string>("mode") { Description = "View mode: text, annotated, outline, stats, issues, html, svg, screenshot, forms, tables, objects" };
+        var viewFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.docx, .xlsx, .pptx, .hwpx, experimental .hwp)" };
+        var viewModeArg = new Argument<string>("mode") { Description = "View mode: text, annotated, outline, stats, issues, html, svg, screenshot, forms, styles, tables, markdown, objects, fields, field" };
         var startLineOpt = new Option<int?>("--start") { Description = "Start line/paragraph number" };
         var endLineOpt = new Option<int?>("--end") { Description = "End line/paragraph number" };
         var maxLinesOpt = new Option<int?>("--max-lines") { Description = "Maximum number of lines/rows/slides to output (truncates with total count)" };
@@ -22,7 +22,7 @@ static partial class CommandBuilder
 
         var colsOpt = new Option<string?>("--cols") { Description = "Column filter, comma-separated (Excel only, e.g. A,B,C)" };
         var pageOpt = new Option<string?>("--page") { Description = "Page filter (e.g. 1, 2-5, 1,3,5). html mode: default=all. screenshot mode: default=1 (use --page 1-N to capture more, or --grid N for pptx thumbnails)." };
-        var browserOpt = new Option<bool>("--browser") { Description = "Open output in browser (html / svg modes)" };
+        var browserOpt = new Option<bool>("--browser") { Description = "Open output in browser or image viewer (html / svg / screenshot modes)" };
         var outOpt = new Option<string?>("--out", "-o") { Description = "Output file path (screenshot mode; defaults to a temp file)" };
         var screenshotWidthOpt = new Option<int>("--screenshot-width") { Description = "Screenshot viewport width (default 1600)", DefaultValueFactory = _ => 1600 };
         var screenshotHeightOpt = new Option<int>("--screenshot-height") { Description = "Screenshot viewport height (default 1200)", DefaultValueFactory = _ => 1200 };
@@ -34,7 +34,7 @@ static partial class CommandBuilder
         var fieldNameOpt = new Option<string?>("--field-name") { Description = "Field name for HWP/HWPX field read mode" };
         var fieldIdOpt = new Option<int?>("--field-id") { Description = "Field id for HWP/HWPX field read mode" };
 
-        var viewCommand = new Command("view", "View document in different modes");
+        var viewCommand = new Command("view", BuildViewDescription());
         viewCommand.Add(viewFileArg);
         viewCommand.Add(viewModeArg);
         viewCommand.Add(startLineOpt);

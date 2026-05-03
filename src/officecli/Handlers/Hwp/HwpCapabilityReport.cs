@@ -27,7 +27,7 @@ public enum HwpOperationStatus
 
 public static class HwpCapabilityConstants
 {
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
 
     public const string FormatHwp = "hwp";
     public const string FormatHwpx = "hwpx";

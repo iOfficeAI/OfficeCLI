@@ -17,7 +17,19 @@ static partial class CommandBuilder
         var setPathArg = new Argument<string>("path") { Description = "DOM path to the element" };
         var propsOpt = new Option<string[]>("--prop") { Description = "Property to set (key=value)", AllowMultipleArgumentsPerToken = true };
 
-        var setCommand = new Command("set", "Modify a document node's properties") { TreatUnmatchedTokensAsErrors = false };
+        var setCommand = new Command("set", """
+            Modify a document node's properties.
+
+            Agent examples:
+              officecli set report.docx "/body/p[1]" --prop text="New text" --json
+              officecli set sheet.xlsx "/Sheet1/A1" --prop value="42" --json
+              officecli set form.hwp /field --prop name=회사명 --prop value=리지 --prop output=out.hwp --json
+              officecli set form.hwp /field --prop id=1584999796 --prop value=리지 --prop output=out.hwp --json
+              officecli set form.hwp /text --prop find=마케팅 --prop value=브릿지 --prop output=out.hwp --json
+              officecli set table.hwp /table/cell --prop section=0 --prop parent-para=3 --prop control=0 --prop cell=0 --prop value=오피스셀 --prop output=out.hwp --json
+
+            HWP requires OFFICECLI_HWP_ENGINE=rhwp-experimental plus bridge paths; run `officecli help hwp`.
+            """) { TreatUnmatchedTokensAsErrors = false };
         setCommand.Add(setFileArg);
         setCommand.Add(setPathArg);
         setCommand.Add(propsOpt);

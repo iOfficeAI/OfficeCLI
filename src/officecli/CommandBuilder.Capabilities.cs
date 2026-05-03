@@ -27,7 +27,8 @@ static partial class CommandBuilder
 
                 Console.WriteLine($"OfficeCLI capabilities schema {report.SchemaVersion}");
                 Console.WriteLine("HWP/HWPX support is gated by `officecli capabilities --json`.");
-                Console.WriteLine("Binary .hwp mutation/write/save-as is unsupported in this build.");
+                Console.WriteLine("Run `officecli help hwp` for rhwp bridge setup, examples, and support boundaries.");
+                Console.WriteLine("Binary .hwp in-place overwrite/save-as is unsupported; experimental mutations require output=<path>.");
                 return 0;
             }, json);
         });

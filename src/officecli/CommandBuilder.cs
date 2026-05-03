@@ -17,9 +17,10 @@ static partial class CommandBuilder
         var jsonOption = new Option<bool>("--json") { Description = "Output as JSON (AI-friendly)" };
 
         var rootCommand = new RootCommand("""
-            officecli: AI-friendly CLI for Office documents (.docx, .xlsx, .pptx, .hwpx)
+            officecli: AI-friendly CLI for Office documents (.docx, .xlsx, .pptx, .hwpx, experimental .hwp)
 
             Run 'officecli help' for the schema-driven capability reference (formats, elements, properties).
+            Run 'officecli help hwp' for experimental rhwp bridge setup, examples, and support boundaries.
             See the Commands section below for the full list of subcommands.
             """);
         rootCommand.Add(jsonOption);
@@ -124,6 +125,7 @@ static partial class CommandBuilder
         rootCommand.Add(BuildGetCommand(jsonOption));
         rootCommand.Add(BuildQueryCommand(jsonOption));
         rootCommand.Add(BuildSetCommand(jsonOption));
+        rootCommand.Add(BuildHwpHelpCommand(jsonOption));
         rootCommand.Add(BuildAddCommand(jsonOption));
         rootCommand.Add(BuildRemoveCommand(jsonOption));
         rootCommand.Add(BuildMoveCommand(jsonOption));

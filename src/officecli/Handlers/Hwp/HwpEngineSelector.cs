@@ -35,7 +35,7 @@ public static class HwpEngineSelector
         throw new HwpEngineException(
             $"OFFICECLI_HWP_ENGINE=rhwp-experimental requested but bridge not available: {missingReason}",
             HwpCapabilityConstants.ReasonBridgeMissing,
-            "Set OFFICECLI_RHWP_BRIDGE_PATH or install rhwp-officecli-bridge beside officecli.",
+            "Run `officecli help hwp`; set OFFICECLI_RHWP_BRIDGE_PATH and, for fields/text/table mutation, OFFICECLI_RHWP_API_BIN.",
             [],
             format,
             operation,
