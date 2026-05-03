@@ -2,6 +2,8 @@
 build-local/
 bin/
 obj/
+target/
+src/rhwp-field-bridge/target/
 *.user
 *.suo
 *.pdb
