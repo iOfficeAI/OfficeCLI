@@ -4,6 +4,7 @@ using OfficeCli.Handlers.Hwp;
 
 namespace OfficeCli.Tests.Hwp;
 
+[Collection("HwpBridgeEnvironment")]
 public class HwpBridgeNegativeTests : IDisposable
 {
     private readonly List<string> _tempFiles = new();
@@ -96,6 +97,58 @@ public class HwpBridgeNegativeTests : IDisposable
         Assert.Equal("save_original", ex.Error.Operation);
     }
 
+    [Fact]
+    public void HwpViewTextJson_WithFakeBridge_ReturnsBridgeTextEnvelope()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+
+        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", "rhwp-experimental");
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", CreateFakeBridge("""
+#!/bin/sh
+echo "diagnostic noise stays on stderr" >&2
+printf '%s\n' '{"text":"Hello HWP","engineVersion":"fake-rhwp-0.1","pages":[{"page":1,"text":"Hello HWP"}],"warnings":["fixture bridge"]}'
+"""));
+        var hwp = CreateFakeHwp();
+
+        var (exitCode, stdout) = Invoke(["view", hwp, "text", "--json"]);
+
+        Assert.Equal(0, exitCode);
+        var root = JsonNode.Parse(stdout)!;
+        Assert.True(root["success"]!.GetValue<bool>());
+        Assert.Equal("Hello HWP", root["data"]!["text"]!.GetValue<string>());
+        Assert.Equal("rhwp-bridge", root["data"]!["engine"]!.GetValue<string>());
+        Assert.Equal("fake-rhwp-0.1", root["data"]!["engineVersion"]!.GetValue<string>());
+        Assert.Equal("fixture bridge", root["warnings"]![0]!.GetValue<string>());
+        Assert.DoesNotContain("diagnostic noise", stdout);
+    }
+
+    [Fact]
+    public void HwpViewSvgJson_WithFakeBridge_ReturnsBridgeRenderEnvelope()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+
+        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", "rhwp-experimental");
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", CreateFakeBridge("""
+#!/bin/sh
+printf '%s\n' '{"engineVersion":"fake-rhwp-0.1","manifest":"/tmp/fake-manifest.json","pages":[{"page":1,"path":"/tmp/fake-page-1.svg","sha256":"abc123"}],"warnings":[]}'
+"""));
+        var hwp = CreateFakeHwp();
+
+        var (exitCode, stdout) = Invoke(["view", hwp, "svg", "--json"]);
+
+        Assert.Equal(0, exitCode);
+        var root = JsonNode.Parse(stdout)!;
+        Assert.True(root["success"]!.GetValue<bool>());
+        Assert.Equal("/tmp/fake-manifest.json", root["data"]!["manifest"]!.GetValue<string>());
+        Assert.Equal("rhwp-bridge", root["data"]!["engine"]!.GetValue<string>());
+        Assert.Equal("fake-rhwp-0.1", root["data"]!["engineVersion"]!.GetValue<string>());
+        Assert.Equal(1, root["data"]!["pages"]![0]!["page"]!.GetValue<int>());
+        Assert.Equal("/tmp/fake-page-1.svg", root["data"]!["pages"]![0]!["path"]!.GetValue<string>());
+        Assert.Equal("abc123", root["data"]!["pages"]![0]!["sha256"]!.GetValue<string>());
+    }
+
     private string CreateFakeHwp()
     {
         var path = Path.Combine(Path.GetTempPath(), $"officecli_fake_{Guid.NewGuid():N}.hwp");
@@ -106,8 +159,16 @@ public class HwpBridgeNegativeTests : IDisposable
 
     private string CreateFakeBridge()
     {
+        return CreateFakeBridge("#!/bin/sh\nexit 0\n");
+    }
+
+    private string CreateFakeBridge(string script)
+    {
         var path = Path.Combine(Path.GetTempPath(), $"rhwp-officecli-bridge-{Guid.NewGuid():N}");
-        File.WriteAllText(path, "#!/bin/sh\nexit 0\n");
+        File.WriteAllText(path, script);
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(path,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         _tempFiles.Add(path);
         return path;
     }
