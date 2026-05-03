@@ -103,9 +103,18 @@ static partial class CommandBuilder
             var format = json ? OutputFormat.Json : OutputFormat.Text;
             var cols = colsStr != null ? new HashSet<string>(colsStr.Split(',').Select(c => c.Trim().ToUpperInvariant())) : null;
 
+            var extension = Path.GetExtension(file.FullName);
+
             // Binary .hwp: route through HWP engine (bridge when experimental, else unsupported)
-            if (string.Equals(Path.GetExtension(file.FullName), ".hwp", StringComparison.OrdinalIgnoreCase))
-                return HandleHwpView(file.FullName, mode, pageFilter, json);
+            if (string.Equals(extension, ".hwp", StringComparison.OrdinalIgnoreCase))
+                return HandleHwpView(file.FullName, HwpFormat.Hwp, mode, pageFilter, json);
+
+            // HWPX stays on the custom XML handler by default. The rhwp bridge can be
+            // opted into for read/render smoke coverage without changing stable HWPX behavior.
+            if (string.Equals(extension, ".hwpx", StringComparison.OrdinalIgnoreCase)
+                && HwpEngineSelector.IsExperimentalBridgeEnabled()
+                && mode.Trim().ToLowerInvariant() is "text" or "t" or "svg" or "g")
+                return HandleHwpView(file.FullName, HwpFormat.Hwpx, mode, pageFilter, json);
 
             using var handler = DocumentHandlerFactory.Open(file.FullName);
 
@@ -494,15 +503,18 @@ static partial class CommandBuilder
         return (p, p);
     }
 
-    private static int HandleHwpView(string filePath, string mode, string? pageFilter, bool json)
+    private static int HandleHwpView(string filePath, HwpFormat format, string mode, string? pageFilter, bool json)
     {
         var modeKey = mode.Trim().ToLowerInvariant();
+        var formatKey = format == HwpFormat.Hwp
+            ? HwpCapabilityConstants.FormatHwp
+            : HwpCapabilityConstants.FormatHwpx;
 
         if (!HwpEngineSelector.IsExperimentalBridgeEnabled())
         {
-            var formatKey = HwpCapabilityConstants.FormatHwp;
+            var label = format == HwpFormat.Hwp ? "Binary .hwp" : "HWPX";
             throw new HwpEngineException(
-                "Binary .hwp view requires OFFICECLI_HWP_ENGINE=rhwp-experimental.",
+                $"{label} bridge view requires OFFICECLI_HWP_ENGINE=rhwp-experimental.",
                 HwpCapabilityConstants.ReasonBridgeNotEnabled,
                 "Set OFFICECLI_HWP_ENGINE=rhwp-experimental and install rhwp-officecli-bridge.",
                 [HwpCapabilityConstants.OperationReadText, HwpCapabilityConstants.OperationRenderSvg],
@@ -517,13 +529,13 @@ static partial class CommandBuilder
         var operation = modeKey is "text" or "t" ? HwpCapabilityConstants.OperationReadText
             : modeKey is "svg" or "g" ? HwpCapabilityConstants.OperationRenderSvg
             : null;
-        var engine = HwpEngineSelector.GetEngine(HwpCapabilityConstants.FormatHwp, operation);
+        var engine = HwpEngineSelector.GetEngine(formatKey, operation);
         var fileInfo = new FileInfo(filePath);
         var ct = CancellationToken.None;
 
         if (modeKey is "text" or "t")
         {
-            var request = new HwpReadRequest(HwpFormat.Hwp, filePath, fileInfo.Length, json);
+            var request = new HwpReadRequest(format, filePath, fileInfo.Length, json);
             var result = engine.ReadTextAsync(request, ct).GetAwaiter().GetResult();
             if (json)
             {
@@ -552,7 +564,7 @@ static partial class CommandBuilder
             var outDir = Path.Combine(Path.GetTempPath(), $"officecli_hwp_svg_{Guid.NewGuid():N}");
             Directory.CreateDirectory(outDir);
             var request = new HwpRenderRequest(
-                HwpFormat.Hwp, filePath, outDir,
+                format, filePath, outDir,
                 pageFilter ?? "all", fileInfo.Length, json);
             var result = engine.RenderSvgAsync(request, ct).GetAwaiter().GetResult();
             if (json)
@@ -586,11 +598,11 @@ static partial class CommandBuilder
         }
 
         throw new HwpEngineException(
-            $"Binary .hwp view mode '{mode}' is not supported. Use 'text' or 'svg'.",
+            $"{formatKey} bridge view mode '{mode}' is not supported. Use 'text' or 'svg'.",
             HwpCapabilityConstants.ReasonUnsupportedOperation,
             null,
             [HwpCapabilityConstants.OperationReadText, HwpCapabilityConstants.OperationRenderSvg],
-            HwpCapabilityConstants.FormatHwp,
+            formatKey,
             null,
             HwpCapabilityConstants.EngineRhwpBridge,
             HwpCapabilityConstants.ModeExperimental);

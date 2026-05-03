@@ -9,6 +9,15 @@ public class HwpBridgeRealRhwpSmokeTests : IDisposable
 {
     private const string ExpectedText = "가나다라마바사아ABCDEFG\n";
     private const string ExpectedSvgSha256 = "c40a1e2c759e797c6fb8032d3fe13b8ba55e25eeb395fa43636db375d6b5c01b";
+    private const string ExpectedHwpxTextSha256 = "969b9f63463ffa2d5e3d27729221e1e7cbc51aa9ee5a77fe2daf39c312b9f8af";
+    private static readonly string[] ExpectedHwpxSvgSha256 =
+    [
+        "04d49dbdfc07ab1e8d38f1fd5a701955bcfd9d7c6badce87dfce947d96847a73",
+        "cb3ed79ed5682ef4a3301f24095b242ae8bbdf4c05b314d38786548bc8785bfc",
+        "d2fb04edf91a25b5f0d033086aa310ade18a397909998e88fbcd8eed3a7e094f",
+        "df8082d5b5ee9a27092cc77c0fe1a56cfc179f668c09c5450a3744a9e38a1744",
+        "b95c60eb035d74c15c25fafa695fdd3144dea692c23eda9a34668a474909b367"
+    ];
     private readonly string? _oldEngine = Environment.GetEnvironmentVariable("OFFICECLI_HWP_ENGINE");
     private readonly string? _oldBridge = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH");
     private readonly string? _oldRhwp = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_BIN");
@@ -50,6 +59,42 @@ public class HwpBridgeRealRhwpSmokeTests : IDisposable
         Assert.Equal(ExpectedSvgSha256, Sha256File(page["path"]!.GetValue<string>()));
     }
 
+    [Fact]
+    public void RealRhwpBinary_ViewHwpxTextAndSvg_MatchesSmokeGoldenWhenOptedIn()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var realRhwp = Environment.GetEnvironmentVariable("OFFICECLI_REAL_RHWP_BIN");
+        if (string.IsNullOrWhiteSpace(realRhwp) || !File.Exists(realRhwp)) return;
+
+        var fixture = LocateRepoFile("tests/fixtures/hwp/rhwp-smoke/table-vpos-01.hwpx");
+        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", "rhwp-experimental");
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", LocateBridgeDll());
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", realRhwp);
+
+        var textResult = InvokeOfficeCli(["view", fixture, "text", "--json"]);
+        Assert.Equal(0, textResult.ExitCode);
+        var textRoot = JsonNode.Parse(textResult.Stdout)!;
+        Assert.True(textRoot["success"]!.GetValue<bool>());
+        var text = textRoot["data"]!["text"]!.GetValue<string>();
+        Assert.Equal(3475, text.Length);
+        Assert.Equal(ExpectedHwpxTextSha256, Sha256Text(text));
+        Assert.Equal("rhwp-bridge", textRoot["data"]!["engine"]!.GetValue<string>());
+
+        var svgResult = InvokeOfficeCli(["view", fixture, "svg", "--json"]);
+        Assert.Equal(0, svgResult.ExitCode);
+        var svgRoot = JsonNode.Parse(svgResult.Stdout)!;
+        Assert.True(svgRoot["success"]!.GetValue<bool>());
+        var pages = svgRoot["data"]!["pages"]!.AsArray();
+        Assert.Equal(ExpectedHwpxSvgSha256.Length, pages.Count);
+        for (var i = 0; i < ExpectedHwpxSvgSha256.Length; i++)
+        {
+            var page = pages[i]!;
+            Assert.Equal(i + 1, page["page"]!.GetValue<int>());
+            Assert.Equal(ExpectedHwpxSvgSha256[i], page["sha256"]!.GetValue<string>());
+            Assert.Equal(ExpectedHwpxSvgSha256[i], Sha256File(page["path"]!.GetValue<string>()));
+        }
+    }
+
     private static string LocateBridgeDll()
     {
         return LocateRepoFile("src/rhwp-officecli-bridge/bin/Debug/net10.0/rhwp-officecli-bridge.dll");
@@ -88,5 +133,10 @@ public class HwpBridgeRealRhwpSmokeTests : IDisposable
     {
         using var stream = File.OpenRead(path);
         return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+    }
+
+    private static string Sha256Text(string text)
+    {
+        return Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text))).ToLowerInvariant();
     }
 }

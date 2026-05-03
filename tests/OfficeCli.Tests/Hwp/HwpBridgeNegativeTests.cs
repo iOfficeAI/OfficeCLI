@@ -124,6 +124,51 @@ printf '%s\n' '{"text":"Hello HWP","engineVersion":"fake-rhwp-0.1","pages":[{"pa
     }
 
     [Fact]
+    public void HwpxViewTextJson_WithExperimentalEnv_ReturnsBridgeTextEnvelope()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+
+        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", "rhwp-experimental");
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", CreateFakeBridge("""
+#!/bin/sh
+printf '%s\n' '{"text":"Hello HWPX","engineVersion":"fake-rhwp-0.2","pages":[{"page":1,"text":"Hello HWPX"}],"warnings":[]}'
+"""));
+        var hwpx = CreateFakeHwpx();
+
+        var (exitCode, stdout) = Invoke(["view", hwpx, "text", "--json"]);
+
+        Assert.Equal(0, exitCode);
+        var root = JsonNode.Parse(stdout)!;
+        Assert.True(root["success"]!.GetValue<bool>());
+        Assert.Equal("Hello HWPX", root["data"]!["text"]!.GetValue<string>());
+        Assert.Equal("rhwp-bridge", root["data"]!["engine"]!.GetValue<string>());
+        Assert.Equal("fake-rhwp-0.2", root["data"]!["engineVersion"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void HwpxViewFormsJson_WithExperimentalEnv_StillUsesCustomHandler()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+
+        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", "rhwp-experimental");
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", CreateFakeBridge("""
+#!/bin/sh
+echo "bridge should not be called for forms mode" >&2
+exit 9
+"""));
+        var hwpx = CreateFakeHwpx();
+
+        var (exitCode, stdout) = Invoke(["view", hwpx, "forms", "--json"]);
+
+        Assert.Equal(1, exitCode);
+        var root = JsonNode.Parse(stdout)!;
+        Assert.False(root["success"]!.GetValue<bool>());
+        Assert.DoesNotContain("bridge should not be called", stdout);
+    }
+
+    [Fact]
     public void HwpViewSvgJson_WithFakeBridge_ReturnsBridgeRenderEnvelope()
     {
         if (OperatingSystem.IsWindows())
@@ -153,6 +198,14 @@ printf '%s\n' '{"engineVersion":"fake-rhwp-0.1","manifest":"/tmp/fake-manifest.j
     {
         var path = Path.Combine(Path.GetTempPath(), $"officecli_fake_{Guid.NewGuid():N}.hwp");
         File.WriteAllBytes(path, [0x48, 0x57, 0x50]);
+        _tempFiles.Add(path);
+        return path;
+    }
+
+    private string CreateFakeHwpx()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"officecli_fake_{Guid.NewGuid():N}.hwpx");
+        File.WriteAllBytes(path, [0x50, 0x4B, 0x03, 0x04]);
         _tempFiles.Add(path);
         return path;
     }
