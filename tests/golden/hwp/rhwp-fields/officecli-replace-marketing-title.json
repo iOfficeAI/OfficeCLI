@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "message": "Replaced HWP text '마케팅' -> /Users/jun/Developer/new/700_projects/cli-jaw/officecli/tests/golden/hwp/rhwp-fields/officecli-replace-marketing-title.hwp",
+  "data": {
+    "outputPath": "/Users/jun/Developer/new/700_projects/cli-jaw/officecli/tests/golden/hwp/rhwp-fields/officecli-replace-marketing-title.hwp",
+    "engine": "rhwp-bridge",
+    "engineVersion": "rhwp-api 0.1.0",
+    "evidence": [
+      "rhwp-api replace-text output file created; caller must verify round-trip before production use."
+    ]
+  },
+  "warnings": [
+    "experimental text replacement; verify round-trip before production use"
+  ]
+}

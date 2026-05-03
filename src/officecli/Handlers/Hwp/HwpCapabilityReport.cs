@@ -52,6 +52,7 @@ public static class HwpCapabilityConstants
     public const string OperationListFields = "list_fields";
     public const string OperationReadField = "read_field";
     public const string OperationFillField = "fill_field";
+    public const string OperationReplaceText = "replace_text";
     public const string OperationSaveOriginal = "save_original";
     public const string OperationSaveAsHwp = "save_as_hwp";
 
@@ -153,6 +154,17 @@ public sealed record HwpFillFieldRequest(
     string InputPath,
     string OutputPath,
     IReadOnlyDictionary<string, string> Fields,
+    bool Json
+);
+
+public sealed record HwpReplaceTextRequest(
+    HwpFormat Format,
+    string InputPath,
+    string OutputPath,
+    string Query,
+    string Value,
+    string Mode,
+    bool CaseSensitive,
     bool Json
 );
 

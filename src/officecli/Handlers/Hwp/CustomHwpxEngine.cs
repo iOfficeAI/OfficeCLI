@@ -42,6 +42,11 @@ public sealed class CustomHwpxEngine : IHwpEngine
         throw Unsupported(request.Format, HwpCapabilityConstants.OperationFillField);
     }
 
+    public Task<HwpMutationResult> ReplaceTextAsync(HwpReplaceTextRequest request, CancellationToken ct)
+    {
+        throw Unsupported(request.Format, HwpCapabilityConstants.OperationReplaceText);
+    }
+
     public Task<HwpMutationResult> SaveOriginalAsync(HwpSaveOriginalRequest request, CancellationToken ct)
     {
         throw Unsupported(request.Format, HwpCapabilityConstants.OperationSaveOriginal);
@@ -76,6 +81,7 @@ public sealed class CustomHwpxEngine : IHwpEngine
                 HwpCapabilityConstants.OperationListFields,
                 HwpCapabilityConstants.OperationReadField,
                 HwpCapabilityConstants.OperationFillField,
+                HwpCapabilityConstants.OperationReplaceText,
                 HwpCapabilityConstants.OperationSaveOriginal,
                 HwpCapabilityConstants.OperationSaveAsHwp
             ],
