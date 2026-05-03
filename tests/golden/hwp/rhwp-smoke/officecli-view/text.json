@@ -1,0 +1,9 @@
+{
+  "success": true,
+  "data": {
+    "text": "가나다라마바사아ABCDEFG\n",
+    "engine": "rhwp-bridge",
+    "engineVersion": "rhwp v0.7.9"
+  },
+  "warnings": []
+}

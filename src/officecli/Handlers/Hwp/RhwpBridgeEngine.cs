@@ -106,12 +106,14 @@ public sealed class RhwpBridgeEngine : IHwpEngine
 
         var psi = new ProcessStartInfo
         {
-            FileName = _bridgePath,
+            FileName = BridgeFileName(_bridgePath),
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             CreateNoWindow = true
         };
+        if (string.Equals(Path.GetExtension(_bridgePath), ".dll", StringComparison.OrdinalIgnoreCase))
+            psi.ArgumentList.Add(_bridgePath);
         foreach (var arg in args)
             psi.ArgumentList.Add(arg);
 
@@ -140,8 +142,11 @@ public sealed class RhwpBridgeEngine : IHwpEngine
         int exitCode;
         try
         {
-            stdout = await process.StandardOutput.ReadToEndAsync(cts.Token);
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(cts.Token);
+            var stderrTask = process.StandardError.ReadToEndAsync(cts.Token);
             await process.WaitForExitAsync(cts.Token);
+            stdout = await stdoutTask;
+            _ = await stderrTask;
             exitCode = process.ExitCode;
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -191,6 +196,7 @@ public sealed class RhwpBridgeEngine : IHwpEngine
         }
 
         var text = node?["text"]?.GetValue<string>() ?? "";
+        var engineVersion = node?["engineVersion"]?.GetValue<string>();
         var pages = new List<HwpTextPage>();
         if (node?["pages"] is JsonArray pagesArr)
         {
@@ -209,7 +215,7 @@ public sealed class RhwpBridgeEngine : IHwpEngine
         return new HwpTextResult(
             text, pages,
             HwpCapabilityConstants.EngineRhwpBridge,
-            null, [], warnings.ToArray());
+            engineVersion, [], warnings.ToArray());
     }
 
     private static HwpRenderResult ParseRenderResult(string json, string outputDir)
@@ -238,6 +244,7 @@ public sealed class RhwpBridgeEngine : IHwpEngine
         }
         var manifestPath = node?["manifest"]?.GetValue<string>()
             ?? Path.Combine(outputDir, "manifest.json");
+        var engineVersion = node?["engineVersion"]?.GetValue<string>();
         var warnings = new List<string>();
         if (node?["warnings"] is JsonArray wArr)
             foreach (var w in wArr)
@@ -246,7 +253,7 @@ public sealed class RhwpBridgeEngine : IHwpEngine
         return new HwpRenderResult(
             pages, manifestPath,
             HwpCapabilityConstants.EngineRhwpBridge,
-            null, [], warnings.ToArray());
+            engineVersion, [], warnings.ToArray());
     }
 
     private static string? DiscoverBridge()
@@ -259,7 +266,7 @@ public sealed class RhwpBridgeEngine : IHwpEngine
             Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName);
         if (exeDir != null)
         {
-            foreach (var name in new[] { BridgeExecutableName, BridgeExecutableName + ".exe" })
+            foreach (var name in new[] { BridgeExecutableName, BridgeExecutableName + ".exe", BridgeExecutableName + ".dll" })
             {
                 var candidate = Path.Combine(exeDir, name);
                 if (File.Exists(candidate)) return candidate;
@@ -269,7 +276,7 @@ public sealed class RhwpBridgeEngine : IHwpEngine
         var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
         foreach (var dir in pathEnv.Split(Path.PathSeparator))
         {
-            foreach (var name in new[] { BridgeExecutableName, BridgeExecutableName + ".exe" })
+            foreach (var name in new[] { BridgeExecutableName, BridgeExecutableName + ".exe", BridgeExecutableName + ".dll" })
             {
                 var candidate = Path.Combine(dir, name);
                 if (File.Exists(candidate)) return candidate;
@@ -278,6 +285,11 @@ public sealed class RhwpBridgeEngine : IHwpEngine
 
         return null;
     }
+
+    private static string BridgeFileName(string bridgePath)
+        => string.Equals(Path.GetExtension(bridgePath), ".dll", StringComparison.OrdinalIgnoreCase)
+            ? "dotnet"
+            : bridgePath;
 
     private static HwpEngineException MutationUnsupported(HwpFormat format, string operation)
     {

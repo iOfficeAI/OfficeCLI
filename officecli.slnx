@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/officecli/officecli.csproj" />
+    <Project Path="src/rhwp-officecli-bridge/rhwp-officecli-bridge.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OfficeCli.Tests/OfficeCli.Tests.csproj" />

@@ -1,0 +1,9 @@
+{
+    "success": true,
+    "data": {
+        "text": "\uac00\ub098\ub2e4\ub77c\ub9c8\ubc14\uc0ac\uc544ABCDEFG\n",
+        "engine": "rhwp-bridge",
+        "engineVersion": "rhwp v0.7.9"
+    },
+    "warnings": []
+}
