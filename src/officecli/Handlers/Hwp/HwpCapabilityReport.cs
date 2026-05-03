@@ -1,6 +1,8 @@
 // Copyright 2025 OfficeCli (officecli.ai)
 // SPDX-License-Identifier: Apache-2.0
 
+using System.Text.Json.Nodes;
+
 namespace OfficeCli.Handlers.Hwp;
 
 public enum HwpFormat
@@ -47,6 +49,8 @@ public static class HwpCapabilityConstants
 
     public const string OperationReadText = "read_text";
     public const string OperationRenderSvg = "render_svg";
+    public const string OperationListFields = "list_fields";
+    public const string OperationReadField = "read_field";
     public const string OperationFillField = "fill_field";
     public const string OperationSaveOriginal = "save_original";
     public const string OperationSaveAsHwp = "save_as_hwp";
@@ -114,6 +118,30 @@ public sealed record HwpRenderedPage(int Page, string SvgPath, string Sha256);
 public sealed record HwpRenderResult(
     IReadOnlyList<HwpRenderedPage> Pages,
     string ManifestPath,
+    string Engine,
+    string? EngineVersion,
+    string[] Evidence,
+    string[] Warnings
+);
+
+public sealed record HwpFieldListRequest(HwpFormat Format, string InputPath, long InputSizeBytes, bool Json);
+public sealed record HwpFieldReadRequest(
+    HwpFormat Format,
+    string InputPath,
+    string? FieldName,
+    int? FieldId,
+    long InputSizeBytes,
+    bool Json
+);
+public sealed record HwpFieldListResult(
+    JsonObject Fields,
+    string Engine,
+    string? EngineVersion,
+    string[] Evidence,
+    string[] Warnings
+);
+public sealed record HwpFieldReadResult(
+    JsonObject Field,
     string Engine,
     string? EngineVersion,
     string[] Evidence,
