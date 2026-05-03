@@ -313,6 +313,9 @@ static partial class CommandBuilder
                 || EarlyDispatchHelp.ContainsKey(format)
                 || string.Equals(format, "skill", StringComparison.OrdinalIgnoreCase)))
         {
+            if (WriteHwpBridgeHelp(format, Console.Out, json))
+                return 0;
+
             if (WriteEarlyDispatchUsage(format, Console.Out))
                 return 0;
 

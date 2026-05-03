@@ -36,30 +36,107 @@ public static class HwpCapabilityJsonMapper
     {
         var operations = new JsonObject();
         foreach (var (operation, opCapability) in capability.Operations)
-            operations[operation] = BuildOperationCapability(opCapability);
+            operations[operation] = BuildOperationCapability(operation, opCapability);
 
         return new JsonObject
         {
             ["readStatus"] = capability.ReadStatus,
             ["writeStatus"] = capability.WriteStatus,
             ["defaultEngine"] = capability.DefaultEngine,
+            ["setupHints"] = ToJsonArray(BuildSetupHints(capability)),
             ["operations"] = operations,
             ["warnings"] = ToJsonArray(capability.Warnings)
         };
     }
 
-    private static JsonObject BuildOperationCapability(HwpOperationCapability capability)
+    private static JsonObject BuildOperationCapability(string operation, HwpOperationCapability capability)
     {
         return new JsonObject
         {
             ["status"] = StatusToJson(capability.Status),
+            ["support"] = StatusToJson(capability.Status),
+            ["ready"] = IsReady(capability),
             ["engine"] = capability.Engine,
             ["engineVersion"] = capability.EngineVersion,
             ["evidence"] = ToJsonArray(capability.Evidence),
             ["warnings"] = ToJsonArray(capability.Warnings),
-            ["unsupportedReason"] = capability.UnsupportedReason
+            ["unsupportedReason"] = capability.UnsupportedReason,
+            ["blockedBy"] = ToJsonArray(BuildBlockedBy(capability)),
+            ["requiredArgs"] = ToJsonArray(BuildRequiredArgs(operation)),
+            ["example"] = BuildExample(operation)
         };
     }
+
+    private static bool IsReady(HwpOperationCapability capability)
+    {
+        if (capability.Status == HwpOperationStatus.Unsupported)
+            return false;
+        return capability.UnsupportedReason is null
+            or HwpCapabilityConstants.ReasonRoundTripUnverified;
+    }
+
+    private static IEnumerable<string> BuildBlockedBy(HwpOperationCapability capability)
+    {
+        if (capability.UnsupportedReason is null
+            or HwpCapabilityConstants.ReasonRoundTripUnverified)
+            yield break;
+        yield return capability.UnsupportedReason;
+    }
+
+    private static IEnumerable<string> BuildSetupHints(HwpFormatCapability capability)
+    {
+        if (capability.Operations.Values.Any(op =>
+                op.UnsupportedReason is HwpCapabilityConstants.ReasonBridgeNotEnabled
+                    or HwpCapabilityConstants.ReasonBridgeMissing))
+        {
+            yield return "export OFFICECLI_HWP_ENGINE=rhwp-experimental";
+            yield return "export OFFICECLI_RHWP_BIN=/path/to/rhwp";
+            yield return "export OFFICECLI_RHWP_BRIDGE_PATH=/path/to/rhwp-officecli-bridge.dll";
+            yield return "export OFFICECLI_RHWP_API_BIN=/path/to/rhwp-field-bridge";
+            yield return "officecli help hwp";
+        }
+    }
+
+    private static IEnumerable<string> BuildRequiredArgs(string operation)
+    {
+        switch (operation)
+        {
+            case HwpCapabilityConstants.OperationReadField:
+                yield return "field-name|field-id";
+                break;
+            case HwpCapabilityConstants.OperationFillField:
+                yield return "name|id";
+                yield return "value";
+                yield return "output";
+                break;
+            case HwpCapabilityConstants.OperationReplaceText:
+                yield return "find";
+                yield return "value";
+                yield return "output";
+                break;
+            case HwpCapabilityConstants.OperationSetTableCell:
+                yield return "section";
+                yield return "parent-para";
+                yield return "control";
+                yield return "cell";
+                yield return "value";
+                yield return "output";
+                break;
+        }
+    }
+
+    private static string? BuildExample(string operation)
+        => operation switch
+        {
+            HwpCapabilityConstants.OperationReadText => "officecli view input.hwp text --json",
+            HwpCapabilityConstants.OperationRenderSvg => "officecli view input.hwp svg --page 1 --json",
+            HwpCapabilityConstants.OperationListFields => "officecli view input.hwp fields --json",
+            HwpCapabilityConstants.OperationReadField => "officecli view input.hwp field --field-name 회사명 --json",
+            HwpCapabilityConstants.OperationFillField => "officecli set input.hwp /field --prop name=회사명 --prop value=리지 --prop output=output.hwp --json",
+            HwpCapabilityConstants.OperationReplaceText => "officecli set input.hwp /text --prop find=마케팅 --prop value=브릿지 --prop output=output.hwp --json",
+            HwpCapabilityConstants.OperationSetTableCell => "officecli set input.hwp /table/cell --prop section=0 --prop parent-para=3 --prop control=0 --prop cell=0 --prop value=오피스셀 --prop output=output.hwp --json",
+            _ => null
+        };
 
     private static string StatusToJson(HwpOperationStatus status)
     {
