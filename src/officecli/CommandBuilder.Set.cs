@@ -125,6 +125,9 @@ static partial class CommandBuilder
             if (string.Equals(extension, ".hwp", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(path, "/text", StringComparison.OrdinalIgnoreCase))
                 return HandleHwpTextReplace(file.FullName, HwpFormat.Hwp, properties, json);
+            if (string.Equals(extension, ".hwp", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(path, "/table/cell", StringComparison.OrdinalIgnoreCase))
+                return HandleHwpTableCellSet(file.FullName, HwpFormat.Hwp, properties, json);
 
             if (string.Equals(extension, ".hwpx", StringComparison.OrdinalIgnoreCase)
                 && HwpEngineSelector.IsExperimentalBridgeEnabled()

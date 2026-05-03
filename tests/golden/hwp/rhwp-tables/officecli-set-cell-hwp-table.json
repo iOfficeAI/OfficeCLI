@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "message": "Updated HWP table cell (3,0,0) -> /Users/jun/Developer/new/700_projects/cli-jaw/officecli/tests/golden/hwp/rhwp-tables/officecli-set-cell-hwp-table.hwp",
+  "data": {
+    "outputPath": "/Users/jun/Developer/new/700_projects/cli-jaw/officecli/tests/golden/hwp/rhwp-tables/officecli-set-cell-hwp-table.hwp",
+    "engine": "rhwp-bridge",
+    "engineVersion": "rhwp-api 0.1.0",
+    "evidence": [
+      "rhwp-api set-cell-text output file created; verified only for HWP input fixtures."
+    ]
+  },
+  "warnings": [
+    "experimental table cell mutation; HWPX inputs are saved as HWP for verification"
+  ]
+}

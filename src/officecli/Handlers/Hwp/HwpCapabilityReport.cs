@@ -53,6 +53,7 @@ public static class HwpCapabilityConstants
     public const string OperationReadField = "read_field";
     public const string OperationFillField = "fill_field";
     public const string OperationReplaceText = "replace_text";
+    public const string OperationSetTableCell = "set_table_cell";
     public const string OperationSaveOriginal = "save_original";
     public const string OperationSaveAsHwp = "save_as_hwp";
 
@@ -168,6 +169,21 @@ public sealed record HwpReplaceTextRequest(
     string Value,
     string Mode,
     bool CaseSensitive,
+    bool Json
+);
+
+public sealed record HwpTableCellSetRequest(
+    HwpFormat Format,
+    string InputPath,
+    string OutputPath,
+    int Section,
+    int ParentParagraph,
+    int Control,
+    int Cell,
+    int CellParagraph,
+    int Offset,
+    int? Count,
+    string Value,
     bool Json
 );
 
