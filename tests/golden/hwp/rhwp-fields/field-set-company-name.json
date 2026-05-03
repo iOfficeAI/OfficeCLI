@@ -1,0 +1,1 @@
+{"engineVersion":"rhwp-api 0.1.0","field":{"fieldId":1584999796,"newValue":"리지테스트","ok":true,"oldValue":""},"format":"hwp","output":"tests/golden/hwp/rhwp-fields/field-set-company-name.hwp","warnings":["experimental field mutation; verify round-trip before production use"]}

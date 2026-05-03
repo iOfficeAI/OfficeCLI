@@ -4,6 +4,7 @@
 using System.CommandLine;
 using OfficeCli.Core;
 using OfficeCli.Handlers;
+using OfficeCli.Handlers.Hwp;
 
 namespace OfficeCli;
 
@@ -111,18 +112,28 @@ static partial class CommandBuilder
                 return 1;
             }
 
-            if (TryResident(file.FullName, req =>
-            {
-                req.Command = "set";
-                req.Args["path"] = path;
-                req.Props = ParsePropsArray(props);
-            }, json) is {} rc) return rc;
-
             // CONSISTENCY(prop-key-case): --prop keys are case-insensitive
             // so "SRC=x" and "src=x" both resolve to the same handler key.
             // Reuse ParsePropsArray so the inline and resident-server paths
             // stay in sync.
             var properties = ParsePropsArray(props);
+
+            var extension = Path.GetExtension(file.FullName);
+            if (string.Equals(extension, ".hwp", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(path, "/field", StringComparison.OrdinalIgnoreCase))
+                return HandleHwpFieldSet(file.FullName, HwpFormat.Hwp, properties, json);
+
+            if (string.Equals(extension, ".hwpx", StringComparison.OrdinalIgnoreCase)
+                && HwpEngineSelector.IsExperimentalBridgeEnabled()
+                && string.Equals(path, "/field", StringComparison.OrdinalIgnoreCase))
+                return HandleHwpFieldSet(file.FullName, HwpFormat.Hwpx, properties, json);
+
+            if (TryResident(file.FullName, req =>
+            {
+                req.Command = "set";
+                req.Args["path"] = path;
+                req.Props = properties;
+            }, json) is {} rc) return rc;
 
             using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
 
@@ -306,5 +317,72 @@ static partial class CommandBuilder
         }, json); });
 
         return setCommand;
+    }
+
+    private static int HandleHwpFieldSet(
+        string inputPath,
+        HwpFormat format,
+        Dictionary<string, string> properties,
+        bool json)
+    {
+        var fieldName = FirstValue(properties, "name", "field", "field-name");
+        var value = FirstValue(properties, "value", "text");
+        var output = FirstValue(properties, "output", "out");
+        if (string.IsNullOrWhiteSpace(fieldName) || value == null || string.IsNullOrWhiteSpace(output))
+        {
+            var message = "HWP field set requires --prop name=<field> --prop value=<text> --prop output=<path>.";
+            if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(message));
+            else Console.Error.WriteLine(message);
+            return 1;
+        }
+
+        var outputPath = Path.GetFullPath(output);
+        var outputDir = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrEmpty(outputDir)) Directory.CreateDirectory(outputDir);
+
+        var formatKey = format == HwpFormat.Hwp
+            ? HwpCapabilityConstants.FormatHwp
+            : HwpCapabilityConstants.FormatHwpx;
+        var engine = HwpEngineSelector.GetEngine(formatKey, HwpCapabilityConstants.OperationFillField);
+        var request = new HwpFillFieldRequest(
+            format,
+            inputPath,
+            outputPath,
+            new Dictionary<string, string> { [fieldName] = value },
+            json);
+        var result = engine.FillFieldAsync(request, CancellationToken.None).GetAwaiter().GetResult();
+
+        if (json)
+        {
+            var envelope = new System.Text.Json.Nodes.JsonObject
+            {
+                ["success"] = true,
+                ["message"] = $"Updated HWP field '{fieldName}' -> {result.OutputPath}",
+                ["data"] = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["outputPath"] = result.OutputPath,
+                    ["engine"] = result.Engine,
+                    ["engineVersion"] = result.EngineVersion,
+                    ["evidence"] = HwpCapabilityJsonMapper.ToJsonArray(result.Evidence)
+                },
+                ["warnings"] = HwpCapabilityJsonMapper.ToJsonArray(result.Warnings)
+            };
+            Console.WriteLine(envelope.ToJsonString(OutputFormatter.PublicJsonOptions));
+        }
+        else
+        {
+            Console.WriteLine($"Updated HWP field '{fieldName}' -> {result.OutputPath}");
+            foreach (var warning in result.Warnings)
+                Console.Error.WriteLine($"WARNING: {warning}");
+        }
+        return 0;
+    }
+
+    private static string? FirstValue(Dictionary<string, string> properties, params string[] keys)
+    {
+        foreach (var key in keys)
+            if (properties.TryGetValue(key, out var value))
+                return value;
+        return null;
     }
 }

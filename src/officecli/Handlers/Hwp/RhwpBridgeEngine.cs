@@ -7,9 +7,9 @@ using System.Text.Json.Nodes;
 namespace OfficeCli.Handlers.Hwp;
 
 /// <summary>
-/// Phase 0.5 experimental engine that routes read/render operations through
-/// the rhwp-officecli-bridge subprocess. Only active when
-/// OFFICECLI_HWP_ENGINE=rhwp-experimental. Mutation operations are forbidden.
+/// Phase 0.5 experimental engine that routes read/render and explicitly gated
+/// field operations through the rhwp-officecli-bridge subprocess. Only active
+/// when OFFICECLI_HWP_ENGINE=rhwp-experimental.
 /// </summary>
 public sealed class RhwpBridgeEngine : IHwpEngine
 {
@@ -123,9 +123,61 @@ public sealed class RhwpBridgeEngine : IHwpEngine
         return ParseFieldReadResult(output);
     }
 
-    public Task<HwpMutationResult> FillFieldAsync(HwpFillFieldRequest request, CancellationToken ct)
-        => Task.FromException<HwpMutationResult>(
-            MutationUnsupported(request.Format, HwpCapabilityConstants.OperationFillField));
+    public async Task<HwpMutationResult> FillFieldAsync(HwpFillFieldRequest request, CancellationToken ct)
+    {
+        if (request.Fields.Count == 0)
+            throw new HwpEngineException(
+                "fill_field requires at least one field.",
+                HwpCapabilityConstants.ReasonUnsupportedOperation,
+                "Pass one or more field name/value pairs.",
+                [HwpCapabilityConstants.OperationFillField],
+                FormatKey(request.Format),
+                HwpCapabilityConstants.OperationFillField,
+                HwpCapabilityConstants.EngineRhwpBridge,
+                HwpCapabilityConstants.ModeExperimental);
+
+        var formatArg = FormatKey(request.Format);
+        var currentInput = request.InputPath;
+        var tempFiles = new List<string>();
+        string? lastOutputJson = null;
+
+        try
+        {
+            var index = 0;
+            foreach (var field in request.Fields)
+            {
+                index++;
+                var output = index == request.Fields.Count
+                    ? request.OutputPath
+                    : Path.Combine(
+                        Path.GetTempPath(),
+                        $"officecli-rhwp-field-{Guid.NewGuid():N}{Path.GetExtension(request.OutputPath)}");
+                if (index != request.Fields.Count) tempFiles.Add(output);
+
+                var args = new[]
+                {
+                    "set-field", "--format", formatArg, "--input", currentInput,
+                    "--output", output, "--name", field.Key, "--value", field.Value, "--json"
+                };
+                lastOutputJson = await RunBridgeAsync(args, RenderSvgTimeoutMs, ct);
+                currentInput = output;
+            }
+        }
+        finally
+        {
+            foreach (var tempFile in tempFiles)
+                try { File.Delete(tempFile); } catch { /* best effort */ }
+        }
+
+        if (!File.Exists(request.OutputPath))
+            throw new HwpEngineException(
+                "rhwp-officecli-bridge did not create the requested output file.",
+                HwpCapabilityConstants.ReasonBridgeExitNonZero,
+                engine: HwpCapabilityConstants.EngineRhwpBridge,
+                engineMode: HwpCapabilityConstants.ModeExperimental);
+
+        return ParseMutationResult(lastOutputJson ?? "{}", request.OutputPath);
+    }
 
     public Task<HwpMutationResult> SaveOriginalAsync(HwpSaveOriginalRequest request, CancellationToken ct)
         => Task.FromException<HwpMutationResult>(
@@ -345,6 +397,29 @@ public sealed class RhwpBridgeEngine : IHwpEngine
             engineVersion, [], warnings);
     }
 
+    private static HwpMutationResult ParseMutationResult(string json, string outputPath)
+    {
+        JsonNode? node;
+        try { node = JsonNode.Parse(json); }
+        catch
+        {
+            throw new HwpEngineException(
+                "rhwp-officecli-bridge set-field produced unparseable JSON.",
+                HwpCapabilityConstants.ReasonBridgeInvalidJson,
+                engine: HwpCapabilityConstants.EngineRhwpBridge,
+                engineMode: HwpCapabilityConstants.ModeExperimental);
+        }
+
+        var engineVersion = node?["engineVersion"]?.GetValue<string>();
+        var warnings = ParseWarnings(node);
+        return new HwpMutationResult(
+            outputPath,
+            HwpCapabilityConstants.EngineRhwpBridge,
+            engineVersion,
+            ["rhwp-api set-field output file created; caller must verify round-trip before production use."],
+            warnings);
+    }
+
     private static string[] ParseWarnings(JsonNode? node)
     {
         var warnings = new List<string>();
@@ -389,11 +464,14 @@ public sealed class RhwpBridgeEngine : IHwpEngine
             ? "dotnet"
             : bridgePath;
 
-    private static HwpEngineException MutationUnsupported(HwpFormat format, string operation)
-    {
-        var formatKey = format == HwpFormat.Hwp
+    private static string FormatKey(HwpFormat format)
+        => format == HwpFormat.Hwp
             ? HwpCapabilityConstants.FormatHwp
             : HwpCapabilityConstants.FormatHwpx;
+
+    private static HwpEngineException MutationUnsupported(HwpFormat format, string operation)
+    {
+        var formatKey = FormatKey(format);
         var reason = operation switch
         {
             HwpCapabilityConstants.OperationFillField when format == HwpFormat.Hwp
