@@ -161,6 +161,32 @@ public class HwpBridgeSidecarTests : IDisposable
     }
 
     [Fact]
+    public void ReplaceText_DelegatesToRhwpApiBridgeAndCreatesOutput()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var bridgeDll = LocateBridgeDll();
+        var fakeApi = CreateFakeRhwpApi();
+        var input = CreateInput(".hwp");
+        var output = CreateOutput(".hwp");
+
+        var result = RunBridge(
+            bridgeDll,
+            CreateFakeRhwp(),
+            [
+                "replace-text", "--format", "hwp", "--input", input, "--output", output,
+                "--query", "before", "--value", "after", "--mode", "all", "--json"
+            ],
+            fakeApi);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.True(File.Exists(output));
+        var root = JsonNode.Parse(result.Stdout)!;
+        Assert.Equal(output, root["output"]!.GetValue<string>());
+        Assert.Equal(2, root["replacement"]!["count"]!.GetValue<int>());
+    }
+
+
+    [Fact]
     public async Task RhwpBridgeEngineFillField_CallsSetFieldAndReturnsMutationEvidence()
     {
         if (OperatingSystem.IsWindows()) return;
@@ -334,6 +360,19 @@ if [ "$cmd" = "set-field" ]; then
   done
   printf 'fake hwp output' > "$output"
   printf '{"field":{"ok":true,"fieldId":7,"oldValue":"","newValue":"%s"},"output":"%s","engineVersion":"rhwp-api v0.test","format":"hwp","warnings":["experimental set-field"]}\n' "$value" "$output"
+  exit 0
+fi
+if [ "$cmd" = "replace-text" ]; then
+  output=""
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--output" ]; then
+      shift
+      output="$1"
+    fi
+    shift
+  done
+  printf 'fake hwp replace output' > "$output"
+  printf '{"replacement":{"ok":true,"count":2},"output":"%s","engineVersion":"rhwp-api v0.test","format":"hwp","warnings":["experimental replace-text"]}\n' "$output"
   exit 0
 fi
 echo "unexpected api command: $cmd" >&2
