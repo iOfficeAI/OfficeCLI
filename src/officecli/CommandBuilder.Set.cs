@@ -333,11 +333,20 @@ static partial class CommandBuilder
         bool json)
     {
         var fieldName = FirstValue(properties, "name", "field", "field-name");
+        var fieldIdRaw = FirstValue(properties, "id", "field-id", "fieldId");
         var value = FirstValue(properties, "value", "text");
         var output = FirstValue(properties, "output", "out");
-        if (string.IsNullOrWhiteSpace(fieldName) || value == null || string.IsNullOrWhiteSpace(output))
+        if ((string.IsNullOrWhiteSpace(fieldName) && string.IsNullOrWhiteSpace(fieldIdRaw))
+            || value == null || string.IsNullOrWhiteSpace(output))
         {
-            var message = "HWP field set requires --prop name=<field> --prop value=<text> --prop output=<path>.";
+            var message = "HWP field set requires --prop name=<field> or --prop id=<fieldId>, plus --prop value=<text> --prop output=<path>.";
+            if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(message));
+            else Console.Error.WriteLine(message);
+            return 1;
+        }
+        if (!string.IsNullOrWhiteSpace(fieldIdRaw) && !int.TryParse(fieldIdRaw, out _))
+        {
+            var message = $"Invalid HWP field id '{fieldIdRaw}'.";
             if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(message));
             else Console.Error.WriteLine(message);
             return 1;
@@ -351,20 +360,30 @@ static partial class CommandBuilder
             ? HwpCapabilityConstants.FormatHwp
             : HwpCapabilityConstants.FormatHwpx;
         var engine = HwpEngineSelector.GetEngine(formatKey, HwpCapabilityConstants.OperationFillField);
+        var nameFields = string.IsNullOrWhiteSpace(fieldName)
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string> { [fieldName] = value };
+        var idFields = string.IsNullOrWhiteSpace(fieldIdRaw)
+            ? new Dictionary<int, string>()
+            : new Dictionary<int, string> { [int.Parse(fieldIdRaw)] = value };
         var request = new HwpFillFieldRequest(
             format,
             inputPath,
             outputPath,
-            new Dictionary<string, string> { [fieldName] = value },
-            json);
+            nameFields,
+            json)
+        {
+            FieldIds = idFields
+        };
         var result = engine.FillFieldAsync(request, CancellationToken.None).GetAwaiter().GetResult();
+        var fieldLabel = !string.IsNullOrWhiteSpace(fieldName) ? fieldName : $"#{fieldIdRaw}";
 
         if (json)
         {
             var envelope = new System.Text.Json.Nodes.JsonObject
             {
                 ["success"] = true,
-                ["message"] = $"Updated HWP field '{fieldName}' -> {result.OutputPath}",
+                ["message"] = $"Updated HWP field '{fieldLabel}' -> {result.OutputPath}",
                 ["data"] = new System.Text.Json.Nodes.JsonObject
                 {
                     ["outputPath"] = result.OutputPath,
@@ -378,7 +397,7 @@ static partial class CommandBuilder
         }
         else
         {
-            Console.WriteLine($"Updated HWP field '{fieldName}' -> {result.OutputPath}");
+            Console.WriteLine($"Updated HWP field '{fieldLabel}' -> {result.OutputPath}");
             foreach (var warning in result.Warnings)
                 Console.Error.WriteLine($"WARNING: {warning}");
         }
