@@ -58,6 +58,8 @@ internal class ErrorResult
     public string? Engine { get; set; }
     [JsonPropertyName("engineMode")]
     public string? EngineMode { get; set; }
+    [JsonPropertyName("nextCommand")]
+    public string? NextCommand { get; set; }
 }
 
 internal class CliWarning
@@ -245,11 +247,13 @@ internal static class OutputFormatter
         {
             result.Code = hwp.Error.Code;
             result.Suggestion = hwp.Error.Suggestion;
+            result.Help = "officecli help hwp";
             result.ValidValues = hwp.Error.ValidValues;
             result.Format = hwp.Error.Format;
             result.Operation = hwp.Error.Operation;
             result.Engine = hwp.Error.Engine;
             result.EngineMode = hwp.Error.EngineMode;
+            result.NextCommand = BuildHwpNextCommand(hwp.Error.Code, hwp.Error.Operation);
         }
         else
         {
@@ -257,6 +261,17 @@ internal static class OutputFormatter
         }
 
         return result;
+    }
+
+    private static string BuildHwpNextCommand(string? code, string? operation)
+    {
+        if (code is "bridge_not_enabled" or "bridge_missing")
+            return "officecli hwp doctor --json";
+
+        if (operation is not null)
+            return "officecli capabilities --json";
+
+        return "officecli help hwp";
     }
 
     private static void EnrichFromMessage(ErrorResult result, Exception ex)
