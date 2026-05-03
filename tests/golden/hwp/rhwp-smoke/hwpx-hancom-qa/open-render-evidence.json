@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-05-03T10:09:49.955889+00:00",
+  "app": "Hancom Office HWP",
+  "bundle": "com.hancom.office.hwp12.mac.general",
+  "fixture": "tests/fixtures/hwp/rhwp-smoke/table-vpos-01.hwpx",
+  "windowTitleObserved": "table-vpos-01.hwpx",
+  "renderedTextObserved": "국민주권시대, AI와 함께 열다 / 국민주권정부의 정부혁신 청사진 공개",
+  "operationScope": "open/render only; no save, overwrite, upload, or mutation",
+  "screenshot": "tests/golden/hwp/rhwp-smoke/hwpx-hancom-qa/open-render.png"
+}
