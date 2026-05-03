@@ -194,6 +194,52 @@ printf '%s\n' '{"engineVersion":"fake-rhwp-0.1","manifest":"/tmp/fake-manifest.j
         Assert.Equal("abc123", root["data"]!["pages"]![0]!["sha256"]!.GetValue<string>());
     }
 
+    [Fact]
+    public void HwpViewFieldsJson_WithFakeBridge_ReturnsFieldListEnvelope()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+
+        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", "rhwp-experimental");
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", CreateFakeBridge("""
+#!/bin/sh
+printf '%s\n' '{"fields":[{"fieldId":7,"name":"applicant","value":"홍길동"}],"engineVersion":"fake-rhwp-api-0.1","warnings":[]}'
+"""));
+        var hwp = CreateFakeHwp();
+
+        var (exitCode, stdout) = Invoke(["view", hwp, "fields", "--json"]);
+
+        Assert.Equal(0, exitCode);
+        var root = JsonNode.Parse(stdout)!;
+        Assert.True(root["success"]!.GetValue<bool>());
+        Assert.Equal("rhwp-bridge", root["engine"]!.GetValue<string>());
+        Assert.Equal("fake-rhwp-api-0.1", root["engineVersion"]!.GetValue<string>());
+        Assert.Equal(7, root["data"]!["fields"]![0]!["fieldId"]!.GetValue<int>());
+        Assert.Equal("applicant", root["data"]!["fields"]![0]!["name"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void HwpViewFieldJson_WithFakeBridge_ReturnsFieldReadEnvelope()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+
+        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", "rhwp-experimental");
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", CreateFakeBridge("""
+#!/bin/sh
+printf '%s\n' '{"field":{"ok":true,"fieldId":7,"value":"홍길동"},"engineVersion":"fake-rhwp-api-0.1","warnings":[]}'
+"""));
+        var hwp = CreateFakeHwp();
+
+        var (exitCode, stdout) = Invoke(["view", hwp, "field", "--field-name", "applicant", "--json"]);
+
+        Assert.Equal(0, exitCode);
+        var root = JsonNode.Parse(stdout)!;
+        Assert.True(root["success"]!.GetValue<bool>());
+        Assert.Equal("rhwp-bridge", root["engine"]!.GetValue<string>());
+        Assert.Equal("홍길동", root["data"]!["field"]!["value"]!.GetValue<string>());
+    }
+
     private string CreateFakeHwp()
     {
         var path = Path.Combine(Path.GetTempPath(), $"officecli_fake_{Guid.NewGuid():N}.hwp");

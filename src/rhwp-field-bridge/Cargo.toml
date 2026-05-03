@@ -1,0 +1,9 @@
+[package]
+name = "rhwp-field-bridge"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+rhwp = { git = "https://github.com/edwardkim/rhwp.git", rev = "0fb3e6758b8ad11d2f3c3849c83b914684e83863" }
+serde_json = "1"

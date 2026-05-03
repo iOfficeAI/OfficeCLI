@@ -27,6 +27,16 @@ public sealed class CustomHwpxEngine : IHwpEngine
         throw Unsupported(request.Format, HwpCapabilityConstants.OperationRenderSvg);
     }
 
+    public Task<HwpFieldListResult> ListFieldsAsync(HwpFieldListRequest request, CancellationToken ct)
+    {
+        throw Unsupported(request.Format, HwpCapabilityConstants.OperationListFields);
+    }
+
+    public Task<HwpFieldReadResult> ReadFieldAsync(HwpFieldReadRequest request, CancellationToken ct)
+    {
+        throw Unsupported(request.Format, HwpCapabilityConstants.OperationReadField);
+    }
+
     public Task<HwpMutationResult> FillFieldAsync(HwpFillFieldRequest request, CancellationToken ct)
     {
         throw Unsupported(request.Format, HwpCapabilityConstants.OperationFillField);
@@ -63,6 +73,8 @@ public sealed class CustomHwpxEngine : IHwpEngine
             [
                 HwpCapabilityConstants.OperationReadText,
                 HwpCapabilityConstants.OperationRenderSvg,
+                HwpCapabilityConstants.OperationListFields,
+                HwpCapabilityConstants.OperationReadField,
                 HwpCapabilityConstants.OperationFillField,
                 HwpCapabilityConstants.OperationSaveOriginal,
                 HwpCapabilityConstants.OperationSaveAsHwp

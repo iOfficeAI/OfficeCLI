@@ -18,6 +18,8 @@ internal static class BridgeProgram
             {
                 "read-text" => ReadText(args[1..]),
                 "render-svg" => RenderSvg(args[1..]),
+                "list-fields" => ApiBridge(args),
+                "get-field" => ApiBridge(args),
                 _ => Error($"unsupported command: {args[0]}", "unsupported_command")
             };
         }
@@ -107,6 +109,26 @@ internal static class BridgeProgram
     private static string RhwpBinary()
         => Environment.GetEnvironmentVariable("OFFICECLI_RHWP_BIN") ?? "rhwp";
 
+    private static string RhwpApiBinary()
+        => Environment.GetEnvironmentVariable("OFFICECLI_RHWP_API_BIN") ?? "";
+
+    private static int ApiBridge(string[] args)
+    {
+        var api = RhwpApiBinary();
+        if (string.IsNullOrWhiteSpace(api) || !File.Exists(api))
+            return Error(
+                "rhwp API bridge is not configured. Set OFFICECLI_RHWP_API_BIN to rhwp-field-bridge.",
+                "api_bridge_missing");
+
+        var result = RunProcess(api, args);
+        if (result.ExitCode != 0)
+            return Error($"rhwp API bridge failed: {result.Stderr.Trim()}", "api_bridge_failed");
+
+        Console.Write(result.Stdout);
+        if (!result.Stdout.EndsWith('\n')) Console.WriteLine();
+        return 0;
+    }
+
     private static ProcessResult RunProcess(string fileName, IReadOnlyList<string> args)
     {
         var psi = new ProcessStartInfo
@@ -153,7 +175,7 @@ internal static class BridgeProgram
 
     private static int Help()
     {
-        Console.WriteLine("rhwp-officecli-bridge read-text|render-svg --format hwp|hwpx --input <path> --json");
+        Console.WriteLine("rhwp-officecli-bridge read-text|render-svg|list-fields|get-field --format hwp|hwpx --input <path> --json");
         return 0;
     }
 

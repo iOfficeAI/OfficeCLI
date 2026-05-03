@@ -11,12 +11,14 @@ public class HwpBridgeSidecarTests : IDisposable
     private readonly string? _oldEngine = Environment.GetEnvironmentVariable("OFFICECLI_HWP_ENGINE");
     private readonly string? _oldBridge = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH");
     private readonly string? _oldRhwp = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_BIN");
+    private readonly string? _oldRhwpApi = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_API_BIN");
 
     public void Dispose()
     {
         Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", _oldEngine);
         Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", _oldBridge);
         Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", _oldRhwp);
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", _oldRhwpApi);
         foreach (var path in _tempPaths)
         {
             try
@@ -90,6 +92,48 @@ public class HwpBridgeSidecarTests : IDisposable
         Assert.Equal("rhwp v0.test", root["data"]!["engineVersion"]!.GetValue<string>());
     }
 
+    [Fact]
+    public void ListFields_DelegatesToRhwpApiBridge()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var bridgeDll = LocateBridgeDll();
+        var fakeApi = CreateFakeRhwpApi();
+        var input = CreateInput(".hwp");
+
+        var result = RunBridge(
+            bridgeDll,
+            CreateFakeRhwp(),
+            ["list-fields", "--format", "hwp", "--input", input, "--json"],
+            fakeApi);
+
+        Assert.Equal(0, result.ExitCode);
+        var root = JsonNode.Parse(result.Stdout)!;
+        Assert.Equal("rhwp-api v0.test", root["engineVersion"]!.GetValue<string>());
+        Assert.Equal("hwp", root["format"]!.GetValue<string>());
+        Assert.Equal(7, root["fields"]![0]!["fieldId"]!.GetValue<int>());
+        Assert.Equal("applicant", root["fields"]![0]!["name"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void GetField_DelegatesToRhwpApiBridge()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var bridgeDll = LocateBridgeDll();
+        var fakeApi = CreateFakeRhwpApi();
+        var input = CreateInput(".hwp");
+
+        var result = RunBridge(
+            bridgeDll,
+            CreateFakeRhwp(),
+            ["get-field", "--format", "hwp", "--input", input, "--name", "applicant", "--json"],
+            fakeApi);
+
+        Assert.Equal(0, result.ExitCode);
+        var root = JsonNode.Parse(result.Stdout)!;
+        Assert.Equal("홍길동", root["field"]!["value"]!.GetValue<string>());
+        Assert.Equal(7, root["field"]!["fieldId"]!.GetValue<int>());
+    }
+
     private static string LocateBridgeDll()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -104,7 +148,7 @@ public class HwpBridgeSidecarTests : IDisposable
         throw new FileNotFoundException("rhwp-officecli-bridge.dll was not built.");
     }
 
-    private ProcessResult RunBridge(string bridgeDll, string fakeRhwp, string[] args)
+    private ProcessResult RunBridge(string bridgeDll, string fakeRhwp, string[] args, string? fakeRhwpApi = null)
     {
         var psi = new ProcessStartInfo
         {
@@ -116,6 +160,7 @@ public class HwpBridgeSidecarTests : IDisposable
         psi.ArgumentList.Add(bridgeDll);
         foreach (var arg in args) psi.ArgumentList.Add(arg);
         psi.Environment["OFFICECLI_RHWP_BIN"] = fakeRhwp;
+        if (fakeRhwpApi != null) psi.Environment["OFFICECLI_RHWP_API_BIN"] = fakeRhwpApi;
         using var process = Process.Start(psi)!;
         var stdout = process.StandardOutput.ReadToEnd();
         var stderr = process.StandardError.ReadToEnd();
@@ -169,6 +214,30 @@ if [ "$cmd" = "export-svg" ]; then
   exit 0
 fi
 echo "unexpected command: $cmd" >&2
+exit 2
+""");
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(path,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        _tempPaths.Add(path);
+        return path;
+    }
+
+    private string CreateFakeRhwpApi()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"fake-rhwp-api-{Guid.NewGuid():N}");
+        File.WriteAllText(path, """
+#!/bin/sh
+cmd="$1"
+if [ "$cmd" = "list-fields" ]; then
+  printf '%s\n' '{"fields":[{"fieldId":7,"fieldType":"clickhere","name":"applicant","value":"홍길동"}],"engineVersion":"rhwp-api v0.test","format":"hwp","warnings":[]}'
+  exit 0
+fi
+if [ "$cmd" = "get-field" ]; then
+  printf '%s\n' '{"field":{"ok":true,"fieldId":7,"value":"홍길동"},"engineVersion":"rhwp-api v0.test","format":"hwp","warnings":[]}'
+  exit 0
+fi
+echo "unexpected api command: $cmd" >&2
 exit 2
 """);
         if (!OperatingSystem.IsWindows())

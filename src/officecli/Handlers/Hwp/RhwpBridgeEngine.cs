@@ -17,6 +17,7 @@ public sealed class RhwpBridgeEngine : IHwpEngine
     private const int CapabilitiesTimeoutMs = 2_000;
     private const int ReadTextTimeoutMs = 10_000;
     private const int RenderSvgTimeoutMs = 60_000;
+    private const int FieldReadTimeoutMs = 10_000;
     private const long LargeFileSizeBytes = 10L * 1024 * 1024;
 
     private readonly string _bridgePath;
@@ -76,6 +77,50 @@ public sealed class RhwpBridgeEngine : IHwpEngine
         };
         var output = await RunBridgeAsync(args, timeout, ct);
         return ParseRenderResult(output, request.OutputDirectory);
+    }
+
+    public async Task<HwpFieldListResult> ListFieldsAsync(HwpFieldListRequest request, CancellationToken ct)
+    {
+        var formatArg = request.Format == HwpFormat.Hwp ? "hwp" : "hwpx";
+        var timeout = request.InputSizeBytes > LargeFileSizeBytes
+            ? FieldReadTimeoutMs * 3
+            : FieldReadTimeoutMs;
+        var args = new[] { "list-fields", "--format", formatArg, "--input", request.InputPath, "--json" };
+        var output = await RunBridgeAsync(args, timeout, ct);
+        return ParseFieldListResult(output);
+    }
+
+    public async Task<HwpFieldReadResult> ReadFieldAsync(HwpFieldReadRequest request, CancellationToken ct)
+    {
+        var formatArg = request.Format == HwpFormat.Hwp ? "hwp" : "hwpx";
+        var args = new List<string>
+        {
+            "get-field", "--format", formatArg, "--input", request.InputPath, "--json"
+        };
+        if (!string.IsNullOrWhiteSpace(request.FieldName))
+        {
+            args.Add("--name");
+            args.Add(request.FieldName);
+        }
+        else if (request.FieldId.HasValue)
+        {
+            args.Add("--id");
+            args.Add(request.FieldId.Value.ToString());
+        }
+        else
+        {
+            throw new HwpEngineException(
+                "read_field requires a field name or field id.",
+                HwpCapabilityConstants.ReasonUnsupportedOperation,
+                "Use --field-name or --field-id.",
+                [HwpCapabilityConstants.OperationReadField],
+                formatArg,
+                HwpCapabilityConstants.OperationReadField,
+                HwpCapabilityConstants.EngineRhwpBridge,
+                HwpCapabilityConstants.ModeExperimental);
+        }
+        var output = await RunBridgeAsync(args.ToArray(), FieldReadTimeoutMs, ct);
+        return ParseFieldReadResult(output);
     }
 
     public Task<HwpMutationResult> FillFieldAsync(HwpFillFieldRequest request, CancellationToken ct)
@@ -254,6 +299,59 @@ public sealed class RhwpBridgeEngine : IHwpEngine
             pages, manifestPath,
             HwpCapabilityConstants.EngineRhwpBridge,
             engineVersion, [], warnings.ToArray());
+    }
+
+    private static HwpFieldListResult ParseFieldListResult(string json)
+    {
+        JsonNode? node;
+        try { node = JsonNode.Parse(json); }
+        catch
+        {
+            throw new HwpEngineException(
+                "rhwp-officecli-bridge list-fields produced unparseable JSON.",
+                HwpCapabilityConstants.ReasonBridgeInvalidJson,
+                engine: HwpCapabilityConstants.EngineRhwpBridge,
+                engineMode: HwpCapabilityConstants.ModeExperimental);
+        }
+
+        var fieldsNode = node?["fields"]?.DeepClone() ?? new JsonArray();
+        var payload = new JsonObject { ["fields"] = fieldsNode };
+        var engineVersion = node?["engineVersion"]?.GetValue<string>();
+        var warnings = ParseWarnings(node);
+        return new HwpFieldListResult(
+            payload, HwpCapabilityConstants.EngineRhwpBridge,
+            engineVersion, [], warnings);
+    }
+
+    private static HwpFieldReadResult ParseFieldReadResult(string json)
+    {
+        JsonNode? node;
+        try { node = JsonNode.Parse(json); }
+        catch
+        {
+            throw new HwpEngineException(
+                "rhwp-officecli-bridge get-field produced unparseable JSON.",
+                HwpCapabilityConstants.ReasonBridgeInvalidJson,
+                engine: HwpCapabilityConstants.EngineRhwpBridge,
+                engineMode: HwpCapabilityConstants.ModeExperimental);
+        }
+
+        var fieldNode = node?["field"]?.DeepClone() ?? new JsonObject();
+        var payload = new JsonObject { ["field"] = fieldNode };
+        var engineVersion = node?["engineVersion"]?.GetValue<string>();
+        var warnings = ParseWarnings(node);
+        return new HwpFieldReadResult(
+            payload, HwpCapabilityConstants.EngineRhwpBridge,
+            engineVersion, [], warnings);
+    }
+
+    private static string[] ParseWarnings(JsonNode? node)
+    {
+        var warnings = new List<string>();
+        if (node?["warnings"] is JsonArray wArr)
+            foreach (var w in wArr)
+                if (w?.GetValue<string>() is { } ws) warnings.Add(ws);
+        return warnings.ToArray();
     }
 
     private static string? DiscoverBridge()

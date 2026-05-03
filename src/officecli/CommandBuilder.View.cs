@@ -31,6 +31,8 @@ static partial class CommandBuilder
         var withPagesOpt = new Option<bool>("--page-count") { Description = "stats mode (docx only): also report total page count via Word repagination (Win + Word required; slow on long docs)" };
         var autoOpt = new Option<bool>("--auto") { Description = "Auto-recognize label-value fields in tables (hwpx forms only)" };
         var objectTypeOpt = new Option<string?>("--object-type") { Description = "Object type filter: picture, field, bookmark, equation, formfield (hwpx objects mode)" };
+        var fieldNameOpt = new Option<string?>("--field-name") { Description = "Field name for HWP/HWPX field read mode" };
+        var fieldIdOpt = new Option<int?>("--field-id") { Description = "Field id for HWP/HWPX field read mode" };
 
         var viewCommand = new Command("view", "View document in different modes");
         viewCommand.Add(viewFileArg);
@@ -51,6 +53,8 @@ static partial class CommandBuilder
         viewCommand.Add(withPagesOpt);
         viewCommand.Add(autoOpt);
         viewCommand.Add(objectTypeOpt);
+        viewCommand.Add(fieldNameOpt);
+        viewCommand.Add(fieldIdOpt);
         viewCommand.Add(jsonOption);
 
         viewCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
@@ -75,6 +79,8 @@ static partial class CommandBuilder
             var withPages = result.GetValue(withPagesOpt);
             var autoRecognize = result.GetValue(autoOpt);
             var objectTypeFilter = result.GetValue(objectTypeOpt);
+            var fieldName = result.GetValue(fieldNameOpt);
+            var fieldId = result.GetValue(fieldIdOpt);
 
             // Try resident first
             if (TryResident(file.FullName, req =>
@@ -107,14 +113,14 @@ static partial class CommandBuilder
 
             // Binary .hwp: route through HWP engine (bridge when experimental, else unsupported)
             if (string.Equals(extension, ".hwp", StringComparison.OrdinalIgnoreCase))
-                return HandleHwpView(file.FullName, HwpFormat.Hwp, mode, pageFilter, json);
+                return HandleHwpView(file.FullName, HwpFormat.Hwp, mode, pageFilter, json, fieldName, fieldId);
 
             // HWPX stays on the custom XML handler by default. The rhwp bridge can be
             // opted into for read/render smoke coverage without changing stable HWPX behavior.
             if (string.Equals(extension, ".hwpx", StringComparison.OrdinalIgnoreCase)
                 && HwpEngineSelector.IsExperimentalBridgeEnabled()
-                && mode.Trim().ToLowerInvariant() is "text" or "t" or "svg" or "g")
-                return HandleHwpView(file.FullName, HwpFormat.Hwpx, mode, pageFilter, json);
+                && mode.Trim().ToLowerInvariant() is "text" or "t" or "svg" or "g" or "fields" or "field")
+                return HandleHwpView(file.FullName, HwpFormat.Hwpx, mode, pageFilter, json, fieldName, fieldId);
 
             using var handler = DocumentHandlerFactory.Open(file.FullName);
 
@@ -503,7 +509,14 @@ static partial class CommandBuilder
         return (p, p);
     }
 
-    private static int HandleHwpView(string filePath, HwpFormat format, string mode, string? pageFilter, bool json)
+    private static int HandleHwpView(
+        string filePath,
+        HwpFormat format,
+        string mode,
+        string? pageFilter,
+        bool json,
+        string? fieldName = null,
+        int? fieldId = null)
     {
         var modeKey = mode.Trim().ToLowerInvariant();
         var formatKey = format == HwpFormat.Hwp
@@ -517,10 +530,17 @@ static partial class CommandBuilder
                 $"{label} bridge view requires OFFICECLI_HWP_ENGINE=rhwp-experimental.",
                 HwpCapabilityConstants.ReasonBridgeNotEnabled,
                 "Set OFFICECLI_HWP_ENGINE=rhwp-experimental and install rhwp-officecli-bridge.",
-                [HwpCapabilityConstants.OperationReadText, HwpCapabilityConstants.OperationRenderSvg],
+                [
+                    HwpCapabilityConstants.OperationReadText,
+                    HwpCapabilityConstants.OperationRenderSvg,
+                    HwpCapabilityConstants.OperationListFields,
+                    HwpCapabilityConstants.OperationReadField
+                ],
                 formatKey,
                 modeKey is "text" or "t" ? HwpCapabilityConstants.OperationReadText
                     : modeKey is "svg" or "g" ? HwpCapabilityConstants.OperationRenderSvg
+                    : modeKey is "fields" ? HwpCapabilityConstants.OperationListFields
+                    : modeKey is "field" ? HwpCapabilityConstants.OperationReadField
                     : null,
                 HwpCapabilityConstants.EngineNone,
                 HwpCapabilityConstants.ModeNone);
@@ -528,6 +548,8 @@ static partial class CommandBuilder
 
         var operation = modeKey is "text" or "t" ? HwpCapabilityConstants.OperationReadText
             : modeKey is "svg" or "g" ? HwpCapabilityConstants.OperationRenderSvg
+            : modeKey is "fields" ? HwpCapabilityConstants.OperationListFields
+            : modeKey is "field" ? HwpCapabilityConstants.OperationReadField
             : null;
         var engine = HwpEngineSelector.GetEngine(formatKey, operation);
         var fileInfo = new FileInfo(filePath);
@@ -597,11 +619,62 @@ static partial class CommandBuilder
             return 0;
         }
 
+        if (modeKey is "fields")
+        {
+            var request = new HwpFieldListRequest(format, filePath, fileInfo.Length, json);
+            var result = engine.ListFieldsAsync(request, ct).GetAwaiter().GetResult();
+            if (json)
+            {
+                var envelope = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["success"] = true,
+                    ["data"] = result.Fields.DeepClone(),
+                    ["engine"] = result.Engine,
+                    ["engineVersion"] = result.EngineVersion,
+                    ["warnings"] = HwpCapabilityJsonMapper.ToJsonArray(result.Warnings)
+                };
+                Console.WriteLine(envelope.ToJsonString(OfficeCli.Core.OutputFormatter.PublicJsonOptions));
+            }
+            else
+            {
+                Console.WriteLine(result.Fields.ToJsonString(OfficeCli.Core.OutputFormatter.PublicJsonOptions));
+            }
+            return 0;
+        }
+
+        if (modeKey is "field")
+        {
+            var request = new HwpFieldReadRequest(format, filePath, fieldName, fieldId, fileInfo.Length, json);
+            var result = engine.ReadFieldAsync(request, ct).GetAwaiter().GetResult();
+            if (json)
+            {
+                var envelope = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["success"] = true,
+                    ["data"] = result.Field.DeepClone(),
+                    ["engine"] = result.Engine,
+                    ["engineVersion"] = result.EngineVersion,
+                    ["warnings"] = HwpCapabilityJsonMapper.ToJsonArray(result.Warnings)
+                };
+                Console.WriteLine(envelope.ToJsonString(OfficeCli.Core.OutputFormatter.PublicJsonOptions));
+            }
+            else
+            {
+                Console.WriteLine(result.Field.ToJsonString(OfficeCli.Core.OutputFormatter.PublicJsonOptions));
+            }
+            return 0;
+        }
+
         throw new HwpEngineException(
-            $"{formatKey} bridge view mode '{mode}' is not supported. Use 'text' or 'svg'.",
+            $"{formatKey} bridge view mode '{mode}' is not supported. Use 'text', 'svg', 'fields', or 'field'.",
             HwpCapabilityConstants.ReasonUnsupportedOperation,
             null,
-            [HwpCapabilityConstants.OperationReadText, HwpCapabilityConstants.OperationRenderSvg],
+            [
+                HwpCapabilityConstants.OperationReadText,
+                HwpCapabilityConstants.OperationRenderSvg,
+                HwpCapabilityConstants.OperationListFields,
+                HwpCapabilityConstants.OperationReadField
+            ],
             formatKey,
             null,
             HwpCapabilityConstants.EngineRhwpBridge,
