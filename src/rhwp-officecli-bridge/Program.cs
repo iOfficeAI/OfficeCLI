@@ -23,6 +23,7 @@ internal static class BridgeProgram
                 "set-field" => ApiBridge(args),
                 "replace-text" => ApiBridge(args),
                 "get-cell-text" => ApiBridge(args),
+                "scan-cells" => ApiBridge(args),
                 _ => Error($"unsupported command: {args[0]}", "unsupported_command")
             };
         }
@@ -178,7 +179,7 @@ internal static class BridgeProgram
 
     private static int Help()
     {
-        Console.WriteLine("rhwp-officecli-bridge read-text|render-svg|list-fields|get-field|set-field|replace-text|get-cell-text --format hwp|hwpx --input <path> --json");
+        Console.WriteLine("rhwp-officecli-bridge read-text|render-svg|list-fields|get-field|set-field|replace-text|get-cell-text|scan-cells --format hwp|hwpx --input <path> --json");
         return 0;
     }
 
