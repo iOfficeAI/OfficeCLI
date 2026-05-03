@@ -114,6 +114,39 @@ public sealed partial class RhwpBridgeEngine
             "rhwp-api replace-text output file created; caller must verify round-trip before production use.");
     }
 
+    public async Task<HwpMutationResult> SetTableCellAsync(HwpTableCellSetRequest request, CancellationToken ct)
+    {
+        if (request.Format != HwpFormat.Hwp)
+            throw MutationUnsupported(request.Format, HwpCapabilityConstants.OperationSetTableCell);
+
+        var args = new List<string>
+        {
+            "set-cell-text", "--format", HwpCapabilityConstants.FormatHwp,
+            "--input", request.InputPath, "--output", request.OutputPath,
+            "--section", request.Section.ToString(),
+            "--parent-para", request.ParentParagraph.ToString(),
+            "--control", request.Control.ToString(),
+            "--cell", request.Cell.ToString(),
+            "--cell-para", request.CellParagraph.ToString(),
+            "--offset", request.Offset.ToString(),
+            "--value", request.Value,
+            "--json"
+        };
+        if (request.Count.HasValue)
+        {
+            args.Add("--count");
+            args.Add(request.Count.Value.ToString());
+        }
+
+        var outputJson = await RunBridgeAsync(args.ToArray(), RenderSvgTimeoutMs, ct);
+        EnsureOutputExists(request.OutputPath);
+        return ParseMutationResult(
+            outputJson,
+            request.OutputPath,
+            "set-cell-text",
+            "rhwp-api set-cell-text output file created; verified only for HWP input fixtures.");
+    }
+
     public Task<HwpMutationResult> SaveOriginalAsync(HwpSaveOriginalRequest request, CancellationToken ct)
         => Task.FromException<HwpMutationResult>(
             MutationUnsupported(request.Format, HwpCapabilityConstants.OperationSaveOriginal));

@@ -47,6 +47,11 @@ public sealed class CustomHwpxEngine : IHwpEngine
         throw Unsupported(request.Format, HwpCapabilityConstants.OperationReplaceText);
     }
 
+    public Task<HwpMutationResult> SetTableCellAsync(HwpTableCellSetRequest request, CancellationToken ct)
+    {
+        throw Unsupported(request.Format, HwpCapabilityConstants.OperationSetTableCell);
+    }
+
     public Task<HwpMutationResult> SaveOriginalAsync(HwpSaveOriginalRequest request, CancellationToken ct)
     {
         throw Unsupported(request.Format, HwpCapabilityConstants.OperationSaveOriginal);
