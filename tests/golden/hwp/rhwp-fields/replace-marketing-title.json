@@ -1,0 +1,1 @@
+{"engineVersion":"rhwp-api 0.1.0","format":"hwp","output":"tests/golden/hwp/rhwp-fields/replace-marketing-title.hwp","replacement":{"charOffset":0,"newLength":3,"ok":true,"para":2,"sec":0},"warnings":["experimental text replacement; verify round-trip before production use"]}

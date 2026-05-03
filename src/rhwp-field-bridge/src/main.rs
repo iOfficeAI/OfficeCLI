@@ -38,6 +38,7 @@ fn run() -> Result<(), String> {
         "list-fields" => list_fields(&doc, format),
         "get-field" => get_field(&doc, format, &options),
         "set-field" => set_field(&mut doc, format, &options),
+        "replace-text" => replace_text(&mut doc, format, &options),
         _ => Err(format!("unsupported command: {command}")),
     }
 }
@@ -109,16 +110,7 @@ fn set_field(
         return Err("missing --name or --id".to_string());
     };
 
-    let bytes = match format {
-        "hwp" => doc
-            .export_hwp_with_adapter()
-            .map_err(|e| format!("HWP export failed: {e}"))?,
-        "hwpx" => doc
-            .export_hwpx_native()
-            .map_err(|e| format!("HWPX export failed: {e}"))?,
-        other => return Err(format!("unsupported --format: {other}")),
-    };
-    fs::write(output, bytes).map_err(|e| format!("output write failed: {e}"))?;
+    write_document(doc, format, output)?;
 
     let field: Value = serde_json::from_str(&mutation_json)
         .map_err(|e| format!("field mutation JSON parse failed: {e}"))?;
@@ -133,6 +125,59 @@ fn set_field(
         })
     );
     Ok(())
+}
+
+fn replace_text(
+    doc: &mut HwpDocument,
+    format: &str,
+    options: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    let output = required(options, "--output")?;
+    let query = required(options, "--query")?;
+    let value = required(options, "--value")?;
+    let mode = options.get("--mode").map(String::as_str).unwrap_or("one");
+    let case_sensitive = options
+        .get("--case-sensitive")
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    let replace_json = match mode {
+        "one" => doc
+            .replace_one_native(query, value, case_sensitive)
+            .map_err(|e| format!("replace one failed: {e}"))?,
+        "all" => doc
+            .replace_all_native(query, value, case_sensitive)
+            .map_err(|e| format!("replace all failed: {e}"))?,
+        other => return Err(format!("unsupported --mode: {other}")),
+    };
+    write_document(doc, format, output)?;
+
+    let replacement: Value = serde_json::from_str(&replace_json)
+        .map_err(|e| format!("replace text JSON parse failed: {e}"))?;
+    println!(
+        "{}",
+        json!({
+            "replacement": replacement,
+            "output": output,
+            "engineVersion": concat!("rhwp-api ", env!("CARGO_PKG_VERSION")),
+            "format": format,
+            "warnings": ["experimental text replacement; verify round-trip before production use"]
+        })
+    );
+    Ok(())
+}
+
+fn write_document(doc: &mut HwpDocument, format: &str, output: &str) -> Result<(), String> {
+    let bytes = match format {
+        "hwp" => doc
+            .export_hwp_with_adapter()
+            .map_err(|e| format!("HWP export failed: {e}"))?,
+        "hwpx" => doc
+            .export_hwpx_native()
+            .map_err(|e| format!("HWPX export failed: {e}"))?,
+        other => return Err(format!("unsupported --format: {other}")),
+    };
+    fs::write(output, bytes).map_err(|e| format!("output write failed: {e}"))
 }
 
 fn parse_options(args: &[String]) -> Result<BTreeMap<String, String>, String> {
@@ -168,6 +213,6 @@ fn required<'a>(options: &'a BTreeMap<String, String>, key: &str) -> Result<&'a 
 
 fn print_help() {
     println!(
-        "rhwp-field-bridge list-fields|get-field|set-field --format hwp|hwpx --input <path> [--output <path>] [--name <field>] [--id <fieldId>] [--value <text>] --json"
+        "rhwp-field-bridge list-fields|get-field|set-field|replace-text --format hwp|hwpx --input <path> [--output <path>] [--name <field>] [--id <fieldId>] [--query <text>] [--value <text>] [--mode one|all] --json"
     );
 }
