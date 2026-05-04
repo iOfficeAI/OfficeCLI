@@ -71,7 +71,7 @@ public static class HwpCapabilityJsonMapper
             result["safeInPlace"] = new JsonObject
             {
                 ["support"] = HwpCapabilityConstants.StatusExperimental,
-                ["ready"] = IsReady(capability),
+                ["ready"] = IsSafeInPlaceReady(capability),
                 ["requires"] = ToJsonArray(["--in-place", "--backup", "--verify"]),
                 ["example"] = "officecli set input.hwp /text --prop find=마케팅 --prop value=브릿지 --in-place --backup --verify --json",
                 ["policy"] = "creates temp output, provider readback, semantic delta, backup, manifest, then atomic replace"
@@ -86,6 +86,38 @@ public static class HwpCapabilityJsonMapper
             return false;
         return capability.UnsupportedReason is null
             or HwpCapabilityConstants.ReasonRoundTripUnverified;
+    }
+
+    private static bool IsSafeInPlaceReady(HwpOperationCapability capability)
+    {
+        if (!IsReady(capability))
+            return false;
+
+        var rhwp = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_BIN") ?? "rhwp";
+        var api = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_API_BIN");
+        return CommandOrFileExists(rhwp) && CommandOrFileExists(api);
+    }
+
+    private static bool CommandOrFileExists(string? pathOrCommand)
+    {
+        if (string.IsNullOrWhiteSpace(pathOrCommand))
+            return false;
+
+        if (pathOrCommand.Contains(Path.DirectorySeparatorChar)
+            || pathOrCommand.Contains(Path.AltDirectorySeparatorChar))
+        {
+            return File.Exists(pathOrCommand);
+        }
+
+        var path = Environment.GetEnvironmentVariable("PATH") ?? "";
+        foreach (var directory in path.Split(Path.PathSeparator))
+        {
+            if (string.IsNullOrWhiteSpace(directory)) continue;
+            if (File.Exists(Path.Combine(directory, pathOrCommand))) return true;
+            if (OperatingSystem.IsWindows()
+                && File.Exists(Path.Combine(directory, pathOrCommand + ".exe"))) return true;
+        }
+        return false;
     }
 
     private static IEnumerable<string> BuildBlockedBy(HwpOperationCapability capability)
