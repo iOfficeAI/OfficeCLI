@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "format": "hwpx",
+  "description": "HWPX compatibility corpus entries. Paths may point at existing shared fixtures.",
+  "fixtures": [
+    {
+      "id": "hwpx-table-vpos-news",
+      "path": "tests/fixtures/hwp/rhwp-smoke/table-vpos-01.hwpx",
+      "sha256": "95768dadad966b3ba7853bb3904e9cc8409be21d7e795afcef1ec17fd7c75622",
+      "sizeBytes": 367634,
+      "classes": ["hwpx", "tables", "multi-page", "korean-text", "layout-heavy"],
+      "verifiedOperations": ["read_text", "render_svg", "replace_text"],
+      "blockedOperations": [
+        {
+          "operation": "set_table_cell",
+          "reason": "roundtrip_unverified",
+          "notes": "Generated HWPX table-cell mutation has not passed Hancom compatibility gates."
+        }
+      ],
+      "evidence": [
+        "tests/golden/hwp/rhwp-smoke/hwpx-officecli-view/text.pretty.json",
+        "tests/golden/hwp/rhwp-smoke/hwpx-officecli-view/svg.pretty.json",
+        "tests/golden/hwp/rhwp-fields/officecli-replace-hwpx-government.json"
+      ],
+      "notes": "HWPX smoke fixture for rhwp opt-in read/render and text replacement; custom handler remains default."
+    }
+  ]
+}

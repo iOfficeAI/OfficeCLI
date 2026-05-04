@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "format": "hwp",
+  "description": "Binary HWP compatibility corpus entries with operation-level evidence.",
+  "fixtures": [
+    {
+      "id": "hwp-plain-mixed-cjk-latin",
+      "path": "tests/fixtures/hwp/rhwp-smoke/re-mixed-malgun-timesnew-hancom.hwp",
+      "sha256": "e51d7daf0a8c98da7018f2213cc2fe4f79bda94b02883292a2abebf77bfa8b6c",
+      "sizeBytes": 16384,
+      "classes": ["plain-text", "korean-english-mixed", "binary-hwp"],
+      "verifiedOperations": ["read_text", "render_svg", "replace_text"],
+      "evidence": [
+        "tests/golden/hwp/rhwp-smoke/officecli-view/text.pretty.json",
+        "tests/golden/hwp/rhwp-smoke/officecli-view/svg.pretty.json"
+      ],
+      "notes": "Small binary HWP smoke fixture used for read/render and plain text replacement."
+    },
+    {
+      "id": "hwp-field-form",
+      "path": "tests/fixtures/hwp/rhwp-fields/field-01.hwp",
+      "sha256": "518cb939079e6e0640a5f813597f744e2528a17ca52ee418929f1c8f4b5380c0",
+      "sizeBytes": 514560,
+      "classes": ["fields", "forms", "multi-page", "binary-hwp"],
+      "verifiedOperations": ["list_fields", "read_field", "fill_field", "replace_text"],
+      "evidence": [
+        "tests/golden/hwp/rhwp-fields/field-list.json",
+        "tests/golden/hwp/rhwp-fields/field-read-company-name.json",
+        "tests/golden/hwp/rhwp-fields/field-set-company-name-cli-readback.json",
+        "tests/golden/hwp/rhwp-fields/officecli-replace-marketing-title.json"
+      ],
+      "notes": "Field-heavy binary HWP fixture for read-only field discovery and gated field/text mutation."
+    },
+    {
+      "id": "hwp-table-cell",
+      "path": "tests/fixtures/hwp/rhwp-tables-hwp.hwp",
+      "sha256": "dc3e57d7577447ae4b47f59bdb0f499a5ac29066b62af8a650bcdd8d70eee32a",
+      "sizeBytes": 29184,
+      "classes": ["tables", "table-cell-mutation", "binary-hwp"],
+      "verifiedOperations": ["table_map", "set_table_cell"],
+      "evidence": [
+        "tests/golden/hwp/rhwp-tables/scan-cells-table-vpos-01.json",
+        "tests/golden/hwp/rhwp-tables/officecli-set-cell-hwp-table.json",
+        "tests/golden/hwp/rhwp-tables/officecli-set-cell-hwp-table-readback.json"
+      ],
+      "notes": "Binary HWP table fixture for explicit rhwp coordinate based table-cell edits."
+    }
+  ]
+}
