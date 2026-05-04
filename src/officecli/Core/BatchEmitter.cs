@@ -82,7 +82,7 @@ public static class BatchEmitter
         string xml;
         try { xml = word.Raw("/settings"); }
         catch { return; }
-        if (string.IsNullOrEmpty(xml)) return;
+        if (string.IsNullOrEmpty(xml) || !xml.StartsWith("<")) return;
 
         items.Add(new BatchItem
         {
@@ -105,7 +105,7 @@ public static class BatchEmitter
         string xml;
         try { xml = word.Raw("/numbering"); }
         catch { return; }
-        if (string.IsNullOrEmpty(xml)) return;
+        if (string.IsNullOrEmpty(xml) || !xml.StartsWith("<")) return;
         // Skip when numbering is empty (just `<w:numbering/>` with no children).
         if (!xml.Contains("<w:abstractNum") && !xml.Contains("<w:num "))
             return;
@@ -634,19 +634,46 @@ public static class BatchEmitter
             .ToList();
         if (rows.Count == 0) return;
 
-        // Pull cell count from the first row. Column count emitted by Get
-        // (Format["cols"]) reflects the gridCol count, which can drift from
-        // actual cells if the table has merges; the row's own count is the
-        // safer bet for shape during replay.
-        int cellsInFirstRow = 0;
-        var row0 = word.Get(rows[0].Path);
-        if (row0.Children != null)
-            cellsInFirstRow = row0.Children.Count(c => c.Type == "cell");
-        if (cellsInFirstRow == 0) return;
+        // Column count must cover the widest row including colspan effects.
+        // Format["cols"] reflects gridCol; per-row effective width is
+        // sum(colspan or 1) over each cell. Take the max so a first row
+        // with merged cells (visible cell count < grid width) doesn't
+        // truncate the table shape and break later `set tc[N]` rows.
+        var rowEffectiveWidths = new List<int>(rows.Count);
+        var rowCellNodes = new List<List<DocumentNode>>(rows.Count);
+        foreach (var rowChild in rows)
+        {
+            var rowNode = word.Get(rowChild.Path);
+            var cells = (rowNode.Children ?? new List<DocumentNode>())
+                .Where(c => c.Type == "cell")
+                .ToList();
+            rowCellNodes.Add(cells);
+            int width = 0;
+            foreach (var cell in cells)
+            {
+                int span = 1;
+                if (cell.Format.TryGetValue("colspan", out var sp) &&
+                    int.TryParse(sp?.ToString(), out var n) && n > 0)
+                {
+                    span = n;
+                }
+                width += span;
+            }
+            rowEffectiveWidths.Add(width);
+        }
+        int colsFromRows = rowEffectiveWidths.Count > 0 ? rowEffectiveWidths.Max() : 0;
+        int colsFromGrid = 0;
+        if (tableNode.Format.TryGetValue("cols", out var gridColObj) &&
+            int.TryParse(gridColObj?.ToString(), out var gridCols))
+        {
+            colsFromGrid = gridCols;
+        }
+        int cols = Math.Max(colsFromGrid, colsFromRows);
+        if (cols == 0) return;
 
         var tableProps = FilterEmittableProps(tableNode.Format);
         tableProps["rows"] = rows.Count.ToString();
-        tableProps["cols"] = cellsInFirstRow.ToString();
+        tableProps["cols"] = cols.ToString();
         items.Add(new BatchItem
         {
             Command = "add",
@@ -658,14 +685,30 @@ public static class BatchEmitter
         var tablePath = $"/body/tbl[{targetIndex}]";
         for (int r = 0; r < rows.Count; r++)
         {
-            var rowNode = word.Get(rows[r].Path);
-            var cells = (rowNode.Children ?? new List<DocumentNode>())
-                .Where(c => c.Type == "cell")
-                .ToList();
+            var cells = rowCellNodes[r];
             for (int c = 0; c < cells.Count; c++)
             {
                 var cellNode = word.Get(cells[c].Path);
                 var cellTargetPath = $"{tablePath}/tr[{r + 1}]/tc[{c + 1}]";
+
+                // Cell-level tcPr properties (fill, valign, width, borders,
+                // padding, colspan, …) are surfaced on cellNode.Format but
+                // were previously dropped — only the inner paragraph was
+                // emitted. Push them via a `set` on the cell path before
+                // the paragraph emits so cell shading / merges / widths
+                // round-trip. Skip keys that EmitParagraph will re-apply
+                // to the first paragraph (align/direction/run leak-throughs)
+                // to avoid double-application.
+                var cellProps = ExtractCellOnlyProps(cellNode.Format);
+                if (cellProps.Count > 0)
+                {
+                    items.Add(new BatchItem
+                    {
+                        Command = "set",
+                        Path = cellTargetPath,
+                        Props = cellProps
+                    });
+                }
 
                 // Each cell carries auto-generated paragraphs (Add table seeds
                 // one empty paragraph per cell). Update the first one in place
@@ -680,6 +723,30 @@ public static class BatchEmitter
                 }
             }
         }
+    }
+
+    // Cell Format includes both true tcPr keys and "leaked" keys read from
+    // the first inner paragraph/run (align, direction, font, size, bold, …).
+    // EmitParagraph re-emits those for the first paragraph, so emitting them
+    // here too would double-apply. Whitelist genuine cell-level keys only.
+    private static readonly HashSet<string> CellOnlyKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "fill", "width", "valign", "vmerge", "colspan", "nowrap", "textDirection",
+    };
+
+    private static Dictionary<string, string> ExtractCellOnlyProps(Dictionary<string, object?> raw)
+    {
+        var filtered = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, val) in raw)
+        {
+            if (CellOnlyKeys.Contains(key) ||
+                key.StartsWith("border.", StringComparison.OrdinalIgnoreCase) ||
+                key.StartsWith("padding.", StringComparison.OrdinalIgnoreCase))
+            {
+                filtered[key] = val;
+            }
+        }
+        return FilterEmittableProps(filtered);
     }
 
     private static Dictionary<string, string> BuildChartProps(ChartSpec spec)
