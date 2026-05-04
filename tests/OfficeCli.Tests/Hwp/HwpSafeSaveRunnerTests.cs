@@ -146,7 +146,7 @@ public class HwpSafeSaveRunnerTests : IDisposable
     }
 
     [Fact]
-    public async Task InPlaceReturnsNotReadyAndDoesNotReplaceSource()
+    public async Task InPlaceRequiresBackupBeforeReplacingSource()
     {
         var input = CreateFile("input/source.hwp", "source");
         var runner = new SafeSaveRunner();
@@ -164,7 +164,7 @@ public class HwpSafeSaveRunnerTests : IDisposable
         Assert.False(transaction.Ok);
         Assert.False(transaction.Verified);
         Assert.Equal("source", File.ReadAllText(input));
-        Assert.Contains(transaction.Checks, check => check.Name == "in-place-not-ready" && !check.Ok);
+        Assert.Contains(transaction.Checks, check => check.Name == "in-place-requires-backup" && !check.Ok);
     }
 
     private async Task<SafeSaveTransaction> RunOutputAsync(string input, string output)

@@ -394,7 +394,7 @@ public partial class HwpBridgeSidecarTests : IDisposable
         Assert.False(root["data"]!["transaction"]!["ok"]!.GetValue<bool>());
         Assert.Contains(
             root["data"]!["transaction"]!["checks"]!.AsArray(),
-            check => check?["name"]?.GetValue<string>() == "in-place-not-ready");
+            check => check?["name"]?.GetValue<string>() == "in-place-requires-backup");
     }
 
     [Fact]
