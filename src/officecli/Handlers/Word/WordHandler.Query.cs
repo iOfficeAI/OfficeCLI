@@ -734,16 +734,8 @@ public partial class WordHandler
                 // CONSISTENCY(outline-lvl): outlineLvl not yet exposed by paragraph Get.
                 if (pPr.OutlineLevel?.Val?.Value != null) styleNode.Format["outlineLvl"] = (int)pPr.OutlineLevel.Val.Value;
 
-                // Numbering linkage on the style itself (numPr in style/pPr).
-                // Mirrors paragraph-level numId/ilvl readback in Navigation.cs.
-                if (pPr.NumberingProperties != null)
-                {
-                    var sNumPr = pPr.NumberingProperties;
-                    if (sNumPr.NumberingId?.Val?.Value != null)
-                        styleNode.Format["numId"] = sNumPr.NumberingId.Val.Value.ToString();
-                    if (sNumPr.NumberingLevelReference?.Val?.Value != null)
-                        styleNode.Format["ilvl"] = sNumPr.NumberingLevelReference.Val.Value.ToString();
-                }
+                // Numbering linkage on the style itself emitted below as numId/numLevel
+                // (CONSISTENCY(canonical-keys): paragraph Get also emits numLevel, not ilvl).
 
                 // Toggle props: respect explicit val="false" instead of treating presence as true.
                 if (pPr.KeepNext != null)
