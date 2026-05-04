@@ -457,7 +457,8 @@ OFFICECLI_SKIP_UPDATE=1 officecli ...          # Skip check for one invocation (
 | Command | Description |
 |---------|-------------|
 | [`create`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-create) | Create a blank .docx, .xlsx, or .pptx (type from extension) |
-| [`view`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-view) | View content (modes: `outline`, `text`, `annotated`, `stats`, `issues`, `html`) |
+| [`view`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-view) | View content (modes: `outline`, `text`, `annotated`, `stats` (`--page-count`), `issues`, `html`, `screenshot`). docx supports `--render auto\|native\|html`. |
+| [`load_skill`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-skills) | Print embedded SKILL.md content for a specialized skill (no install) |
 | [`get`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-get) | Get element and children (`--depth N`, `--json`) |
 | [`query`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-query) | CSS-like query (`[attr=value]`, `:contains()`, `:has()`, etc.) |
 | [`set`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-set) | Modify element properties |
