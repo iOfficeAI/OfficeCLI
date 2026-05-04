@@ -310,7 +310,17 @@ public partial class WordHandler
 
         var imgDocPropId = NextDocPropId();
         Run imgRun;
-        if (properties.TryGetValue("anchor", out var anchorVal) && IsTruthy(anchorVal))
+        // BUG-R4-BT3: a non-"none" `wrap` value implies floating placement —
+        // wrap only has meaning on a <wp:anchor>. Previously, callers passing
+        // `wrap=square|tight|topBottom|behind|inFront` without an explicit
+        // `anchor=true` got an inline picture and the wrap was silently
+        // dropped (also affected dump round-trip of floating pictures).
+        bool wrapImpliesAnchor = properties.TryGetValue("wrap", out var implicitWrap)
+            && !string.IsNullOrEmpty(implicitWrap)
+            && !string.Equals(implicitWrap, "none", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(implicitWrap, "inline", StringComparison.OrdinalIgnoreCase);
+        if ((properties.TryGetValue("anchor", out var anchorVal) && IsTruthy(anchorVal))
+            || wrapImpliesAnchor)
         {
             var wrapType = properties.GetValueOrDefault("wrap", "none");
             long hPos = properties.TryGetValue("hposition", out var hPosStr) ? ParseEmu(hPosStr) : 0;
