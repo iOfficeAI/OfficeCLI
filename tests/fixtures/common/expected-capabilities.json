@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "description": "Expected corpus-backed capability evidence for HWP/HWPX parity tracking.",
+  "formats": {
+    "hwp": {
+      "defaultEngine": "rhwp-bridge",
+      "operations": {
+        "read_text": {
+          "status": "experimental",
+          "evidence": ["tests/golden/hwp/rhwp-smoke/officecli-view/text.pretty.json"]
+        },
+        "render_svg": {
+          "status": "experimental",
+          "evidence": ["tests/golden/hwp/rhwp-smoke/officecli-view/svg.pretty.json"]
+        },
+        "list_fields": {
+          "status": "experimental",
+          "evidence": ["tests/golden/hwp/rhwp-fields/field-list.json"]
+        },
+        "read_field": {
+          "status": "experimental",
+          "evidence": ["tests/golden/hwp/rhwp-fields/field-read-company-name.json"]
+        },
+        "fill_field": {
+          "status": "experimental",
+          "evidence": ["tests/golden/hwp/rhwp-fields/field-set-company-name-cli-readback.json"]
+        },
+        "replace_text": {
+          "status": "experimental",
+          "evidence": ["tests/golden/hwp/rhwp-fields/officecli-replace-marketing-title.json"]
+        },
+        "set_table_cell": {
+          "status": "experimental",
+          "evidence": ["tests/golden/hwp/rhwp-tables/officecli-set-cell-hwp-table-readback.json"]
+        }
+      }
+    },
+    "hwpx": {
+      "defaultEngine": "custom",
+      "operations": {
+        "read_text": {
+          "status": "experimental",
+          "evidence": ["tests/golden/hwp/rhwp-smoke/hwpx-officecli-view/text.pretty.json"]
+        },
+        "render_svg": {
+          "status": "experimental",
+          "evidence": ["tests/golden/hwp/rhwp-smoke/hwpx-officecli-view/svg.pretty.json"]
+        },
+        "replace_text": {
+          "status": "experimental",
+          "evidence": ["tests/golden/hwp/rhwp-fields/officecli-replace-hwpx-government.json"]
+        },
+        "set_table_cell": {
+          "status": "unsupported",
+          "reason": "roundtrip_unverified",
+          "evidence": []
+        }
+      }
+    }
+  }
+}
