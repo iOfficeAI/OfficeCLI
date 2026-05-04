@@ -117,7 +117,8 @@ public partial class PowerPointHandler : IDocumentHandler
         // duplicate cNvPr ids that PowerPoint silently rejects. Rebuild the
         // shape-id index from the live tree after every raw-set.
         InitShapeIdCounter();
-        Console.WriteLine($"raw-set: {affected} element(s) affected");
+        // BUG-R5-01: silent — CLI wrappers print their own structured message.
+        _ = affected;
     }
 
     public (string RelId, string PartPath) AddPart(string parentPartPath, string partType, Dictionary<string, string>? properties = null)

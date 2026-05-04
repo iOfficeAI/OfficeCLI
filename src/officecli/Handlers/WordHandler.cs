@@ -248,7 +248,11 @@ public partial class WordHandler : IDocumentHandler
         // across the same _usedParaIds set. Re-run EnsureAllParaIds after
         // every successful raw mutation so the global pool stays accurate.
         EnsureAllParaIds();
-        Console.WriteLine($"raw-set: {affected} element(s) affected");
+        // BUG-R5-01: do not emit chatter from inside the handler — the CLI
+        // wrappers (CommandBuilder.Raw raw-set + batch run raw-set) print
+        // their own structured message. Writing here pollutes batch --json
+        // output (extra stdout lines escaped into result.message strings).
+        _ = affected;
     }
 
     public List<ValidationError> Validate() => RawXmlHelper.ValidateDocument(_doc);

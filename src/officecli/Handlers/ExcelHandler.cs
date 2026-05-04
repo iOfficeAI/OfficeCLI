@@ -262,7 +262,8 @@ public partial class ExcelHandler : IDocumentHandler
 
         var affected = RawXmlHelper.Execute(rootElement, xpath, action, xml);
         rootElement.Save();
-        Console.WriteLine($"raw-set: {affected} element(s) affected");
+        // BUG-R5-01: silent — CLI wrappers print their own structured message.
+        _ = affected;
     }
 
     public List<ValidationError> Validate() => RawXmlHelper.ValidateDocument(_doc);
