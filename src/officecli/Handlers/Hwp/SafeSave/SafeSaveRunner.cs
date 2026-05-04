@@ -8,7 +8,7 @@ internal sealed class SafeSaveRunner
     public async Task<SafeSaveTransaction> RunAsync(
         SafeSaveOptions options,
         Func<string, Task> writeTempAsync,
-        Func<string, Task<IReadOnlyList<SafeSaveCheck>>> validateAsync,
+        Func<string, Task<SafeSaveValidationResult>> validateAsync,
         CancellationToken cancellationToken)
     {
         if (options.InPlace)
@@ -38,7 +38,8 @@ internal sealed class SafeSaveRunner
             {
                 BuildTempWriteCheck(tempPath)
             };
-            checks.AddRange(await validateAsync(tempPath).ConfigureAwait(false));
+            var validation = await validateAsync(tempPath).ConfigureAwait(false);
+            checks.AddRange(validation.Checks);
 
             var missing = FindMissingRequiredChecks(options.Policy, checks);
             if (missing.Count > 0)
@@ -49,11 +50,11 @@ internal sealed class SafeSaveRunner
                     "error",
                     $"Missing or failed required safe-save check(s): {string.Join(", ", missing)}"));
                 TryDelete(tempPath);
-                return Transaction(options, tempPath, false, false, checks, ["safe-save required checks failed"]);
+                return Transaction(options, tempPath, false, false, checks, validation, ["safe-save required checks failed"]);
             }
 
             File.Move(tempPath, outputPath, overwrite: true);
-            return Transaction(options, tempPath, true, true, checks, []);
+            return Transaction(options, tempPath, true, true, checks, validation, []);
         }
         catch
         {
@@ -74,6 +75,7 @@ internal sealed class SafeSaveRunner
                 "error",
                 "In-place safe save requires backup, manifest, and atomic replace slice.")
         ],
+        null,
         ["in-place safe save requires backup, manifest, and atomic replace slice"]);
 
     private static SafeSaveTransaction Failed(
@@ -86,6 +88,7 @@ internal sealed class SafeSaveRunner
         false,
         false,
         [new SafeSaveCheck(checkName, false, "error", message)],
+        null,
         [message]);
 
     private static SafeSaveTransaction Transaction(
@@ -94,6 +97,7 @@ internal sealed class SafeSaveRunner
         bool ok,
         bool verified,
         IReadOnlyList<SafeSaveCheck> checks,
+        SafeSaveValidationResult? validation,
         IReadOnlyList<string> warnings) => new(
         SchemaVersion: 1,
         Ok: ok,
@@ -107,9 +111,9 @@ internal sealed class SafeSaveRunner
         ManifestPath: null,
         Verified: verified,
         Checks: checks,
-        SemanticDelta: null,
-        VisualDelta: null,
-        PackageIntegrity: null,
+        SemanticDelta: validation?.SemanticDelta,
+        VisualDelta: validation?.VisualDelta,
+        PackageIntegrity: validation?.PackageIntegrity,
         Warnings: warnings);
 
     private static SafeSaveCheck BuildTempWriteCheck(string tempPath)
