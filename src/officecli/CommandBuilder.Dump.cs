@@ -26,7 +26,7 @@ static partial class CommandBuilder
         dumpCommand.Add(outOpt);
         dumpCommand.Add(jsonOption);
 
-        dumpCommand.SetAction(result => SafeRun(() =>
+        dumpCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(dumpFileArg)!;
             var format = (result.GetValue(formatOpt) ?? "batch").ToLowerInvariant();
@@ -51,7 +51,6 @@ static partial class CommandBuilder
             // never threaded into Serialize — kept the compact behavior, just
             // dropped the dead options block.
             var output = JsonSerializer.Serialize(items, BatchJsonContext.Default.ListBatchItem);
-            var json = result.GetValue(jsonOption);
             // BUG-R4-FUZZ-3: Unix convention — `--out -` means stdout, not a
             // file literally named "-". Without this, running `dump --out -`
             // silently created a `-` file in the cwd (and could pollute the
@@ -75,7 +74,7 @@ static partial class CommandBuilder
                     Console.WriteLine(output);
             }
             return 0;
-        }));
+        }, json); });
 
         return dumpCommand;
     }
