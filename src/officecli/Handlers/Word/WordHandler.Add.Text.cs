@@ -405,6 +405,18 @@ public partial class WordHandler
                 if (rfCs != null) rFonts.ComplexScript = rfCs;
                 rProps.AppendChild(rFonts);
             }
+            // BUG-R6-03 / F-3: rStyle binds the paragraph mark above (so the
+            // style sticks to the paragraph) but the implicit text run
+            // rendered alongside `text=…` previously inherited Normal —
+            // every dump→batch round-trip silently dropped run-style
+            // formatting from headings (`add p text=… rStyle=Strong`).
+            // Apply rStyle to the implicit run rPr too so the visible text
+            // picks up the character style in addition to the mark.
+            if (properties.TryGetValue("rStyle", out var pRunRStyle)
+                || properties.TryGetValue("rstyle", out pRunRStyle))
+            {
+                rProps.RunStyle = new RunStyle { Val = pRunRStyle };
+            }
             if (properties.TryGetValue("size", out var size) || properties.TryGetValue("font.size", out size) || properties.TryGetValue("fontsize", out size))
             {
                 rProps.AppendChild(new FontSize { Val = ((int)Math.Round(ParseFontSize(size) * 2, MidpointRounding.AwayFromZero)).ToString() });
