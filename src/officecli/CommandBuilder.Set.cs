@@ -13,8 +13,8 @@ static partial class CommandBuilder
     private static Command BuildSetCommand(Option<bool> jsonOption)
     {
         var forceOption = new Option<bool>("--force") { Description = "Force write even if document is protected" };
-        var inPlaceOption = new Option<bool>("--in-place") { Description = "HWP safe-save in-place mutation (experimental; currently returns not-ready)" };
-        var backupOption = new Option<bool>("--backup") { Description = "Create a backup before HWP in-place mutation (reserved for safe-save phase)" };
+        var inPlaceOption = new Option<bool>("--in-place") { Description = "HWP safe-save in-place mutation (experimental; requires --backup --verify)" };
+        var backupOption = new Option<bool>("--backup") { Description = "Create a backup before HWP in-place mutation" };
         var verifyOption = new Option<bool>("--verify") { Description = "Run HWP safe-save verification checks before publishing output" };
         var setFileArg = new Argument<FileInfo>("file") { Description = "Office document path (required even with open/close mode)" };
         var setPathArg = new Argument<string>("path") { Description = "DOM path to the element" };
@@ -29,6 +29,7 @@ static partial class CommandBuilder
               officecli set form.hwp /field --prop name=회사명 --prop value=리지 --prop output=out.hwp --json
               officecli set form.hwp /field --prop id=1584999796 --prop value=리지 --prop output=out.hwp --json
               officecli set form.hwp /text --prop find=마케팅 --prop value=브릿지 --prop output=out.hwp --json
+              officecli set form.hwp /text --prop find=마케팅 --prop value=브릿지 --in-place --backup --verify --json
               officecli set table.hwp /table/cell --prop section=0 --prop parent-para=3 --prop control=0 --prop cell=0 --prop value=오피스셀 --prop output=out.hwp --json
 
             HWP requires OFFICECLI_HWP_ENGINE=rhwp-experimental plus bridge paths; run `officecli help hwp`.
@@ -348,155 +349,6 @@ static partial class CommandBuilder
         }, json); });
 
         return setCommand;
-    }
-
-    private static int HandleHwpFieldSet(
-        string inputPath,
-        HwpFormat format,
-        Dictionary<string, string> properties,
-        bool json)
-    {
-        var fieldName = FirstValue(properties, "name", "field", "field-name");
-        var fieldIdRaw = FirstValue(properties, "id", "field-id", "fieldId");
-        var value = FirstValue(properties, "value", "text");
-        var output = FirstValue(properties, "output", "out");
-        if ((string.IsNullOrWhiteSpace(fieldName) && string.IsNullOrWhiteSpace(fieldIdRaw))
-            || value == null || string.IsNullOrWhiteSpace(output))
-        {
-            var message = "HWP field set requires --prop name=<field> or --prop id=<fieldId>, plus --prop value=<text> --prop output=<path>.";
-            if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(message));
-            else Console.Error.WriteLine(message);
-            return 1;
-        }
-        if (!string.IsNullOrWhiteSpace(fieldIdRaw) && !int.TryParse(fieldIdRaw, out _))
-        {
-            var message = $"Invalid HWP field id '{fieldIdRaw}'.";
-            if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(message));
-            else Console.Error.WriteLine(message);
-            return 1;
-        }
-
-        var outputPath = Path.GetFullPath(output);
-        var outputDir = Path.GetDirectoryName(outputPath);
-        if (!string.IsNullOrEmpty(outputDir)) Directory.CreateDirectory(outputDir);
-
-        var formatKey = format == HwpFormat.Hwp
-            ? HwpCapabilityConstants.FormatHwp
-            : HwpCapabilityConstants.FormatHwpx;
-        var engine = HwpEngineSelector.GetEngine(formatKey, HwpCapabilityConstants.OperationFillField);
-        var nameFields = string.IsNullOrWhiteSpace(fieldName)
-            ? new Dictionary<string, string>()
-            : new Dictionary<string, string> { [fieldName] = value };
-        var idFields = string.IsNullOrWhiteSpace(fieldIdRaw)
-            ? new Dictionary<int, string>()
-            : new Dictionary<int, string> { [int.Parse(fieldIdRaw)] = value };
-        var request = new HwpFillFieldRequest(
-            format,
-            inputPath,
-            outputPath,
-            nameFields,
-            json)
-        {
-            FieldIds = idFields
-        };
-        var result = engine.FillFieldAsync(request, CancellationToken.None).GetAwaiter().GetResult();
-        var fieldLabel = !string.IsNullOrWhiteSpace(fieldName) ? fieldName : $"#{fieldIdRaw}";
-
-        if (json)
-        {
-            var envelope = new System.Text.Json.Nodes.JsonObject
-            {
-                ["success"] = true,
-                ["message"] = $"Updated HWP field '{fieldLabel}' -> {result.OutputPath}",
-                ["data"] = new System.Text.Json.Nodes.JsonObject
-                {
-                    ["outputPath"] = result.OutputPath,
-                    ["engine"] = result.Engine,
-                    ["engineVersion"] = result.EngineVersion,
-                    ["evidence"] = HwpCapabilityJsonMapper.ToJsonArray(result.Evidence)
-                },
-                ["warnings"] = HwpCapabilityJsonMapper.ToJsonArray(result.Warnings)
-            };
-            Console.WriteLine(envelope.ToJsonString(OutputFormatter.PublicJsonOptions));
-        }
-        else
-        {
-            Console.WriteLine($"Updated HWP field '{fieldLabel}' -> {result.OutputPath}");
-            foreach (var warning in result.Warnings)
-                Console.Error.WriteLine($"WARNING: {warning}");
-        }
-        return 0;
-    }
-
-    private static int HandleHwpTextReplace(
-        string inputPath,
-        HwpFormat format,
-        Dictionary<string, string> properties,
-        bool json,
-        bool inPlace,
-        bool backup,
-        bool verify)
-    {
-        var query = FirstValue(properties, "find", "query", "old");
-        var value = FirstValue(properties, "value", "text", "new");
-        var output = FirstValue(properties, "output", "out");
-        var mode = FirstValue(properties, "mode") ?? "one";
-        var caseSensitiveRaw = FirstValue(properties, "case-sensitive", "caseSensitive") ?? "false";
-        if (string.IsNullOrEmpty(query) || value == null || (!inPlace && string.IsNullOrWhiteSpace(output)))
-        {
-            var message = "HWP text replace requires --prop find=<text> --prop value=<text> plus --prop output=<path> or --in-place.";
-            if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(message));
-            else Console.Error.WriteLine(message);
-            return 1;
-        }
-
-        var outputPath = inPlace ? Path.GetFullPath(inputPath) : Path.GetFullPath(output!);
-        var outputDir = Path.GetDirectoryName(outputPath);
-        if (!string.IsNullOrEmpty(outputDir)) Directory.CreateDirectory(outputDir);
-
-        var formatKey = format == HwpFormat.Hwp
-            ? HwpCapabilityConstants.FormatHwp
-            : HwpCapabilityConstants.FormatHwpx;
-        var engine = HwpEngineSelector.GetEngine(formatKey, HwpCapabilityConstants.OperationReplaceText);
-        var request = new HwpReplaceTextRequest(
-            format,
-            inputPath,
-            outputPath,
-            query,
-            value,
-            mode,
-            bool.TryParse(caseSensitiveRaw, out var caseSensitive) && caseSensitive,
-            inPlace,
-            backup,
-            verify || inPlace,
-            json);
-        var result = engine.ReplaceTextAsync(request, CancellationToken.None).GetAwaiter().GetResult();
-
-        if (json)
-        {
-            var envelope = new System.Text.Json.Nodes.JsonObject
-            {
-                ["success"] = true,
-                ["message"] = $"Replaced HWP text '{query}' -> {result.OutputPath}",
-                ["data"] = new System.Text.Json.Nodes.JsonObject
-                {
-                    ["outputPath"] = result.OutputPath,
-                    ["engine"] = result.Engine,
-                    ["engineVersion"] = result.EngineVersion,
-                    ["evidence"] = HwpCapabilityJsonMapper.ToJsonArray(result.Evidence),
-                    ["transaction"] = result.Transaction?.DeepClone()
-                },
-                ["warnings"] = HwpCapabilityJsonMapper.ToJsonArray(result.Warnings)
-            };
-            Console.WriteLine(envelope.ToJsonString(OutputFormatter.PublicJsonOptions));
-        }
-        else
-        {
-            Console.WriteLine($"Replaced HWP text '{query}' -> {result.OutputPath}");
-            foreach (var warning in result.Warnings)
-                Console.Error.WriteLine($"WARNING: {warning}");
-        }
-        return 0;
     }
 
     private static string? FirstValue(Dictionary<string, string> properties, params string[] keys)

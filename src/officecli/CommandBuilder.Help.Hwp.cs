@@ -76,6 +76,7 @@ static partial class CommandBuilder
                 "officecli view file.hwp field --field-name 회사명 --json",
                 "officecli set file.hwp /field --prop name=회사명 --prop value=리지 --prop output=out.hwp --json",
                 "officecli set file.hwp /text --prop find=마케팅 --prop value=브릿지 --prop output=out.hwp --json",
+                "officecli set file.hwp /text --prop find=마케팅 --prop value=브릿지 --in-place --backup --verify --json",
                 "officecli set file.hwp /table/cell --prop section=0 --prop parent-para=3 --prop control=0 --prop cell=0 --prop value=오피스셀 --prop output=out.hwp --json"
             ]);
             var setup = HwpCapabilityJsonMapper.ToJsonArray([
@@ -85,7 +86,6 @@ static partial class CommandBuilder
                 "export OFFICECLI_RHWP_API_BIN=/path/to/rhwp-field-bridge"
             ]);
             var unsupported = HwpCapabilityJsonMapper.ToJsonArray([
-                "in-place binary .hwp overwrite",
                 "production default HWP engine",
                 "arbitrary table discovery/mutation without explicit coordinates",
                 "claiming corpus-wide round-trip fidelity without fixtures"
@@ -108,11 +108,13 @@ static partial class CommandBuilder
                 ["readField"] = "officecli view file.hwp field --field-name 회사명 --json",
                 ["setField"] = "officecli set file.hwp /field --prop name=회사명 --prop value=리지 --prop output=out.hwp --json",
                 ["replaceText"] = "officecli set file.hwp /text --prop find=마케팅 --prop value=브릿지 --prop output=out.hwp --json",
+                ["replaceTextInPlace"] = "officecli set file.hwp /text --prop find=마케팅 --prop value=브릿지 --in-place --backup --verify --json",
                 ["setTableCell"] = "officecli set file.hwp /table/cell --prop section=0 --prop parent-para=3 --prop control=0 --prop cell=0 --prop value=오피스셀 --prop output=out.hwp --json"
             };
             var policies = HwpCapabilityJsonMapper.ToJsonArray([
-                "never overwrite binary .hwp in place",
-                "always write mutations to --prop output=<path>",
+                "default mutation mode writes to --prop output=<path>",
+                "in-place text replacement is opt-in only and requires --in-place --backup --verify",
+                "never combine --in-place with --prop output=<path>",
                 "run officecli hwp doctor --json before HWP work",
                 "verify outputs with text/SVG/Hancom evidence before relying on them"
             ]);
@@ -158,11 +160,14 @@ static partial class CommandBuilder
         writer.WriteLine("  officecli view file.hwp fields --json");
         writer.WriteLine("  officecli view file.hwp field --field-name 회사명 --json");
         writer.WriteLine();
-        writer.WriteLine("Mutation writes a new output file; it does not overwrite the input:");
+        writer.WriteLine("Mutation default writes a new output file:");
         writer.WriteLine("  officecli set file.hwp /field --prop name=회사명 --prop value=리지 --prop output=out.hwp --json");
         writer.WriteLine("  officecli set file.hwp /field --prop id=1584999796 --prop value=리지 --prop output=out.hwp --json");
         writer.WriteLine("  officecli set file.hwp /text --prop find=마케팅 --prop value=브릿지 --prop output=out.hwp --json");
         writer.WriteLine("  officecli set file.hwp /table/cell --prop section=0 --prop parent-para=3 --prop control=0 --prop cell=0 --prop value=오피스셀 --prop output=out.hwp --json");
+        writer.WriteLine();
+        writer.WriteLine("Safe in-place text replacement (experimental, creates backup + manifest first):");
+        writer.WriteLine("  officecli set file.hwp /text --prop find=마케팅 --prop value=브릿지 --in-place --backup --verify --json");
         writer.WriteLine();
         writer.WriteLine("Sidecar binaries used by the experimental bridge:");
         writer.WriteLine("  OFFICECLI_RHWP_BRIDGE_PATH  C# bridge for rhwp CLI read/render");
@@ -170,8 +175,9 @@ static partial class CommandBuilder
         writer.WriteLine();
         writer.WriteLine("Boundaries:");
         writer.WriteLine("  - experimental only; do not claim production default HWP support");
-        writer.WriteLine("  - binary .hwp in-place overwrite is unsupported");
-        writer.WriteLine("  - always write mutations to --prop output=<path>");
+        writer.WriteLine("  - default mutations write to --prop output=<path>");
+        writer.WriteLine("  - in-place text replacement requires --in-place --backup --verify");
+        writer.WriteLine("  - never combine --in-place with --prop output=<path>");
         writer.WriteLine("  - table cell mutation needs explicit rhwp coordinates");
         writer.WriteLine("  - verify outputs with text/SVG/Hancom round-trip evidence before relying on them");
         return true;

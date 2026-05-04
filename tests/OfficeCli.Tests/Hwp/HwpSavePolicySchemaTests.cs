@@ -53,6 +53,9 @@ public class HwpSavePolicySchemaTests
         Assert.Equal(
             "schemas/interfaces/save-transaction.v1.schema.json",
             root["properties"]!["transactionSchema"]!["examples"]![0]!.GetValue<string>());
+        Assert.Equal(
+            "experimental",
+            root["properties"]!["inPlace"]!["examples"]![0]!.GetValue<string>());
     }
 
     [Theory]

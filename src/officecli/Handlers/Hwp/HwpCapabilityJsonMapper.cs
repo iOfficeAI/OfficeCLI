@@ -21,7 +21,7 @@ public static class HwpCapabilityJsonMapper
     {
         var formats = new JsonObject();
         foreach (var (format, capability) in report.Formats)
-            formats[format] = BuildFormatCapability(capability);
+            formats[format] = BuildFormatCapability(format, capability);
 
         return new JsonObject
         {
@@ -32,11 +32,11 @@ public static class HwpCapabilityJsonMapper
         };
     }
 
-    private static JsonObject BuildFormatCapability(HwpFormatCapability capability)
+    private static JsonObject BuildFormatCapability(string format, HwpFormatCapability capability)
     {
         var operations = new JsonObject();
         foreach (var (operation, opCapability) in capability.Operations)
-            operations[operation] = BuildOperationCapability(operation, opCapability);
+            operations[operation] = BuildOperationCapability(format, operation, opCapability);
 
         return new JsonObject
         {
@@ -49,9 +49,9 @@ public static class HwpCapabilityJsonMapper
         };
     }
 
-    private static JsonObject BuildOperationCapability(string operation, HwpOperationCapability capability)
+    private static JsonObject BuildOperationCapability(string format, string operation, HwpOperationCapability capability)
     {
-        return new JsonObject
+        var result = new JsonObject
         {
             ["status"] = StatusToJson(capability.Status),
             ["support"] = StatusToJson(capability.Status),
@@ -65,6 +65,19 @@ public static class HwpCapabilityJsonMapper
             ["requiredArgs"] = ToJsonArray(BuildRequiredArgs(operation)),
             ["example"] = BuildExample(operation)
         };
+        if (format == HwpCapabilityConstants.FormatHwp
+            && operation == HwpCapabilityConstants.OperationReplaceText)
+        {
+            result["safeInPlace"] = new JsonObject
+            {
+                ["support"] = HwpCapabilityConstants.StatusExperimental,
+                ["ready"] = IsReady(capability),
+                ["requires"] = ToJsonArray(["--in-place", "--backup", "--verify"]),
+                ["example"] = "officecli set input.hwp /text --prop find=마케팅 --prop value=브릿지 --in-place --backup --verify --json",
+                ["policy"] = "creates temp output, provider readback, semantic delta, backup, manifest, then atomic replace"
+            };
+        }
+        return result;
     }
 
     private static bool IsReady(HwpOperationCapability capability)
@@ -112,7 +125,9 @@ public static class HwpCapabilityJsonMapper
             case HwpCapabilityConstants.OperationReplaceText:
                 yield return "find";
                 yield return "value";
-                yield return "output";
+                yield return "output|--in-place";
+                yield return "--backup when --in-place";
+                yield return "--verify when --in-place";
                 break;
             case HwpCapabilityConstants.OperationSetTableCell:
                 yield return "section";
