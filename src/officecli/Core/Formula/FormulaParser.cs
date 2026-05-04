@@ -156,10 +156,10 @@ internal static class FormulaParser
         switch (name)
         {
             case "oMathPara":
-                return string.Concat(element.ChildElements.Select(ToLatexByName));
+                return JoinChildren(element);
 
             case "oMath":
-                return string.Concat(element.ChildElements.Select(ToLatexByName));
+                return JoinChildren(element);
 
             case "r":
             {
@@ -517,6 +517,37 @@ internal static class FormulaParser
             default:
                 return string.Concat(element.ChildElements.Select(ToReadableText));
         }
+    }
+
+    /// <summary>
+    /// Concat oMath/oMathPara children with whitespace deduping at sibling
+    /// boundaries. SymbolToCommandMap entries (e.g. "\pm ", "\sqrt ") encode
+    /// a trailing space so the LaTeX command can't fuse with the next token
+    /// (e.g. "\pma"). Adjacent text runs in the OMML re-introduce that same
+    /// separating space, producing one extra space per round-trip
+    /// (BUG-R3-1: \pm becomes \pm  becomes \pm   becomes \pm    after each
+    /// dump→batch). Collapse `WS{trailing}WS{leading}` to a single WS so the
+    /// LaTeX text stays stable across round-trips.
+    /// </summary>
+    private static string JoinChildren(OpenXmlElement element)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var child in element.ChildElements)
+        {
+            var part = ToLatexByName(child);
+            if (sb.Length > 0 && part.Length > 0
+                && char.IsWhiteSpace(sb[^1]) && char.IsWhiteSpace(part[0]))
+            {
+                int p = 0;
+                while (p < part.Length && char.IsWhiteSpace(part[p])) p++;
+                sb.Append(part, p, part.Length - p);
+            }
+            else
+            {
+                sb.Append(part);
+            }
+        }
+        return sb.ToString();
     }
 
     // ==================== Tokenizer ====================
@@ -1661,7 +1692,11 @@ internal static class FormulaParser
     private static string ArgToLatex(OpenXmlElement? arg)
     {
         if (arg == null) return "";
-        return string.Concat(arg.ChildElements.Select(ToLatex));
+        // CONSISTENCY(formula-space-dedup): see JoinChildren — same boundary
+        // dedupe must apply inside arg containers (Numerator/Denominator/e/
+        // sub/sup) or the per-round-trip space accumulation reappears one
+        // level down (BUG-R3-1).
+        return JoinChildren(arg);
     }
 
     private static string ArgToReadable(OpenXmlElement? arg)
