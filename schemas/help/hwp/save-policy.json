@@ -5,10 +5,12 @@
   "container": true,
   "operations": { "add": false, "set": false, "get": true, "query": true, "remove": false },
   "paths": { "positional": ["/save-policy"] },
-  "note": "Binary HWP source overwrite is not supported. Experimental mutations require explicit output paths until safe-save transactions are implemented.",
+  "note": "Binary HWP source overwrite is not supported. Experimental mutations require explicit output paths until safe-save transactions pass temp-write, readback, semantic validation, backup, and atomic replace gates.",
   "properties": {
     "outputRequired": { "type": "bool", "get": true, "query": true, "examples": ["true"], "enforcement": "strict" },
     "inPlace": { "type": "enum", "values": ["unsupported", "experimental", "stable"], "get": true, "query": true, "examples": ["unsupported"], "enforcement": "strict" },
-    "backup": { "type": "string", "get": true, "query": true, "description": "Future backup path policy.", "enforcement": "report" }
+    "backup": { "type": "string", "get": true, "query": true, "description": "Future backup path policy.", "enforcement": "report" },
+    "transactionSchema": { "type": "string", "get": true, "query": true, "examples": ["schemas/interfaces/save-transaction.v1.schema.json"], "enforcement": "report" },
+    "requiredChecks": { "type": "array", "get": true, "query": true, "examples": ["temp-write,provider-readback,semantic-delta,backup-created,atomic-replace"], "enforcement": "strict" }
   }
 }

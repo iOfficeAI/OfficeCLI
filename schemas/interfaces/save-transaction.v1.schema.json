@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "officecli/interfaces/save-transaction/v1",
+  "title": "OfficeCLI Safe Save Transaction Result",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "ok",
+    "format",
+    "operation",
+    "mode",
+    "inputPath",
+    "outputPath",
+    "verified",
+    "checks",
+    "warnings"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "ok": { "type": "boolean" },
+    "format": { "type": "string", "enum": ["hwp", "hwpx"] },
+    "operation": { "type": "string" },
+    "mode": { "type": "string", "enum": ["output", "in-place"] },
+    "inputPath": { "type": "string" },
+    "outputPath": { "type": "string" },
+    "tempPath": { "type": ["string", "null"] },
+    "backupPath": { "type": ["string", "null"] },
+    "manifestPath": { "type": ["string", "null"] },
+    "verified": { "type": "boolean" },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "ok"],
+        "properties": {
+          "name": { "type": "string" },
+          "ok": { "type": "boolean" },
+          "severity": { "type": "string", "enum": ["info", "warning", "error"] },
+          "message": { "type": "string" },
+          "details": { "type": "object" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "semanticDelta": { "type": "object" },
+    "visualDelta": { "type": "object" },
+    "packageIntegrity": { "type": "object" },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "error": { "$ref": "error-result.v1.schema.json" }
+  },
+  "additionalProperties": true
+}
