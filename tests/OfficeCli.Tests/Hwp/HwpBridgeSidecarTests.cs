@@ -368,7 +368,7 @@ public partial class HwpBridgeSidecarTests : IDisposable
     }
 
     [Fact]
-    public void OfficeCliSetText_InPlaceReturnsSafeSaveTransactionError()
+    public void OfficeCliSetText_InPlaceRequiresBackupBeforeMutation()
     {
         if (OperatingSystem.IsWindows()) return;
         Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", "rhwp-experimental");
@@ -390,11 +390,68 @@ public partial class HwpBridgeSidecarTests : IDisposable
         Assert.Equal("before before", File.ReadAllText(input));
         var root = JsonNode.Parse(stdout)!;
         Assert.False(root["success"]!.GetValue<bool>());
-        Assert.Equal("in-place", root["data"]!["transaction"]!["mode"]!.GetValue<string>());
-        Assert.False(root["data"]!["transaction"]!["ok"]!.GetValue<bool>());
-        Assert.Contains(
-            root["data"]!["transaction"]!["checks"]!.AsArray(),
-            check => check?["name"]?.GetValue<string>() == "in-place-requires-backup");
+        Assert.Equal("hwp_in_place_requires_backup", root["error"]!["code"]!.GetValue<string>());
+        Assert.Equal("officecli help hwp", root["error"]!["nextCommand"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void OfficeCliSetText_InPlaceRejectsOutputConflict()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", "rhwp-experimental");
+        var input = CreateInput(".hwp");
+        var output = CreateOutput(".hwp");
+
+        var (exitCode, stdout) = InvokeOfficeCli(
+            [
+                "set", input, "/text",
+                "--prop", "find=before",
+                "--prop", "value=after",
+                "--prop", $"output={output}",
+                "--in-place",
+                "--backup",
+                "--verify",
+                "--json"
+            ]);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal("before before", File.ReadAllText(input));
+        var root = JsonNode.Parse(stdout)!;
+        Assert.False(root["success"]!.GetValue<bool>());
+        Assert.Equal("hwp_in_place_output_conflict", root["error"]!["code"]!.GetValue<string>());
+        Assert.Equal("officecli help hwp", root["error"]!["nextCommand"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void OfficeCliSetText_InPlaceWithBackupAndVerifyReplacesSource()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", "rhwp-experimental");
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", LocateBridgeDll());
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", CreateFakeRhwp());
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", CreateFakeRhwpApi());
+        var input = CreateInput(".hwp");
+
+        var (exitCode, stdout) = InvokeOfficeCli(
+            [
+                "set", input, "/text",
+                "--prop", "find=before",
+                "--prop", "value=after",
+                "--prop", "mode=all",
+                "--in-place",
+                "--backup",
+                "--verify",
+                "--json"
+            ]);
+
+        Assert.True(exitCode == 0, stdout);
+        Assert.Equal("after after", File.ReadAllText(input));
+        var root = JsonNode.Parse(stdout)!;
+        var transaction = root["data"]!["transaction"]!;
+        Assert.Equal("in-place", transaction["mode"]!.GetValue<string>());
+        Assert.True(File.Exists(transaction["backupPath"]!.GetValue<string>()));
+        Assert.True(File.Exists(transaction["manifestPath"]!.GetValue<string>()));
+        Assert.True(transaction["visualDelta"]!["pageCount"]!.GetValue<int>() > 0);
     }
 
     [Fact]

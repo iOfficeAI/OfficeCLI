@@ -86,6 +86,25 @@ public class HwpCapabilityTests : IDisposable
         Assert.Equal(
             "officecli set file.hwp /text --prop find=마케팅 --prop value=브릿지 --prop output=out.hwp --json",
             root["data"]!["recipes"]!["replaceText"]!.GetValue<string>());
+        Assert.Equal(
+            "officecli set file.hwp /text --prop find=마케팅 --prop value=브릿지 --in-place --backup --verify --json",
+            root["data"]!["recipes"]!["replaceTextInPlace"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void CapabilityJson_AdvertisesSafeInPlaceForHwpReplaceText()
+    {
+        var report = HwpCapabilityFactory.BuildReport("officecli:test");
+        var envelope = HwpCapabilityJsonMapper.BuildEnvelope(report);
+        var replace = envelope["data"]!["formats"]!["hwp"]!["operations"]!["replace_text"]!;
+
+        Assert.Equal("experimental", replace["safeInPlace"]!["support"]!.GetValue<string>());
+        Assert.Contains(
+            replace["safeInPlace"]!["requires"]!.AsArray(),
+            value => value!.GetValue<string>() == "--backup");
+        Assert.Contains(
+            replace["requiredArgs"]!.AsArray(),
+            value => value!.GetValue<string>() == "output|--in-place");
     }
 
     [Fact]

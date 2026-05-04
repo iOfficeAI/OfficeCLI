@@ -128,7 +128,8 @@ public static class HwpCapabilityFactory
             HwpCapabilityConstants.EngineRhwpBridge,
             operations,
             [
-                "Experimental rhwp bridge is enabled. Mutations require explicit --prop output=<path>.",
+                "Experimental rhwp bridge is enabled. Default mutations require explicit --prop output=<path>.",
+                "HWP text replacement supports opt-in --in-place only with --backup --verify.",
                 "Do not claim production-grade HWP fidelity without fixture and Hancom round-trip evidence."
             ]);
     }
