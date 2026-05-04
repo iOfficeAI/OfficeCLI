@@ -227,6 +227,32 @@ public partial class WordHandler
             ind.FirstLine = null;
         }
         // firstlineindent already handled above (line ~66-74) with × 480 conversion
+        // BUG-R5-F3: Get already exposes char-based indent values that
+        // CJK Word documents emit heavily (firstLineChars, leftChars,
+        // rightChars, hangingChars — w:ind/@w:firstLineChars etc., units
+        // of 1/100 of a Chinese-character width). Add ignored them, so
+        // dump→replay produced 750+ UNSUPPORTED warnings on Chinese docs
+        // and lost the chars-based indent silently. Accept them on Add.
+        if (properties.TryGetValue("firstLineChars", out var addFLC) || properties.TryGetValue("firstlinechars", out addFLC))
+        {
+            var ind = pProps.Indentation ?? (pProps.Indentation = new Indentation());
+            ind.FirstLineChars = ParseHelpers.SafeParseInt(addFLC, "firstLineChars");
+        }
+        if (properties.TryGetValue("leftChars", out var addLC) || properties.TryGetValue("leftchars", out addLC))
+        {
+            var ind = pProps.Indentation ?? (pProps.Indentation = new Indentation());
+            ind.LeftChars = ParseHelpers.SafeParseInt(addLC, "leftChars");
+        }
+        if (properties.TryGetValue("rightChars", out var addRC) || properties.TryGetValue("rightchars", out addRC))
+        {
+            var ind = pProps.Indentation ?? (pProps.Indentation = new Indentation());
+            ind.RightChars = ParseHelpers.SafeParseInt(addRC, "rightChars");
+        }
+        if (properties.TryGetValue("hangingChars", out var addHC) || properties.TryGetValue("hangingchars", out addHC))
+        {
+            var ind = pProps.Indentation ?? (pProps.Indentation = new Indentation());
+            ind.HangingChars = ParseHelpers.SafeParseInt(addHC, "hangingChars");
+        }
         if ((properties.TryGetValue("keepnext", out var addKN) || properties.TryGetValue("keepNext", out addKN)) && IsTruthy(addKN))
             pProps.KeepNext = new KeepNext();
         if ((properties.TryGetValue("keeplines", out var addKL) || properties.TryGetValue("keeptogether", out addKL) || properties.TryGetValue("keepLines", out addKL) || properties.TryGetValue("keepTogether", out addKL)) && IsTruthy(addKL))
@@ -546,6 +572,11 @@ public partial class WordHandler
             "style", "styleid", "stylename",
             "align", "alignment", "direction", "dir", "bidi",
             "firstlineindent", "leftindent", "indentleft", "indent",
+            // BUG-R5-F3: chars-based indent variants consumed above.
+            "firstlinechars", "firstLineChars",
+            "leftchars", "leftChars",
+            "rightchars", "rightChars",
+            "hangingchars", "hangingChars",
             "rightindent", "indentright", "hangingindent", "hanging",
             "spacebefore", "spaceafter", "linespacing", "lineSpacing",
             "keepnext", "keepwithnext", "keeplines", "keeptogether",
