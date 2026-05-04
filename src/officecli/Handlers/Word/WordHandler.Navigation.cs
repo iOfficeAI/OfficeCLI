@@ -1758,6 +1758,7 @@ public partial class WordHandler
             // stored as strings to match other Word format keys (size "14pt",
             // spacing "12pt"). Avoids object-vs-int comparison surprises.
             node.Format["cols"] = (gridColCount ?? firstRow?.Elements<TableCell>().Count() ?? 0).ToString();
+            node.Format["rows"] = node.ChildCount.ToString();
 
             var tp = table.GetFirstChild<TableProperties>();
             if (tp != null)

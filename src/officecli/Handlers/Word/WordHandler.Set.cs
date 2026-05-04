@@ -530,8 +530,25 @@ public partial class WordHandler
         uint size;
         if (parts.Length > 1)
         {
-            if (!uint.TryParse(parts[1], out size))
-                throw new ArgumentException($"Invalid border size '{parts[1]}', expected integer. Format: STYLE[;SIZE[;COLOR[;SPACE]]]");
+            // OOXML stores border size in eighth-of-a-point units. Accept bare
+            // integer (already in eighths) plus unit-qualified lengths
+            // ('1pt', '0.5cm', '0.05in') for parity with other Word length
+            // inputs (CONSISTENCY: spacing-units, root CLAUDE.md "Spacing
+            // input is lenient").
+            var sz = parts[1].Trim();
+            if (uint.TryParse(sz, out size))
+            { /* bare integer = eighths */ }
+            else if (sz.EndsWith("pt", StringComparison.OrdinalIgnoreCase)
+                     && double.TryParse(sz[..^2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var pts) && pts >= 0)
+                size = (uint)Math.Round(pts * 8);
+            else if (sz.EndsWith("cm", StringComparison.OrdinalIgnoreCase)
+                     && double.TryParse(sz[..^2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var cm) && cm >= 0)
+                size = (uint)Math.Round(cm * (72.0 / 2.54) * 8); // cm → pt → eighths
+            else if (sz.EndsWith("in", StringComparison.OrdinalIgnoreCase)
+                     && double.TryParse(sz[..^2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var inches) && inches >= 0)
+                size = (uint)Math.Round(inches * 72 * 8); // in → pt → eighths
+            else
+                throw new ArgumentException($"Invalid border size '{parts[1]}', expected integer (eighths-of-pt) or unit-qualified length (e.g. '1pt', '0.5cm'). Format: STYLE[;SIZE[;COLOR[;SPACE]]]");
         }
         else
             size = style == BorderValues.Nil ? 0u : style == BorderValues.Thick ? 12u : 4u;

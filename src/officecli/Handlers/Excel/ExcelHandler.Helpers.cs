@@ -2380,6 +2380,8 @@ public partial class ExcelHandler
                 node.Format["bold"] = true;
             if (rPr.Italic?.HasValue == true && rPr.Italic.Value)
                 node.Format["italic"] = true;
+            if (rPr.Underline?.HasValue == true && rPr.Underline.Value != Drawing.TextUnderlineValues.None)
+                node.Format["underline"] = rPr.Underline.Value == Drawing.TextUnderlineValues.Double ? "double" : "single";
 
             var solidFill = rPr.GetFirstChild<Drawing.SolidFill>();
             var colorHex = solidFill?.GetFirstChild<Drawing.RgbColorModelHex>();

@@ -662,6 +662,10 @@ public partial class WordHandler
                         styleNode.Format["direction"] = on == true ? "rtl" : "ltr";
                     else if (on == true)
                         styleNode.Format["direction"] = "rtl";
+                    // Surface schema-canonical `rtl` boolean alongside the
+                    // direction string (schemas/help/docx/style.json declares
+                    // both — direction is the cascade, rtl is the raw rPr flag).
+                    if (on != null) styleNode.Format["rtl"] = on == true;
                 }
                 var hl = rPr.GetFirstChild<Highlight>();
                 if (hl?.Val != null) styleNode.Format["highlight"] = hl.Val.InnerText;

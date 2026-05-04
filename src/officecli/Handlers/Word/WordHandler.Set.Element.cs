@@ -1502,7 +1502,13 @@ public partial class WordHandler
                     }
                     else
                     {
-                        tblPr.TableWidth = new TableWidth { Width = ParseHelpers.SafeParseUint(value, "width").ToString(), Type = TableWidthUnitValues.Dxa };
+                        // CONSISTENCY(spacing-units): accept unit-qualified lengths
+                        // ('10cm', '5in', '12pt') alongside bare twips, matching
+                        // Add and the cross-handler convention from
+                        // root CLAUDE.md "Spacing input is lenient". Previous
+                        // SafeParseUint-only path rejected '10cm'.
+                        var twips = OfficeCli.Core.SpacingConverter.ParseWordSpacing(value);
+                        tblPr.TableWidth = new TableWidth { Width = twips.ToString(), Type = TableWidthUnitValues.Dxa };
                     }
                     break;
                 case "indent":

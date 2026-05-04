@@ -549,6 +549,16 @@ public partial class PowerPointHandler
         ReadBorderLine(tcPr.BottomBorderLineProperties, "border.bottom", node);
         ReadBorderLine(tcPr.TopLeftToBottomRightBorderLineProperties, "border.tl2br", node);
         ReadBorderLine(tcPr.BottomLeftToTopRightBorderLineProperties, "border.tr2bl", node);
+        // border.all summary when all four edges are uniform — schema declares
+        // it as a gettable convenience alongside the per-edge keys.
+        if (node.Format.TryGetValue("border.top", out var bt)
+            && node.Format.TryGetValue("border.bottom", out var bb)
+            && node.Format.TryGetValue("border.left", out var bl)
+            && node.Format.TryGetValue("border.right", out var br)
+            && Equals(bt, bb) && Equals(bt, bl) && Equals(bt, br))
+        {
+            node.Format["border.all"] = bt!;
+        }
     }
 
     /// <summary>
