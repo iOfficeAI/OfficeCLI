@@ -245,7 +245,15 @@ public sealed partial class RhwpBridgeEngine
             packageIntegrity = new Dictionary<string, object?>(packageResult.PackageIntegrity, StringComparer.Ordinal);
         }
 
-        return new SafeSaveValidationResult(checks, semanticDelta, PackageIntegrity: packageIntegrity);
+        IReadOnlyDictionary<string, object?>? visualDelta = null;
+        if (request.Verify)
+        {
+            var visualResult = await ValidateVisualAsync(request.Format, tempPath, ct).ConfigureAwait(false);
+            checks.AddRange(visualResult.Checks);
+            visualDelta = visualResult.VisualDelta;
+        }
+
+        return new SafeSaveValidationResult(checks, semanticDelta, visualDelta, packageIntegrity);
     }
 
     private static SafeSavePolicy BuildReplaceTextSafeSavePolicy(HwpFormat format)
@@ -260,6 +268,33 @@ public sealed partial class RhwpBridgeEngine
         if (format == HwpFormat.Hwpx)
             required.Add("package-integrity");
         return SafeSavePolicy.OutputMode(required.ToArray());
+    }
+
+    private async Task<SafeSaveValidationResult> ValidateVisualAsync(
+        HwpFormat format,
+        string tempPath,
+        CancellationToken ct)
+    {
+        var outputDir = Path.Combine(
+            Path.GetDirectoryName(tempPath) ?? Path.GetTempPath(),
+            $".{Path.GetFileNameWithoutExtension(tempPath)}.svg");
+        try
+        {
+            var renderResult = await RenderSvgAsync(
+                new HwpRenderRequest(
+                    format,
+                    tempPath,
+                    outputDir,
+                    "1",
+                    new FileInfo(tempPath).Length,
+                    Json: false),
+                ct).ConfigureAwait(false);
+            return SafeSaveVisualValidator.FromRenderResult(renderResult);
+        }
+        catch (Exception ex)
+        {
+            return SafeSaveVisualValidator.FromFailure(ex);
+        }
     }
 
     private async Task<string> ReadTextOnlyAsync(HwpFormat format, string path, CancellationToken ct)

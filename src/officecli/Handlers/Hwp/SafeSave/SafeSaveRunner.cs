@@ -5,19 +5,67 @@ namespace OfficeCli.Handlers.Hwp.SafeSave;
 
 internal sealed class SafeSaveRunner
 {
+    private readonly ISafeSaveManifestWriter _manifestWriter;
+
+    public SafeSaveRunner()
+        : this(new SafeSaveManifestWriter())
+    {
+    }
+
+    internal SafeSaveRunner(ISafeSaveManifestWriter manifestWriter)
+    {
+        _manifestWriter = manifestWriter;
+    }
+
     public async Task<SafeSaveTransaction> RunAsync(
         SafeSaveOptions options,
         Func<string, Task> writeTempAsync,
         Func<string, Task<SafeSaveValidationResult>> validateAsync,
         CancellationToken cancellationToken)
     {
+        var timestamp = DateTimeOffset.UtcNow;
+        var manifestPath = _manifestWriter.BuildManifestPath(options, timestamp);
         if (options.InPlace)
-            return NotReady(options);
+            return await RunInPlaceAsync(
+                options,
+                writeTempAsync,
+                validateAsync,
+                cancellationToken,
+                timestamp,
+                manifestPath).ConfigureAwait(false);
 
+        return await RunOutputAsync(
+            options,
+            writeTempAsync,
+            validateAsync,
+            cancellationToken,
+            manifestPath).ConfigureAwait(false);
+    }
+
+    private async Task<SafeSaveTransaction> RunOutputAsync(
+        SafeSaveOptions options,
+        Func<string, Task> writeTempAsync,
+        Func<string, Task<SafeSaveValidationResult>> validateAsync,
+        CancellationToken cancellationToken,
+        string manifestPath)
+    {
         var outputPath = Path.GetFullPath(options.OutputPath);
         var inputPath = Path.GetFullPath(options.InputPath);
         if (PathsReferToSameLocation(inputPath, outputPath))
-            return Failed(options, null, "same-path-output", "Output path equals input path. Use --in-place after safe-save support is ready.");
+            return FinalizeTransaction(
+                options,
+                null,
+                null,
+                manifestPath,
+                false,
+                false,
+                [new SafeSaveCheck(
+                    "same-path-output",
+                    false,
+                    "error",
+                    "Output path equals input path. Use --in-place with --backup --verify.")],
+                null,
+                ["Output path equals input path. Use --in-place with --backup --verify."]);
 
         var outputDirectory = Path.GetDirectoryName(outputPath);
         if (string.IsNullOrWhiteSpace(outputDirectory))
@@ -49,12 +97,22 @@ internal sealed class SafeSaveRunner
                     false,
                     "error",
                     $"Missing or failed required safe-save check(s): {string.Join(", ", missing)}"));
+                var failed = FinalizeTransaction(
+                    options,
+                    tempPath,
+                    null,
+                    manifestPath,
+                    false,
+                    false,
+                    checks,
+                    validation,
+                    ["safe-save required checks failed"]);
                 TryDelete(tempPath);
-                return Transaction(options, tempPath, false, false, checks, validation, ["safe-save required checks failed"]);
+                return failed;
             }
 
             File.Move(tempPath, outputPath, overwrite: true);
-            return Transaction(options, tempPath, true, true, checks, validation, []);
+            return FinalizeTransaction(options, tempPath, null, manifestPath, true, true, checks, validation, []);
         }
         catch
         {
@@ -63,58 +121,213 @@ internal sealed class SafeSaveRunner
         }
     }
 
-    private static SafeSaveTransaction NotReady(SafeSaveOptions options) => Transaction(
-        options,
-        null,
-        false,
-        false,
-        [
-            new SafeSaveCheck(
-                "in-place-not-ready",
+    private async Task<SafeSaveTransaction> RunInPlaceAsync(
+        SafeSaveOptions options,
+        Func<string, Task> writeTempAsync,
+        Func<string, Task<SafeSaveValidationResult>> validateAsync,
+        CancellationToken cancellationToken,
+        DateTimeOffset timestamp,
+        string manifestPath)
+    {
+        var readinessChecks = BuildInPlaceReadinessChecks(options);
+        if (readinessChecks.Count > 0)
+            return FinalizeTransaction(
+                options,
+                null,
+                null,
+                manifestPath,
                 false,
-                "error",
-                "In-place safe save requires backup, manifest, and atomic replace slice.")
-        ],
-        null,
-        ["in-place safe save requires backup, manifest, and atomic replace slice"]);
+                false,
+                readinessChecks,
+                null,
+                ["in-place safe save requires --backup and --verify"]);
 
-    private static SafeSaveTransaction Failed(
+        var inputPath = Path.GetFullPath(options.InputPath);
+        var outputDirectory = Path.GetDirectoryName(inputPath) ?? Directory.GetCurrentDirectory();
+        var extension = Path.GetExtension(inputPath);
+        var tempPath = Path.Combine(
+            outputDirectory,
+            $".{Path.GetFileNameWithoutExtension(inputPath)}.officecli-{SafeSaveManifestWriter.FormatTimestamp(timestamp)}-{Guid.NewGuid():N}{extension}");
+        var backupPath = SafeSaveBackup.BuildBackupPath(inputPath, timestamp);
+
+        try
+        {
+            await writeTempAsync(tempPath).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var checks = new List<SafeSaveCheck>
+            {
+                BuildTempWriteCheck(tempPath)
+            };
+            var validation = await validateAsync(tempPath).ConfigureAwait(false);
+            checks.AddRange(validation.Checks);
+
+            var missing = FindMissingRequiredChecks(options.Policy, checks);
+            if (missing.Count > 0)
+            {
+                checks.Add(new SafeSaveCheck(
+                    "required-checks",
+                    false,
+                    "error",
+                    $"Missing or failed required safe-save check(s): {string.Join(", ", missing)}"));
+                var failed = FinalizeTransaction(
+                    options,
+                    tempPath,
+                    null,
+                    manifestPath,
+                    false,
+                    false,
+                    checks,
+                    validation,
+                    ["safe-save required checks failed"]);
+                TryDelete(tempPath);
+                return failed;
+            }
+
+            var backupCheck = SafeSaveBackup.Create(inputPath, backupPath);
+            checks.Add(backupCheck);
+            if (!backupCheck.Ok)
+            {
+                var failed = FinalizeTransaction(
+                    options,
+                    tempPath,
+                    null,
+                    manifestPath,
+                    false,
+                    false,
+                    checks,
+                    validation,
+                    ["backup creation failed; source was not replaced"]);
+                TryDelete(tempPath);
+                return failed;
+            }
+
+            var transaction = FinalizeTransaction(
+                options,
+                tempPath,
+                backupPath,
+                manifestPath,
+                true,
+                true,
+                checks,
+                validation,
+                []);
+            if (!transaction.Ok)
+            {
+                TryDelete(tempPath);
+                return transaction;
+            }
+
+            File.Move(tempPath, inputPath, overwrite: true);
+            return transaction;
+        }
+        catch
+        {
+            TryDelete(tempPath);
+            throw;
+        }
+    }
+
+    private SafeSaveTransaction FinalizeTransaction(
         SafeSaveOptions options,
         string? tempPath,
-        string checkName,
-        string message) => Transaction(
-        options,
-        tempPath,
-        false,
-        false,
-        [new SafeSaveCheck(checkName, false, "error", message)],
-        null,
-        [message]);
+        string? backupPath,
+        string manifestPath,
+        bool ok,
+        bool verified,
+        IReadOnlyList<SafeSaveCheck> checks,
+        SafeSaveValidationResult? validation,
+        IReadOnlyList<string> warnings)
+    {
+        var finalChecks = checks.ToList();
+        finalChecks.Add(new SafeSaveCheck(
+            "manifest-write",
+            true,
+            "info",
+            null,
+            new Dictionary<string, object?> { ["manifestPath"] = manifestPath }));
+        var transaction = Transaction(
+            options,
+            tempPath,
+            backupPath,
+            manifestPath,
+            ok,
+            verified,
+            finalChecks,
+            validation,
+            warnings);
+        try
+        {
+            _manifestWriter.Write(transaction);
+            return transaction;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            finalChecks.RemoveAt(finalChecks.Count - 1);
+            finalChecks.Add(new SafeSaveCheck(
+                "manifest-write",
+                false,
+                "error",
+                $"Could not write safe-save manifest: {ex.Message}",
+                new Dictionary<string, object?> { ["manifestPath"] = manifestPath }));
+            var finalWarnings = warnings.Concat(["manifest write failed"]).ToArray();
+            return Transaction(
+                options,
+                tempPath,
+                backupPath,
+                manifestPath,
+                false,
+                false,
+                finalChecks,
+                validation,
+                finalWarnings);
+        }
+    }
 
     private static SafeSaveTransaction Transaction(
         SafeSaveOptions options,
         string? tempPath,
+        string? backupPath,
+        string? manifestPath,
         bool ok,
         bool verified,
         IReadOnlyList<SafeSaveCheck> checks,
         SafeSaveValidationResult? validation,
         IReadOnlyList<string> warnings) => new(
-        SchemaVersion: 1,
-        Ok: ok,
-        Format: options.Format,
-        Operation: options.Operation,
-        Mode: options.InPlace ? "in-place" : "output",
-        InputPath: Path.GetFullPath(options.InputPath),
-        OutputPath: Path.GetFullPath(options.OutputPath),
-        TempPath: tempPath,
-        BackupPath: null,
-        ManifestPath: null,
-        Verified: verified,
-        Checks: checks,
-        SemanticDelta: validation?.SemanticDelta,
-        VisualDelta: validation?.VisualDelta,
-        PackageIntegrity: validation?.PackageIntegrity,
-        Warnings: warnings);
+            SchemaVersion: 1,
+            Ok: ok,
+            Format: options.Format,
+            Operation: options.Operation,
+            Mode: options.InPlace ? "in-place" : "output",
+            InputPath: Path.GetFullPath(options.InputPath),
+            OutputPath: Path.GetFullPath(options.OutputPath),
+            TempPath: tempPath,
+            BackupPath: backupPath,
+            ManifestPath: manifestPath,
+            Verified: verified,
+            Checks: checks,
+            SemanticDelta: validation?.SemanticDelta,
+            VisualDelta: validation?.VisualDelta,
+            PackageIntegrity: validation?.PackageIntegrity,
+            Warnings: warnings);
+
+    private static List<SafeSaveCheck> BuildInPlaceReadinessChecks(SafeSaveOptions options)
+    {
+        var checks = new List<SafeSaveCheck>();
+        if (!options.Backup)
+            checks.Add(new SafeSaveCheck(
+                "in-place-requires-backup",
+                false,
+                "error",
+                "In-place safe save requires --backup."));
+        if (!options.Verify)
+            checks.Add(new SafeSaveCheck(
+                "in-place-requires-verify",
+                false,
+                "error",
+                "In-place safe save requires --verify."));
+        return checks;
+    }
 
     private static SafeSaveCheck BuildTempWriteCheck(string tempPath)
     {
