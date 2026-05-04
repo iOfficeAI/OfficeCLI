@@ -8,6 +8,7 @@ namespace OfficeCli.Handlers.Hwp.SafeSave;
 internal interface ISafeSaveManifestWriter
 {
     string BuildManifestPath(SafeSaveOptions options, DateTimeOffset timestamp);
+    void Probe(string manifestPath);
     void Write(SafeSaveTransaction transaction);
 }
 
@@ -25,6 +26,16 @@ internal sealed class SafeSaveManifestWriter : ISafeSaveManifestWriter
         if (options.InPlace)
             return $"{inputPath}.officecli-transaction-{FormatTimestamp(timestamp)}.json";
         return $"{outputPath}.officecli-transaction.json";
+    }
+
+    public void Probe(string manifestPath)
+    {
+        var directory = Path.GetDirectoryName(manifestPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+            Directory.CreateDirectory(directory);
+        var probePath = $"{manifestPath}.probe-{Guid.NewGuid():N}.tmp";
+        File.WriteAllText(probePath, "{}");
+        File.Delete(probePath);
     }
 
     public void Write(SafeSaveTransaction transaction)

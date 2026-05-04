@@ -1,5 +1,6 @@
 using OfficeCli.Handlers.Hwp;
 using OfficeCli.Handlers.Hwp.SafeSave;
+using System.Text.Json.Nodes;
 
 namespace OfficeCli.Tests.Hwp;
 
@@ -33,7 +34,13 @@ public sealed class HwpSafeSaveBackupTests : IDisposable
         Assert.NotNull(transaction.ManifestPath);
         Assert.True(File.Exists(transaction.ManifestPath));
         Assert.Contains(transaction.Checks, check => check.Name == "backup-created" && check.Ok);
+        Assert.Contains(transaction.Checks, check => check.Name == "atomic-replace" && check.Ok);
         Assert.Contains(transaction.Checks, check => check.Name == "manifest-write" && check.Ok);
+        var manifest = JsonNode.Parse(File.ReadAllText(transaction.ManifestPath!))!;
+        Assert.True(manifest["ok"]!.GetValue<bool>());
+        Assert.Contains(
+            manifest["checks"]!.AsArray(),
+            check => check?["name"]?.GetValue<string>() == "atomic-replace" && check["ok"]!.GetValue<bool>());
     }
 
     [Fact]
@@ -49,6 +56,33 @@ public sealed class HwpSafeSaveBackupTests : IDisposable
         Assert.NotNull(transaction.BackupPath);
         Assert.Equal("source", File.ReadAllText(transaction.BackupPath!));
         Assert.Contains(transaction.Checks, check => check.Name == "manifest-write" && !check.Ok);
+    }
+
+    [Fact]
+    public async Task InPlaceWritesFailureManifestWhenAtomicReplaceFails()
+    {
+        var input = CreateFile("source.hwp", "source");
+        var runner = new SafeSaveRunner(
+            new SafeSaveManifestWriter(),
+            (_, _, _) => throw new IOException("replace blocked"));
+
+        var transaction = await RunInPlaceAsync(runner, input);
+
+        Assert.False(transaction.Ok);
+        Assert.False(transaction.Verified);
+        Assert.Equal("source", File.ReadAllText(input));
+        Assert.NotNull(transaction.BackupPath);
+        Assert.Equal("source", File.ReadAllText(transaction.BackupPath!));
+        Assert.NotNull(transaction.ManifestPath);
+        Assert.True(File.Exists(transaction.ManifestPath));
+        Assert.Contains(transaction.Checks, check => check.Name == "atomic-replace" && !check.Ok);
+        Assert.Contains(transaction.Checks, check => check.Name == "manifest-write" && check.Ok);
+        var manifest = JsonNode.Parse(File.ReadAllText(transaction.ManifestPath!))!;
+        Assert.False(manifest["ok"]!.GetValue<bool>());
+        Assert.False(manifest["verified"]!.GetValue<bool>());
+        Assert.Contains(
+            manifest["checks"]!.AsArray(),
+            check => check?["name"]?.GetValue<string>() == "atomic-replace" && !check["ok"]!.GetValue<bool>());
     }
 
     private static async Task<SafeSaveTransaction> RunInPlaceAsync(SafeSaveRunner runner, string input)
@@ -86,6 +120,9 @@ public sealed class HwpSafeSaveBackupTests : IDisposable
     {
         public string BuildManifestPath(SafeSaveOptions options, DateTimeOffset timestamp)
             => Path.Combine(root, "blocked.officecli-transaction.json");
+
+        public void Probe(string manifestPath)
+            => throw new IOException("manifest blocked");
 
         public void Write(SafeSaveTransaction transaction)
             => throw new IOException("manifest blocked");

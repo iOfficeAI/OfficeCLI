@@ -6,15 +6,22 @@ namespace OfficeCli.Handlers.Hwp.SafeSave;
 internal sealed class SafeSaveRunner
 {
     private readonly ISafeSaveManifestWriter _manifestWriter;
+    private readonly Action<string, string, bool> _replaceFile;
 
     public SafeSaveRunner()
-        : this(new SafeSaveManifestWriter())
+        : this(new SafeSaveManifestWriter(), File.Move)
     {
     }
 
     internal SafeSaveRunner(ISafeSaveManifestWriter manifestWriter)
+        : this(manifestWriter, File.Move)
+    {
+    }
+
+    internal SafeSaveRunner(ISafeSaveManifestWriter manifestWriter, Action<string, string, bool> replaceFile)
     {
         _manifestWriter = manifestWriter;
+        _replaceFile = replaceFile;
     }
 
     public async Task<SafeSaveTransaction> RunAsync(
@@ -111,7 +118,7 @@ internal sealed class SafeSaveRunner
                 return failed;
             }
 
-            File.Move(tempPath, outputPath, overwrite: true);
+            _replaceFile(tempPath, outputPath, true);
             return FinalizeTransaction(options, tempPath, null, manifestPath, true, true, checks, validation, []);
         }
         catch
@@ -202,7 +209,57 @@ internal sealed class SafeSaveRunner
                 return failed;
             }
 
-            var transaction = FinalizeTransaction(
+            var manifestProbe = ProbeManifestWrite(manifestPath);
+            if (!manifestProbe.Ok)
+            {
+                checks.Add(manifestProbe);
+                TryDelete(tempPath);
+                return Transaction(
+                    options,
+                    tempPath,
+                    backupPath,
+                    manifestPath,
+                    false,
+                    false,
+                    checks,
+                    validation,
+                    ["manifest write failed; source was not replaced"]);
+            }
+            checks.Add(manifestProbe);
+
+            try
+            {
+                _replaceFile(tempPath, inputPath, true);
+                checks.Add(new SafeSaveCheck(
+                    "atomic-replace",
+                    true,
+                    "info",
+                    null,
+                    new Dictionary<string, object?> { ["targetPath"] = inputPath }));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                checks.Add(new SafeSaveCheck(
+                    "atomic-replace",
+                    false,
+                    "error",
+                    $"Could not replace source file: {ex.Message}",
+                    new Dictionary<string, object?> { ["targetPath"] = inputPath }));
+                var failed = FinalizeTransaction(
+                    options,
+                    tempPath,
+                    backupPath,
+                    manifestPath,
+                    false,
+                    false,
+                    checks,
+                    validation,
+                    ["atomic replace failed; source was not marked as replaced"]);
+                TryDelete(tempPath);
+                return failed;
+            }
+
+            return FinalizeTransaction(
                 options,
                 tempPath,
                 backupPath,
@@ -212,14 +269,6 @@ internal sealed class SafeSaveRunner
                 checks,
                 validation,
                 []);
-            if (!transaction.Ok)
-            {
-                TryDelete(tempPath);
-                return transaction;
-            }
-
-            File.Move(tempPath, inputPath, overwrite: true);
-            return transaction;
         }
         catch
         {
@@ -281,6 +330,29 @@ internal sealed class SafeSaveRunner
                 finalChecks,
                 validation,
                 finalWarnings);
+        }
+    }
+
+    private SafeSaveCheck ProbeManifestWrite(string manifestPath)
+    {
+        try
+        {
+            _manifestWriter.Probe(manifestPath);
+            return new SafeSaveCheck(
+                "manifest-probe",
+                true,
+                "info",
+                null,
+                new Dictionary<string, object?> { ["manifestPath"] = manifestPath });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new SafeSaveCheck(
+                "manifest-write",
+                false,
+                "error",
+                $"Could not prepare safe-save manifest: {ex.Message}",
+                new Dictionary<string, object?> { ["manifestPath"] = manifestPath });
         }
     }
 
