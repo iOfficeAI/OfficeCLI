@@ -38,12 +38,36 @@ public static class BatchEmitter
         // numId=3, etc.) resolve when the paragraph adds reach them on replay.
         EmitStyles(word, items);
         EmitNumberingRaw(word, items);
+        EmitSettingsRaw(word, items);
         EmitSection(word, items);
         EmitHeadersFooters(word, items);
         var paraIdToTargetIdx = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         EmitBody(word, items, paraIdToTargetIdx);
         EmitComments(word, items, paraIdToTargetIdx);
         return items;
+    }
+
+    private static void EmitSettingsRaw(WordHandler word, List<BatchItem> items)
+    {
+        // Settings carries dozens of feature flags + compat shims that
+        // surface on root.Format only piecemeal — and not all of them are
+        // wired through Set's case table. Wholesale raw-set is the simplest
+        // way to keep Word feature toggles (evenAndOddHeaders, mirrorMargins,
+        // schema-pegged compat options, …) round-tripped without
+        // per-property allowlisting.
+        string xml;
+        try { xml = word.Raw("/settings"); }
+        catch { return; }
+        if (string.IsNullOrEmpty(xml)) return;
+
+        items.Add(new BatchItem
+        {
+            Command = "raw-set",
+            Part = "/settings",
+            Xpath = "/w:settings",
+            Action = "replace",
+            Xml = xml
+        });
     }
 
     private static void EmitNumberingRaw(WordHandler word, List<BatchItem> items)
