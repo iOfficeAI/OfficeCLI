@@ -1,6 +1,7 @@
 // Copyright 2025 OfficeCli (officecli.ai)
 // SPDX-License-Identifier: Apache-2.0
 
+using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using OfficeCli.Handlers.Hwp.SafeSave;
 
@@ -95,6 +96,7 @@ public sealed partial class RhwpBridgeEngine
 
         var formatArg = FormatKey(request.Format);
         string? outputJson = null;
+        var sourceHash = ComputeSha256(request.InputPath);
         var runner = new SafeSaveRunner();
         var transaction = await runner.RunAsync(
             new SafeSaveOptions(
@@ -105,7 +107,7 @@ public sealed partial class RhwpBridgeEngine
                 request.Verify,
                 HwpCapabilityConstants.OperationReplaceText,
                 formatArg,
-                SafeSavePolicy.OutputMode("temp-write")),
+                SafeSavePolicy.OutputMode("temp-write", "provider-readback", "semantic-delta", "source-preserved")),
             async tempPath =>
             {
                 var args = new List<string>
@@ -123,7 +125,7 @@ public sealed partial class RhwpBridgeEngine
                 outputJson = await RunBridgeAsync(args.ToArray(), RenderSvgTimeoutMs, ct).ConfigureAwait(false);
                 EnsureOutputExists(tempPath);
             },
-            _ => Task.FromResult<IReadOnlyList<SafeSaveCheck>>([]),
+            tempPath => ValidateReplaceTextAsync(request, tempPath, sourceHash, ct),
             ct).ConfigureAwait(false);
 
         if (!transaction.Ok)
@@ -147,6 +149,123 @@ public sealed partial class RhwpBridgeEngine
             "replace-text",
             "rhwp-api replace-text output file created; caller must verify round-trip before production use.");
         return result with { Transaction = SafeSaveJsonMapper.ToJson(transaction) };
+    }
+
+    private async Task<SafeSaveValidationResult> ValidateReplaceTextAsync(
+        HwpReplaceTextRequest request,
+        string tempPath,
+        string sourceHash,
+        CancellationToken ct)
+    {
+        var checks = new List<SafeSaveCheck>();
+        var semanticDelta = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["query"] = request.Query,
+            ["replacement"] = request.Value,
+            ["mode"] = request.Mode
+        };
+
+        try
+        {
+            var sourceText = await ReadTextOnlyAsync(request.Format, request.InputPath, ct).ConfigureAwait(false);
+            var outputText = await ReadTextOnlyAsync(request.Format, tempPath, ct).ConfigureAwait(false);
+            checks.Add(new SafeSaveCheck(
+                "provider-readback",
+                true,
+                "info",
+                null,
+                new Dictionary<string, object?>
+                {
+                    ["sourceLength"] = sourceText.Length,
+                    ["outputLength"] = outputText.Length
+                }));
+
+            var comparison = request.CaseSensitive
+                ? StringComparison.Ordinal
+                : StringComparison.OrdinalIgnoreCase;
+            var sourceOldCount = CountOccurrences(sourceText, request.Query, comparison);
+            var outputOldCount = CountOccurrences(outputText, request.Query, comparison);
+            var outputNewCount = string.IsNullOrEmpty(request.Value)
+                ? 0
+                : CountOccurrences(outputText, request.Value, comparison);
+            var valueContainsQuery = !string.IsNullOrEmpty(request.Value)
+                && request.Value.Contains(request.Query, comparison);
+            var allMode = string.Equals(request.Mode, "all", StringComparison.OrdinalIgnoreCase);
+            var oldTextChanged = valueContainsQuery
+                ? !string.Equals(sourceText, outputText, StringComparison.Ordinal)
+                : allMode
+                    ? outputOldCount == 0
+                    : outputOldCount == Math.Max(0, sourceOldCount - 1);
+            var newTextPresent = string.IsNullOrEmpty(request.Value) || outputNewCount > 0;
+            var semanticOk = sourceOldCount > 0
+                && oldTextChanged
+                && newTextPresent
+                && !string.Equals(sourceText, outputText, StringComparison.Ordinal);
+
+            semanticDelta["sourceOldCount"] = sourceOldCount;
+            semanticDelta["outputOldCount"] = outputOldCount;
+            semanticDelta["outputNewCount"] = outputNewCount;
+            semanticDelta["changed"] = semanticOk;
+
+            checks.Add(new SafeSaveCheck(
+                "semantic-delta",
+                semanticOk,
+                semanticOk ? "info" : "error",
+                semanticOk ? null : "Replacement output did not contain the expected semantic delta.",
+                semanticDelta));
+        }
+        catch (Exception ex)
+        {
+            checks.Add(new SafeSaveCheck(
+                "provider-readback",
+                false,
+                "error",
+                ex.Message));
+        }
+
+        var currentSourceHash = ComputeSha256(request.InputPath);
+        var sourcePreserved = string.Equals(sourceHash, currentSourceHash, StringComparison.OrdinalIgnoreCase);
+        checks.Add(new SafeSaveCheck(
+            "source-preserved",
+            sourcePreserved,
+            sourcePreserved ? "info" : "error",
+            sourcePreserved ? null : "Source file changed before safe-save commit.",
+            new Dictionary<string, object?>
+            {
+                ["beforeSha256"] = sourceHash,
+                ["afterSha256"] = currentSourceHash
+            }));
+
+        return new SafeSaveValidationResult(checks, semanticDelta);
+    }
+
+    private async Task<string> ReadTextOnlyAsync(HwpFormat format, string path, CancellationToken ct)
+    {
+        var result = await ReadTextAsync(
+            new HwpReadRequest(format, path, new FileInfo(path).Length, Json: true),
+            ct).ConfigureAwait(false);
+        return result.Text;
+    }
+
+    private static int CountOccurrences(string text, string value, StringComparison comparison)
+    {
+        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(value)) return 0;
+        var count = 0;
+        var index = 0;
+        while (index < text.Length)
+        {
+            var found = text.IndexOf(value, index, comparison);
+            if (found < 0) break;
+            count++;
+            index = found + value.Length;
+        }
+        return count;
+    }
+
+    private static string ComputeSha256(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
     }
 
     public async Task<HwpMutationResult> SetTableCellAsync(HwpTableCellSetRequest request, CancellationToken ct)

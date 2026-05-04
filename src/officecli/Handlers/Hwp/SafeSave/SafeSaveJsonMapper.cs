@@ -27,6 +27,9 @@ internal static class SafeSaveJsonMapper
             ["manifestPath"] = transaction.ManifestPath,
             ["verified"] = transaction.Verified,
             ["checks"] = checks,
+            ["semanticDelta"] = ToJsonObject(transaction.SemanticDelta),
+            ["visualDelta"] = ToJsonObject(transaction.VisualDelta),
+            ["packageIntegrity"] = ToJsonObject(transaction.PackageIntegrity),
             ["warnings"] = ToJsonArray(transaction.Warnings)
         };
     }
@@ -44,11 +47,32 @@ internal static class SafeSaveJsonMapper
         {
             var details = new JsonObject();
             foreach (var item in check.Details)
-                details[item.Key] = item.Value?.ToString();
+                details[item.Key] = ToJsonValue(item.Value);
             obj["details"] = details;
         }
         return obj;
     }
+
+    private static JsonObject? ToJsonObject(IReadOnlyDictionary<string, object?>? values)
+    {
+        if (values == null) return null;
+        var obj = new JsonObject();
+        foreach (var item in values)
+            obj[item.Key] = ToJsonValue(item.Value);
+        return obj;
+    }
+
+    private static JsonNode? ToJsonValue(object? value) => value switch
+    {
+        null => null,
+        JsonNode node => node.DeepClone(),
+        string text => JsonValue.Create(text),
+        bool flag => JsonValue.Create(flag),
+        int number => JsonValue.Create(number),
+        long number => JsonValue.Create(number),
+        double number => JsonValue.Create(number),
+        _ => JsonValue.Create(value.ToString())
+    };
 
     private static JsonArray ToJsonArray(IEnumerable<string> values)
     {

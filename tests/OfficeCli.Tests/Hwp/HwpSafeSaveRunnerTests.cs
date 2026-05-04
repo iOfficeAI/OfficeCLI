@@ -60,7 +60,7 @@ public class HwpSafeSaveRunnerTests : IDisposable
                 File.WriteAllText(temp, "edited");
                 return Task.CompletedTask;
             },
-            _ => Task.FromResult<IReadOnlyList<SafeSaveCheck>>([]),
+            _ => Task.FromResult(SafeSaveValidationResult.FromChecks([])),
             CancellationToken.None);
 
         Assert.False(transaction.Ok);
@@ -84,7 +84,7 @@ public class HwpSafeSaveRunnerTests : IDisposable
                 File.WriteAllText(temp, "edited");
                 return Task.CompletedTask;
             },
-            _ => Task.FromResult<IReadOnlyList<SafeSaveCheck>>([]),
+            _ => Task.FromResult(SafeSaveValidationResult.FromChecks([])),
             CancellationToken.None);
 
         Assert.False(transaction.Ok);
@@ -111,7 +111,7 @@ public class HwpSafeSaveRunnerTests : IDisposable
                 File.WriteAllText(temp, "edited");
                 return Task.CompletedTask;
             },
-            _ => Task.FromResult<IReadOnlyList<SafeSaveCheck>>([]),
+            _ => Task.FromResult(SafeSaveValidationResult.FromChecks([])),
             CancellationToken.None);
 
         Assert.False(transaction.Ok);
@@ -134,10 +134,10 @@ public class HwpSafeSaveRunnerTests : IDisposable
                 File.WriteAllText(temp, "edited");
                 return Task.CompletedTask;
             },
-            _ => Task.FromResult<IReadOnlyList<SafeSaveCheck>>(
+            _ => Task.FromResult(SafeSaveValidationResult.FromChecks(
             [
                 new SafeSaveCheck("provider-readback", false, "error", "readback failed")
-            ]),
+            ])),
             CancellationToken.None);
 
         Assert.False(transaction.Ok);
@@ -158,7 +158,7 @@ public class HwpSafeSaveRunnerTests : IDisposable
                 File.WriteAllText(temp, "edited");
                 return Task.CompletedTask;
             },
-            _ => Task.FromResult<IReadOnlyList<SafeSaveCheck>>([]),
+            _ => Task.FromResult(SafeSaveValidationResult.FromChecks([])),
             CancellationToken.None);
 
         Assert.False(transaction.Ok);
@@ -177,7 +177,7 @@ public class HwpSafeSaveRunnerTests : IDisposable
                 File.WriteAllText(temp, "edited");
                 return Task.CompletedTask;
             },
-            _ => Task.FromResult<IReadOnlyList<SafeSaveCheck>>([]),
+            _ => Task.FromResult(SafeSaveValidationResult.FromChecks([])),
             CancellationToken.None);
     }
 
