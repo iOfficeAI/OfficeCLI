@@ -15,11 +15,20 @@ schemas/
     docx/<element>.json         ← Word per-element capability
     pptx/<element>.json         ← PowerPoint per-element capability
     xlsx/<element>.json         ← Excel per-element capability
+    hwpx/<element>.json         ← HWPX ZIP/XML per-element capability
+    hwp/<element>.json          ← Binary HWP rhwp-backed operation capability
+  interfaces/
+    *.v1.schema.json            ← shared JSON contracts for capability, edit,
+                                   validation, rhwp sidecar, and safe-save flows
 ```
 
 ## Editing rule
 
 Any PR that changes `Add`, `Set`, or `Get` behavior for an element **must** update the matching schema file in the same PR. CI contract tests will fail otherwise.
+
+HWP/HWPX mutation work must also update the relevant `schemas/interfaces/*`
+contract when it changes result envelopes, sidecar requests, validation output,
+or save/backup behavior.
 
 ## Not here
 

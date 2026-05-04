@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "officecli/interfaces/save-policy/v1",
+  "title": "OfficeCLI Safe Save Policy",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "format",
+    "mode",
+    "outputRequired",
+    "backupRequired",
+    "transactionRequired",
+    "validationRequired"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "format": { "type": "string", "enum": ["hwp", "hwpx"] },
+    "mode": { "type": "string", "enum": ["output", "in-place"] },
+    "outputRequired": { "type": "boolean" },
+    "backupRequired": { "type": "boolean" },
+    "transactionRequired": { "type": "boolean" },
+    "validationRequired": { "type": "boolean" },
+    "atomicReplace": { "type": "boolean" },
+    "sameDirectoryTemp": { "type": "boolean" },
+    "preserveOriginalOnFailure": { "type": "boolean" },
+    "allowedWithoutBackup": { "type": "boolean" },
+    "requiredChecks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "temp-write",
+          "fsync-temp",
+          "provider-readback",
+          "alternate-provider-readback",
+          "semantic-delta",
+          "field-delta",
+          "table-delta",
+          "hwpx-package-integrity",
+          "svg-render",
+          "visual-diff",
+          "backup-created",
+          "atomic-replace"
+        ]
+      }
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}
