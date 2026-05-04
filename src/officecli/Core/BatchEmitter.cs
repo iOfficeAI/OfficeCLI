@@ -38,8 +38,54 @@ public static class BatchEmitter
         // numId=3, etc.) resolve when the paragraph adds reach them on replay.
         EmitStyles(word, items);
         EmitSection(word, items);
-        EmitBody(word, items);
+        var paraIdToTargetIdx = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        EmitBody(word, items, paraIdToTargetIdx);
+        EmitComments(word, items, paraIdToTargetIdx);
         return items;
+    }
+
+    private static void EmitComments(WordHandler word, List<BatchItem> items,
+                                     Dictionary<string, int> paraIdToTargetIdx)
+    {
+        var comments = word.Query("comment");
+        foreach (var c in comments)
+        {
+            var props = FilterEmittableProps(c.Format);
+            if (!string.IsNullOrEmpty(c.Text))
+                props["text"] = c.Text!;
+            // Map anchoredTo (source paraId path) -> target paragraph index.
+            // anchoredTo looks like "/body/p[@paraId=00100000]"; parse and
+            // resolve via the paraId map we built during EmitBody.
+            string parentTarget = "/body/p[1]";  // safe fallback to first body para
+            if (props.TryGetValue("anchoredTo", out var anchor))
+            {
+                var pid = ExtractParaId(anchor);
+                if (pid != null && paraIdToTargetIdx.TryGetValue(pid, out var idx))
+                    parentTarget = $"/body/p[{idx}]";
+                props.Remove("anchoredTo");
+            }
+            // The comment id is allocated by AddComment on the target side;
+            // do not propagate the source id (would conflict on replay).
+            props.Remove("id");
+            // Date is auto-stamped by the SDK on add — emitting it would
+            // overwrite the user's local "now" with the source moment, which
+            // is rarely the desired round-trip behaviour.
+            props.Remove("date");
+
+            items.Add(new BatchItem
+            {
+                Command = "add",
+                Parent = parentTarget,
+                Type = "comment",
+                Props = props
+            });
+        }
+    }
+
+    private static string? ExtractParaId(string anchorPath)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(anchorPath, @"@paraId=([0-9A-Fa-f]+)");
+        return m.Success ? m.Groups[1].Value : null;
     }
 
     // Section-level keys that root.Format exposes. Theme / docDefaults /
@@ -103,10 +149,32 @@ public static class BatchEmitter
         }
     }
 
-    private static void EmitBody(WordHandler word, List<BatchItem> items)
+    private sealed class NoteCursor { public int Index; }
+
+    private sealed record BodyEmitContext(
+        List<string> FootnoteTexts,
+        List<string> EndnoteTexts,
+        NoteCursor FootnoteCursor,
+        NoteCursor EndnoteCursor,
+        Dictionary<string, int>? ParaIdToTargetIdx);
+
+    private static void EmitBody(WordHandler word, List<BatchItem> items,
+                                 Dictionary<string, int>? paraIdToTargetIdx = null)
     {
         var bodyNode = word.Get("/body");
         if (bodyNode.Children == null) return;
+
+        // Footnotes/endnotes are referenced by runs (rStyle=FootnoteReference)
+        // inside body paragraphs but the run carries no id back to the
+        // notes part. We assume notes are listed in document order matching
+        // reference order — the typical case since AddFootnote/AddEndnote
+        // allocate ids sequentially.
+        var ctx = new BodyEmitContext(
+            FootnoteTexts: word.Query("footnote").Select(n => n.Text ?? "").ToList(),
+            EndnoteTexts: word.Query("endnote").Select(n => n.Text ?? "").ToList(),
+            FootnoteCursor: new NoteCursor(),
+            EndnoteCursor: new NoteCursor(),
+            ParaIdToTargetIdx: paraIdToTargetIdx);
 
         int pIndex = 0, tblIndex = 0;
         foreach (var child in bodyNode.Children)
@@ -116,7 +184,7 @@ public static class BatchEmitter
                 case "paragraph":
                 case "p":
                     pIndex++;
-                    EmitParagraph(word, child.Path, "/body", pIndex, items, autoPresent: false);
+                    EmitParagraph(word, child.Path, "/body", pIndex, items, autoPresent: false, ctx);
                     break;
                 case "table":
                     tblIndex++;
@@ -144,9 +212,20 @@ public static class BatchEmitter
     /// paragraph gets reused rather than duplicated.
     /// </summary>
     private static void EmitParagraph(WordHandler word, string sourcePath, string parentPath,
-                                      int targetIndex, List<BatchItem> items, bool autoPresent)
+                                      int targetIndex, List<BatchItem> items, bool autoPresent,
+                                      BodyEmitContext? ctx = null)
     {
         var pNode = word.Get(sourcePath);
+
+        // Track source paraId -> target index so comments anchored on this
+        // paragraph can be retargeted on replay (paraIds regenerate in the
+        // target document, so positional indices are the stable handle).
+        if (ctx?.ParaIdToTargetIdx != null && parentPath == "/body" &&
+            pNode.Format.TryGetValue("paraId", out var paraIdVal) && paraIdVal != null)
+        {
+            ctx.ParaIdToTargetIdx[paraIdVal.ToString()!] = targetIndex;
+        }
+
         var props = FilterEmittableProps(pNode.Format);
         var runs = (pNode.Children ?? new List<DocumentNode>())
             .Where(c => c.Type == "run" || c.Type == "r")
@@ -224,6 +303,44 @@ public static class BatchEmitter
         var paraTargetPath = $"{parentPath}/p[{targetIndex}]";
         foreach (var run in runs)
         {
+            // Detect footnote/endnote reference runs. The OOXML model marks
+            // them with a w:rStyle = FootnoteReference / EndnoteReference;
+            // the run itself carries no visible text. Emit them as a
+            // typed footnote/endnote add anchored on the host paragraph and
+            // pull the body text from the pre-resolved ordered list — see
+            // BodyEmitContext for the document-order assumption.
+            var rStyle = run.Format.TryGetValue("rStyle", out var rs) ? rs?.ToString() : null;
+            if (ctx != null && rStyle == "FootnoteReference")
+            {
+                var noteText = ctx.FootnoteCursor.Index < ctx.FootnoteTexts.Count
+                    ? ctx.FootnoteTexts[ctx.FootnoteCursor.Index]
+                    : "";
+                ctx.FootnoteCursor.Index++;
+                items.Add(new BatchItem
+                {
+                    Command = "add",
+                    Parent = paraTargetPath,
+                    Type = "footnote",
+                    Props = new() { ["text"] = noteText }
+                });
+                continue;
+            }
+            if (ctx != null && rStyle == "EndnoteReference")
+            {
+                var noteText = ctx.EndnoteCursor.Index < ctx.EndnoteTexts.Count
+                    ? ctx.EndnoteTexts[ctx.EndnoteCursor.Index]
+                    : "";
+                ctx.EndnoteCursor.Index++;
+                items.Add(new BatchItem
+                {
+                    Command = "add",
+                    Parent = paraTargetPath,
+                    Type = "endnote",
+                    Props = new() { ["text"] = noteText }
+                });
+                continue;
+            }
+
             var rProps = FilterEmittableProps(run.Format);
             if (!string.IsNullOrEmpty(run.Text))
                 rProps["text"] = run.Text!;
