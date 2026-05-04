@@ -1,0 +1,14 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwp",
+  "element": "replace-text",
+  "operations": { "add": false, "set": true, "get": false, "query": false, "remove": false },
+  "paths": { "positional": ["/text"] },
+  "note": "Search/replace operation for binary HWP through rhwp. Writes a new output file; use validation before trusting production output.",
+  "properties": {
+    "find": { "type": "string", "set": true, "examples": ["--prop find=마케팅"], "enforcement": "strict" },
+    "value": { "type": "string", "set": true, "examples": ["--prop value=브릿지"], "enforcement": "strict" },
+    "mode": { "type": "enum", "values": ["one", "all"], "set": true, "examples": ["--prop mode=all"], "enforcement": "strict" },
+    "output": { "type": "string", "set": true, "examples": ["--prop output=out.hwp"], "enforcement": "strict" }
+  }
+}

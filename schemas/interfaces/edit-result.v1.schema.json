@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "officecli/interfaces/edit-result/v1",
+  "title": "OfficeCLI Edit Result",
+  "type": "object",
+  "required": ["format", "operation", "outputPath", "engine", "warnings"],
+  "properties": {
+    "format": { "type": "string" },
+    "operation": { "type": "string" },
+    "outputPath": { "type": "string" },
+    "engine": { "type": "string" },
+    "engineVersion": { "type": ["string", "null"] },
+    "changedRanges": { "type": "array" },
+    "validation": { "type": "object" },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}

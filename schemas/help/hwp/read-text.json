@@ -1,0 +1,13 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwp",
+  "element": "read-text",
+  "operations": { "add": false, "set": false, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/text"] },
+  "note": "Read-only text extraction for binary .hwp through the experimental rhwp bridge. This is an operation schema, not a DOM path schema.",
+  "properties": {
+    "format": { "type": "string", "get": true, "query": true, "examples": ["hwp"], "enforcement": "strict" },
+    "text": { "type": "string", "get": true, "query": true, "examples": ["officecli view file.hwp text --json"], "enforcement": "strict" },
+    "pages": { "type": "string", "get": true, "query": true, "description": "JSON array of extracted page text entries.", "enforcement": "report" }
+  }
+}

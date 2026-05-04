@@ -1,0 +1,14 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwp",
+  "element": "save-policy",
+  "container": true,
+  "operations": { "add": false, "set": false, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/save-policy"] },
+  "note": "Binary HWP source overwrite is not supported. Experimental mutations require explicit output paths until safe-save transactions are implemented.",
+  "properties": {
+    "outputRequired": { "type": "bool", "get": true, "query": true, "examples": ["true"], "enforcement": "strict" },
+    "inPlace": { "type": "enum", "values": ["unsupported", "experimental", "stable"], "get": true, "query": true, "examples": ["unsupported"], "enforcement": "strict" },
+    "backup": { "type": "string", "get": true, "query": true, "description": "Future backup path policy.", "enforcement": "report" }
+  }
+}

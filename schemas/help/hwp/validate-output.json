@@ -1,0 +1,13 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwp",
+  "element": "validate-output",
+  "operations": { "add": false, "set": false, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/validate-output"] },
+  "note": "Planned validation contract for comparing source and edited HWP outputs. Used before any future in-place mutation policy.",
+  "properties": {
+    "before": { "type": "string", "get": true, "query": true, "examples": ["--before in.hwp"], "enforcement": "strict" },
+    "after": { "type": "string", "get": true, "query": true, "examples": ["--after out.hwp"], "enforcement": "strict" },
+    "ok": { "type": "bool", "get": true, "query": true, "enforcement": "strict" }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "officecli/interfaces/validation-result/v1",
+  "title": "OfficeCLI Validation Result",
+  "type": "object",
+  "required": ["ok", "checks"],
+  "properties": {
+    "ok": { "type": "boolean" },
+    "checks": { "type": "array", "items": { "type": "object" } },
+    "errors": { "type": "array", "items": { "type": "object" } },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}

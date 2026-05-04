@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "officecli/interfaces/capability-result/v1",
+  "title": "OfficeCLI Capability Result",
+  "type": "object",
+  "required": ["schemaVersion", "formats"],
+  "properties": {
+    "schemaVersion": { "type": "integer" },
+    "formats": { "type": "object" },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}

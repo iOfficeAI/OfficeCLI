@@ -1,0 +1,13 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "raw-xml",
+  "operations": { "add": true, "set": true, "get": true, "query": true, "remove": true },
+  "paths": { "positional": ["/raw-xml"] },
+  "note": "Advanced escape hatch for HWPX package XML. Must be followed by package/reference validation before any stability claim.",
+  "properties": {
+    "part": { "type": "string", "add": true, "set": true, "get": true, "query": true, "examples": ["--part Contents/section0.xml"], "enforcement": "strict" },
+    "xpath": { "type": "string", "add": true, "set": true, "get": true, "query": true, "examples": ["--xpath //hp:p[1]"], "enforcement": "report" },
+    "value": { "type": "string", "add": true, "set": true, "examples": ["--value '<hp:p/>'"], "enforcement": "report" }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "officecli/interfaces/error-result/v1",
+  "title": "OfficeCLI Error Result",
+  "type": "object",
+  "required": ["code", "message"],
+  "properties": {
+    "code": { "type": "string" },
+    "message": { "type": "string" },
+    "format": { "type": "string" },
+    "operation": { "type": "string" },
+    "engine": { "type": "string" },
+    "nextCommand": { "type": "string" },
+    "details": { "type": "object" }
+  },
+  "additionalProperties": true
+}

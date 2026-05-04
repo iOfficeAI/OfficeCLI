@@ -1,0 +1,12 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "table-fill",
+  "parent": "table|table-cell",
+  "operations": { "add": false, "set": true, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/table/fill"] },
+  "properties": {
+    "fill": { "type": "color", "set": true, "get": true, "query": true, "examples": ["--prop fill=#EAF2FF"], "enforcement": "strict" },
+    "scope": { "type": "enum", "values": ["table", "row", "cell"], "set": true, "get": true, "query": true, "examples": ["--prop scope=cell"], "enforcement": "report" }
+  }
+}

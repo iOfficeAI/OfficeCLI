@@ -1,0 +1,17 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwp",
+  "element": "table-cell",
+  "parent": "table-map",
+  "operations": { "add": false, "set": true, "get": true, "query": true, "remove": false },
+  "paths": { "stable": ["/table/cell[@section=S,@parent-para=P,@control=C,@cell=N]"], "positional": ["/table/cell"] },
+  "note": "Explicit-coordinate table cell operation for HWP. Coordinates should come from table-map. HWPX table-cell mutation through rhwp remains blocked.",
+  "properties": {
+    "section": { "type": "number", "set": true, "get": true, "query": true, "examples": ["--prop section=0"], "enforcement": "strict" },
+    "parent-para": { "type": "number", "set": true, "get": true, "query": true, "examples": ["--prop parent-para=3"], "enforcement": "strict" },
+    "control": { "type": "number", "set": true, "get": true, "query": true, "examples": ["--prop control=0"], "enforcement": "strict" },
+    "cell": { "type": "number", "set": true, "get": true, "query": true, "examples": ["--prop cell=0"], "enforcement": "strict" },
+    "value": { "type": "string", "set": true, "examples": ["--prop value=오피스셀"], "enforcement": "strict" },
+    "output": { "type": "string", "set": true, "examples": ["--prop output=out.hwp"], "enforcement": "strict" }
+  }
+}

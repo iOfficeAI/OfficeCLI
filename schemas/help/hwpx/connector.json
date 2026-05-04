@@ -1,0 +1,12 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "connector",
+  "parent": "paragraph|section",
+  "operations": { "add": true, "set": true, "get": true, "query": true, "remove": true },
+  "paths": { "positional": ["/section[N]/p[N]/connectLine[N]"] },
+  "properties": {
+    "shape": { "type": "string", "add": true, "set": true, "get": true, "query": true, "examples": ["--prop shape=straight"], "enforcement": "report" },
+    "color": { "type": "color", "add": true, "set": true, "get": true, "query": true, "examples": ["--prop color=#333333"], "enforcement": "report" }
+  }
+}

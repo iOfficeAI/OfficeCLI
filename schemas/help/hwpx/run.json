@@ -1,0 +1,13 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "run",
+  "parent": "paragraph",
+  "operations": { "add": true, "set": true, "get": true, "query": true, "remove": true },
+  "paths": { "positional": ["/section[N]/p[N]/run[N]"] },
+  "properties": {
+    "text": { "type": "string", "add": true, "set": true, "get": true, "query": true, "examples": ["--prop text=문장"], "enforcement": "strict" },
+    "bold": { "type": "bool", "add": true, "set": true, "get": true, "query": true, "examples": ["--prop bold=true"], "enforcement": "report" },
+    "font": { "type": "string", "add": true, "set": true, "get": true, "query": true, "examples": ["--prop font=함초롬바탕"], "enforcement": "report" }
+  }
+}

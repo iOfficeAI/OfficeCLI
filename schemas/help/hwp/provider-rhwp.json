@@ -1,0 +1,14 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwp",
+  "element": "provider-rhwp",
+  "container": true,
+  "operations": { "add": false, "set": false, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/provider/rhwp"] },
+  "note": "Provider contract for the experimental rhwp bridge and API sidecar.",
+  "properties": {
+    "engine": { "type": "string", "get": true, "query": true, "examples": ["rhwp-bridge"], "enforcement": "strict" },
+    "rhwpVersion": { "type": "string", "get": true, "query": true, "examples": ["rhwp v0.7.9"], "enforcement": "report" },
+    "apiSidecar": { "type": "string", "get": true, "query": true, "examples": ["rhwp-field-bridge"], "enforcement": "report" }
+  }
+}

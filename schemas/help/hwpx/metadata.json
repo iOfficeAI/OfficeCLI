@@ -1,0 +1,13 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "metadata",
+  "container": true,
+  "operations": { "add": false, "set": true, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/metadata"] },
+  "properties": {
+    "title": { "type": "string", "set": true, "get": true, "query": true, "examples": ["--prop title=보고서"], "enforcement": "report" },
+    "author": { "type": "string", "set": true, "get": true, "query": true, "examples": ["--prop author=OfficeCLI"], "enforcement": "report" },
+    "subject": { "type": "string", "set": true, "get": true, "query": true, "examples": ["--prop subject=요약"], "enforcement": "report" }
+  }
+}

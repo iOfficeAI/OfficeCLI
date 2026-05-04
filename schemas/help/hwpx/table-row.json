@@ -1,0 +1,14 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "table-row",
+  "parent": "table",
+  "operations": { "add": true, "set": true, "get": true, "query": true, "remove": true },
+  "paths": { "positional": ["/section[N]/tbl[N]/tr[N]"] },
+  "children": [
+    { "element": "table-cell", "pathSegment": "tc", "cardinality": "1..n" }
+  ],
+  "properties": {
+    "height": { "type": "length", "set": true, "get": true, "query": true, "examples": ["--prop height=12mm"], "enforcement": "report" }
+  }
+}

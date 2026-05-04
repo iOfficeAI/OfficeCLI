@@ -1,0 +1,16 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "section",
+  "parent": "document",
+  "operations": { "add": true, "set": true, "get": true, "query": true, "remove": true },
+  "paths": { "positional": ["/section[N]"] },
+  "children": [
+    { "element": "paragraph", "pathSegment": "p", "cardinality": "0..n" },
+    { "element": "table", "pathSegment": "tbl", "cardinality": "0..n" }
+  ],
+  "properties": {
+    "pageWidth": { "type": "length", "set": true, "get": true, "query": true, "examples": ["--prop pageWidth=210mm"], "enforcement": "report" },
+    "pageHeight": { "type": "length", "set": true, "get": true, "query": true, "examples": ["--prop pageHeight=297mm"], "enforcement": "report" }
+  }
+}

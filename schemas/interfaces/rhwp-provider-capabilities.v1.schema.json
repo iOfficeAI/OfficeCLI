@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "officecli/interfaces/rhwp-provider-capabilities/v1",
+  "title": "OfficeCLI rhwp Provider Capabilities",
+  "type": "object",
+  "required": ["schemaVersion", "provider", "formats", "operations"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "provider": { "type": "string", "const": "rhwp" },
+    "providerVersion": { "type": "string" },
+    "rhwpVersion": { "type": "string" },
+    "formats": { "type": "array", "items": { "type": "string" } },
+    "operations": { "type": "object" },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}

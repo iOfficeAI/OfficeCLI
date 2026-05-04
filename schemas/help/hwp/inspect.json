@@ -1,0 +1,14 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwp",
+  "element": "inspect",
+  "container": true,
+  "operations": { "add": false, "set": false, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/inspect"] },
+  "note": "Planned read-only document-map entry point for binary HWP. Initial schema exists so agents can discover the intended operation and current limits.",
+  "properties": {
+    "fields": { "type": "string", "get": true, "query": true, "description": "Field summary if provider supports it.", "enforcement": "report" },
+    "tables": { "type": "string", "get": true, "query": true, "description": "Table coordinate summary if provider supports it.", "enforcement": "report" },
+    "warnings": { "type": "string", "get": true, "query": true, "description": "Provider limitations.", "enforcement": "report" }
+  }
+}

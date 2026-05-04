@@ -1,0 +1,15 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "table-cell",
+  "parent": "table-row",
+  "operations": { "add": false, "set": true, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/section[N]/tbl[N]/tr[N]/tc[N]"] },
+  "note": "HWPX custom handler table-cell path. rhwp-backed HWPX table-cell mutation remains blocked until round-trip and Hancom compatibility gates close.",
+  "properties": {
+    "text": { "type": "string", "set": true, "get": true, "query": true, "examples": ["--prop text=셀"], "enforcement": "strict" },
+    "fill": { "type": "color", "set": true, "get": true, "query": true, "examples": ["--prop fill=#FFFF00"], "enforcement": "report" },
+    "rowSpan": { "type": "number", "get": true, "query": true, "enforcement": "report" },
+    "colSpan": { "type": "number", "get": true, "query": true, "enforcement": "report" }
+  }
+}

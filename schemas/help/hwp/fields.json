@@ -1,0 +1,13 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwp",
+  "element": "fields",
+  "operations": { "add": false, "set": false, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/fields"] },
+  "note": "Read-only field discovery through the rhwp API sidecar.",
+  "properties": {
+    "fieldId": { "type": "number", "get": true, "query": true, "examples": ["1584999796"], "enforcement": "strict" },
+    "name": { "type": "string", "get": true, "query": true, "examples": ["회사명"], "enforcement": "strict" },
+    "value": { "type": "string", "get": true, "query": true, "examples": ["홍길동"], "enforcement": "strict" }
+  }
+}

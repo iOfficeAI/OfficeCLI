@@ -1,0 +1,12 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "patch",
+  "operations": { "add": true, "set": true, "get": false, "query": false, "remove": true },
+  "paths": { "positional": ["/patch"] },
+  "note": "Planned multi-operation HWPX patch contract. The operation is schema-visible before becoming stable so agents can discover the intended contract.",
+  "properties": {
+    "ops": { "type": "string", "add": true, "set": true, "examples": ["--ops patch.json"], "enforcement": "report" },
+    "output": { "type": "string", "add": true, "set": true, "examples": ["--output out.hwpx"], "enforcement": "strict" }
+  }
+}

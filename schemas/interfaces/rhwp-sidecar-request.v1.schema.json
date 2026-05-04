@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "officecli/interfaces/rhwp-sidecar-request/v1",
+  "title": "OfficeCLI rhwp Sidecar Request",
+  "type": "object",
+  "required": ["schemaVersion", "operation", "format", "inputPath"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "operation": { "type": "string" },
+    "format": { "type": "string", "enum": ["hwp", "hwpx"] },
+    "inputPath": { "type": "string" },
+    "outputPath": { "type": "string" },
+    "arguments": { "type": "object" },
+    "json": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}
