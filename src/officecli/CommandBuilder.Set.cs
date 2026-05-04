@@ -468,7 +468,8 @@ static partial class CommandBuilder
                     ["outputPath"] = result.OutputPath,
                     ["engine"] = result.Engine,
                     ["engineVersion"] = result.EngineVersion,
-                    ["evidence"] = HwpCapabilityJsonMapper.ToJsonArray(result.Evidence)
+                    ["evidence"] = HwpCapabilityJsonMapper.ToJsonArray(result.Evidence),
+                    ["transaction"] = result.Transaction?.DeepClone()
                 },
                 ["warnings"] = HwpCapabilityJsonMapper.ToJsonArray(result.Warnings)
             };

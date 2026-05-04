@@ -319,6 +319,8 @@ public class HwpBridgeSidecarTests : IDisposable
         Assert.True(root["success"]!.GetValue<bool>());
         Assert.Equal(output, root["data"]!["outputPath"]!.GetValue<string>());
         Assert.Equal("rhwp-bridge", root["data"]!["engine"]!.GetValue<string>());
+        Assert.Equal("output", root["data"]!["transaction"]!["mode"]!.GetValue<string>());
+        Assert.True(root["data"]!["transaction"]!["verified"]!.GetValue<bool>());
     }
 
     private static string LocateBridgeDll()

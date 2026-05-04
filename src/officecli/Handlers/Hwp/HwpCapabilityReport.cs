@@ -195,4 +195,7 @@ public sealed record HwpMutationResult(
     string? EngineVersion,
     string[] Evidence,
     string[] Warnings
-);
+)
+{
+    public JsonObject? Transaction { get; init; }
+}
