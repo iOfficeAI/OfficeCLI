@@ -1,0 +1,16 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "table",
+  "parent": "section|paragraph",
+  "operations": { "add": true, "set": true, "get": true, "query": true, "remove": true },
+  "paths": { "positional": ["/section[N]/tbl[N]", "/section[N]/p[N]/tbl[N]"] },
+  "children": [
+    { "element": "table-row", "pathSegment": "tr", "cardinality": "1..n" }
+  ],
+  "properties": {
+    "rows": { "type": "number", "add": true, "get": true, "query": true, "examples": ["--prop rows=3"], "enforcement": "strict" },
+    "cols": { "type": "number", "add": true, "get": true, "query": true, "examples": ["--prop cols=4"], "enforcement": "strict" },
+    "fill": { "type": "color", "set": true, "get": true, "query": true, "examples": ["--prop fill=#F2F2F2"], "enforcement": "report" }
+  }
+}

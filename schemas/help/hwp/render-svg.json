@@ -1,0 +1,13 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwp",
+  "element": "render-svg",
+  "operations": { "add": false, "set": false, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/svg"] },
+  "note": "Read-only SVG rendering for visual inspection through rhwp. Use rendered SVG as validation evidence, not as proof of full edit safety.",
+  "properties": {
+    "page": { "type": "string", "get": true, "query": true, "examples": ["--page 1"], "enforcement": "strict" },
+    "outputDir": { "type": "string", "get": true, "query": true, "examples": ["--output-dir ./svg"], "enforcement": "strict" },
+    "sha256": { "type": "string", "get": true, "query": true, "description": "Hash of rendered SVG output.", "enforcement": "report" }
+  }
+}

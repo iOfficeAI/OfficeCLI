@@ -1,0 +1,13 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "text",
+  "parent": "run",
+  "operations": { "add": true, "set": true, "get": true, "query": true, "remove": true },
+  "paths": { "positional": ["/section[N]/p[N]/run[N]/t[N]"] },
+  "properties": {
+    "value": { "type": "string", "add": true, "set": true, "get": true, "query": true, "examples": ["--prop value=텍스트"], "enforcement": "strict" },
+    "find": { "type": "string", "set": true, "examples": ["--prop find=행정안전부"], "enforcement": "report" },
+    "replacement": { "type": "string", "set": true, "examples": ["--prop replacement=리지정부"], "enforcement": "report" }
+  }
+}

@@ -9,7 +9,7 @@
     "$schema": { "type": "string", "description": "pointer to this meta file for IDE tooling; ignored at runtime" },
     "format": {
       "type": "string",
-      "enum": ["docx", "xlsx", "pptx"]
+      "enum": ["docx", "xlsx", "pptx", "hwpx", "hwp"]
     },
     "element": {
       "type": "string",

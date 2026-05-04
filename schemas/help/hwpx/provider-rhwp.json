@@ -1,0 +1,14 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "provider-rhwp",
+  "container": true,
+  "operations": { "add": false, "set": false, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/provider/rhwp"] },
+  "note": "Optional rhwp provider for selected HWPX read/render/field/replace operations. Not the default mutator.",
+  "properties": {
+    "engine": { "type": "string", "get": true, "query": true, "examples": ["rhwp-bridge"], "enforcement": "strict" },
+    "supportedOps": { "type": "string", "get": true, "query": true, "examples": ["read_text,render_svg,fill_field,replace_text"], "enforcement": "report" },
+    "blockedOps": { "type": "string", "get": true, "query": true, "examples": ["set_table_cell"], "enforcement": "report" }
+  }
+}

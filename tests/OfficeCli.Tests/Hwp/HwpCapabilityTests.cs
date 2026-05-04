@@ -3,6 +3,7 @@ using OfficeCli.Handlers.Hwp;
 
 namespace OfficeCli.Tests.Hwp;
 
+[Collection("HwpBridgeEnvironment")]
 public class HwpCapabilityTests : IDisposable
 {
     private readonly string? _oldEngine = Environment.GetEnvironmentVariable("OFFICECLI_HWP_ENGINE");

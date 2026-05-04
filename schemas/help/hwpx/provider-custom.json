@@ -1,0 +1,13 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "provider-custom",
+  "container": true,
+  "operations": { "add": false, "set": false, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/provider/custom"] },
+  "note": "Default HWPX custom C# ZIP/XML provider. Keeps broad HWPX path/raw XML coverage while rhwp remains optional.",
+  "properties": {
+    "default": { "type": "bool", "get": true, "query": true, "examples": ["true"], "enforcement": "strict" },
+    "roundtripStatus": { "type": "enum", "values": ["unverified", "fixture-backed", "stable"], "get": true, "query": true, "examples": ["unverified"], "enforcement": "report" }
+  }
+}

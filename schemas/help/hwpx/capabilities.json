@@ -1,0 +1,14 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "capabilities",
+  "container": true,
+  "operations": { "add": false, "set": false, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/capabilities"] },
+  "note": "Machine-readable HWPX capability surface. Custom C# ZIP/XML handler remains default; rhwp is an opt-in provider for selected operations.",
+  "properties": {
+    "provider": { "type": "enum", "values": ["custom", "rhwp"], "get": true, "query": true, "examples": ["custom"], "enforcement": "strict" },
+    "roundtrip": { "type": "enum", "values": ["unverified", "fixture-backed", "stable"], "get": true, "query": true, "examples": ["unverified"], "enforcement": "strict" },
+    "rawXml": { "type": "enum", "values": ["unsupported", "advanced"], "get": true, "query": true, "examples": ["advanced"], "enforcement": "strict" }
+  }
+}

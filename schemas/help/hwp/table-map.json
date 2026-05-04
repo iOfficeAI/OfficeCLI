@@ -1,0 +1,14 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwp",
+  "element": "table-map",
+  "operations": { "add": false, "set": false, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/tables"] },
+  "note": "Read-only discovery of rhwp table coordinates. Run this before set-table-cell so agents do not guess section/control/cell coordinates.",
+  "properties": {
+    "section": { "type": "number", "get": true, "query": true, "examples": ["0"], "enforcement": "strict" },
+    "parentParagraph": { "type": "number", "get": true, "query": true, "examples": ["3"], "enforcement": "strict" },
+    "control": { "type": "number", "get": true, "query": true, "examples": ["0"], "enforcement": "strict" },
+    "cell": { "type": "number", "get": true, "query": true, "examples": ["0"], "enforcement": "strict" }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "render-svg",
+  "operations": { "add": false, "set": false, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/svg"] },
+  "note": "SVG render contract for HWPX through rhwp experimental provider.",
+  "properties": {
+    "page": { "type": "string", "get": true, "query": true, "examples": ["--page 1"], "enforcement": "report" },
+    "outputDir": { "type": "string", "get": true, "query": true, "examples": ["--output-dir ./svg"], "enforcement": "report" }
+  }
+}

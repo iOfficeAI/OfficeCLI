@@ -1,0 +1,12 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "style",
+  "parent": "document",
+  "operations": { "add": true, "set": true, "get": true, "query": true, "remove": true },
+  "paths": { "stable": ["/styles/style[@id=ID]"], "positional": ["/styles/style[N]"] },
+  "properties": {
+    "id": { "type": "string", "add": true, "set": true, "get": true, "query": true, "examples": ["--prop id=Body"], "enforcement": "report" },
+    "name": { "type": "string", "add": true, "set": true, "get": true, "query": true, "examples": ["--prop name=본문"], "enforcement": "report" }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "default-font",
+  "container": true,
+  "operations": { "add": false, "set": true, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/default-font"] },
+  "properties": {
+    "family": { "type": "string", "set": true, "get": true, "query": true, "examples": ["--prop family=맑은 고딕"], "enforcement": "report" },
+    "size": { "type": "font-size", "set": true, "get": true, "query": true, "examples": ["--prop size=11pt"], "enforcement": "report" }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwp",
+  "element": "field",
+  "parent": "fields",
+  "operations": { "add": false, "set": true, "get": true, "query": true, "remove": false },
+  "paths": { "stable": ["/field[@name=NAME]", "/field[@id=ID]"], "positional": ["/field"] },
+  "note": "Single field read/fill operation. Mutations write to an explicit output path and never overwrite the source file.",
+  "properties": {
+    "name": { "type": "string", "set": true, "get": true, "query": true, "examples": ["--field-name 회사명", "--prop name=회사명"], "enforcement": "strict" },
+    "id": { "type": "number", "set": true, "get": true, "query": true, "examples": ["--field-id 1584999796", "--prop id=1584999796"], "enforcement": "strict" },
+    "value": { "type": "string", "set": true, "get": true, "examples": ["--prop value=리지"], "enforcement": "strict" },
+    "output": { "type": "string", "set": true, "examples": ["--prop output=out.hwp"], "enforcement": "strict" }
+  }
+}

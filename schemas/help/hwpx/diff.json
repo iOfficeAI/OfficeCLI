@@ -1,0 +1,13 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "diff",
+  "container": true,
+  "operations": { "add": false, "set": false, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/diff"] },
+  "properties": {
+    "before": { "type": "string", "get": true, "query": true, "examples": ["--before a.hwpx"], "enforcement": "strict" },
+    "after": { "type": "string", "get": true, "query": true, "examples": ["--after b.hwpx"], "enforcement": "strict" },
+    "changes": { "type": "string", "get": true, "query": true, "description": "JSON diff changes.", "enforcement": "report" }
+  }
+}
