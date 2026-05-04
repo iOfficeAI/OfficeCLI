@@ -70,6 +70,57 @@ public class HwpSafeSaveRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task SameInputOutputPathFailsBeforeWritingTemp()
+    {
+        var input = CreateFile("input/source.hwp", "source");
+        var runner = new SafeSaveRunner();
+        var writeCalled = false;
+
+        var transaction = await runner.RunAsync(
+            Options(input, input, SafeSavePolicy.OutputMode("temp-write")),
+            temp =>
+            {
+                writeCalled = true;
+                File.WriteAllText(temp, "edited");
+                return Task.CompletedTask;
+            },
+            _ => Task.FromResult<IReadOnlyList<SafeSaveCheck>>([]),
+            CancellationToken.None);
+
+        Assert.False(transaction.Ok);
+        Assert.False(writeCalled);
+        Assert.Equal("source", File.ReadAllText(input));
+        Assert.Contains(transaction.Checks, check => check.Name == "same-path-output" && !check.Ok);
+    }
+
+    [Fact]
+    public async Task CaseVariantSamePathFailsOnCaseInsensitivePlatforms()
+    {
+        if (!OperatingSystem.IsMacOS() && !OperatingSystem.IsWindows()) return;
+
+        var input = CreateFile("input/source.hwp", "source");
+        var variant = input.ToUpperInvariant();
+        var runner = new SafeSaveRunner();
+        var writeCalled = false;
+
+        var transaction = await runner.RunAsync(
+            Options(input, variant, SafeSavePolicy.OutputMode("temp-write")),
+            temp =>
+            {
+                writeCalled = true;
+                File.WriteAllText(temp, "edited");
+                return Task.CompletedTask;
+            },
+            _ => Task.FromResult<IReadOnlyList<SafeSaveCheck>>([]),
+            CancellationToken.None);
+
+        Assert.False(transaction.Ok);
+        Assert.False(writeCalled);
+        Assert.Equal("source", File.ReadAllText(input));
+        Assert.Contains(transaction.Checks, check => check.Name == "same-path-output" && !check.Ok);
+    }
+
+    [Fact]
     public async Task ValidationFailureLeavesInputAndExistingOutputUntouched()
     {
         var input = CreateFile("input/source.hwp", "source");

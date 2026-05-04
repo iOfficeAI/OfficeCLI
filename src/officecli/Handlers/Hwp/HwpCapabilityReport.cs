@@ -169,6 +169,9 @@ public sealed record HwpReplaceTextRequest(
     string Value,
     string Mode,
     bool CaseSensitive,
+    bool InPlace,
+    bool Backup,
+    bool Verify,
     bool Json
 );
 
