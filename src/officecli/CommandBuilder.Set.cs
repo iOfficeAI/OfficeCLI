@@ -13,6 +13,9 @@ static partial class CommandBuilder
     private static Command BuildSetCommand(Option<bool> jsonOption)
     {
         var forceOption = new Option<bool>("--force") { Description = "Force write even if document is protected" };
+        var inPlaceOption = new Option<bool>("--in-place") { Description = "HWP safe-save in-place mutation (experimental; currently returns not-ready)" };
+        var backupOption = new Option<bool>("--backup") { Description = "Create a backup before HWP in-place mutation (reserved for safe-save phase)" };
+        var verifyOption = new Option<bool>("--verify") { Description = "Run HWP safe-save verification checks before publishing output" };
         var setFileArg = new Argument<FileInfo>("file") { Description = "Office document path (required even with open/close mode)" };
         var setPathArg = new Argument<string>("path") { Description = "DOM path to the element" };
         var propsOpt = new Option<string[]>("--prop") { Description = "Property to set (key=value)", AllowMultipleArgumentsPerToken = true };
@@ -35,6 +38,9 @@ static partial class CommandBuilder
         setCommand.Add(propsOpt);
         setCommand.Add(jsonOption);
         setCommand.Add(forceOption);
+        setCommand.Add(inPlaceOption);
+        setCommand.Add(backupOption);
+        setCommand.Add(verifyOption);
 
         setCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
@@ -42,6 +48,9 @@ static partial class CommandBuilder
             var path = result.GetValue(setPathArg)!;
             var props = result.GetValue(propsOpt);
             var force = result.GetValue(forceOption);
+            var inPlace = result.GetValue(inPlaceOption);
+            var backup = result.GetValue(backupOption);
+            var verify = result.GetValue(verifyOption);
 
             // BUG-BT-R5-01: support the `selected` pseudo-path (mark and get
             // already do). Expand to the first selected path and recursively
@@ -136,7 +145,7 @@ static partial class CommandBuilder
                 return HandleHwpFieldSet(file.FullName, HwpFormat.Hwp, properties, json);
             if (string.Equals(extension, ".hwp", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(path, "/text", StringComparison.OrdinalIgnoreCase))
-                return HandleHwpTextReplace(file.FullName, HwpFormat.Hwp, properties, json);
+                return HandleHwpTextReplace(file.FullName, HwpFormat.Hwp, properties, json, inPlace, backup, verify);
             if (string.Equals(extension, ".hwp", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(path, "/table/cell", StringComparison.OrdinalIgnoreCase))
                 return HandleHwpTableCellSet(file.FullName, HwpFormat.Hwp, properties, json);
@@ -148,7 +157,7 @@ static partial class CommandBuilder
             if (string.Equals(extension, ".hwpx", StringComparison.OrdinalIgnoreCase)
                 && HwpEngineSelector.IsExperimentalBridgeEnabled()
                 && string.Equals(path, "/text", StringComparison.OrdinalIgnoreCase))
-                return HandleHwpTextReplace(file.FullName, HwpFormat.Hwpx, properties, json);
+                return HandleHwpTextReplace(file.FullName, HwpFormat.Hwpx, properties, json, inPlace, backup, verify);
 
             if (TryResident(file.FullName, req =>
             {
@@ -423,22 +432,25 @@ static partial class CommandBuilder
         string inputPath,
         HwpFormat format,
         Dictionary<string, string> properties,
-        bool json)
+        bool json,
+        bool inPlace,
+        bool backup,
+        bool verify)
     {
         var query = FirstValue(properties, "find", "query", "old");
         var value = FirstValue(properties, "value", "text", "new");
         var output = FirstValue(properties, "output", "out");
         var mode = FirstValue(properties, "mode") ?? "one";
         var caseSensitiveRaw = FirstValue(properties, "case-sensitive", "caseSensitive") ?? "false";
-        if (string.IsNullOrEmpty(query) || value == null || string.IsNullOrWhiteSpace(output))
+        if (string.IsNullOrEmpty(query) || value == null || (!inPlace && string.IsNullOrWhiteSpace(output)))
         {
-            var message = "HWP text replace requires --prop find=<text> --prop value=<text> --prop output=<path>.";
+            var message = "HWP text replace requires --prop find=<text> --prop value=<text> plus --prop output=<path> or --in-place.";
             if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(message));
             else Console.Error.WriteLine(message);
             return 1;
         }
 
-        var outputPath = Path.GetFullPath(output);
+        var outputPath = inPlace ? Path.GetFullPath(inputPath) : Path.GetFullPath(output!);
         var outputDir = Path.GetDirectoryName(outputPath);
         if (!string.IsNullOrEmpty(outputDir)) Directory.CreateDirectory(outputDir);
 
@@ -454,6 +466,9 @@ static partial class CommandBuilder
             value,
             mode,
             bool.TryParse(caseSensitiveRaw, out var caseSensitive) && caseSensitive,
+            inPlace,
+            backup,
+            verify || inPlace,
             json);
         var result = engine.ReplaceTextAsync(request, CancellationToken.None).GetAwaiter().GetResult();
 

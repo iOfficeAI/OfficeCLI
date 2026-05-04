@@ -100,9 +100,9 @@ public sealed partial class RhwpBridgeEngine
             new SafeSaveOptions(
                 request.InputPath,
                 request.OutputPath,
-                InPlace: false,
-                Backup: false,
-                Verify: true,
+                request.InPlace,
+                request.Backup,
+                request.Verify,
                 HwpCapabilityConstants.OperationReplaceText,
                 formatArg,
                 SafeSavePolicy.OutputMode("temp-write")),
@@ -136,7 +136,8 @@ public sealed partial class RhwpBridgeEngine
                 FormatKey(request.Format),
                 HwpCapabilityConstants.OperationReplaceText,
                 HwpCapabilityConstants.EngineRhwpBridge,
-                HwpCapabilityConstants.ModeExperimental);
+                HwpCapabilityConstants.ModeExperimental,
+                SafeSaveJsonMapper.ToJson(transaction));
         }
 
         EnsureOutputExists(request.OutputPath);

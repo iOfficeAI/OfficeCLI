@@ -323,6 +323,36 @@ public class HwpBridgeSidecarTests : IDisposable
         Assert.True(root["data"]!["transaction"]!["verified"]!.GetValue<bool>());
     }
 
+    [Fact]
+    public void OfficeCliSetText_InPlaceReturnsSafeSaveTransactionError()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", "rhwp-experimental");
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", LocateBridgeDll());
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", CreateFakeRhwp());
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", CreateFakeRhwpApi());
+        var input = CreateInput(".hwp");
+
+        var (exitCode, stdout) = InvokeOfficeCli(
+            [
+                "set", input, "/text",
+                "--prop", "find=before",
+                "--prop", "value=after",
+                "--in-place",
+                "--json"
+            ]);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal("fake", File.ReadAllText(input));
+        var root = JsonNode.Parse(stdout)!;
+        Assert.False(root["success"]!.GetValue<bool>());
+        Assert.Equal("in-place", root["data"]!["transaction"]!["mode"]!.GetValue<string>());
+        Assert.False(root["data"]!["transaction"]!["ok"]!.GetValue<bool>());
+        Assert.Contains(
+            root["data"]!["transaction"]!["checks"]!.AsArray(),
+            check => check?["name"]?.GetValue<string>() == "in-place-not-ready");
+    }
+
     private static string LocateBridgeDll()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

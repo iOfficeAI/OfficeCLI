@@ -3,6 +3,8 @@
 
 namespace OfficeCli.Handlers.Hwp;
 
+using System.Text.Json.Nodes;
+
 public sealed record OfficeCliJsonEnvelope<T>(
     bool Success,
     T? Data,
@@ -31,7 +33,8 @@ public sealed class HwpEngineException : Exception
         string? format = null,
         string? operation = null,
         string? engine = null,
-        string? engineMode = null) : base(message)
+        string? engineMode = null,
+        JsonObject? transaction = null) : base(message)
     {
         Error = new OfficeCliError(
             message,
@@ -42,7 +45,9 @@ public sealed class HwpEngineException : Exception
             operation,
             engine,
             engineMode);
+        Transaction = transaction;
     }
 
     public OfficeCliError Error { get; }
+    public JsonObject? Transaction { get; }
 }

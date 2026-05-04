@@ -224,6 +224,13 @@ internal static class OutputFormatter
             ["success"] = false,
             ["error"] = JsonSerializer.SerializeToNode(errorResult, AppJsonContext.Default.ErrorResult)
         };
+        if (ex is OfficeCli.Handlers.Hwp.HwpEngineException { Transaction: not null } hwp)
+        {
+            envelope["data"] = new JsonObject
+            {
+                ["transaction"] = hwp.Transaction.DeepClone()
+            };
+        }
         return envelope.ToJsonString(JsonOptions);
     }
 

@@ -16,7 +16,7 @@ internal sealed class SafeSaveRunner
 
         var outputPath = Path.GetFullPath(options.OutputPath);
         var inputPath = Path.GetFullPath(options.InputPath);
-        if (string.Equals(inputPath, outputPath, StringComparison.Ordinal))
+        if (PathsReferToSameLocation(inputPath, outputPath))
             return Failed(options, null, "same-path-output", "Output path equals input path. Use --in-place after safe-save support is ready.");
 
         var outputDirectory = Path.GetDirectoryName(outputPath);
@@ -139,6 +139,14 @@ internal sealed class SafeSaveRunner
         return policy.RequiredChecks
             .Where(required => !okChecks.Contains(required))
             .ToList();
+    }
+
+    private static bool PathsReferToSameLocation(string firstPath, string secondPath)
+    {
+        var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        return string.Equals(firstPath, secondPath, comparison);
     }
 
     private static void TryDelete(string path)
