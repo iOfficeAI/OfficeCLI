@@ -277,8 +277,15 @@ public partial class WordHandler
             // CONSISTENCY(add-set-symmetry): Set accepts border.top/bottom/left/right/between/bar
             // (and bare "border"/"border.all"); Add must accept the same vocabulary so the
             // Add → Get → verify lifecycle works without a follow-up Set call.
-            if (pk.StartsWith("pbdr", StringComparison.OrdinalIgnoreCase)
-                || pk.StartsWith("border", StringComparison.OrdinalIgnoreCase))
+            // 3-segment keys (pbdr.top.sz / pbdr.top.color / pbdr.top.space)
+            // surface in Get readback but Set's TrySetParagraphProp switch
+            // doesn't model them either — calling ApplyParagraphBorders with a
+            // 3-segment key drives ParseBorderValue with the sub-attribute
+            // value (e.g. "4"), which throws "Invalid border style: '4'".
+            // Skip them here to keep Add/Set symmetry (BUG-R2-02 / BT-2).
+            if ((pk.StartsWith("pbdr", StringComparison.OrdinalIgnoreCase)
+                 || pk.StartsWith("border", StringComparison.OrdinalIgnoreCase))
+                && pk.Count(ch => ch == '.') < 2)
                 ApplyParagraphBorders(pProps, pk, pv);
         }
         if (properties.TryGetValue("liststyle", out var listStyle) || properties.TryGetValue("listStyle", out listStyle))
@@ -506,6 +513,7 @@ public partial class WordHandler
             "spacebefore", "spaceafter", "linespacing", "lineSpacing",
             "keepnext", "keepwithnext", "keeplines", "keeptogether",
             "pagebreakbefore", "break",
+            "widowcontrol", "widowControl",
             "numid", "numId", "ilvl", "numlevel", "numLevel",
             "liststyle", "listStyle", "start", "level", "listLevel", "listlevel",
             "outlinelevel", "outlineLevel",
@@ -888,6 +896,15 @@ public partial class WordHandler
             newRProps.Imprint = new Imprint();
         if (properties.TryGetValue("noproof", out var rNoProof) && IsTruthy(rNoProof))
             newRProps.NoProof = new NoProof();
+        // CONSISTENCY(add-set-symmetry): Set surfaces rStyle via the typed-attr
+        // fallback; Add must accept it explicitly because the bare-key fallback
+        // below skips dotless keys without warning. Without this, dump → batch
+        // round-trips silently strip every <w:rStyle/> (BUG-R2-05 / BT-5).
+        if (properties.TryGetValue("rStyle", out var rRStyle) || properties.TryGetValue("rstyle", out rRStyle))
+        {
+            if (!string.IsNullOrEmpty(rRStyle))
+                newRProps.RunStyle = new RunStyle { Val = rRStyle };
+        }
         if (properties.TryGetValue("rtl", out var rRtl) && IsTruthy(rRtl))
             ApplyRunFormatting(newRProps, "rtl", "true");
         // CONSISTENCY(canonical-key): accept "direction"=rtl|ltr as the
