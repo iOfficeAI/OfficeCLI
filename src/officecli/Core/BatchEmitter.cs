@@ -386,9 +386,15 @@ public static class BatchEmitter
         var styles = word.Query("style");
         foreach (var stub in styles)
         {
+            // CONSISTENCY(slash-in-style-id): style ids/names containing '/'
+            // produce paths like /styles/Style/With/Slash that the path
+            // parser splits on. Get fails. Fall back to the Query stub —
+            // we lose pPr/rPr details but at least the style stub
+            // (id/name/type/basedOn) round-trips, instead of dropping the
+            // style entirely (BUG BT-3).
             DocumentNode full;
             try { full = word.Get(stub.Path); }
-            catch { continue; }
+            catch { full = stub; }
             var props = FilterEmittableProps(full.Format);
             // Ensure id is present (Add requires it for /styles target).
             if (!props.ContainsKey("id") && !props.ContainsKey("styleId"))
@@ -1300,6 +1306,12 @@ public static class BatchEmitter
         // for them, cause double-application. Drop the aliases so the
         // dump bag stays minimal.
         "styleId", "styleName",
+        // CONSISTENCY(line-rule-inferred): style/paragraph Get emits `lineRule`
+        // alongside `lineSpacing`, but lineSpacing already encodes the rule
+        // (e.g. "1.5x" => Auto, "18pt" => Exact via SpacingConverter). Set has
+        // no `lineRule` case, so emitting it produces "UNSUPPORTED" warnings
+        // (104+ on a typical real-world doc). Drop it from dump.
+        "lineRule",
     };
 
     // Serialize the tabs list (List<Dictionary<string,object?>>) to the
@@ -1326,11 +1338,68 @@ public static class BatchEmitter
     private static Dictionary<string, string> FilterEmittableProps(Dictionary<string, object?> raw)
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        // CONSISTENCY(border-fold): Get emits `pbdr.bottom: single`,
+        // `pbdr.bottom.sz: 6`, `pbdr.bottom.color: #FF0000`, `pbdr.bottom.space: 1`
+        // as separate keys (mirrors `border.*` on Excel). Set accepts a single
+        // colon-encoded value `pbdr.bottom=single:6:#FF0000:1`. Without folding,
+        // the 2-segment key applies an empty-style border and the 3-segment
+        // subkeys hit unsupported (BUG BT-6: Title/Intense Quote lose bottom
+        // border on round-trip). Fold the 4 keys into one before validation.
+        var pbdrFold = new Dictionary<string, (string? style, string? sz, string? color, string? space)>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, val) in raw)
+        {
+            if (val == null) continue;
+            if (!key.StartsWith("pbdr.", StringComparison.OrdinalIgnoreCase)) continue;
+            var parts = key.Split('.');
+            if (parts.Length < 2) continue;
+            var side = $"{parts[0]}.{parts[1]}"; // pbdr.bottom
+            pbdrFold.TryGetValue(side, out var cur);
+            var sval = val.ToString() ?? "";
+            if (parts.Length == 2) cur.style = sval;
+            else if (parts.Length == 3)
+            {
+                switch (parts[2].ToLowerInvariant())
+                {
+                    case "sz": cur.sz = sval; break;
+                    case "color": cur.color = sval; break;
+                    case "space": cur.space = sval; break;
+                }
+            }
+            pbdrFold[side] = cur;
+        }
+
         foreach (var (key, val) in raw)
         {
             if (SkipKeys.Contains(key)) continue;
             if (key.StartsWith("effective.", StringComparison.OrdinalIgnoreCase)) continue;
             if (key.EndsWith(".cs.source", StringComparison.OrdinalIgnoreCase)) continue;
+
+            // pbdr fold: skip subkeys, rewrite the bare side key into colon form.
+            if (key.StartsWith("pbdr.", StringComparison.OrdinalIgnoreCase))
+            {
+                var parts = key.Split('.');
+                if (parts.Length >= 3) continue; // subkey already folded
+                var side = $"{parts[0]}.{parts[1]}";
+                if (pbdrFold.TryGetValue(side, out var folded) && folded.style != null)
+                {
+                    // ParseBorderValue format: STYLE[;SIZE[;COLOR[;SPACE]]] — empties
+                    // for missing intermediates so positional parts stay aligned.
+                    var sz = folded.sz ?? "";
+                    var col = folded.color ?? "";
+                    var sp = folded.space ?? "";
+                    var v = folded.style!;
+                    if (folded.sz != null || folded.color != null || folded.space != null)
+                        v += ";" + sz;
+                    if (folded.color != null || folded.space != null)
+                        v += ";" + col;
+                    if (folded.space != null)
+                        v += ";" + sp;
+                    result[key] = v;
+                }
+                continue;
+            }
 
             // BORDER subattr asymmetry: Get exposes `border.top: single` AND
             // `border.top.sz: 4` / `border.top.color: 808080` as separate keys,
