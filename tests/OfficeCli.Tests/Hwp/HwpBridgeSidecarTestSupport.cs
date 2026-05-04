@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using OfficeCli;
+using OfficeCli.Tests.Hwpx;
 
 namespace OfficeCli.Tests.Hwp;
 
@@ -84,7 +85,26 @@ while [ "$#" -gt 0 ]; do
 done
 mkdir -p "$out"
 if [ "$cmd" = "export-text" ]; then
-  cat "$input" > "$out/page_001.txt"
+  if [ "${input##*.}" = "hwpx" ]; then
+    python3 - "$input" "$out/page_001.txt" <<'PY'
+import html
+import re
+import sys
+import zipfile
+
+input_path, output_path = sys.argv[1], sys.argv[2]
+texts = []
+with zipfile.ZipFile(input_path) as archive:
+    for name in sorted(archive.namelist()):
+        if name.startswith("Contents/section") and name.endswith(".xml"):
+            xml = archive.read(name).decode("utf-8", errors="ignore")
+            texts.extend(html.unescape(value) for value in re.findall(r"<(?:\w+:)?t[^>]*>(.*?)</(?:\w+:)?t>", xml, re.S))
+with open(output_path, "w", encoding="utf-8") as output:
+    output.write(" ".join(texts))
+PY
+  else
+    cat "$input" > "$out/page_001.txt"
+  fi
   exit 0
 fi
 if [ "$cmd" = "export-svg" ]; then
@@ -133,20 +153,48 @@ if [ "$cmd" = "set-field" ]; then
   exit 0
 fi
 if [ "$cmd" = "replace-text" ]; then
+  format="hwp"
+  input=""
   output=""
+  query=""
   value=""
   while [ "$#" -gt 0 ]; do
-    if [ "$1" = "--output" ]; then
+    if [ "$1" = "--format" ]; then
+      shift
+      format="$1"
+    elif [ "$1" = "--input" ]; then
+      shift
+      input="$1"
+    elif [ "$1" = "--output" ]; then
       shift
       output="$1"
+    elif [ "$1" = "--query" ]; then
+      shift
+      query="$1"
     elif [ "$1" = "--value" ]; then
       shift
       value="$1"
     fi
     shift
   done
-  printf '%s %s' "$value" "$value" > "$output"
-  printf '{"replacement":{"ok":true,"count":2},"output":"%s","engineVersion":"rhwp-api v0.test","format":"hwp","warnings":["experimental replace-text"]}\n' "$output"
+  if [ "$format" = "hwpx" ]; then
+    python3 - "$input" "$output" "$query" "$value" <<'PY'
+import sys
+import zipfile
+
+input_path, output_path, query, value = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+with zipfile.ZipFile(input_path) as source, zipfile.ZipFile(output_path, "w") as target:
+    for info in source.infolist():
+        data = source.read(info.filename)
+        if info.filename.endswith((".xml", ".hpf", ".rdf", ".txt")):
+            text = data.decode("utf-8", errors="ignore")
+            data = text.replace(query, value).encode("utf-8")
+        target.writestr(info, data)
+PY
+  else
+    printf '%s %s' "$value" "$value" > "$output"
+  fi
+  printf '{"replacement":{"ok":true,"count":2},"output":"%s","engineVersion":"rhwp-api v0.test","format":"%s","warnings":["experimental replace-text"]}\n' "$output" "$format"
   exit 0
 fi
 if [ "$cmd" = "get-cell-text" ]; then

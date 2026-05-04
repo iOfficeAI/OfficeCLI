@@ -3,6 +3,7 @@
 
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
+using OfficeCli.Handlers.Hwpx.Validation;
 using OfficeCli.Handlers.Hwp.SafeSave;
 
 namespace OfficeCli.Handlers.Hwp;
@@ -107,7 +108,7 @@ public sealed partial class RhwpBridgeEngine
                 request.Verify,
                 HwpCapabilityConstants.OperationReplaceText,
                 formatArg,
-                SafeSavePolicy.OutputMode("temp-write", "provider-readback", "semantic-delta", "source-preserved")),
+                BuildReplaceTextSafeSavePolicy(request.Format)),
             async tempPath =>
             {
                 var args = new List<string>
@@ -236,7 +237,29 @@ public sealed partial class RhwpBridgeEngine
                 ["afterSha256"] = currentSourceHash
             }));
 
-        return new SafeSaveValidationResult(checks, semanticDelta);
+        Dictionary<string, object?>? packageIntegrity = null;
+        if (request.Format == HwpFormat.Hwpx)
+        {
+            var packageResult = HwpxPackageValidator.Validate(tempPath);
+            checks.AddRange(packageResult.Checks);
+            packageIntegrity = new Dictionary<string, object?>(packageResult.PackageIntegrity, StringComparer.Ordinal);
+        }
+
+        return new SafeSaveValidationResult(checks, semanticDelta, PackageIntegrity: packageIntegrity);
+    }
+
+    private static SafeSavePolicy BuildReplaceTextSafeSavePolicy(HwpFormat format)
+    {
+        var required = new List<string>
+        {
+            "temp-write",
+            "provider-readback",
+            "semantic-delta",
+            "source-preserved"
+        };
+        if (format == HwpFormat.Hwpx)
+            required.Add("package-integrity");
+        return SafeSavePolicy.OutputMode(required.ToArray());
     }
 
     private async Task<string> ReadTextOnlyAsync(HwpFormat format, string path, CancellationToken ct)

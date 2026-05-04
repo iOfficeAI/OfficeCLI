@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using OfficeCli;
 using OfficeCli.Handlers.Hwp;
+using OfficeCli.Tests.Hwpx;
 
 namespace OfficeCli.Tests.Hwp;
 
@@ -329,6 +330,41 @@ public partial class HwpBridgeSidecarTests : IDisposable
             check => check?["name"]?.GetValue<string>() == "semantic-delta" && check["ok"]!.GetValue<bool>());
         Assert.Equal(2, root["data"]!["transaction"]!["semanticDelta"]!["sourceOldCount"]!.GetValue<int>());
         Assert.Equal(0, root["data"]!["transaction"]!["semanticDelta"]!["outputOldCount"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public void OfficeCliSetText_RoutesExperimentalHwpxThroughPackageIntegrityCheck()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", "rhwp-experimental");
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", LocateBridgeDll());
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", CreateFakeRhwp());
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", CreateFakeRhwpApi());
+        var input = HwpxTestHelper.CreateMinimalHwpx("before before");
+        _tempPaths.Add(input);
+        var output = CreateOutput(".hwpx");
+
+        var (exitCode, stdout) = InvokeOfficeCli(
+            [
+                "set", input, "/text",
+                "--prop", "find=before",
+                "--prop", "value=after",
+                "--prop", "mode=all",
+                "--prop", $"output={output}",
+                "--json"
+            ]);
+
+        Assert.True(exitCode == 0, stdout);
+        Assert.True(File.Exists(output));
+        var root = JsonNode.Parse(stdout)!;
+        var transaction = root["data"]!["transaction"]!;
+        Assert.True(root["success"]!.GetValue<bool>());
+        Assert.True(transaction["verified"]!.GetValue<bool>());
+        Assert.Contains(
+            transaction["checks"]!.AsArray(),
+            check => check?["name"]?.GetValue<string>() == "package-integrity" && check["ok"]!.GetValue<bool>());
+        Assert.NotNull(transaction["packageIntegrity"]);
+        Assert.True(transaction["packageIntegrity"]!["entryCount"]!.GetValue<int>() > 0);
     }
 
     [Fact]
