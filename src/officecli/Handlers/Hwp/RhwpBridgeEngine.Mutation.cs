@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Text.Json.Nodes;
+using OfficeCli.Handlers.Hwp.SafeSave;
 
 namespace OfficeCli.Handlers.Hwp;
 
@@ -93,25 +94,58 @@ public sealed partial class RhwpBridgeEngine
                 HwpCapabilityConstants.ModeExperimental);
 
         var formatArg = FormatKey(request.Format);
-        var args = new List<string>
+        string? outputJson = null;
+        var runner = new SafeSaveRunner();
+        var transaction = await runner.RunAsync(
+            new SafeSaveOptions(
+                request.InputPath,
+                request.OutputPath,
+                InPlace: false,
+                Backup: false,
+                Verify: true,
+                HwpCapabilityConstants.OperationReplaceText,
+                formatArg,
+                SafeSavePolicy.OutputMode("temp-write")),
+            async tempPath =>
+            {
+                var args = new List<string>
+                {
+                    "replace-text", "--format", formatArg, "--input", request.InputPath,
+                    "--output", tempPath, "--query", request.Query,
+                    "--value", request.Value, "--mode", request.Mode, "--json"
+                };
+                if (request.CaseSensitive)
+                {
+                    args.Add("--case-sensitive");
+                    args.Add("true");
+                }
+
+                outputJson = await RunBridgeAsync(args.ToArray(), RenderSvgTimeoutMs, ct).ConfigureAwait(false);
+                EnsureOutputExists(tempPath);
+            },
+            _ => Task.FromResult<IReadOnlyList<SafeSaveCheck>>([]),
+            ct).ConfigureAwait(false);
+
+        if (!transaction.Ok)
         {
-            "replace-text", "--format", formatArg, "--input", request.InputPath,
-            "--output", request.OutputPath, "--query", request.Query,
-            "--value", request.Value, "--mode", request.Mode, "--json"
-        };
-        if (request.CaseSensitive)
-        {
-            args.Add("--case-sensitive");
-            args.Add("true");
+            throw new HwpEngineException(
+                "replace_text safe-save transaction failed.",
+                HwpCapabilityConstants.ReasonFixtureValidationFailed,
+                "Inspect transaction checks and retry with a separate output path.",
+                [HwpCapabilityConstants.OperationReplaceText],
+                FormatKey(request.Format),
+                HwpCapabilityConstants.OperationReplaceText,
+                HwpCapabilityConstants.EngineRhwpBridge,
+                HwpCapabilityConstants.ModeExperimental);
         }
 
-        var outputJson = await RunBridgeAsync(args.ToArray(), RenderSvgTimeoutMs, ct);
         EnsureOutputExists(request.OutputPath);
-        return ParseMutationResult(
-            outputJson,
+        var result = ParseMutationResult(
+            outputJson ?? "{}",
             request.OutputPath,
             "replace-text",
             "rhwp-api replace-text output file created; caller must verify round-trip before production use.");
+        return result with { Transaction = SafeSaveJsonMapper.ToJson(transaction) };
     }
 
     public async Task<HwpMutationResult> SetTableCellAsync(HwpTableCellSetRequest request, CancellationToken ct)
