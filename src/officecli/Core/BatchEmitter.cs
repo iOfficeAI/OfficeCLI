@@ -36,9 +36,12 @@ public static class BatchEmitter
 
         // Phase order matters: resources first so body refs (style=Heading1,
         // numId=3, etc.) resolve when the paragraph adds reach them on replay.
+        // Numbering must come BEFORE styles — list-style definitions
+        // (Heading paragraphs with numPr) reference numId values, so style
+        // adds that carry `numId=N` need /numbering to already hold N.
+        EmitNumberingRaw(word, items);
         EmitStyles(word, items);
         EmitThemeRaw(word, items);
-        EmitNumberingRaw(word, items);
         EmitSettingsRaw(word, items);
         EmitSection(word, items);
         EmitHeadersFooters(word, items);
@@ -441,6 +444,31 @@ public static class BatchEmitter
     {
         var pNode = word.Get(sourcePath);
 
+        // Display-mode equations (<m:oMathPara>) surface in EmitBody's
+        // bodyNode.Children as type=paragraph, but a direct Get on the
+        // path returns type=equation with the LaTeX-ish formula in
+        // DocumentNode.Text. EmitParagraph would otherwise emit an empty
+        // `add p` and lose the entire formula. Route to typed
+        // `add /body --type equation` instead.
+        if (pNode.Type == "equation" && parentPath == "/body" && !autoPresent)
+        {
+            var mode = pNode.Format.TryGetValue("mode", out var m) ? m?.ToString() : "display";
+            var eqProps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["mode"] = string.IsNullOrEmpty(mode) ? "display" : mode
+            };
+            if (!string.IsNullOrEmpty(pNode.Text))
+                eqProps["formula"] = pNode.Text!;
+            items.Add(new BatchItem
+            {
+                Command = "add",
+                Parent = "/body",
+                Type = "equation",
+                Props = eqProps
+            });
+            return;
+        }
+
         // Track source paraId -> target index BEFORE any early-return path
         // (section break, TOC, …). Comments anchored on a section-break or
         // TOC paragraph would otherwise miss the mapping and fall back to
@@ -511,6 +539,20 @@ public static class BatchEmitter
         }
 
         var props = FilterEmittableProps(pNode.Format);
+        // When a paragraph carries numId, the abstractNum/num pair is already
+        // in /numbering (raw-set wholesale by EmitNumberingRaw). Forwarding
+        // numFmt/listStyle/start to AddParagraph triggers ad-hoc
+        // numbering-definition creation in WordHandler.Add — Word allocates
+        // a fresh numId (1→9, 2→16, …) and the paragraph references the
+        // new one, orphaning the original abstract numbering's level rPr
+        // (color, bold, custom marker text). Drop those keys so the
+        // paragraph just attaches by numId+numLevel to the existing def.
+        if (props.ContainsKey("numId"))
+        {
+            props.Remove("numFmt");
+            props.Remove("listStyle");
+            props.Remove("start");
+        }
         var runs = (pNode.Children ?? new List<DocumentNode>())
             .Where(c => c.Type == "run" || c.Type == "r" || c.Type == "picture")
             .ToList();
