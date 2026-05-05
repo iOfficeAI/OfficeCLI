@@ -433,13 +433,21 @@ public partial class WordHandler
 
     private static string GetParagraphText(Paragraph para)
     {
+        // CONSISTENCY(run-text-tab): use GetRunText so <w:tab/> renders as
+        // \t in the paragraph readback (was silently dropped, breaking
+        // dump round-trip for tabbed content).
         var sb = new StringBuilder();
         foreach (var child in para.ChildElements)
         {
             if (child is Run run)
-                sb.Append(string.Concat(run.Elements<Text>().Select(t => t.Text)));
+                sb.Append(GetRunText(run));
             else if (child is Hyperlink hyperlink)
-                sb.Append(string.Concat(hyperlink.Descendants<Text>().Select(t => t.Text)));
+            {
+                foreach (var hChild in hyperlink.ChildElements)
+                {
+                    if (hChild is Run hRun) sb.Append(GetRunText(hRun));
+                }
+            }
         }
         return sb.ToString();
     }
@@ -552,7 +560,20 @@ public partial class WordHandler
 
     private static string GetRunText(Run run)
     {
-        return string.Concat(run.Elements<Text>().Select(t => t.Text));
+        // CONSISTENCY(run-text-tab): walk run children in document order so
+        // <w:tab/> renders as \t in the readback. Plain Elements<Text>() drops
+        // tabs silently, which broke dump round-trip (the tab IS in the XML
+        // because AddText splits on \t and emits TabChar — but Get hid it).
+        var sb = new System.Text.StringBuilder();
+        foreach (var child in run.Elements())
+        {
+            switch (child)
+            {
+                case Text t: sb.Append(t.Text); break;
+                case TabChar: sb.Append('\t'); break;
+            }
+        }
+        return sb.ToString();
     }
 
     // CONSISTENCY(style-dual-key): resolve a style display name to its

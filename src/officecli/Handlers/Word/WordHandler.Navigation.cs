@@ -1670,12 +1670,17 @@ public partial class WordHandler
                     node.Text = instrEl.Text ?? "";
                 }
             }
-            if (node.Type == "run" && string.IsNullOrEmpty(node.Text))
+            // CONSISTENCY(run-text-tab): the type-upgrade for tab/break runs
+            // checks "no Text element" (not "node.Text empty") because
+            // GetRunText now surfaces TabChar as \t in node.Text. A pure
+            // <w:r><w:tab/></w:r> run has no <w:t> child but node.Text="\t".
+            if (node.Type == "run" && !run.Elements<Text>().Any())
             {
                 var tabEl = run.GetFirstChild<TabChar>();
                 if (tabEl != null)
                 {
                     node.Type = "tab";
+                    node.Text = "";
                 }
             }
             if (node.Type == "run" && string.IsNullOrEmpty(node.Text))
