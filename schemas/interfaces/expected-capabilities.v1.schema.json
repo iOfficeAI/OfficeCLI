@@ -30,6 +30,19 @@
         },
         "operations": {
           "type": "object",
+          "propertyNames": {
+            "enum": [
+              "read_text",
+              "render_svg",
+              "list_fields",
+              "read_field",
+              "fill_field",
+              "replace_text",
+              "set_table_cell",
+              "save_original",
+              "save_as_hwp"
+            ]
+          },
           "additionalProperties": { "$ref": "#/$defs/operationCapability" },
           "minProperties": 1
         }
