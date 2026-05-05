@@ -685,33 +685,11 @@ public partial class WordHandler
                     : ParseHelpers.SafeParseDouble(pCharSp, "charspacing");
                 rProps.Spacing = new Spacing { Val = (int)Math.Round(csPt * 20, MidpointRounding.AwayFromZero) };
             }
-            if (properties.TryGetValue("shd", out var pShd) || properties.TryGetValue("shading", out pShd))
-            {
-                var shdParts = pShd.Split(';');
-                var shd = new Shading();
-                if (shdParts.Length == 1)
-                {
-                    shd.Val = ShadingPatternValues.Clear;
-                    shd.Fill = SanitizeHex(shdParts[0]);
-                }
-                else if (shdParts.Length >= 2)
-                {
-                    var rPatternPart = shdParts[0].TrimStart('#');
-                    if (rPatternPart.Length >= 6 && rPatternPart.All(char.IsAsciiHexDigit))
-                    {
-                        Console.Error.WriteLine($"Warning: '{shdParts[0]}' looks like a color in the pattern position. Auto-swapping to: clear;{shdParts[0]}");
-                        shd.Val = ShadingPatternValues.Clear;
-                        shd.Fill = SanitizeHex(shdParts[0]);
-                    }
-                    else
-                    {
-                        WarnIfShadingOrderWrong(shdParts[0]); shd.Val = new ShadingPatternValues(shdParts[0]);
-                        shd.Fill = SanitizeHex(shdParts[1]);
-                        if (shdParts.Length >= 3) shd.Color = SanitizeHex(shdParts[2]);
-                    }
-                }
-                rProps.Shading = shd;
-            }
+            // BUG-DUMP22-03: paragraph-level shading lives in pPr (written
+            // above ~line 262/289). Do NOT also stamp it onto the inline
+            // run's rPr — that produces a spurious <w:rPr><w:shd/></w:rPr>
+            // duplicate that round-trips out as a separate run-level shading
+            // command on dump replay.
 
             run.AppendChild(rProps);
             AppendTextWithBreaks(run, text);
