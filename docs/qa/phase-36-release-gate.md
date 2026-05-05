@@ -1,8 +1,8 @@
 # Phase 36 Release Gate
 
-Phase 36 closes only when corpus, round-trip, visual, and provider gates all
-agree. This document is the single source of truth for what must be green and
-the language that may be claimed.
+Phase 36 closes only when corpus, declarative round-trip, visual-threshold,
+and provider-matrix gates all agree. This document is the single source of
+truth for what must be green and the language that may be claimed.
 
 ## Required Artifacts
 
@@ -53,7 +53,8 @@ The last command must return `0`.
 
 ```text
 OfficeCLI tracks HWP/HWPX support with corpus-backed operation evidence,
-round-trip cases, and provider compatibility rows.
+declarative round-trip cases, visual-threshold policy, and provider
+compatibility rows.
 ```
 
 ## Forbidden Claim

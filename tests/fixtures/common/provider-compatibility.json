@@ -35,6 +35,30 @@
     },
     {
       "format": "hwp",
+      "operation": "list_fields",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "tests/golden/hwp/rhwp-fields/field-list.json"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "read_field",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "tests/golden/hwp/rhwp-fields/field-read-company-name.json"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
       "operation": "fill_field",
       "provider": "rhwp-bridge",
       "status": "fixture-backed",
@@ -74,6 +98,46 @@
     },
     {
       "format": "hwp",
+      "operation": "read_text",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "unsupported_engine",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "render_svg",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "unsupported_engine",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "list_fields",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "unsupported_engine",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "read_field",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "unsupported_engine",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
       "operation": "fill_field",
       "provider": "custom",
       "status": "unsupported",
@@ -85,6 +149,16 @@
     {
       "format": "hwp",
       "operation": "replace_text",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "binary_hwp_mutation_forbidden",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "set_table_cell",
       "provider": "custom",
       "status": "unsupported",
       "defaultProvider": false,
@@ -141,12 +215,42 @@
     },
     {
       "format": "hwpx",
+      "operation": "read_text",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "render_svg",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
       "operation": "replace_text",
       "provider": "rhwp-bridge",
       "status": "experimental",
       "defaultProvider": false,
       "evidence": [],
       "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "set_table_cell",
+      "provider": "rhwp-bridge",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "roundtrip_unverified",
       "hancomLane": "optional"
     }
   ]

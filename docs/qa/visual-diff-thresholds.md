@@ -40,7 +40,7 @@ Defaults:
 ## Visual Validated Operations
 
 Only operations explicitly listed in `visualValidatedOperations` may make
-visual claims. As of Phase 36.4 that list is `[render]`. `replace_text`,
+visual claims. As of Phase 36.4 that list is `[render_svg]`. `replace_text`,
 `fill_field`, and `set_table_cell` may declare *threshold tolerances* but
 cannot declare a visual claim without a render evidence link in
 `expected-capabilities.json`.

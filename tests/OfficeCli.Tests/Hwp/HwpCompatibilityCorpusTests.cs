@@ -433,17 +433,19 @@ public sealed class HwpCompatibilityCorpusTests
 
         foreach (var doc in guardedDocs)
         {
-            var text = File.ReadAllText(LocateRepoFile(doc));
+            var lines = File.ReadAllLines(LocateRepoFile(doc));
             foreach (var phrase in forbiddenPhrases)
             {
-                if (text.Contains(phrase, StringComparison.OrdinalIgnoreCase)
-                    && !text.Contains("forbidden claim", StringComparison.OrdinalIgnoreCase)
-                    && !text.Contains("scorecard", StringComparison.OrdinalIgnoreCase)
-                    && !text.Contains("must not", StringComparison.OrdinalIgnoreCase))
+                for (var i = 0; i < lines.Length; i++)
                 {
+                    if (!lines[i].Contains(phrase, StringComparison.OrdinalIgnoreCase)) continue;
+
+                    var context = GetLocalClaimContext(lines, i);
+                    if (HasScorecardGuard(context)) continue;
+
                     Assert.Fail(
-                        $"{doc} contains forbidden parity phrase '{phrase}' " +
-                        "without the scorecard guard wording.");
+                        $"{doc}:{i + 1} contains forbidden parity phrase '{phrase}' " +
+                        "without local scorecard guard wording.");
                 }
             }
         }
@@ -496,6 +498,27 @@ public sealed class HwpCompatibilityCorpusTests
 
     private static string FormatSchemaErrors(EvaluationResults results)
         => JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true });
+
+    private static string GetLocalClaimContext(string[] lines, int index)
+    {
+        var start = Math.Max(0, index - 3);
+        var end = Math.Min(lines.Length - 1, index + 3);
+        return string.Join('\n', lines[start..(end + 1)]);
+    }
+
+    private static bool HasScorecardGuard(string context)
+    {
+        string[] guardPhrases =
+        [
+            "forbidden claim",
+            "forbidden until",
+            "scorecard",
+            "must not",
+            "blocked until"
+        ];
+
+        return guardPhrases.Any(guard => context.Contains(guard, StringComparison.OrdinalIgnoreCase));
+    }
 
     private static JsonNode ReadJson(string relativePath)
         => JsonNode.Parse(File.ReadAllText(LocateRepoFile(relativePath)))!;

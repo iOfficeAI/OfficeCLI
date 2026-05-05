@@ -9,6 +9,13 @@ namespace OfficeCli.Tests.Hwp;
 public sealed class HwpProviderCompatibilityMatrixTests
 {
     private const string MatrixPath = "tests/fixtures/common/provider-compatibility.json";
+    private const string ExpectedCapabilitiesPath = "tests/fixtures/common/expected-capabilities.json";
+
+    private static readonly string[] MatrixProviders =
+    [
+        HwpCapabilityConstants.EngineCustom,
+        HwpCapabilityConstants.EngineRhwpBridge
+    ];
 
     private static readonly HashSet<string> AllowedStatuses = new(StringComparer.Ordinal)
     {
@@ -111,6 +118,50 @@ public sealed class HwpProviderCompatibilityMatrixTests
         }
     }
 
+    [Fact]
+    public void RowsAreUnique()
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var row in LoadRows())
+        {
+            var key = MatrixKey(row);
+            Assert.True(seen.Add(key), $"Duplicate provider matrix row: {key}");
+        }
+    }
+
+    [Fact]
+    public void MatrixCoversExpectedCapabilityProviderPairs()
+    {
+        var rowsByKey = LoadRows().ToDictionary(MatrixKey, StringComparer.Ordinal);
+        var capabilities = JsonNode.Parse(File.ReadAllText(LocateRepoFile(ExpectedCapabilitiesPath)))!;
+        var formats = capabilities["formats"]!.AsObject();
+
+        foreach (var (format, formatNode) in formats)
+        {
+            var defaultEngine = formatNode!["defaultEngine"]!.GetValue<string>();
+            var operations = formatNode["operations"]!.AsObject();
+
+            foreach (var (operation, _) in operations)
+            {
+                var defaultRows = 0;
+                foreach (var provider in MatrixProviders)
+                {
+                    var key = MatrixKey(format, operation, provider);
+                    Assert.True(rowsByKey.ContainsKey(key), $"Missing provider matrix row: {key}");
+
+                    if (!rowsByKey[key]["defaultProvider"]!.GetValue<bool>()) continue;
+
+                    defaultRows++;
+                    Assert.Equal(
+                        defaultEngine,
+                        rowsByKey[key]["provider"]!.GetValue<string>());
+                }
+
+                Assert.Equal(1, defaultRows);
+            }
+        }
+    }
+
     private static IEnumerable<JsonNode> LoadRows()
     {
         var doc = JsonNode.Parse(File.ReadAllText(LocateRepoFile(MatrixPath)))!;
@@ -120,6 +171,15 @@ public sealed class HwpProviderCompatibilityMatrixTests
             yield return row!;
         }
     }
+
+    private static string MatrixKey(JsonNode row)
+        => MatrixKey(
+            row["format"]!.GetValue<string>(),
+            row["operation"]!.GetValue<string>(),
+            row["provider"]!.GetValue<string>());
+
+    private static string MatrixKey(string? format, string? operation, string provider)
+        => $"{format}.{operation}.{provider}";
 
     private static string LocateRepoFile(string relativePath)
     {

@@ -72,10 +72,11 @@ tests/fixtures/common/provider-compatibility.json
 
 HWPX `custom` remains the default provider; rhwp-bridge stays opt-in only and
 must not be promoted to default until evidence parity is reached. HWP defaults
-to `rhwp-bridge`, with `custom` blocked for binary HWP mutations under the
-typed `binary_hwp_mutation_forbidden` and `binary_hwp_write_forbidden`
-reasons. Hancom is `optional` on every row; it can support a future
-status promotion but must not be required by normal CI.
+to `rhwp-bridge`. The matrix covers every expected-capability operation for
+both `custom` and `rhwp-bridge`, with blocked provider paths carrying typed
+reasons such as `unsupported_engine`, `binary_hwp_mutation_forbidden`, and
+`binary_hwp_write_forbidden`. Hancom is `optional` on every row; it can support
+a future status promotion but must not be required by normal CI.
 
 ## Visual Diff Thresholds
 
@@ -96,7 +97,7 @@ remains `deferred` until OfficeCLI ships a stable in-CI renderer.
 
 ## Round-Trip Cases
 
-Phase 36.3 adds an operation-level round-trip catalog at:
+Phase 36.3 adds an operation-level declarative round-trip catalog at:
 
 ```text
 tests/fixtures/common/roundtrip-cases.json
@@ -110,7 +111,8 @@ required checks: `source-unchanged`, `output-created`, `provider-readback`,
 must include `typed-error-if-blocked` and a typed `expected.error.code`.
 
 Normal CI enforces declarative invariants over the catalog. Real rhwp-backed
-execution is opt-in and gated on `OFFICECLI_REAL_RHWP_BIN`.
+execution is opt-in and gated on `OFFICECLI_REAL_RHWP_BIN`; Phase 36 does not
+claim a full executor with semantic output comparison in normal CI.
 
 ## Fixture Class Coverage
 
@@ -142,8 +144,8 @@ malformed-hwpx-package
 
 ## Phase 36 Release Gate
 
-Phase 36 closes when all corpus, round-trip, visual, and provider gates
-agree. The single source of truth lives at:
+Phase 36 closes when all corpus, declarative round-trip, visual-threshold, and
+provider-matrix gates agree. The single source of truth lives at:
 
 ```text
 docs/qa/phase-36-release-gate.md
@@ -153,7 +155,8 @@ Allowed claim:
 
 ```text
 OfficeCLI tracks HWP/HWPX support with corpus-backed operation evidence,
-round-trip cases, and provider compatibility rows.
+declarative round-trip cases, visual-threshold policy, and provider
+compatibility rows.
 ```
 
 The forbidden claim ("HWP/HWPX have DOCX parity") is enforced by
@@ -169,4 +172,3 @@ should add fixture classes for:
 footnotes/endnotes
 large documents
 ```
-
