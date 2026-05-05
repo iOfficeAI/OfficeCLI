@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "officecli/interfaces/roundtrip-case/v1",
+  "title": "OfficeCLI HWP/HWPX Round-Trip Case Catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "description", "cases"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "description": { "type": "string", "minLength": 1 },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/case" }
+    }
+  },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "format",
+        "fixtureId",
+        "operation",
+        "provider",
+        "inputPath",
+        "outputMode",
+        "args",
+        "expected",
+        "requiredChecks"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "format": { "type": "string", "enum": ["hwp", "hwpx"] },
+        "fixtureId": { "type": "string", "minLength": 1 },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "read_text",
+            "render_svg",
+            "list_fields",
+            "read_field",
+            "fill_field",
+            "replace_text",
+            "set_table_cell",
+            "save_original",
+            "save_as_hwp",
+            "table_map"
+          ]
+        },
+        "provider": { "type": "string", "enum": ["custom", "rhwp-bridge"] },
+        "inputPath": { "type": "string", "minLength": 1 },
+        "outputMode": { "type": "string", "enum": ["read-only", "output", "temp", "in-place"] },
+        "args": { "type": "object" },
+        "expected": { "$ref": "#/$defs/expected" },
+        "requiredChecks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "source-unchanged",
+              "output-created",
+              "provider-readback",
+              "semantic-delta",
+              "typed-error-if-blocked"
+            ]
+          }
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["success", "blocked"] },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code"],
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "unsupported_format",
+                "unsupported_operation",
+                "unsupported_engine",
+                "roundtrip_unverified",
+                "bridge_not_enabled",
+                "bridge_missing",
+                "bridge_timeout",
+                "bridge_invalid_json",
+                "bridge_exit_nonzero",
+                "binary_hwp_mutation_forbidden",
+                "binary_hwp_write_forbidden",
+                "fixture_validation_failed",
+                "capability_schema_invalid"
+              ]
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "blocked" } } },
+          "then": { "required": ["error"] }
+        }
+      ]
+    }
+  }
+}

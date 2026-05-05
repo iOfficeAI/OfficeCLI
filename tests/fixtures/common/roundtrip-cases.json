@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "description": "Operation-level round-trip cases for HWP/HWPX corpus fixtures. Real rhwp-backed execution remains opt-in; normal CI runs declarative invariant checks and fake-sidecar negative cases only.",
+  "cases": [
+    {
+      "id": "hwp-replace-text-fields",
+      "format": "hwp",
+      "fixtureId": "hwp-field-form",
+      "operation": "replace_text",
+      "provider": "rhwp-bridge",
+      "inputPath": "tests/fixtures/hwp/rhwp-fields/field-01.hwp",
+      "outputMode": "output",
+      "args": {
+        "find": "Marketing",
+        "replace": "Marketing-Updated"
+      },
+      "expected": {
+        "status": "success"
+      },
+      "requiredChecks": [
+        "source-unchanged",
+        "output-created",
+        "provider-readback",
+        "semantic-delta"
+      ],
+      "notes": "Replaces a known marketing string in the binary HWP field-form fixture; readback evidence already captured at tests/golden/hwp/rhwp-fields/officecli-replace-marketing-title.json."
+    },
+    {
+      "id": "hwp-fill-field-company",
+      "format": "hwp",
+      "fixtureId": "hwp-field-form",
+      "operation": "fill_field",
+      "provider": "rhwp-bridge",
+      "inputPath": "tests/fixtures/hwp/rhwp-fields/field-01.hwp",
+      "outputMode": "output",
+      "args": {
+        "fieldName": "company-name",
+        "value": "Phase36-Co"
+      },
+      "expected": {
+        "status": "success"
+      },
+      "requiredChecks": [
+        "source-unchanged",
+        "output-created",
+        "provider-readback",
+        "semantic-delta"
+      ],
+      "notes": "Writes a known field value via rhwp-bridge; readback evidence at tests/golden/hwp/rhwp-fields/field-set-company-name-cli-readback.json."
+    },
+    {
+      "id": "hwp-set-table-cell",
+      "format": "hwp",
+      "fixtureId": "hwp-table-cell",
+      "operation": "set_table_cell",
+      "provider": "rhwp-bridge",
+      "inputPath": "tests/fixtures/hwp/rhwp-tables-hwp.hwp",
+      "outputMode": "output",
+      "args": {
+        "tableIndex": 0,
+        "row": 1,
+        "column": 1,
+        "value": "Phase36"
+      },
+      "expected": {
+        "status": "success"
+      },
+      "requiredChecks": [
+        "source-unchanged",
+        "output-created",
+        "provider-readback",
+        "semantic-delta"
+      ],
+      "notes": "Mutates a single binary HWP table cell via rhwp coordinate model; readback evidence at tests/golden/hwp/rhwp-tables/officecli-set-cell-hwp-table-readback.json."
+    },
+    {
+      "id": "hwpx-replace-text-government",
+      "format": "hwpx",
+      "fixtureId": "hwpx-table-vpos-news",
+      "operation": "replace_text",
+      "provider": "custom",
+      "inputPath": "tests/fixtures/hwp/rhwp-smoke/table-vpos-01.hwpx",
+      "outputMode": "output",
+      "args": {
+        "find": "정부",
+        "replace": "정부-Phase36"
+      },
+      "expected": {
+        "status": "success"
+      },
+      "requiredChecks": [
+        "source-unchanged",
+        "output-created",
+        "provider-readback",
+        "semantic-delta"
+      ],
+      "notes": "HWPX replace_text via custom handler; readback evidence at tests/golden/hwp/rhwp-fields/officecli-replace-hwpx-government.json."
+    },
+    {
+      "id": "hwpx-set-table-cell-blocked",
+      "format": "hwpx",
+      "fixtureId": "hwpx-table-vpos-news",
+      "operation": "set_table_cell",
+      "provider": "custom",
+      "inputPath": "tests/fixtures/hwp/rhwp-smoke/table-vpos-01.hwpx",
+      "outputMode": "output",
+      "args": {
+        "tableIndex": 0,
+        "row": 0,
+        "column": 0,
+        "value": "Phase36"
+      },
+      "expected": {
+        "status": "blocked",
+        "error": {
+          "code": "roundtrip_unverified"
+        }
+      },
+      "requiredChecks": [
+        "typed-error-if-blocked",
+        "source-unchanged"
+      ],
+      "notes": "HWPX set_table_cell remains blocked until Hancom-grade roundtrip is verified; typed reason roundtrip_unverified is enforced by capability evidence and this case."
+    }
+  ]
+}
