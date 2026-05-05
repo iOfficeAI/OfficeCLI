@@ -598,11 +598,15 @@ public partial class WordHandler
         }
         if(movable.length===0)continue;
         // Greedy bin-pack: each segment-leading element becomes :first-child
-        // of its new page-body, where the CSS rule
-        //   .page-body > :first-child { margin-top: 0 !important; }
-        // zeroes its margin-top contribution. Since the leader's old offsetTop
-        // already absorbs its own margin-top (it wasn't first-child of source
-        // body), and inter-sibling distances are preserved across the move
+        // of its new page-body. New bodies get class=page-body-cont so the
+        // CSS rule
+        //   .page-body-cont > :first-child { margin-top: 0 !important; }
+        // zeroes the leader's margin-top contribution. (The original page-body
+        // is class=page-body without -cont, so its first paragraph keeps its
+        // server-rendered spaceBefore — matching Word.) Since the leader's
+        // old offsetTop already absorbs its own margin-top (it wasn't
+        // first-child of source body), and inter-sibling distances are
+        // preserved across the move
         // (flex items don't collapse), bot-segStartTop with
         // segStartTop=leader.oldTop directly equals the leader's newBottom in
         // the new page-body. No margin-top shift needed.
@@ -626,7 +630,7 @@ public partial class WordHandler
           np.className='page';
           np.style.cssText=page.style.cssText;
           var nb=document.createElement('div');
-          nb.className='page-body';
+          nb.className='page-body page-body-cont';
           for(var mi=segStart;mi<segEnd;mi++){
             nb.appendChild(movable[mi].el);
           }
@@ -658,7 +662,7 @@ public partial class WordHandler
         np.className='page';
         np.style.cssText=page.style.cssText;
         var nb=document.createElement('div');
-        nb.className='page-body';
+        nb.className='page-body page-body-cont';
         for(var mi=0;mi<toMove.length;mi++){
           nb.appendChild(toMove[mi]);
         }
@@ -2005,13 +2009,6 @@ public partial class WordHandler
                         continue;
                     }
 
-                    // Empty paragraph = spacing break
-                    if (runs.Count == 0 && mathElements.Count == 0 && string.IsNullOrWhiteSpace(text))
-                    {
-                        sb.AppendLine($"<p class=\"empty\" data-path=\"/body/p[{wParaCount}]\">&nbsp;</p>");
-                        continue;
-                    }
-
                     // Inline equation only
                     if (mathElements.Count > 0 && runs.Count == 0 && string.IsNullOrWhiteSpace(text))
                     {
@@ -2041,7 +2038,15 @@ public partial class WordHandler
                     if (!string.IsNullOrEmpty(pStyle))
                         sb.Append($" style=\"{pStyle}\"");
                     sb.Append(">");
+                    bool hasVisibleContent = runs.Count > 0 || mathElements.Count > 0
+                                             || !string.IsNullOrWhiteSpace(text);
                     RenderParagraphContentHtml(sb, para);
+                    // Empty paragraphs need a placeholder character so the line
+                    // box forms and renders the resolved line-height. Word and
+                    // LibreOffice apply pPr to empty paragraphs identically to
+                    // non-empty ones — the &nbsp; here is purely a line-box
+                    // necessity, not a Word-semantic special case.
+                    if (!hasVisibleContent) sb.Append("&nbsp;");
                     sb.AppendLine("</p>");
                     AppendW14ReflectionBlock(sb, para, "p", pStyle);
                 }
