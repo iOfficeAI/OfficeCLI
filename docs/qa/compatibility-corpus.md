@@ -61,21 +61,41 @@ rhwp provider is opt-in for read/render/text replacement paths
 set_table_cell remains blocked until package and Hancom compatibility gates pass
 ```
 
+## Fixture Class Coverage
+
+Phase 36.2 records required fixture classes in each manifest under
+`fixtureClassCoverage`. Each class must declare a state:
+
+```text
+verified         → small in-repo fixture proves the class
+blocked          → typed reason explains why the class is not verified
+external-manual  → samples are tracked outside the repo
+```
+
+Required classes:
+
+```text
+multi-section
+merged-cell-tables
+nested-tables
+pictures-bindata
+headers-footers
+equations
+unicode-edge-cases
+malformed-hwpx-package
+```
+
+`malformed-hwpx-package` is HWPX-only and must remain `blocked` with reason
+`fixture_validation_failed`. External-manual entries must not declare
+`verifiedOperations` and do not contribute to capability evidence.
+
 ## Next Gates
 
 The corpus is intentionally small in this first slice. Later Phase 36 patches
 should add fixture classes for:
 
 ```text
-multi-section
-merged-cell tables
-nested tables
-pictures/BinData
-headers/footers
 footnotes/endnotes
-equations
 large documents
-Unicode edge cases
-malformed HWPX packages
 ```
 

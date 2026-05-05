@@ -13,6 +13,10 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/fixture" }
+    },
+    "fixtureClassCoverage": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/fixtureClassCoverage" }
     }
   },
   "$defs": {
@@ -109,6 +113,89 @@
         },
         "notes": { "type": "string", "minLength": 1 }
       }
+    },
+    "fixtureClassCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "state", "notes"],
+      "properties": {
+        "class": {
+          "type": "string",
+          "enum": [
+            "multi-section",
+            "merged-cell-tables",
+            "nested-tables",
+            "pictures-bindata",
+            "headers-footers",
+            "equations",
+            "unicode-edge-cases",
+            "malformed-hwpx-package"
+          ]
+        },
+        "state": {
+          "type": "string",
+          "enum": ["verified", "blocked", "external-manual"]
+        },
+        "fixtureId": { "type": "string", "minLength": 1 },
+        "externalLane": { "type": "string", "minLength": 1 },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "unsupported_format",
+            "unsupported_operation",
+            "unsupported_engine",
+            "roundtrip_unverified",
+            "bridge_not_enabled",
+            "bridge_missing",
+            "bridge_timeout",
+            "bridge_invalid_json",
+            "bridge_exit_nonzero",
+            "binary_hwp_mutation_forbidden",
+            "binary_hwp_write_forbidden",
+            "fixture_validation_failed",
+            "capability_schema_invalid"
+          ]
+        },
+        "verifiedOperations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "read_text",
+              "render_svg",
+              "list_fields",
+              "read_field",
+              "fill_field",
+              "replace_text",
+              "set_table_cell",
+              "save_original",
+              "save_as_hwp",
+              "table_map"
+            ]
+          }
+        },
+        "notes": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "verified" } } },
+          "then": { "required": ["fixtureId", "verifiedOperations"] }
+        },
+        {
+          "if": { "properties": { "state": { "const": "blocked" } } },
+          "then": {
+            "required": ["reason"],
+            "not": { "required": ["verifiedOperations"] }
+          }
+        },
+        {
+          "if": { "properties": { "state": { "const": "external-manual" } } },
+          "then": {
+            "required": ["externalLane"],
+            "not": { "required": ["verifiedOperations"] }
+          }
+        }
+      ]
     }
   }
 }

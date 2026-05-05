@@ -66,6 +66,25 @@ public sealed class HwpCompatibilityCorpusTests
         HwpCapabilityConstants.ReasonCapabilitySchemaInvalid
     };
 
+    private static readonly string[] RequiredFixtureClasses =
+    [
+        "multi-section",
+        "merged-cell-tables",
+        "nested-tables",
+        "pictures-bindata",
+        "headers-footers",
+        "equations",
+        "unicode-edge-cases",
+        "malformed-hwpx-package"
+    ];
+
+    private static readonly HashSet<string> KnownCoverageStates = new(StringComparer.Ordinal)
+    {
+        "verified",
+        "blocked",
+        "external-manual"
+    };
+
     [Theory]
     [InlineData("tests/fixtures/hwp/manifest.json", "hwp")]
     [InlineData("tests/fixtures/hwpx/manifest.json", "hwpx")]
@@ -172,6 +191,96 @@ public sealed class HwpCompatibilityCorpusTests
         }
 
         Assert.True(observedHwpxTableCellBlock, "HWPX set_table_cell must remain blocked as roundtrip_unverified.");
+    }
+
+    [Fact]
+    public void RequiredFixtureClassesAreRepresented()
+    {
+        var observed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var path in ManifestPaths)
+        {
+            var manifest = ReadJson(path);
+            var fixtureIds = new HashSet<string>(
+                GetArray(manifest, "fixtures").Select(f => RequireString(f!, "id")),
+                StringComparer.Ordinal);
+
+            foreach (var coverage in GetArray(manifest, "fixtureClassCoverage", required: false))
+            {
+                var className = RequireString(coverage!, "class");
+                var state = RequireString(coverage!, "state");
+                _ = RequireString(coverage!, "notes");
+                Assert.Contains(className, RequiredFixtureClasses);
+                Assert.Contains(state, KnownCoverageStates);
+
+                switch (state)
+                {
+                    case "verified":
+                        var fixtureId = RequireString(coverage!, "fixtureId");
+                        Assert.Contains(fixtureId, fixtureIds);
+                        Assert.NotEmpty(GetStringArray(coverage!, "verifiedOperations"));
+                        break;
+                    case "blocked":
+                        var reason = RequireString(coverage!, "reason");
+                        Assert.Contains(reason, KnownReasons);
+                        Assert.Null(coverage!["verifiedOperations"]);
+                        break;
+                    case "external-manual":
+                        _ = RequireString(coverage!, "externalLane");
+                        Assert.Null(coverage!["verifiedOperations"]);
+                        break;
+                }
+
+                observed.Add(className);
+            }
+        }
+
+        var missing = RequiredFixtureClasses.Where(c => !observed.Contains(c)).ToArray();
+        Assert.True(
+            missing.Length == 0,
+            $"Required fixture classes missing from corpus: {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public void MalformedHwpxFixturesAreBlockedNotVerified()
+    {
+        var manifest = ReadJson("tests/fixtures/hwpx/manifest.json");
+        var coverage = GetArray(manifest, "fixtureClassCoverage", required: false)
+            .FirstOrDefault(c => RequireString(c!, "class") == "malformed-hwpx-package");
+        Assert.NotNull(coverage);
+
+        var state = RequireString(coverage!, "state");
+        Assert.Equal("blocked", state);
+
+        var reason = RequireString(coverage!, "reason");
+        Assert.Equal(HwpCapabilityConstants.ReasonFixtureValidationFailed, reason);
+
+        Assert.Null(coverage!["verifiedOperations"]);
+
+        foreach (var path in ManifestPaths)
+        {
+            foreach (var fixture in GetArray(ReadJson(path), "fixtures"))
+            {
+                Assert.DoesNotContain(
+                    "malformed-hwpx-package",
+                    GetStringArray(fixture!, "classes"));
+            }
+        }
+    }
+
+    [Fact]
+    public void ExternalManualFixturesDoNotCountAsVerified()
+    {
+        foreach (var path in ManifestPaths)
+        {
+            var manifest = ReadJson(path);
+            foreach (var coverage in GetArray(manifest, "fixtureClassCoverage", required: false))
+            {
+                if (RequireString(coverage!, "state") != "external-manual") continue;
+                _ = RequireString(coverage!, "externalLane");
+                Assert.Null(coverage!["verifiedOperations"]);
+                Assert.Null(coverage!["fixtureId"]);
+            }
+        }
     }
 
     [Fact]
