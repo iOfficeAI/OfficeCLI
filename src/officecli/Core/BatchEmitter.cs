@@ -2055,10 +2055,22 @@ public static class BatchEmitter
         {
             if (CellOnlyKeys.Contains(key) ||
                 key.StartsWith("border.", StringComparison.OrdinalIgnoreCase) ||
-                key.StartsWith("padding.", StringComparison.OrdinalIgnoreCase))
+                key.StartsWith("padding.", StringComparison.OrdinalIgnoreCase) ||
+                key.StartsWith("shading.", StringComparison.OrdinalIgnoreCase))
             {
                 filtered[key] = val;
             }
+        }
+        // BUG-DUMP21-02: when shading.* sub-keys are present, the
+        // FilterEmittableProps shading-fold will emit a folded `shading`
+        // key carrying val+fill+color. The legacy `fill` alias surfaced by
+        // ReadCellProps duplicates the same color and would cause Set tc
+        // to apply the bare-color form on top of the folded shading,
+        // overwriting val/color. Drop it here so only the canonical folded
+        // form replays.
+        if (filtered.Keys.Any(k => k.StartsWith("shading.", StringComparison.OrdinalIgnoreCase)))
+        {
+            filtered.Remove("fill");
         }
         return FilterEmittableProps(filtered);
     }

@@ -3010,9 +3010,22 @@ public partial class WordHandler
             else
             {
                 var shd = tcPr.Shading;
-                if (shd?.Fill?.Value != null)
+                if (shd != null)
                 {
-                    node.Format["fill"] = ParseHelpers.FormatHexColor(shd.Fill.Value);
+                    // BUG-DUMP21-02: emit shading.val/.fill/.color sub-keys
+                    // (mirrors paragraph/table shading pattern) so cell
+                    // pattern + foreground color survive dump→batch
+                    // round-trip via BatchEmitter's shading-fold. Keep the
+                    // legacy `fill` alias for backward-compat with tests
+                    // that read cell background as Format["fill"].
+                    var cShdVal = shd.Val?.InnerText;
+                    var cShdFill = shd.Fill?.Value;
+                    var cShdColor = shd.Color?.Value;
+                    if (!string.IsNullOrEmpty(cShdVal)) node.Format["shading.val"] = cShdVal;
+                    if (!string.IsNullOrEmpty(cShdFill)) node.Format["shading.fill"] = ParseHelpers.FormatHexColor(cShdFill);
+                    if (!string.IsNullOrEmpty(cShdColor)) node.Format["shading.color"] = ParseHelpers.FormatHexColor(cShdColor);
+                    if (!string.IsNullOrEmpty(cShdFill))
+                        node.Format["fill"] = ParseHelpers.FormatHexColor(cShdFill);
                 }
             }
             // Width
