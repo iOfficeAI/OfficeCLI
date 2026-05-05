@@ -1951,7 +1951,7 @@ public static class BatchEmitter
     // here too would double-apply. Whitelist genuine cell-level keys only.
     private static readonly HashSet<string> CellOnlyKeys = new(StringComparer.OrdinalIgnoreCase)
     {
-        "fill", "width", "valign", "vmerge", "colspan", "nowrap", "textDirection",
+        "fill", "width", "valign", "vmerge", "hmerge", "colspan", "nowrap", "textDirection",
     };
 
     private static Dictionary<string, string> ExtractCellOnlyProps(Dictionary<string, object?> raw)
