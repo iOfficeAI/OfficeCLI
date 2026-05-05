@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "officecli/interfaces/compatibility-corpus/v1",
+  "title": "OfficeCLI HWP/HWPX Compatibility Corpus",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "format", "description", "fixtures"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "format": { "type": "string", "enum": ["hwp", "hwpx"] },
+    "description": { "type": "string", "minLength": 1 },
+    "fixtures": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/fixture" }
+    }
+  },
+  "$defs": {
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "sha256",
+        "sizeBytes",
+        "classes",
+        "verifiedOperations",
+        "evidence",
+        "notes"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "classes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "verifiedOperations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "read_text",
+              "render_svg",
+              "list_fields",
+              "read_field",
+              "fill_field",
+              "replace_text",
+              "set_table_cell",
+              "save_original",
+              "save_as_hwp",
+              "table_map"
+            ]
+          }
+        },
+        "blockedOperations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/blockedOperation" }
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "notes": { "type": "string", "minLength": 1 }
+      }
+    },
+    "blockedOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "reason", "notes"],
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "read_text",
+            "render_svg",
+            "list_fields",
+            "read_field",
+            "fill_field",
+            "replace_text",
+            "set_table_cell",
+            "save_original",
+            "save_as_hwp",
+            "table_map"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "unsupported_format",
+            "unsupported_operation",
+            "unsupported_engine",
+            "roundtrip_unverified",
+            "bridge_not_enabled",
+            "bridge_missing",
+            "bridge_timeout",
+            "bridge_invalid_json",
+            "bridge_exit_nonzero",
+            "binary_hwp_mutation_forbidden",
+            "binary_hwp_write_forbidden",
+            "fixture_validation_failed",
+            "capability_schema_invalid"
+          ]
+        },
+        "notes": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

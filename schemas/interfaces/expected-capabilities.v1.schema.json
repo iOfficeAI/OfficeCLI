@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "officecli/interfaces/expected-capabilities/v1",
+  "title": "OfficeCLI HWP/HWPX Expected Capabilities",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "description", "formats"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "description": { "type": "string", "minLength": 1 },
+    "formats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hwp", "hwpx"],
+      "properties": {
+        "hwp": { "$ref": "#/$defs/formatCapabilities" },
+        "hwpx": { "$ref": "#/$defs/formatCapabilities" }
+      }
+    }
+  },
+  "$defs": {
+    "formatCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["defaultEngine", "operations"],
+      "properties": {
+        "defaultEngine": {
+          "type": "string",
+          "enum": ["custom", "rhwp-bridge", "none"]
+        },
+        "operations": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/operationCapability" },
+          "minProperties": 1
+        }
+      }
+    },
+    "operationCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "evidence"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["experimental", "roundtrip-verified", "unsupported"]
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "unsupported_format",
+            "unsupported_operation",
+            "unsupported_engine",
+            "roundtrip_unverified",
+            "bridge_not_enabled",
+            "bridge_missing",
+            "bridge_timeout",
+            "bridge_invalid_json",
+            "bridge_exit_nonzero",
+            "binary_hwp_mutation_forbidden",
+            "binary_hwp_write_forbidden",
+            "fixture_validation_failed",
+            "capability_schema_invalid"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "const": "unsupported" } },
+            "required": ["status"]
+          },
+          "then": { "required": ["reason"] }
+        }
+      ]
+    }
+  }
+}
