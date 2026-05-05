@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "description": "Expected corpus-backed capability evidence for HWP/HWPX parity tracking. Round-trip cases live in tests/fixtures/common/roundtrip-cases.json.",
+  "description": "Expected corpus-backed capability evidence for HWP/HWPX parity tracking. Round-trip cases live in tests/fixtures/common/roundtrip-cases.json. Provider matrix lives in tests/fixtures/common/provider-compatibility.json.",
   "formats": {
     "hwp": {
       "defaultEngine": "rhwp-bridge",

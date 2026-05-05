@@ -61,6 +61,22 @@ rhwp provider is opt-in for read/render/text replacement paths
 set_table_cell remains blocked until package and Hancom compatibility gates pass
 ```
 
+## Provider Compatibility Matrix
+
+Phase 36.5 adds the cross-provider matrix at:
+
+```text
+docs/qa/provider-compatibility-matrix.md
+tests/fixtures/common/provider-compatibility.json
+```
+
+HWPX `custom` remains the default provider; rhwp-bridge stays opt-in only and
+must not be promoted to default until evidence parity is reached. HWP defaults
+to `rhwp-bridge`, with `custom` blocked for binary HWP mutations under the
+typed `binary_hwp_mutation_forbidden` and `binary_hwp_write_forbidden`
+reasons. Hancom is `optional` on every row; it can support a future
+status promotion but must not be required by normal CI.
+
 ## Visual Diff Thresholds
 
 Phase 36.4 adds the visual evidence policy at:

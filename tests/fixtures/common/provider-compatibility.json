@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "description": "Provider compatibility matrix for HWP/HWPX operations. Rows declare format/operation/provider status without promoting any provider beyond what evidence supports.",
+  "allowedStatuses": [
+    "unsupported",
+    "experimental",
+    "fixture-backed",
+    "roundtrip-verified",
+    "external-manual"
+  ],
+  "rows": [
+    {
+      "format": "hwp",
+      "operation": "read_text",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "tests/golden/hwp/rhwp-smoke/officecli-view/text.pretty.json"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "render_svg",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "tests/golden/hwp/rhwp-smoke/officecli-view/svg.pretty.json"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "fill_field",
+      "provider": "rhwp-bridge",
+      "status": "fixture-backed",
+      "defaultProvider": true,
+      "evidence": [
+        "tests/golden/hwp/rhwp-fields/field-set-company-name-cli-readback.json",
+        "tests/fixtures/common/roundtrip-cases.json#hwp-fill-field-company"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "replace_text",
+      "provider": "rhwp-bridge",
+      "status": "fixture-backed",
+      "defaultProvider": true,
+      "evidence": [
+        "tests/golden/hwp/rhwp-fields/officecli-replace-marketing-title.json",
+        "tests/fixtures/common/roundtrip-cases.json#hwp-replace-text-fields"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "set_table_cell",
+      "provider": "rhwp-bridge",
+      "status": "fixture-backed",
+      "defaultProvider": true,
+      "evidence": [
+        "tests/golden/hwp/rhwp-tables/officecli-set-cell-hwp-table-readback.json",
+        "tests/fixtures/common/roundtrip-cases.json#hwp-set-table-cell"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "fill_field",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "binary_hwp_write_forbidden",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "replace_text",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "binary_hwp_mutation_forbidden",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "read_text",
+      "provider": "custom",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "tests/golden/hwp/rhwp-smoke/hwpx-officecli-view/text.pretty.json"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "render_svg",
+      "provider": "custom",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "tests/golden/hwp/rhwp-smoke/hwpx-officecli-view/svg.pretty.json"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "replace_text",
+      "provider": "custom",
+      "status": "fixture-backed",
+      "defaultProvider": true,
+      "evidence": [
+        "tests/golden/hwp/rhwp-fields/officecli-replace-hwpx-government.json",
+        "tests/fixtures/common/roundtrip-cases.json#hwpx-replace-text-government"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "set_table_cell",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": true,
+      "evidence": [],
+      "blockedReason": "roundtrip_unverified",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "replace_text",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    }
+  ]
+}
