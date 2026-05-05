@@ -45,5 +45,50 @@
       ],
       "notes": "Binary HWP table fixture for explicit rhwp coordinate based table-cell edits."
     }
+  ],
+  "fixtureClassCoverage": [
+    {
+      "class": "unicode-edge-cases",
+      "state": "verified",
+      "fixtureId": "hwp-plain-mixed-cjk-latin",
+      "verifiedOperations": ["read_text", "render_svg", "replace_text"],
+      "notes": "Korean/English mixed content with Hancom-bundled fonts covers CJK + Latin codepoints."
+    },
+    {
+      "class": "multi-section",
+      "state": "external-manual",
+      "externalLane": "manual-corpus/multi-section/binary-hwp",
+      "notes": "Multi-section binary HWP samples are too large or proprietary; verified manually outside CI."
+    },
+    {
+      "class": "merged-cell-tables",
+      "state": "external-manual",
+      "externalLane": "manual-corpus/merged-cells/binary-hwp",
+      "notes": "Merged-cell tables in binary HWP require Hancom-produced samples; tracked manually."
+    },
+    {
+      "class": "nested-tables",
+      "state": "external-manual",
+      "externalLane": "manual-corpus/nested-tables/binary-hwp",
+      "notes": "Nested table fixtures kept as external manual lane until rhwp coordinate model proves recursive support."
+    },
+    {
+      "class": "pictures-bindata",
+      "state": "external-manual",
+      "externalLane": "manual-corpus/pictures-bindata/binary-hwp",
+      "notes": "Embedded picture/BinData fixtures excluded from repo; manual corpus tracks them."
+    },
+    {
+      "class": "headers-footers",
+      "state": "external-manual",
+      "externalLane": "manual-corpus/headers-footers/binary-hwp",
+      "notes": "Header/footer fixtures await rhwp section model; tracked manually."
+    },
+    {
+      "class": "equations",
+      "state": "external-manual",
+      "externalLane": "manual-corpus/equations/binary-hwp",
+      "notes": "Equation fixtures need Hancom equation tooling; tracked manually."
+    }
   ]
 }

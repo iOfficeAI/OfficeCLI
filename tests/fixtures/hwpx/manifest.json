@@ -24,5 +24,56 @@
       ],
       "notes": "HWPX smoke fixture for rhwp opt-in read/render and text replacement; custom handler remains default."
     }
+  ],
+  "fixtureClassCoverage": [
+    {
+      "class": "unicode-edge-cases",
+      "state": "verified",
+      "fixtureId": "hwpx-table-vpos-news",
+      "verifiedOperations": ["read_text", "render_svg", "replace_text"],
+      "notes": "HWPX smoke fixture covers Korean text rendering with mixed scripts."
+    },
+    {
+      "class": "malformed-hwpx-package",
+      "state": "blocked",
+      "reason": "fixture_validation_failed",
+      "notes": "Synthetic non-zip bytes saved with .hwpx extension must be rejected by package integrity check before any operation runs."
+    },
+    {
+      "class": "multi-section",
+      "state": "external-manual",
+      "externalLane": "manual-corpus/multi-section/hwpx",
+      "notes": "Multi-section HWPX samples kept as external manual lane to avoid bloating the repo."
+    },
+    {
+      "class": "merged-cell-tables",
+      "state": "external-manual",
+      "externalLane": "manual-corpus/merged-cells/hwpx",
+      "notes": "Merged-cell HWPX tables require Hancom-produced samples; tracked manually."
+    },
+    {
+      "class": "nested-tables",
+      "state": "external-manual",
+      "externalLane": "manual-corpus/nested-tables/hwpx",
+      "notes": "Nested HWPX tables tracked manually until set_table_cell roundtrip is verified."
+    },
+    {
+      "class": "pictures-bindata",
+      "state": "external-manual",
+      "externalLane": "manual-corpus/pictures-bindata/hwpx",
+      "notes": "BinData picture references in HWPX are tracked outside the repo."
+    },
+    {
+      "class": "headers-footers",
+      "state": "external-manual",
+      "externalLane": "manual-corpus/headers-footers/hwpx",
+      "notes": "Header/footer HWPX fixtures tracked manually until section-level mutation lands."
+    },
+    {
+      "class": "equations",
+      "state": "external-manual",
+      "externalLane": "manual-corpus/equations/hwpx",
+      "notes": "HWPX equation fixtures require Hancom equation tooling; tracked manually."
+    }
   ]
 }
