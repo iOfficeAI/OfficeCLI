@@ -61,6 +61,23 @@ rhwp provider is opt-in for read/render/text replacement paths
 set_table_cell remains blocked until package and Hancom compatibility gates pass
 ```
 
+## Visual Diff Thresholds
+
+Phase 36.4 adds the visual evidence policy at:
+
+```text
+docs/qa/visual-diff-thresholds.md
+tests/fixtures/common/visual-thresholds.json
+```
+
+Hard fails (page-count mismatch, missing SVG page, missing render evidence
+for a visual-validated operation) cannot be tolerated. Thresholded fails
+(text-only layout drift, unexpected blank render, exact SVG hash mismatch)
+have declared bounds. As of Phase 36.4 only `render_svg` is a visual-validated
+operation; mutation operations may declare drift tolerance but cannot claim
+visual validation without a linked render evidence file. The renderer status
+remains `deferred` until OfficeCLI ships a stable in-CI renderer.
+
 ## Round-Trip Cases
 
 Phase 36.3 adds an operation-level round-trip catalog at:
