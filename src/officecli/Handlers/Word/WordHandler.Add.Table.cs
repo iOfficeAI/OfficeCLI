@@ -210,6 +210,37 @@ public partial class WordHandler
                     tblProps.RemoveAllChildren<TableLook>();
                     tblProps.AppendChild(new TableLook { Val = "04A0" });
                     break;
+                case "shd" or "shading":
+                    {
+                        // BUG-DUMP21-01: w:tblPr/w:shd table-level shading
+                        // round-trip. Mirrors paragraph/cell `shading` parsing
+                        // — accepts FILL, VAL;FILL, or VAL;FILL;COLOR.
+                        var shdParts = tv.Split(';');
+                        var tShd = new Shading();
+                        if (shdParts.Length == 1)
+                        {
+                            tShd.Val = ShadingPatternValues.Clear;
+                            tShd.Fill = SanitizeHex(shdParts[0]);
+                        }
+                        else if (shdParts.Length >= 2)
+                        {
+                            var pat = shdParts[0].TrimStart('#');
+                            if (pat.Length >= 6 && pat.All(char.IsAsciiHexDigit))
+                            {
+                                tShd.Val = ShadingPatternValues.Clear;
+                                tShd.Fill = SanitizeHex(shdParts[0]);
+                            }
+                            else
+                            {
+                                tShd.Val = new ShadingPatternValues(shdParts[0]);
+                                tShd.Fill = SanitizeHex(shdParts[1]);
+                                if (shdParts.Length >= 3)
+                                    tShd.Color = SanitizeHex(shdParts[2]);
+                            }
+                        }
+                        tblProps.Shading = tShd;
+                    }
+                    break;
                 case "direction" or "dir" or "bidi":
                     // Table-level bidi: emit <w:bidiVisual/> on tblPr in schema
                     // order. Mirrors paragraph/cell direction=rtl vocabulary.

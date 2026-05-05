@@ -2513,6 +2513,20 @@ public partial class WordHandler
                     node.Format["padding.left"] = dcm.TableCellLeftMargin.Width.Value;
                 if (dcm?.TableCellRightMargin?.Width?.Value != null)
                     node.Format["padding.right"] = dcm.TableCellRightMargin.Width.Value;
+                // Table-level shading (w:tblPr/w:shd). Mirror paragraph shading
+                // pattern: split into shading.val/.fill/.color sub-keys.
+                // BatchEmitter's shading-fold collapses these into a single
+                // semicolon-encoded `shading=VAL;FILL[;COLOR]` value, which
+                // AddTable consumes via the existing "shading" case.
+                if (tp.Shading != null)
+                {
+                    var tShdVal = tp.Shading.Val?.InnerText;
+                    var tShdFill = tp.Shading.Fill?.Value;
+                    var tShdColor = tp.Shading.Color?.Value;
+                    if (!string.IsNullOrEmpty(tShdVal)) node.Format["shading.val"] = tShdVal;
+                    if (!string.IsNullOrEmpty(tShdFill)) node.Format["shading.fill"] = ParseHelpers.FormatHexColor(tShdFill);
+                    if (!string.IsNullOrEmpty(tShdColor)) node.Format["shading.color"] = ParseHelpers.FormatHexColor(tShdColor);
+                }
             }
 
             // Column widths from grid
