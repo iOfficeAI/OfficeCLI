@@ -667,6 +667,12 @@ public static class BatchEmitter
             var carrierRuns = (pNode.Children ?? new List<DocumentNode>())
                 .Where(c =>
                 {
+                    // BUG-DUMP7-11: inline w:sdt children of a section-break
+                    // carrier paragraph were excluded by the run-only filter
+                    // and silently dropped. Route through the same emit
+                    // loop; the typed dispatch below converts them to
+                    // `add sdt` rows just like the body-paragraph branch.
+                    if (c.Type == "sdt") return true;
                     if (c.Type != "run" && c.Type != "r") return false;
                     // BUG-DUMP5-08: footnote/endnote reference runs carry no
                     // visible Text — they're empty <w:r> elements with
@@ -696,6 +702,30 @@ public static class BatchEmitter
                     // `add footnote/endnote` row instead of a `add r`
                     // (which has no consumer for `rStyle=FootnoteReference`
                     // by itself and would lose the note entirely).
+                    // BUG-DUMP7-11: inline SDT — emit `add sdt` mirroring the
+                    // body-paragraph inline-SDT branch (same prop whitelist).
+                    if (run.Type == "sdt")
+                    {
+                        var sdtCarrierProps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var key in new[] { "type", "alias", "tag", "items", "format" })
+                        {
+                            if (run.Format.TryGetValue(key, out var v) && v != null)
+                            {
+                                var s = v.ToString() ?? "";
+                                if (s.Length > 0) sdtCarrierProps[key] = s;
+                            }
+                        }
+                        if (!string.IsNullOrEmpty(run.Text))
+                            sdtCarrierProps["text"] = run.Text!;
+                        items.Add(new BatchItem
+                        {
+                            Command = "add",
+                            Parent = carrierPath,
+                            Type = "sdt",
+                            Props = sdtCarrierProps
+                        });
+                        continue;
+                    }
                     var rStyle = run.Format.TryGetValue("rStyle", out var rs) ? rs?.ToString() : null;
                     if (ctx != null && rStyle == "FootnoteReference")
                     {
