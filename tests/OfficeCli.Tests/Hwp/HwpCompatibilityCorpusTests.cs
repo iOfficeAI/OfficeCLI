@@ -380,6 +380,114 @@ public sealed class HwpCompatibilityCorpusTests
         Assert.True(results.IsValid, FormatSchemaErrors(results));
     }
 
+    [Fact]
+    public void Phase36ReleaseGateRequiresAllCorpusArtifacts()
+    {
+        string[] required =
+        [
+            "schemas/interfaces/compatibility-corpus.v1.schema.json",
+            "schemas/interfaces/expected-capabilities.v1.schema.json",
+            "tests/fixtures/common/expected-capabilities.json",
+            "tests/fixtures/common/roundtrip-case.v1.schema.json",
+            "tests/fixtures/common/roundtrip-cases.json",
+            "tests/fixtures/common/visual-thresholds.json",
+            "tests/fixtures/common/provider-compatibility.json",
+            "tests/fixtures/hwp/manifest.json",
+            "tests/fixtures/hwpx/manifest.json",
+            "docs/qa/compatibility-corpus.md",
+            "docs/qa/visual-diff-thresholds.md",
+            "docs/qa/provider-compatibility-matrix.md",
+            "docs/qa/phase-36-release-gate.md"
+        ];
+
+        foreach (var path in required)
+        {
+            _ = LocateRepoFile(path);
+        }
+
+        foreach (var manifestPath in ManifestPaths)
+        {
+            var manifest = ReadJson(manifestPath);
+            Assert.NotNull(manifest["fixtureClassCoverage"]);
+        }
+    }
+
+    [Fact]
+    public void NoDocxParityLanguageBeforeScorecard()
+    {
+        string[] guardedDocs =
+        [
+            "docs/qa/compatibility-corpus.md",
+            "docs/qa/visual-diff-thresholds.md",
+            "docs/qa/provider-compatibility-matrix.md",
+            "docs/qa/phase-36-release-gate.md"
+        ];
+
+        string[] forbiddenPhrases =
+        [
+            "DOCX parity",
+            "docx parity",
+            "DOCX 동등",
+            "parity with DOCX"
+        ];
+
+        foreach (var doc in guardedDocs)
+        {
+            var text = File.ReadAllText(LocateRepoFile(doc));
+            foreach (var phrase in forbiddenPhrases)
+            {
+                if (text.Contains(phrase, StringComparison.OrdinalIgnoreCase)
+                    && !text.Contains("forbidden claim", StringComparison.OrdinalIgnoreCase)
+                    && !text.Contains("scorecard", StringComparison.OrdinalIgnoreCase)
+                    && !text.Contains("must not", StringComparison.OrdinalIgnoreCase))
+                {
+                    Assert.Fail(
+                        $"{doc} contains forbidden parity phrase '{phrase}' " +
+                        "without the scorecard guard wording.");
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void BlockedOperationsRemainMachineReadable()
+    {
+        var capabilities = ReadJson(ExpectedCapabilitiesPath);
+        var formats = capabilities["formats"]!.AsObject();
+
+        var observedBlocked = 0;
+        foreach (var (formatName, formatNode) in formats)
+        {
+            var ops = formatNode!["operations"]!.AsObject();
+            foreach (var (opName, opNode) in ops)
+            {
+                var status = opNode!["status"]!.GetValue<string>();
+                if (status != HwpCapabilityConstants.StatusUnsupported) continue;
+
+                observedBlocked++;
+                var reasonNode = opNode["reason"];
+                Assert.True(
+                    reasonNode is not null,
+                    $"{formatName}.{opName} is unsupported but missing typed reason.");
+                Assert.Contains(reasonNode!.GetValue<string>(), KnownReasons);
+            }
+        }
+
+        var matrix = ReadJson("tests/fixtures/common/provider-compatibility.json");
+        foreach (var row in matrix["rows"]!.AsArray())
+        {
+            var status = row!["status"]!.GetValue<string>();
+            if (status != HwpCapabilityConstants.StatusUnsupported) continue;
+
+            observedBlocked++;
+            var reasonNode = row["blockedReason"];
+            Assert.NotNull(reasonNode);
+            Assert.Contains(reasonNode!.GetValue<string>(), KnownReasons);
+        }
+
+        Assert.True(observedBlocked > 0, "Expected at least one blocked operation across capability + matrix data.");
+    }
+
     private static void AssertSchemaInvalid(JsonSchema schema, JsonNode instance)
     {
         var results = schema.Evaluate(instance);

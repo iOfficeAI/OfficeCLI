@@ -140,6 +140,26 @@ malformed-hwpx-package
 `fixture_validation_failed`. External-manual entries must not declare
 `verifiedOperations` and do not contribute to capability evidence.
 
+## Phase 36 Release Gate
+
+Phase 36 closes when all corpus, round-trip, visual, and provider gates
+agree. The single source of truth lives at:
+
+```text
+docs/qa/phase-36-release-gate.md
+```
+
+Allowed claim:
+
+```text
+OfficeCLI tracks HWP/HWPX support with corpus-backed operation evidence,
+round-trip cases, and provider compatibility rows.
+```
+
+The forbidden claim ("HWP/HWPX have DOCX parity") is enforced by
+`HwpCompatibilityCorpusTests.NoDocxParityLanguageBeforeScorecard` and remains
+blocked until the later parity scorecard is green.
+
 ## Next Gates
 
 The corpus is intentionally small in this first slice. Later Phase 36 patches
