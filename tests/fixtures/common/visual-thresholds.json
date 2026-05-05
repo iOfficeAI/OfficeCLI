@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "description": "Visual diff threshold contract for HWP/HWPX corpus-backed operations. Pixel-diff implementation is intentionally deferred; this catalog declares the contract that visual claims must respect.",
+  "hardFail": [
+    "page-count-mismatch",
+    "missing-expected-svg-page",
+    "missing-render-evidence-for-visual-validated-operation"
+  ],
+  "thresholdedFail": [
+    {
+      "id": "text-only-mutation-layout-drift",
+      "metric": "layout-drift-fraction",
+      "maxFraction": 0.02,
+      "appliesTo": [
+        "replace_text",
+        "fill_field"
+      ],
+      "notes": "Allow up to 2% layout drift for text-only mutations before flagging. Renderer-aware execution is opt-in."
+    },
+    {
+      "id": "unexpected-blank-render",
+      "metric": "blank-page-fraction",
+      "maxFraction": 0.0,
+      "appliesTo": [
+        "replace_text",
+        "fill_field",
+        "set_table_cell"
+      ],
+      "notes": "Any blank page in a render that previously had content is a fail."
+    },
+    {
+      "id": "svg-hash-mismatch-when-exact-required",
+      "metric": "svg-hash-equality",
+      "maxFraction": 0.0,
+      "appliesTo": [
+        "render_svg"
+      ],
+      "notes": "When an operation declares exact SVG hash equality as evidence, any drift fails."
+    }
+  ],
+  "visualValidatedOperations": [
+    "render_svg"
+  ],
+  "rendererStatus": "deferred",
+  "rendererNotes": "OfficeCLI CI does not yet ship a stable HWP/HWPX renderer. Until it does, visual claims require an explicit render evidence link in expected-capabilities.json. The threshold contract above remains authoritative when a renderer is connected."
+}
