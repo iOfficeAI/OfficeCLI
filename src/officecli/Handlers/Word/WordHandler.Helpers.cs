@@ -571,6 +571,12 @@ public partial class WordHandler
             {
                 case Text t: sb.Append(t.Text); break;
                 case TabChar: sb.Append('\t'); break;
+                // BUG-DUMP4-01: a Run nested inside a w:del wrapper carries its
+                // text in <w:delText> (DeletedText), not <w:t>. Without this
+                // case the deleted content was silently dropped from Get
+                // readback and dump round-trip — the inner Run was reachable
+                // via Descendants<Run>() but appeared empty.
+                case DeletedText dt: sb.Append(dt.Text); break;
             }
         }
         return sb.ToString();
