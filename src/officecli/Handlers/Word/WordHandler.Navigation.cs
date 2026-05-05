@@ -1862,6 +1862,22 @@ public partial class WordHandler
             }
             // w14 text effects
             ReadW14TextEffects(run.RunProperties, node);
+            // BUG-DUMP10-01: w:eastAsianLayout (vert/combine/vertCompress)
+            // is a multi-attribute child the long-tail FillUnknownChildProps
+            // skips (it only handles single-val/no-attr leaves). Without an
+            // explicit reader, vertical-text and two-lines-in-one CJK layout
+            // was silently dropped on dump→batch round-trip. Set side is
+            // covered by TypedAttributeFallback.TrySet which creates the
+            // dotted child + attr automatically.
+            if (run.RunProperties?.GetFirstChild<EastAsianLayout>() is { } eal)
+            {
+                if (eal.Vertical?.Value == true) node.Format["eastAsianLayout.vert"] = "1";
+                if (eal.Combine?.Value == true) node.Format["eastAsianLayout.combine"] = "1";
+                if (eal.VerticalCompress?.HasValue == true)
+                    node.Format["eastAsianLayout.vertCompress"] = eal.VerticalCompress.InnerText;
+                if (eal.CombineBrackets?.HasValue == true)
+                    node.Format["eastAsianLayout.combineBrackets"] = eal.CombineBrackets.InnerText;
+            }
             // Long-tail fallback: surface every rPr child the curated reader
             // didn't consume. Symmetric with the Set-side TryCreateTypedChild
             // fallback in SetElementRun (WordHandler.Set.Element.cs).
@@ -2746,6 +2762,11 @@ public partial class WordHandler
         "highlight", "caps", "smallCaps", "dstrike", "vanish",
         "outline", "shadow", "emboss", "imprint", "noProof", "rtl",
         "vertAlign", "spacing", "shd",
+        // BUG-DUMP10-01: <w:eastAsianLayout/> is a multi-attribute element
+        // surfaced by the curated reader as eastAsianLayout.vert / .combine
+        // dotted keys. Skip the long-tail fallback so it doesn't double-emit
+        // the bare element name with a `true` value.
+        "eastAsianLayout",
         // pPr-side
         "jc", "ind", "outlineLvl", "widowControl",
         "keepNext", "keepLines", "pageBreakBefore", "contextualSpacing",
