@@ -243,31 +243,26 @@ public partial class WordHandler
 
                 sb.Append($"<{tag}{attrs}>");
 
-                // Render cell content — use paragraph tags for multi-paragraph cells
-                var cellParagraphs = cell.Elements<Paragraph>().ToList();
-                for (int pi = 0; pi < cellParagraphs.Count; pi++)
+                // Render cell content — every paragraph (including empty ones)
+                // goes through the same path as body paragraphs: <div> wrapper
+                // with inline pPr CSS plus an &nbsp; placeholder for empties so
+                // the line box forms and renders the resolved line-height. Word
+                // and LibreOffice apply pPr to empty paragraphs identically to
+                // non-empty ones; the previous <br> fast-path silently dropped
+                // line-height + spaceBefore + spaceAfter for empty cell paragraphs.
+                foreach (var cellPara in cell.Elements<Paragraph>())
                 {
-                    var cellPara = cellParagraphs[pi];
                     var text = GetParagraphText(cellPara);
                     var runs = GetAllRuns(cellPara);
-
-                    if (runs.Count == 0 && string.IsNullOrWhiteSpace(text))
-                    {
-                        // empty cell paragraph — skip but preserve spacing between paragraphs
-                        if (pi > 0 && pi < cellParagraphs.Count - 1)
-                            sb.Append("<br>");
-                    }
-                    else
-                    {
-                        var pCss = GetParagraphInlineCss(cellPara);
-                        if (!string.IsNullOrEmpty(pCss))
-                            sb.Append($"<div style=\"{pCss}\">");
-                        RenderParagraphContentHtml(sb, cellPara);
-                        if (!string.IsNullOrEmpty(pCss))
-                            sb.Append("</div>");
-                        else if (pi < cellParagraphs.Count - 1)
-                            sb.Append("<br>");
-                    }
+                    var pCss = GetParagraphInlineCss(cellPara);
+                    sb.Append("<div");
+                    if (!string.IsNullOrEmpty(pCss))
+                        sb.Append($" style=\"{pCss}\"");
+                    sb.Append(">");
+                    bool hasVisibleContent = runs.Count > 0 || !string.IsNullOrWhiteSpace(text);
+                    RenderParagraphContentHtml(sb, cellPara);
+                    if (!hasVisibleContent) sb.Append("&nbsp;");
+                    sb.Append("</div>");
                 }
 
                 // Render nested tables

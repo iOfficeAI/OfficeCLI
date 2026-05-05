@@ -1614,12 +1614,15 @@ public partial class WordHandler
             parts.Add("align-items:stretch");
         }
 
-        // Padding — add vertical compensation for CSS line-height:1 clipping glyph ascenders
-        const double CellPadVComp = 3.0; // pt
+        // Padding mirrors Word's tcMar exactly. Word's TableNormal default is
+        // top=0 left=108(=5.4pt) bottom=0 right=108(=5.4pt) twips, used when
+        // tcMar is absent. (An older CellPadVComp=3pt vertical compensation
+        // for line-height:1 ascender clipping is no longer needed since cli
+        // emits unitless line-height per font ratio.)
         var margins = tcPr?.TableCellMargin;
         {
-            var padTop = Units.TwipsToPt(margins?.TopMargin?.Width?.Value ?? "0") + CellPadVComp;
-            var padBot = Units.TwipsToPt(margins?.BottomMargin?.Width?.Value ?? "0") + CellPadVComp;
+            var padTop = Units.TwipsToPt(margins?.TopMargin?.Width?.Value ?? "0");
+            var padBot = Units.TwipsToPt(margins?.BottomMargin?.Width?.Value ?? "0");
             var leftVal = margins?.LeftMargin?.Width?.Value ?? margins?.StartMargin?.Width?.Value;
             var rightVal = margins?.RightMargin?.Width?.Value ?? margins?.EndMargin?.Width?.Value;
             var padLeft = leftVal != null ? $"{Units.TwipsToPt(leftVal):0.#}pt" : "5.4pt";
@@ -2110,7 +2113,10 @@ public partial class WordHandler
         .wg p {{ padding: 0; margin: 0.05em 0; }}
         table.borderless {{ border: none; }}
         table.borderless td, table.borderless th {{ border: none; padding: 2px 6px; }}
-        th, td {{ border: none; padding: 3pt 5.4pt; text-align: inherit; vertical-align: top; break-inside: auto; }}
+        /* Default tcMar: Word's TableNormal style is top=0 left=108 bottom=0
+           right=108 (twips), so 0pt T/B and 5.4pt L/R. Per-cell tcMar (read
+           from tcPr/tcMar) overrides this via inline style. */
+        th, td {{ border: none; padding: 0 5.4pt; text-align: inherit; vertical-align: top; break-inside: auto; }}
         tr {{ break-inside: auto; }}
         th {{ font-weight: 600; }}
         @media print {{ body {{ background: white; padding: 0; }}
