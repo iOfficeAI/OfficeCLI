@@ -1817,6 +1817,23 @@ public partial class WordHandler
                     node.Children.Add(ElementToNode(inlineEq, $"{path}/equation[{inlineEqIdx + 1}]", depth - 1));
                     inlineEqIdx++;
                 }
+                // BUG-DUMP12-02: surface block-level <m:oMathPara> children of a
+                // mixed-content paragraph (paragraph that ALSO has ordinary
+                // runs/hyperlinks/etc) as display equation nodes. The pure-wrapper
+                // case is handled at the body level via the LocalName=="oMathPara"
+                // branch in WalkBodyChild + IsOMathParaWrapperParagraph; the
+                // mixed-content case falls through to plain p[N] and was silently
+                // dropping the equation. We only emit when the para is NOT a pure
+                // oMathPara wrapper, to avoid double-counting against the body
+                // /oMathPara[M] addressing.
+                if (!IsOMathParaWrapperParagraph(para))
+                {
+                    foreach (var blockEq in para.Elements<M.Paragraph>())
+                    {
+                        node.Children.Add(ElementToNode(blockEq, $"{path}/equation[{inlineEqIdx + 1}]", depth - 1));
+                        inlineEqIdx++;
+                    }
+                }
                 // BUG-DUMP6-01: surface <w:fldSimple> children as typed `field`
                 // nodes so BatchEmitter can re-emit `add field` with the
                 // instruction preserved. Without this, GetAllRuns descended
