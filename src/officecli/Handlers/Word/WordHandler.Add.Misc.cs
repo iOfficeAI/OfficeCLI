@@ -442,6 +442,16 @@ public partial class WordHandler
         hlRProps.Underline = new Underline { Val = UnderlineValues.Single };
         if (properties.TryGetValue("font", out var hlFont))
             hlRProps.RunFonts = new RunFonts { Ascii = hlFont, HighAnsi = hlFont };
+        // BUG-DUMP17-07: mirror per-script font slot from Add.Text. Without this
+        // branch, dump emits font.cs on hyperlink runs but batch replay silently
+        // drops it.
+        if (properties.TryGetValue("font.cs", out var hlFontCs)
+            || properties.TryGetValue("font.complexscript", out hlFontCs)
+            || properties.TryGetValue("font.complex", out hlFontCs))
+        {
+            hlRProps.RunFonts ??= new RunFonts();
+            hlRProps.RunFonts.ComplexScript = hlFontCs;
+        }
         if (properties.TryGetValue("size", out var hlSize))
             hlRProps.FontSize = new FontSize { Val = ((int)Math.Round(ParseFontSize(hlSize) * 2, MidpointRounding.AwayFromZero)).ToString() };
         if (properties.TryGetValue("bold", out var hlBold) && IsTruthy(hlBold))

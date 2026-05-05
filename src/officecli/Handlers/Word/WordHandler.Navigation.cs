@@ -2381,6 +2381,9 @@ public partial class WordHandler
             {
                 var rp = hlRun.RunProperties;
                 if (rp.RunFonts?.Ascii?.Value != null) node.Format["font"] = rp.RunFonts.Ascii.Value;
+                // BUG-DUMP17-07: surface per-script font slot so dump→batch
+                // round-trip preserves font.cs on hyperlink runs.
+                if (rp.RunFonts?.ComplexScript?.Value != null) node.Format["font.cs"] = rp.RunFonts.ComplexScript.Value;
                 if (rp.FontSize?.Val?.Value != null)
                     node.Format["size"] = $"{int.Parse(rp.FontSize.Val.Value) / 2.0:0.##}pt";
                 if (rp.Bold != null) node.Format["bold"] = IsToggleOn(rp.Bold);
