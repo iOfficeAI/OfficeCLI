@@ -61,6 +61,24 @@ rhwp provider is opt-in for read/render/text replacement paths
 set_table_cell remains blocked until package and Hancom compatibility gates pass
 ```
 
+## Round-Trip Cases
+
+Phase 36.3 adds an operation-level round-trip catalog at:
+
+```text
+tests/fixtures/common/roundtrip-cases.json
+tests/fixtures/common/roundtrip-case.v1.schema.json
+```
+
+Each case declares a fixtureId, operation, provider, outputMode, args, and the
+required checks: `source-unchanged`, `output-created`, `provider-readback`,
+`semantic-delta`, `typed-error-if-blocked`. Mutation cases must include
+`source-unchanged` and must not run with `outputMode = in-place`. Blocked cases
+must include `typed-error-if-blocked` and a typed `expected.error.code`.
+
+Normal CI enforces declarative invariants over the catalog. Real rhwp-backed
+execution is opt-in and gated on `OFFICECLI_REAL_RHWP_BIN`.
+
 ## Fixture Class Coverage
 
 Phase 36.2 records required fixture classes in each manifest under
