@@ -248,10 +248,11 @@ public static class BatchEmitter
             // The comment id is allocated by AddComment on the target side;
             // do not propagate the source id (would conflict on replay).
             props.Remove("id");
-            // Date is auto-stamped by the SDK on add — emitting it would
-            // overwrite the user's local "now" with the source moment, which
-            // is rarely the desired round-trip behaviour.
-            props.Remove("date");
+            // BUG-R7-04 (T-4): previously dropped `date` so dump→replay always
+            // re-stamped the comment with the SDK's "now". That breaks
+            // archival / audit-trail use cases where the source timestamp is
+            // load-bearing. Preserve it; AddComment accepts an explicit
+            // ISO-8601 date and the SDK will use it instead of stamping.
 
             items.Add(new BatchItem
             {
@@ -736,12 +737,24 @@ public static class BatchEmitter
             runs[0].Format.TryGetValue("rStyle", out var srStyle)
             && (string.Equals(srStyle?.ToString(), "FootnoteReference", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(srStyle?.ToString(), "EndnoteReference", StringComparison.OrdinalIgnoreCase));
+        // BUG-R7-05: a synthetic field run (from CollapseFieldChains) carries
+        // `instruction=PAGE` + `text="1"` — collapsing those onto the
+        // paragraph emits `set /footer[1]/p[1] instruction=PAGE text=1` which
+        // ApplyParagraphLevelProperty doesn't translate into an actual field
+        // chain (paragraph just becomes static text "1"). Force the multi-run
+        // path so the field run is re-emitted as `add field` and the chain
+        // is rebuilt on replay. Header parts hit this same code path; the
+        // bug surfaces in footers because header documents in earlier rounds
+        // happened to have multiple runs that already forced the multi-run
+        // branch.
+        bool singleRunIsField = runs.Count == 1 && runs[0].Type == "field";
         bool collapseSingleRun = runs.Count <= 1 &&
             !(runs.Count == 1 && runs[0].Type == "picture") &&
             !(runs.Count == 1 && runs[0].Type == "ptab") &&
             !singleRunIsHyperlink &&
             !singleRunIsNoteRef &&
             !singleRunHasW14 &&
+            !singleRunIsField &&
             breaks.Count == 0;
         // Pull paragraph-level tab stops out for per-stop `add tab` emit
         // (FilterEmittableProps already drops the `tabs` scalar).
@@ -1569,6 +1582,37 @@ public static class BatchEmitter
             pbdrFold[side] = cur;
         }
 
+        // BUG-R7-04: same fold for table `border.*` keys. Get emits
+        // `border.top: single`, `border.top.sz: 12`, `border.top.color: #000000`
+        // separately; Set accepts only the colon-encoded form
+        // `border.top=single;12;#000000;1`. Without folding, dump strips the
+        // 3-segment subkeys (see the explicit "drop them here" comment below)
+        // and round-trip silently downgrades real borders to default thin
+        // single. Fold sz/color/space into the 2-segment key.
+        var borderFold = new Dictionary<string, (string? style, string? sz, string? color, string? space)>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, val) in raw)
+        {
+            if (val == null) continue;
+            if (!key.StartsWith("border.", StringComparison.OrdinalIgnoreCase)) continue;
+            var parts = key.Split('.');
+            if (parts.Length < 2) continue;
+            var side = $"{parts[0]}.{parts[1]}"; // border.top
+            borderFold.TryGetValue(side, out var cur);
+            var sval = val.ToString() ?? "";
+            if (parts.Length == 2) cur.style = sval;
+            else if (parts.Length == 3)
+            {
+                switch (parts[2].ToLowerInvariant())
+                {
+                    case "sz": cur.sz = sval; break;
+                    case "color": cur.color = sval; break;
+                    case "space": cur.space = sval; break;
+                }
+            }
+            borderFold[side] = cur;
+        }
+
         foreach (var (key, val) in raw)
         {
             if (SkipKeys.Contains(key)) continue;
@@ -1600,17 +1644,29 @@ public static class BatchEmitter
                 continue;
             }
 
-            // BORDER subattr asymmetry: Get exposes `border.top: single` AND
-            // `border.top.sz: 4` / `border.top.color: 808080` as separate keys,
-            // but Set's case table stops at the 2-segment level — the 3-segment
-            // sub-attribute keys would be misrouted through ApplyTableBorders'
-            // dotted fallback and crash on `Invalid border style: '4'`. Drop
-            // them here as a known lossy projection until Set grows the
-            // matching cases (border width / color readback survive only via
-            // the main `border.*` style key for now).
-            if (key.StartsWith("border.", StringComparison.OrdinalIgnoreCase) &&
-                key.Count(ch => ch == '.') >= 2)
+            // BUG-R7-04: fold border.* like pbdr.*. Skip the 3-segment subkeys
+            // (folded into the 2-segment side key below) and rewrite the bare
+            // side key into the colon-encoded form Set's ParseBorderValue
+            // expects.
+            if (key.StartsWith("border.", StringComparison.OrdinalIgnoreCase))
             {
+                var bparts = key.Split('.');
+                if (bparts.Length >= 3) continue; // subkey already folded
+                var bside = $"{bparts[0]}.{bparts[1]}";
+                if (borderFold.TryGetValue(bside, out var folded) && folded.style != null)
+                {
+                    var sz = folded.sz ?? "";
+                    var col = folded.color ?? "";
+                    var sp = folded.space ?? "";
+                    var v = folded.style!;
+                    if (folded.sz != null || folded.color != null || folded.space != null)
+                        v += ";" + sz;
+                    if (folded.color != null || folded.space != null)
+                        v += ";" + col;
+                    if (folded.space != null)
+                        v += ";" + sp;
+                    result[key] = v;
+                }
                 continue;
             }
 
