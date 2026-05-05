@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.Json.Nodes;
+using Json.Schema;
 using OfficeCli.Handlers.Hwp;
 
 namespace OfficeCli.Tests.Hwp;
@@ -92,10 +94,14 @@ public sealed class HwpCompatibilityCorpusTests
     [Fact]
     public void ManifestConformsToSchema()
     {
-        AssertSchemaFileHasRequiredFields(CompatibilityCorpusSchemaPath, "format", "fixtures");
+        var schema = LoadSchema(CompatibilityCorpusSchemaPath);
 
         foreach (var path in ManifestPaths)
-            ValidateManifestContract(ReadJson(path));
+        {
+            var manifest = ReadJson(path);
+            AssertSchemaValid(schema, manifest);
+            ValidateManifestContract(manifest);
+        }
     }
 
     [Fact]
@@ -126,9 +132,11 @@ public sealed class HwpCompatibilityCorpusTests
     [Fact]
     public void ExpectedCapabilitiesConformsToSchema()
     {
-        AssertSchemaFileHasRequiredFields(ExpectedCapabilitiesSchemaPath, "formats", "operations");
+        var schema = LoadSchema(ExpectedCapabilitiesSchemaPath);
+        var capabilities = ReadJson(ExpectedCapabilitiesPath);
 
-        ValidateExpectedCapabilitiesContract(ReadJson(ExpectedCapabilitiesPath));
+        AssertSchemaValid(schema, capabilities);
+        ValidateExpectedCapabilitiesContract(capabilities);
     }
 
     [Fact]
@@ -172,8 +180,7 @@ public sealed class HwpCompatibilityCorpusTests
         var manifest = Clone(ReadJson("tests/fixtures/hwp/manifest.json"));
         manifest["format"] = "odt";
 
-        var error = Assert.Throws<InvalidOperationException>(() => ValidateManifestContract(manifest));
-        Assert.Contains("Unknown corpus format", error.Message);
+        AssertSchemaInvalid(LoadSchema(CompatibilityCorpusSchemaPath), manifest);
     }
 
     [Fact]
@@ -186,8 +193,7 @@ public sealed class HwpCompatibilityCorpusTests
             ["evidence"] = new JsonArray()
         };
 
-        var error = Assert.Throws<InvalidOperationException>(() => ValidateExpectedCapabilitiesContract(capabilities));
-        Assert.Contains("Unknown capability operation", error.Message);
+        AssertSchemaInvalid(LoadSchema(ExpectedCapabilitiesSchemaPath), capabilities);
     }
 
     private static void ValidateManifestContract(JsonNode manifest)
@@ -256,14 +262,23 @@ public sealed class HwpCompatibilityCorpusTests
         }
     }
 
-    private static void AssertSchemaFileHasRequiredFields(string relativePath, params string[] fieldNames)
+    private static JsonSchema LoadSchema(string relativePath)
+        => JsonSchema.FromText(File.ReadAllText(LocateRepoFile(relativePath)));
+
+    private static void AssertSchemaValid(JsonSchema schema, JsonNode instance)
     {
-        var schema = ReadJson(relativePath);
-        Assert.Equal("object", RequireString(schema, "type"));
-        var schemaText = schema.ToJsonString();
-        foreach (var fieldName in fieldNames)
-            Assert.Contains(fieldName, schemaText, StringComparison.Ordinal);
+        var results = schema.Evaluate(instance);
+        Assert.True(results.IsValid, FormatSchemaErrors(results));
     }
+
+    private static void AssertSchemaInvalid(JsonSchema schema, JsonNode instance)
+    {
+        var results = schema.Evaluate(instance);
+        Assert.False(results.IsValid, "Schema unexpectedly accepted invalid corpus data.");
+    }
+
+    private static string FormatSchemaErrors(EvaluationResults results)
+        => JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true });
 
     private static JsonNode ReadJson(string relativePath)
         => JsonNode.Parse(File.ReadAllText(LocateRepoFile(relativePath)))!;
