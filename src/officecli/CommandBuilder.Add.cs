@@ -14,7 +14,7 @@ static partial class CommandBuilder
     {
         var addFileArg = new Argument<FileInfo>("file") { Description = "Office document path (required even with open/close mode)" };
         var addParentPathArg = new Argument<string>("parent") { Description = "Parent DOM path (e.g. /body, /Sheet1, /slide[1])" };
-        var addTypeOpt = new Option<string>("--type") { Description = "Element type to add (e.g. paragraph, run, table, sheet, row, cell, slide, shape, picture, ole, video)" };
+        var addTypeOpt = new Option<string>("--type") { Description = "Element type to add (e.g. paragraph, run, table, formfield, sheet, row, cell, slide, shape, picture, ole, video)" };
         var addFromOpt = new Option<string?>("--from") { Description = "Copy from an existing element path (e.g. /slide[1]/shape[2])" };
         var addIndexOpt = new Option<int?>("--index")
         {
@@ -410,6 +410,7 @@ static partial class CommandBuilder
                 OfficeCli.Handlers.PowerPointHandler ppt => ppt.Swap(path1, path2),
                 OfficeCli.Handlers.WordHandler word => word.Swap(path1, path2),
                 OfficeCli.Handlers.ExcelHandler excel => excel.Swap(path1, path2),
+                OfficeCli.Handlers.HwpxHandler hwpx => hwpx.Swap(path1, path2),
                 _ => throw new InvalidOperationException("swap not supported for this document type")
             };
             var message = $"Swapped {p1} <-> {p2}";

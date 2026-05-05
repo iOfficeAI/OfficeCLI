@@ -4,6 +4,7 @@
 using System.CommandLine;
 using OfficeCli.Core;
 using OfficeCli.Handlers;
+using OfficeCli.Handlers.Hwp;
 
 namespace OfficeCli;
 
@@ -11,8 +12,8 @@ static partial class CommandBuilder
 {
     private static Command BuildViewCommand(Option<bool> jsonOption)
     {
-        var viewFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.docx, .xlsx, .pptx)" };
-        var viewModeArg = new Argument<string>("mode") { Description = "View mode: text, annotated, outline, stats, issues, html, svg, screenshot, forms" };
+        var viewFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.docx, .xlsx, .pptx, .hwpx, experimental .hwp)" };
+        var viewModeArg = new Argument<string>("mode") { Description = "View mode: text, annotated, outline, stats, issues, html, svg, screenshot, forms, styles, tables, markdown, objects, fields, field" };
         var startLineOpt = new Option<int?>("--start") { Description = "Start line/paragraph number" };
         var endLineOpt = new Option<int?>("--end") { Description = "End line/paragraph number" };
         var maxLinesOpt = new Option<int?>("--max-lines") { Description = "Maximum number of lines/rows/slides to output (truncates with total count)" };
@@ -21,15 +22,19 @@ static partial class CommandBuilder
 
         var colsOpt = new Option<string?>("--cols") { Description = "Column filter, comma-separated (Excel only, e.g. A,B,C)" };
         var pageOpt = new Option<string?>("--page") { Description = "Page filter (e.g. 1, 2-5, 1,3,5). html mode: default=all. screenshot mode: default=1 (use --page 1-N to capture more, or --grid N for pptx thumbnails)." };
-        var browserOpt = new Option<bool>("--browser") { Description = "Open output in browser (html / svg modes)" };
+        var browserOpt = new Option<bool>("--browser") { Description = "Open output in browser or image viewer (html / svg / screenshot modes)" };
         var outOpt = new Option<string?>("--out", "-o") { Description = "Output file path (screenshot mode; defaults to a temp file)" };
         var screenshotWidthOpt = new Option<int>("--screenshot-width") { Description = "Screenshot viewport width (default 1600)", DefaultValueFactory = _ => 1600 };
         var screenshotHeightOpt = new Option<int>("--screenshot-height") { Description = "Screenshot viewport height (default 1200)", DefaultValueFactory = _ => 1200 };
         var gridOpt = new Option<int>("--grid") { Description = "Tile slides into an N-column thumbnail grid (screenshot mode, pptx only; 0 = off)", DefaultValueFactory = _ => 0 };
         var renderOpt = new Option<string>("--render") { Description = "Screenshot rendering path (docx only): auto (default; native on Windows w/ Word, html elsewhere), native (force OS-native, error if unavailable), html", DefaultValueFactory = _ => "auto" };
         var withPagesOpt = new Option<bool>("--page-count") { Description = "stats mode (docx only): also report total page count via Word repagination (Win + Word required; slow on long docs)" };
+        var autoOpt = new Option<bool>("--auto") { Description = "Auto-recognize label-value fields in tables (hwpx forms only)" };
+        var objectTypeOpt = new Option<string?>("--object-type") { Description = "Object type filter: picture, field, bookmark, equation, formfield (hwpx objects mode)" };
+        var fieldNameOpt = new Option<string?>("--field-name") { Description = "Field name for HWP/HWPX field read mode" };
+        var fieldIdOpt = new Option<int?>("--field-id") { Description = "Field id for HWP/HWPX field read mode" };
 
-        var viewCommand = new Command("view", "View document in different modes");
+        var viewCommand = new Command("view", BuildViewDescription());
         viewCommand.Add(viewFileArg);
         viewCommand.Add(viewModeArg);
         viewCommand.Add(startLineOpt);
@@ -46,6 +51,10 @@ static partial class CommandBuilder
         viewCommand.Add(gridOpt);
         viewCommand.Add(renderOpt);
         viewCommand.Add(withPagesOpt);
+        viewCommand.Add(autoOpt);
+        viewCommand.Add(objectTypeOpt);
+        viewCommand.Add(fieldNameOpt);
+        viewCommand.Add(fieldIdOpt);
         viewCommand.Add(jsonOption);
 
         viewCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
@@ -68,6 +77,10 @@ static partial class CommandBuilder
             if (renderMode is not ("auto" or "native" or "html"))
                 throw new OfficeCli.Core.CliException($"Invalid --render value: {renderMode}. Valid: auto, native, html") { Code = "invalid_render", ValidValues = ["auto", "native", "html"] };
             var withPages = result.GetValue(withPagesOpt);
+            var autoRecognize = result.GetValue(autoOpt);
+            var objectTypeFilter = result.GetValue(objectTypeOpt);
+            var fieldName = result.GetValue(fieldNameOpt);
+            var fieldId = result.GetValue(fieldIdOpt);
 
             // Try resident first
             if (TryResident(file.FullName, req =>
@@ -89,10 +102,25 @@ static partial class CommandBuilder
                 if (gridCols > 0) req.Args["grid"] = gridCols.ToString();
                 if (renderMode != "auto") req.Args["render"] = renderMode;
                 if (withPages) req.Args["page-count"] = "true";
+                if (autoRecognize) req.Args["auto"] = "true";
+                if (objectTypeFilter != null) req.Args["object-type"] = objectTypeFilter;
             }, json) is {} rc) return rc;
 
             var format = json ? OutputFormat.Json : OutputFormat.Text;
             var cols = colsStr != null ? new HashSet<string>(colsStr.Split(',').Select(c => c.Trim().ToUpperInvariant())) : null;
+
+            var extension = Path.GetExtension(file.FullName);
+
+            // Binary .hwp: route through HWP engine (bridge when experimental, else unsupported)
+            if (string.Equals(extension, ".hwp", StringComparison.OrdinalIgnoreCase))
+                return HandleHwpView(file.FullName, HwpFormat.Hwp, mode, pageFilter, json, fieldName, fieldId);
+
+            // HWPX stays on the custom XML handler by default. The rhwp bridge can be
+            // opted into for read/render smoke coverage without changing stable HWPX behavior.
+            if (string.Equals(extension, ".hwpx", StringComparison.OrdinalIgnoreCase)
+                && HwpEngineSelector.IsExperimentalBridgeEnabled()
+                && mode.Trim().ToLowerInvariant() is "text" or "t" or "svg" or "g" or "fields" or "field")
+                return HandleHwpView(file.FullName, HwpFormat.Hwpx, mode, pageFilter, json, fieldName, fieldId);
 
             using var handler = DocumentHandlerFactory.Open(file.FullName);
 
@@ -112,6 +140,8 @@ static partial class CommandBuilder
                     html = excelHandler.ViewAsHtml();
                 else if (handler is OfficeCli.Handlers.WordHandler wordHandler)
                     html = wordHandler.ViewAsHtml(pageFilter);
+                else if (handler is OfficeCli.Handlers.HwpxHandler hwpxHandler)
+                    html = hwpxHandler.ViewAsHtml();
 
                 if (html != null)
                 {
@@ -141,10 +171,10 @@ static partial class CommandBuilder
                 }
                 else
                 {
-                    throw new OfficeCli.Core.CliException("HTML preview is only supported for .pptx, .xlsx, and .docx files.")
+                    throw new OfficeCli.Core.CliException("HTML preview is only supported for .pptx, .xlsx, .docx, and .hwpx files.")
                     {
                         Code = "unsupported_type",
-                        Suggestion = "Use a .pptx, .xlsx, or .docx file, or use mode 'text' or 'annotated' for other formats.",
+                        Suggestion = "Use a .pptx, .xlsx, .docx, or .hwpx file, or use mode 'text' or 'annotated' for other formats.",
                         ValidValues = ["text", "annotated", "outline", "stats", "issues"]
                     };
                 }
@@ -350,18 +380,36 @@ static partial class CommandBuilder
                 {
                     if (handler is OfficeCli.Handlers.WordHandler wordFormsHandler)
                         Console.WriteLine(OutputFormatter.WrapEnvelope(wordFormsHandler.ViewAsFormsJson().ToJsonString(OutputFormatter.PublicJsonOptions)));
+                    else if (handler is OfficeCli.Handlers.HwpxHandler hwpxFormsHandler)
+                        Console.WriteLine(OutputFormatter.WrapEnvelope(hwpxFormsHandler.ViewAsFormsJson(autoRecognize).ToJsonString(OutputFormatter.PublicJsonOptions)));
                     else
-                        throw new OfficeCli.Core.CliException("Forms view is only supported for .docx files.")
+                        throw new OfficeCli.Core.CliException("Forms view is only supported for .docx and .hwpx files.")
                         {
                             Code = "unsupported_type",
                             ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "forms"]
                         };
                 }
+                else if (modeKey is "tables" or "tbl")
+                {
+                    if (handler is OfficeCli.Handlers.HwpxHandler hwpxTblHandler)
+                        Console.WriteLine(OutputFormatter.WrapEnvelope(hwpxTblHandler.ViewAsTablesJson().ToJsonString(OutputFormatter.PublicJsonOptions)));
+                    else
+                        throw new OfficeCli.Core.CliException("Tables view is only supported for .hwpx files.")
+                        { Code = "unsupported_type" };
+                }
+                else if (modeKey is "objects" or "obj")
+                {
+                    if (handler is OfficeCli.Handlers.HwpxHandler hwpxObjHandler)
+                        Console.WriteLine(OutputFormatter.WrapEnvelope(hwpxObjHandler.ViewAsObjectsJson(objectTypeFilter).ToJsonString(OutputFormatter.PublicJsonOptions)));
+                    else
+                        throw new OfficeCli.Core.CliException("Objects view is only supported for .hwpx files.")
+                        { Code = "unsupported_type" };
+                }
                 else
-                    throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms")
+                    throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, forms, tables, objects")
                     {
                         Code = "invalid_value",
-                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "forms"]
+                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "forms", "tables"]
                     };
             }
             else
@@ -375,12 +423,43 @@ static partial class CommandBuilder
                         ? $"Pages: {withPagesValue}\n" + handler.ViewAsStats()
                         : handler.ViewAsStats(),
                     "issues" or "i" => OutputFormatter.FormatIssues(handler.ViewAsIssues(issueType, limit), OutputFormat.Text),
-                    "forms" or "f" => handler is OfficeCli.Handlers.WordHandler wfh
-                        ? wfh.ViewAsForms()
-                        : throw new OfficeCli.Core.CliException("Forms view is only supported for .docx files.")
+                    "styles" => handler is OfficeCli.Handlers.HwpxHandler hsh
+                        ? hsh.ViewAsStyles()
+                        : throw new OfficeCli.Core.CliException("Styles view is only supported for .hwpx files.")
                         {
                             Code = "unsupported_type",
-                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "forms"]
+                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "styles", "tables"]
+                        },
+                    "tables" or "tbl" => handler is OfficeCli.Handlers.HwpxHandler htbl
+                        ? htbl.ViewAsTables()
+                        : throw new OfficeCli.Core.CliException("Tables view is only supported for .hwpx files.")
+                        {
+                            Code = "unsupported_type",
+                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "styles", "tables", "markdown"]
+                        },
+                    "markdown" or "md" => handler is OfficeCli.Handlers.HwpxHandler hmd
+                        ? hmd.ViewAsMarkdown()
+                        : throw new OfficeCli.Core.CliException("Markdown view is only supported for .hwpx files.")
+                        {
+                            Code = "unsupported_type",
+                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "styles", "tables", "markdown", "objects"]
+                        },
+                    "objects" or "obj" => handler is OfficeCli.Handlers.HwpxHandler hobj
+                        ? hobj.ViewAsObjects(objectTypeFilter)
+                        : throw new OfficeCli.Core.CliException("Objects view is only supported for .hwpx files.")
+                        {
+                            Code = "unsupported_type",
+                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "styles", "tables", "markdown", "objects"]
+                        },
+                    "forms" or "f" => handler switch
+                        {
+                            OfficeCli.Handlers.WordHandler wfh => wfh.ViewAsForms(),
+                            OfficeCli.Handlers.HwpxHandler hfh => hfh.ViewAsForms(autoRecognize),
+                            _ => throw new OfficeCli.Core.CliException("Forms view is only supported for .docx and .hwpx files.")
+                            {
+                                Code = "unsupported_type",
+                                ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "forms"]
+                            }
                         },
                     _ => throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms")
                     {
@@ -428,5 +507,177 @@ static partial class CommandBuilder
         if (p > slideCount)
             throw new ArgumentException($"--page {p} out of range (total slides: {slideCount}).");
         return (p, p);
+    }
+
+    private static int HandleHwpView(
+        string filePath,
+        HwpFormat format,
+        string mode,
+        string? pageFilter,
+        bool json,
+        string? fieldName = null,
+        int? fieldId = null)
+    {
+        var modeKey = mode.Trim().ToLowerInvariant();
+        var formatKey = format == HwpFormat.Hwp
+            ? HwpCapabilityConstants.FormatHwp
+            : HwpCapabilityConstants.FormatHwpx;
+
+        if (!HwpEngineSelector.IsExperimentalBridgeEnabled())
+        {
+            var label = format == HwpFormat.Hwp ? "Binary .hwp" : "HWPX";
+            throw new HwpEngineException(
+                $"{label} bridge view requires OFFICECLI_HWP_ENGINE=rhwp-experimental.",
+                HwpCapabilityConstants.ReasonBridgeNotEnabled,
+                "Set OFFICECLI_HWP_ENGINE=rhwp-experimental and install rhwp-officecli-bridge.",
+                [
+                    HwpCapabilityConstants.OperationReadText,
+                    HwpCapabilityConstants.OperationRenderSvg,
+                    HwpCapabilityConstants.OperationListFields,
+                    HwpCapabilityConstants.OperationReadField
+                ],
+                formatKey,
+                modeKey is "text" or "t" ? HwpCapabilityConstants.OperationReadText
+                    : modeKey is "svg" or "g" ? HwpCapabilityConstants.OperationRenderSvg
+                    : modeKey is "fields" ? HwpCapabilityConstants.OperationListFields
+                    : modeKey is "field" ? HwpCapabilityConstants.OperationReadField
+                    : null,
+                HwpCapabilityConstants.EngineNone,
+                HwpCapabilityConstants.ModeNone);
+        }
+
+        var operation = modeKey is "text" or "t" ? HwpCapabilityConstants.OperationReadText
+            : modeKey is "svg" or "g" ? HwpCapabilityConstants.OperationRenderSvg
+            : modeKey is "fields" ? HwpCapabilityConstants.OperationListFields
+            : modeKey is "field" ? HwpCapabilityConstants.OperationReadField
+            : null;
+        var engine = HwpEngineSelector.GetEngine(formatKey, operation);
+        var fileInfo = new FileInfo(filePath);
+        var ct = CancellationToken.None;
+
+        if (modeKey is "text" or "t")
+        {
+            var request = new HwpReadRequest(format, filePath, fileInfo.Length, json);
+            var result = engine.ReadTextAsync(request, ct).GetAwaiter().GetResult();
+            if (json)
+            {
+                var envelope = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["success"] = true,
+                    ["data"] = new System.Text.Json.Nodes.JsonObject
+                    {
+                        ["text"] = result.Text,
+                        ["engine"] = result.Engine,
+                        ["engineVersion"] = result.EngineVersion
+                    },
+                    ["warnings"] = HwpCapabilityJsonMapper.ToJsonArray(result.Warnings)
+                };
+                Console.WriteLine(envelope.ToJsonString(OfficeCli.Core.OutputFormatter.PublicJsonOptions));
+            }
+            else
+            {
+                Console.WriteLine(result.Text);
+            }
+            return 0;
+        }
+
+        if (modeKey is "svg" or "g")
+        {
+            var outDir = Path.Combine(Path.GetTempPath(), $"officecli_hwp_svg_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(outDir);
+            var request = new HwpRenderRequest(
+                format, filePath, outDir,
+                pageFilter ?? "all", fileInfo.Length, json);
+            var result = engine.RenderSvgAsync(request, ct).GetAwaiter().GetResult();
+            if (json)
+            {
+                var pagesArr = new System.Text.Json.Nodes.JsonArray();
+                foreach (var p in result.Pages)
+                    pagesArr.Add((System.Text.Json.Nodes.JsonNode?)new System.Text.Json.Nodes.JsonObject
+                    {
+                        ["page"] = p.Page, ["path"] = p.SvgPath, ["sha256"] = p.Sha256
+                    });
+                var envelope = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["success"] = true,
+                    ["data"] = new System.Text.Json.Nodes.JsonObject
+                    {
+                        ["pages"] = pagesArr,
+                        ["manifest"] = result.ManifestPath,
+                        ["engine"] = result.Engine,
+                        ["engineVersion"] = result.EngineVersion
+                    },
+                    ["warnings"] = HwpCapabilityJsonMapper.ToJsonArray(result.Warnings)
+                };
+                Console.WriteLine(envelope.ToJsonString(OfficeCli.Core.OutputFormatter.PublicJsonOptions));
+            }
+            else
+            {
+                foreach (var p in result.Pages)
+                    Console.WriteLine($"Page {p.Page}: {p.SvgPath}");
+            }
+            return 0;
+        }
+
+        if (modeKey is "fields")
+        {
+            var request = new HwpFieldListRequest(format, filePath, fileInfo.Length, json);
+            var result = engine.ListFieldsAsync(request, ct).GetAwaiter().GetResult();
+            if (json)
+            {
+                var envelope = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["success"] = true,
+                    ["data"] = result.Fields.DeepClone(),
+                    ["engine"] = result.Engine,
+                    ["engineVersion"] = result.EngineVersion,
+                    ["warnings"] = HwpCapabilityJsonMapper.ToJsonArray(result.Warnings)
+                };
+                Console.WriteLine(envelope.ToJsonString(OfficeCli.Core.OutputFormatter.PublicJsonOptions));
+            }
+            else
+            {
+                Console.WriteLine(result.Fields.ToJsonString(OfficeCli.Core.OutputFormatter.PublicJsonOptions));
+            }
+            return 0;
+        }
+
+        if (modeKey is "field")
+        {
+            var request = new HwpFieldReadRequest(format, filePath, fieldName, fieldId, fileInfo.Length, json);
+            var result = engine.ReadFieldAsync(request, ct).GetAwaiter().GetResult();
+            if (json)
+            {
+                var envelope = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["success"] = true,
+                    ["data"] = result.Field.DeepClone(),
+                    ["engine"] = result.Engine,
+                    ["engineVersion"] = result.EngineVersion,
+                    ["warnings"] = HwpCapabilityJsonMapper.ToJsonArray(result.Warnings)
+                };
+                Console.WriteLine(envelope.ToJsonString(OfficeCli.Core.OutputFormatter.PublicJsonOptions));
+            }
+            else
+            {
+                Console.WriteLine(result.Field.ToJsonString(OfficeCli.Core.OutputFormatter.PublicJsonOptions));
+            }
+            return 0;
+        }
+
+        throw new HwpEngineException(
+            $"{formatKey} bridge view mode '{mode}' is not supported. Use 'text', 'svg', 'fields', or 'field'.",
+            HwpCapabilityConstants.ReasonUnsupportedOperation,
+            null,
+            [
+                HwpCapabilityConstants.OperationReadText,
+                HwpCapabilityConstants.OperationRenderSvg,
+                HwpCapabilityConstants.OperationListFields,
+                HwpCapabilityConstants.OperationReadField
+            ],
+            formatKey,
+            null,
+            HwpCapabilityConstants.EngineRhwpBridge,
+            HwpCapabilityConstants.ModeExperimental);
     }
 }

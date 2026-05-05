@@ -398,7 +398,13 @@ officecli add-part <file> <parent>                   # create new document part 
 | `financial-model` | Financial models, scenarios, projections. NOT for general data analysis (route those to `excel`) |
 | `data-dashboard` | CSV/tabular data → KPI / analytics / executive dashboards with charts and sparklines. NOT for raw data tracking (route those to `excel`) |
 
-Example: a fundraising deck task → `officecli load_skill pitch-deck` → use the printed rules.
+### HWPX (.hwpx, Hancom)
+
+| Name | When to use | Layer |
+|------|-------------|-------|
+| `officecli-hwpx` | Korean government / OWPML documents (한글 / 공문서) | **base** |
+
+Example: a fundraising deck task → `officecli skill pitch-deck` → use the printed rules.
 
 ---
 

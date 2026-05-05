@@ -72,10 +72,20 @@ public static class DocumentHandlerFactory
             ".docx" => new WordHandler(filePath, editable),
             ".xlsx" => new ExcelHandler(filePath, editable),
             ".pptx" => new PowerPointHandler(filePath, editable),
-            _ => throw new CliException($"Unsupported file type: {ext}. Supported: .docx, .xlsx, .pptx")
+            ".hwpx" => new HwpxHandler(filePath, editable),
+            ".hwp" => throw new CliException(
+                "Binary .hwp files require pyhwp for reading. " +
+                "Convert to .hwpx in Hancom Office, or install pyhwp and convert: " +
+                "pip install pyhwp && hwp5txt input.hwp > output.txt")
+            {
+                Code = "unsupported_format",
+                Suggestion = "Save as .hwpx in Hancom Office (File → Save As → HWPX)",
+                Help = "pip install pyhwp && hwp5txt input.hwp > output.txt"
+            },
+            _ => throw new CliException($"Unsupported file type: {ext}. Supported: .docx, .xlsx, .pptx, .hwpx")
             {
                 Code = "unsupported_type",
-                ValidValues = [".docx", ".xlsx", ".pptx"]
+                ValidValues = [".docx", ".xlsx", ".pptx", ".hwpx"]
             }
         };
     }

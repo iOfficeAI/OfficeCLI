@@ -11,7 +11,7 @@ static partial class CommandBuilder
 {
     private static Command BuildWatchCommand()
     {
-        var watchFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.pptx, .xlsx, .docx)" };
+        var watchFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.pptx, .xlsx, .docx, .hwpx)" };
         var watchPortOpt = new Option<int>("--port") { Description = "HTTP port for preview server" };
         watchPortOpt.DefaultValueFactory = _ => 18080;
 
@@ -57,6 +57,8 @@ static partial class CommandBuilder
                             initialHtml = excel.ViewAsHtml();
                         else if (handler is OfficeCli.Handlers.WordHandler word)
                             initialHtml = word.ViewAsHtml();
+                        else if (handler is OfficeCli.Handlers.HwpxHandler hwpx)
+                            initialHtml = hwpx.ViewAsHtml();
                     }
                     catch (Exception ex)
                     {
@@ -95,7 +97,7 @@ static partial class CommandBuilder
 
     private static Command BuildUnwatchCommand()
     {
-        var unwatchFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.pptx, .xlsx, .docx)" };
+        var unwatchFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.pptx, .xlsx, .docx, .hwpx)" };
         var unwatchCommand = new Command("unwatch", "Stop the watch preview server for the document");
         unwatchCommand.Add(unwatchFileArg);
 

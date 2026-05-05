@@ -1,0 +1,17 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwp",
+  "element": "replace-text",
+  "operations": { "add": false, "set": true, "get": false, "query": false, "remove": false },
+  "paths": { "positional": ["/text"] },
+  "note": "Search/replace operation for binary HWP through rhwp. Default mode writes a new output file. Safe in-place mode is experimental and requires --in-place --backup --verify.",
+  "properties": {
+    "find": { "type": "string", "set": true, "examples": ["--prop find=마케팅"], "enforcement": "strict" },
+    "value": { "type": "string", "set": true, "examples": ["--prop value=브릿지"], "enforcement": "strict" },
+    "mode": { "type": "enum", "values": ["one", "all"], "set": true, "examples": ["--prop mode=all"], "enforcement": "strict" },
+    "output": { "type": "string", "set": true, "examples": ["--prop output=out.hwp"], "description": "Required unless using --in-place. Must not be combined with --in-place.", "enforcement": "strict" },
+    "inPlace": { "type": "bool", "set": true, "examples": ["--in-place"], "description": "Top-level flag, not --prop. Requires --backup and --verify.", "enforcement": "strict" },
+    "backup": { "type": "bool", "set": true, "examples": ["--backup"], "description": "Top-level flag required for --in-place. Creates <input>.bak-<timestamp> before atomic replace.", "enforcement": "strict" },
+    "verify": { "type": "bool", "set": true, "examples": ["--verify"], "description": "Top-level flag required for --in-place. Runs provider readback, semantic delta, and optional SVG evidence.", "enforcement": "strict" }
+  }
+}

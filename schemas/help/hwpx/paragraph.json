@@ -1,0 +1,16 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "paragraph",
+  "parent": "section",
+  "operations": { "add": true, "set": true, "get": true, "query": true, "remove": true },
+  "paths": { "stable": ["/section[N]/p[@id=ID]"], "positional": ["/section[N]/p[N]"] },
+  "children": [
+    { "element": "run", "pathSegment": "run", "cardinality": "0..n" }
+  ],
+  "properties": {
+    "text": { "type": "string", "add": true, "set": true, "get": true, "query": true, "examples": ["--prop text=안녕하세요"], "enforcement": "strict" },
+    "align": { "type": "enum", "values": ["left", "center", "right", "justify"], "add": true, "set": true, "get": true, "query": true, "examples": ["--prop align=center"], "enforcement": "report" },
+    "style": { "type": "string", "add": true, "set": true, "get": true, "query": true, "examples": ["--prop style=본문"], "enforcement": "report" }
+  }
+}

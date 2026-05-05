@@ -266,25 +266,8 @@ public partial class PowerPointHandler
                     };
                 }
 
-                // CONSISTENCY(escape-sequences): \n still routes as raw newline
-                // inside a single <a:t> (paragraph-level only adds one paragraph
-                // here), but \t expands to <a:tab/> siblings between text runs
-                // so tabular text round-trips through PowerPoint.
-                var paraTextResolved = paraText.Replace("\\n", "\n").Replace("\\t", "\t");
-                if (paraTextResolved.Contains('\t'))
-                {
-                    AppendLineWithTabs(newPara, paraTextResolved, seg => new Drawing.Run
-                    {
-                        RunProperties = (Drawing.RunProperties)rProps.CloneNode(true),
-                        Text = new Drawing.Text { Text = seg }
-                    });
-                }
-                else
-                {
-                    newRun.RunProperties = rProps;
-                    newRun.Text = new Drawing.Text { Text = paraTextResolved };
-                    newPara.Append(newRun);
-                }
+                foreach (var segmentedRun in BuildSegmentedRuns(paraText.Replace("\\n", "\n"), rProps))
+                    newPara.Append(segmentedRun);
 
                 if (index.HasValue && index.Value >= 0)
                 {
@@ -396,41 +379,45 @@ public partial class PowerPointHandler
                 else if (properties.TryGetValue("subscript", out var rSub))
                     rProps.Baseline = IsTruthy(rSub) ? -25000 : 0;
 
-                newRun.RunProperties = rProps;
-                // CONSISTENCY(escape-sequences): match shape-text path (\n and \t
-                // two-char escapes resolved). Run-add stays single-element, so
-                // tabs land as raw chars inside <a:t> rather than <a:tab/>;
-                // higher-level shape-text Add/Set splits on \t into separate
-                // runs with <a:tab/> siblings.
-                newRun.Text = new Drawing.Text { Text = runText.Replace("\\n", "\n").Replace("\\t", "\t") };
+                var insertedRuns = BuildSegmentedRuns(runText.Replace("\\n", "\n"), rProps);
 
-                // Insert run at specified index, or append
+                // Insert runs at specified index, or append
                 if (index.HasValue)
                 {
                     var existingRuns = targetPara.Elements<Drawing.Run>().ToList();
                     if (index.Value >= 0 && index.Value < existingRuns.Count)
-                        existingRuns[index.Value].InsertBeforeSelf(newRun);
+                    {
+                        var insertRef = existingRuns[index.Value];
+                        foreach (var segmentedRun in insertedRuns)
+                            insertRef.InsertBeforeSelf(segmentedRun);
+                    }
                     else
                     {
                         var endParaRun2 = targetPara.GetFirstChild<Drawing.EndParagraphRunProperties>();
-                        if (endParaRun2 != null)
-                            targetPara.InsertBefore(newRun, endParaRun2);
-                        else
-                            targetPara.Append(newRun);
+                        foreach (var segmentedRun in insertedRuns)
+                        {
+                            if (endParaRun2 != null)
+                                targetPara.InsertBefore(segmentedRun, endParaRun2);
+                            else
+                                targetPara.Append(segmentedRun);
+                        }
                     }
                 }
                 else
                 {
                     var endParaRun = targetPara.GetFirstChild<Drawing.EndParagraphRunProperties>();
-                    if (endParaRun != null)
-                        targetPara.InsertBefore(newRun, endParaRun);
-                    else
-                        targetPara.Append(newRun);
+                    foreach (var segmentedRun in insertedRuns)
+                    {
+                        if (endParaRun != null)
+                            targetPara.InsertBefore(segmentedRun, endParaRun);
+                        else
+                            targetPara.Append(segmentedRun);
+                    }
                 }
 
                 var runCount = targetPara.Elements<Drawing.Run>().Count();
                 GetSlide(runSlidePart).Save();
-                return $"/slide[{runSlideIdx}]/{BuildElementPathSegment("shape", runShape, runShapeIdx)}/paragraph[{targetParaIdx}]/run[{runCount}]";
+                return $"/slide[{runSlideIdx}]/{BuildElementPathSegment("shape", runShape, runShapeIdx)}/paragraph[{targetParaIdx}]/run[{runCount - insertedRuns.Count + 1}]";
     }
 
     // CONSISTENCY(escape-sequences): cross-handler convention — \t in paragraph

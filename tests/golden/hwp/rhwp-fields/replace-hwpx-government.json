@@ -1,0 +1,1 @@
+{"engineVersion":"rhwp-api 0.1.0","format":"hwpx","output":"tests/golden/hwp/rhwp-fields/replace-hwpx-government.hwpx","replacement":{"charOffset":2,"newLength":4,"ok":true,"para":4,"sec":0},"warnings":["experimental text replacement; verify round-trip before production use"]}

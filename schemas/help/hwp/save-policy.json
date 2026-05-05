@@ -1,0 +1,16 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwp",
+  "element": "save-policy",
+  "container": true,
+  "operations": { "add": false, "set": false, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/save-policy"] },
+  "note": "Binary HWP default mutation mode writes to explicit output paths. Text replacement also supports experimental safe in-place mode only with --in-place --backup --verify after temp-write, readback, semantic validation, backup, manifest, and atomic replace gates.",
+  "properties": {
+    "outputRequired": { "type": "bool", "get": true, "query": true, "examples": ["true unless --in-place"], "enforcement": "strict" },
+    "inPlace": { "type": "enum", "values": ["unsupported", "experimental", "stable"], "get": true, "query": true, "examples": ["experimental"], "description": "Supported for HWP /text replacement only, with --backup --verify.", "enforcement": "strict" },
+    "backup": { "type": "string", "get": true, "query": true, "description": "In-place backup path policy: <input>.bak-<timestamp>.", "examples": ["file.hwp.bak-20260505013000"], "enforcement": "strict" },
+    "transactionSchema": { "type": "string", "get": true, "query": true, "examples": ["schemas/interfaces/save-transaction.v1.schema.json"], "enforcement": "report" },
+    "requiredChecks": { "type": "array", "get": true, "query": true, "examples": ["temp-write,provider-readback,semantic-delta,backup-created,manifest-write,atomic-replace"], "enforcement": "strict" }
+  }
+}

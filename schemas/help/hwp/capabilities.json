@@ -1,0 +1,14 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwp",
+  "element": "capabilities",
+  "container": true,
+  "operations": { "add": false, "set": false, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/capabilities"] },
+  "note": "Machine-readable capability surface for binary HWP. Use `officecli capabilities --json` or `officecli hwp capabilities --json` style commands when available. HWP support is experimental and provider-gated through rhwp.",
+  "properties": {
+    "read_text": { "type": "enum", "values": ["unsupported", "experimental", "roundtrip-verified"], "get": true, "query": true, "examples": ["officecli capabilities --json"], "enforcement": "strict" },
+    "render_svg": { "type": "enum", "values": ["unsupported", "experimental", "roundtrip-verified"], "get": true, "query": true, "examples": ["officecli view file.hwp svg --json"], "enforcement": "strict" },
+    "provider": { "type": "string", "get": true, "query": true, "examples": ["rhwp-bridge"], "enforcement": "strict" }
+  }
+}

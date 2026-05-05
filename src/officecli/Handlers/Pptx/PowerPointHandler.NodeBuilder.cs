@@ -1164,12 +1164,7 @@ public partial class PowerPointHandler
         var lines = text.Replace("\\n", "\n").Replace("\\t", "\t").Split('\n');
         foreach (var line in lines)
         {
-            var para = new Drawing.Paragraph();
-            AppendLineWithTabs(para, line, seg => new Drawing.Run(
-                new Drawing.RunProperties { Language = "en-US" },
-                new Drawing.Text { Text = seg }
-            ));
-            body.AppendChild(para);
+            body.AppendChild(BuildParagraphWithSegmentedRuns(line));
         }
         shape.TextBody = body;
         return shape;

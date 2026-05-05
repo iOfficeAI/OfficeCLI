@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-05-03T09:57:46.194119+00:00",
+  "app": "Hancom Office HWP",
+  "bundle": "com.hancom.office.hwp12.mac.general",
+  "fixture": "tests/fixtures/hwp/rhwp-smoke/re-mixed-malgun-timesnew-hancom.hwp",
+  "windowTitleObserved": "re-mixed-malgun-timesnew-hancom.hwp",
+  "renderedTextObserved": "가나다라마바사아ABCDEFG",
+  "operationScope": "open/render only; no save, overwrite, upload, or mutation",
+  "screenshot": "tests/golden/hwp/rhwp-smoke/hancom-qa/open-render.png"
+}

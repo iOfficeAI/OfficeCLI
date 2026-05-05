@@ -50,6 +50,16 @@ internal class ErrorResult
     public string? Help { get; set; }
     [JsonPropertyName("validValues")]
     public string[]? ValidValues { get; set; }
+    [JsonPropertyName("format")]
+    public string? Format { get; set; }
+    [JsonPropertyName("operation")]
+    public string? Operation { get; set; }
+    [JsonPropertyName("engine")]
+    public string? Engine { get; set; }
+    [JsonPropertyName("engineMode")]
+    public string? EngineMode { get; set; }
+    [JsonPropertyName("nextCommand")]
+    public string? NextCommand { get; set; }
 }
 
 internal class CliWarning
@@ -214,6 +224,13 @@ internal static class OutputFormatter
             ["success"] = false,
             ["error"] = JsonSerializer.SerializeToNode(errorResult, AppJsonContext.Default.ErrorResult)
         };
+        if (ex is OfficeCli.Handlers.Hwp.HwpEngineException { Transaction: not null } hwp)
+        {
+            envelope["data"] = new JsonObject
+            {
+                ["transaction"] = hwp.Transaction.DeepClone()
+            };
+        }
         return envelope.ToJsonString(JsonOptions);
     }
 
@@ -233,12 +250,35 @@ internal static class OutputFormatter
             result.Help = cli.Help;
             result.ValidValues = cli.ValidValues;
         }
+        else if (ex is OfficeCli.Handlers.Hwp.HwpEngineException hwp)
+        {
+            result.Code = hwp.Error.Code;
+            result.Suggestion = hwp.Error.Suggestion;
+            result.Help = "officecli help hwp";
+            result.ValidValues = hwp.Error.ValidValues;
+            result.Format = hwp.Error.Format;
+            result.Operation = hwp.Error.Operation;
+            result.Engine = hwp.Error.Engine;
+            result.EngineMode = hwp.Error.EngineMode;
+            result.NextCommand = BuildHwpNextCommand(hwp.Error.Code, hwp.Error.Operation);
+        }
         else
         {
             EnrichFromMessage(result, ex);
         }
 
         return result;
+    }
+
+    private static string BuildHwpNextCommand(string? code, string? operation)
+    {
+        if (code is "bridge_not_enabled" or "bridge_missing")
+            return "officecli hwp doctor --json";
+
+        if (operation is not null)
+            return "officecli capabilities --json";
+
+        return "officecli help hwp";
     }
 
     private static void EnrichFromMessage(ErrorResult result, Exception ex)

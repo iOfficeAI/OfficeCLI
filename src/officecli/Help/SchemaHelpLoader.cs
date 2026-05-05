@@ -12,7 +12,7 @@ namespace OfficeCli.Help;
 /// </summary>
 internal static class SchemaHelpLoader
 {
-    private static readonly string[] CanonicalFormats = { "docx", "xlsx", "pptx" };
+    private static readonly string[] CanonicalFormats = { "docx", "xlsx", "pptx", "hwpx", "hwp" };
 
     private static readonly Dictionary<string, string> FormatAliases =
         new(StringComparer.OrdinalIgnoreCase)
@@ -24,6 +24,10 @@ internal static class SchemaHelpLoader
             ["pptx"] = "pptx",
             ["ppt"] = "pptx",
             ["powerpoint"] = "pptx",
+            ["hwpx"] = "hwpx",
+            ["hwp"] = "hwp",
+            ["hangeul"] = "hwp",
+            ["hanword"] = "hwp",
         };
 
     // Manifest index: canonical key "schemas/help/{format}/{element}.json"
@@ -625,7 +629,7 @@ internal static class SchemaHelpLoader
     }
 
     /// <summary>
-    /// Map a file extension (".docx"/".xlsx"/".pptx") to the canonical
+    /// Map a file extension (".docx"/".xlsx"/".pptx"/".hwpx"/".hwp") to the canonical
     /// schema format name, or null if the extension isn't an Office one.
     /// Small helper so CLI add/set sites don't duplicate the mapping.
     /// </summary>
@@ -637,6 +641,8 @@ internal static class SchemaHelpLoader
             ".docx" => "docx",
             ".xlsx" => "xlsx",
             ".pptx" => "pptx",
+            ".hwpx" => "hwpx",
+            ".hwp" => "hwp",
             _ => null,
         };
     }

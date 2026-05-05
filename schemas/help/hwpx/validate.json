@@ -1,0 +1,14 @@
+{
+  "$schema": "../_schema.json",
+  "format": "hwpx",
+  "element": "validate",
+  "container": true,
+  "operations": { "add": false, "set": false, "get": true, "query": true, "remove": false },
+  "paths": { "positional": ["/validate"] },
+  "note": "Planned HWPX package and semantic validation entry. Safe-save transactions must include ZIP, XML, manifest/header, BinData, and reference checks before any in-place write.",
+  "properties": {
+    "strict": { "type": "bool", "get": true, "query": true, "examples": ["--strict"], "enforcement": "report" },
+    "ok": { "type": "bool", "get": true, "query": true, "enforcement": "strict" },
+    "safeSaveTransaction": { "type": "object", "get": true, "query": true, "examples": ["save-transaction.v1"], "enforcement": "report" }
+  }
+}
