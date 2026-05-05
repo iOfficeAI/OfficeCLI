@@ -364,6 +364,11 @@ public static class BatchEmitter
         "section.type",
         // Document protection
         "protection", "protectionEnforced",
+        // BUG-DUMP10-03: document-level page background color
+        // (<w:document><w:background w:color="…"/>). Set already accepts
+        // this canonical key (WordHandler.Add.cs:565); without inclusion
+        // here, dump silently dropped the page background on round-trip.
+        "background",
         // Document grid (CJK-aware line layout)
         "charSpacingControl",
         // pPrDefault CJK toggles — without these, Word inserts an automatic

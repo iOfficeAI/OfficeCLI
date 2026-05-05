@@ -155,6 +155,16 @@ public partial class WordHandler
         if (props.Created != null) node.Format["created"] = props.Created.Value.ToString("o");
         if (props.Modified != null) node.Format["modified"] = props.Modified.Value.ToString("o");
 
+        // BUG-DUMP10-03: surface the document-level page background color
+        // (<w:document><w:background w:color="…"/>…). Without this, dump
+        // dropped the page background entirely. Set side already accepts
+        // the canonical `background` key (see WordHandler.Add.cs:565).
+        if (mainPart?.Document?.GetFirstChild<DocumentBackground>() is { } bgEl
+            && bgEl.Color?.Value is { Length: > 0 } bgColor)
+        {
+            node.Format["background"] = ParseHelpers.FormatHexColor(bgColor);
+        }
+
         // Page size from last section properties (document default)
         var sectPr = mainPart?.Document?.Body?.GetFirstChild<SectionProperties>()
             ?? mainPart?.Document?.Body?.Descendants<SectionProperties>().LastOrDefault();
