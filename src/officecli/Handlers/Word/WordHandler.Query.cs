@@ -869,6 +869,13 @@ public partial class WordHandler
             secNode.Format["pageStart"] = pgNumType.Start.Value;
         if (pgNumType?.Format?.Value != null)
             secNode.Format["pageNumFmt"] = pgNumType.Format.InnerText;
+        // BUG-DUMP11-01: chapter-numbering attributes (chapStyle = heading
+        // level for chapter prefix, chapSep = separator char). Surface so
+        // /section[N] readback mirrors the root sectPr reader.
+        if (pgNumType?.ChapterStyle?.Value != null)
+            secNode.Format["chapStyle"] = pgNumType.ChapterStyle.Value;
+        if (pgNumType?.ChapterSeparator?.Value != null)
+            secNode.Format["chapSep"] = pgNumType.ChapterSeparator.InnerText;
 
         // Title page flag (w:titlePg) — first-page header/footer differs from rest
         if (sectPr.GetFirstChild<TitlePage>() != null)

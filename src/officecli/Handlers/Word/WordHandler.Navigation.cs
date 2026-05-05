@@ -193,6 +193,14 @@ public partial class WordHandler
                 node.Format["pageStart"] = pgNumType.Start.Value;
             if (pgNumType?.Format?.Value != null)
                 node.Format["pageNumFmt"] = pgNumType.Format.InnerText;
+            // BUG-DUMP11-01: w:pgNumType also carries chapStyle (heading style
+            // index for chapter numbering) and chapSep (separator between
+            // chapter and page numbers). Surfaced here so the body sectPr
+            // round-trips chapter-numbering config.
+            if (pgNumType?.ChapterStyle?.Value != null)
+                node.Format["chapStyle"] = pgNumType.ChapterStyle.Value;
+            if (pgNumType?.ChapterSeparator?.Value != null)
+                node.Format["chapSep"] = pgNumType.ChapterSeparator.InnerText;
 
             if (sectPr.GetFirstChild<TitlePage>() != null)
                 node.Format["titlePage"] = true;

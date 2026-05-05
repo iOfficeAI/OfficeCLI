@@ -127,6 +127,46 @@ public partial class WordHandler
                     InsertSectPrChildInOrder(sectPr, new GutterOnRight());
                 return true;
             }
+            // BUG-DUMP11-01: w:pgNumType chapter-numbering attributes —
+            // chapStyle = heading level (1-9) used for chapter prefix,
+            // chapSep = separator between chapter and page (hyphen, period,
+            // colon, emDash, enDash). Mirrors pageNumFmt/pageStart cases.
+            case "chapstyle":
+            {
+                var sectPr = EnsureSectionProperties();
+                var pgNum = sectPr.GetFirstChild<PageNumberType>();
+                if (pgNum == null)
+                {
+                    pgNum = new PageNumberType();
+                    InsertSectPrChildInOrder(sectPr, pgNum);
+                }
+                if (!byte.TryParse(value, out var lvl) || lvl < 1 || lvl > 9)
+                    throw new ArgumentException(
+                        $"Invalid chapStyle value: '{value}'. Must be 1-9 (heading level).");
+                pgNum.ChapterStyle = lvl;
+                return true;
+            }
+            case "chapsep":
+            {
+                var sectPr = EnsureSectionProperties();
+                var pgNum = sectPr.GetFirstChild<PageNumberType>();
+                if (pgNum == null)
+                {
+                    pgNum = new PageNumberType();
+                    InsertSectPrChildInOrder(sectPr, pgNum);
+                }
+                pgNum.ChapterSeparator = value.ToLowerInvariant() switch
+                {
+                    "hyphen" or "-" => ChapterSeparatorValues.Hyphen,
+                    "period" or "." => ChapterSeparatorValues.Period,
+                    "colon" or ":" => ChapterSeparatorValues.Colon,
+                    "emdash" or "—" => ChapterSeparatorValues.EmDash,
+                    "endash" or "–" => ChapterSeparatorValues.EnDash,
+                    _ => throw new ArgumentException(
+                        $"Invalid chapSep value: '{value}'. Valid: hyphen, period, colon, emDash, enDash.")
+                };
+                return true;
+            }
             case "pagestart" or "pagenumberstart" or "pagenumstart":
             {
                 var sectPr = EnsureSectionProperties();

@@ -350,6 +350,8 @@ public static class BatchEmitter
         "pageWidth", "pageHeight", "orientation",
         "marginTop", "marginBottom", "marginLeft", "marginRight",
         "pageStart", "pageNumFmt",
+        // BUG-DUMP11-01: chapter-numbering attributes on w:pgNumType.
+        "chapStyle", "chapSep",
         "titlePage", "direction", "rtlGutter",
         "lineNumbers", "lineNumberCountBy",
         // Multi-column section layout. Get exposes these as canonical keys
