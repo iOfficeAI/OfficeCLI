@@ -193,6 +193,20 @@ public partial class WordHandler
             ?? properties.GetValueOrDefault("stylename")
             ?? properties.GetValueOrDefault("propertyName")
             ?? properties.GetValueOrDefault("propertyname");
+        // IF / SEQ field type-specific Set props. These rebuild the
+        // instruction when the user supplies any of expression/trueText/
+        // falseText (IF) or id/identifier (SEQ). Schemas declare set:true
+        // for all of these — previously fell through and produced an
+        // unsupported_property warning.
+        var rewriteExpression = properties.GetValueOrDefault("expression")
+            ?? properties.GetValueOrDefault("condition");
+        var hasRewriteTrueText = properties.TryGetValue("trueText", out var rewriteTrueText)
+            || properties.TryGetValue("truetext", out rewriteTrueText);
+        var hasRewriteFalseText = properties.TryGetValue("falseText", out var rewriteFalseText)
+            || properties.TryGetValue("falsetext", out rewriteFalseText);
+        var rewriteSeqId = properties.GetValueOrDefault("identifier")
+            ?? properties.GetValueOrDefault("id");
+
         var hasRewriteFormat = properties.TryGetValue("format", out var rewriteFormat);
         // Accept both bare value (`M/d/yyyy`) and full-switch form (`\@ "M/d/yyyy"`).
         // The case-builder below always wraps effFormat in `\@ "..."`, so a user-supplied
@@ -205,7 +219,57 @@ public partial class WordHandler
                 fmt = fmt[2..].Trim().Trim('"');
             rewriteFormat = fmt;
         }
-        if (!string.IsNullOrEmpty(rewriteFieldType) || !string.IsNullOrEmpty(rewriteName) || hasRewriteFormat)
+        // Type-specific instruction rebuild: IF and SEQ.
+        // Triggered when user supplies type-specific props that the generic
+        // rewrite below doesn't know about. Each branch sniffs missing
+        // pieces from the existing instruction so partial updates work.
+        bool rebuiltTypeSpecific = false;
+        var existingInstrTrimmed = (field.InstrCode.Text ?? "").Trim();
+
+        if (!string.IsNullOrEmpty(rewriteExpression) || hasRewriteTrueText || hasRewriteFalseText)
+        {
+            // Match "IF <expression> "<trueText>" "<falseText>"". Greedy
+            // .+ so an expression containing quoted segments (e.g.
+            // MERGEFIELD x = "a") doesn't fool the parser.
+            var ifMatch = System.Text.RegularExpressions.Regex.Match(
+                existingInstrTrimmed,
+                "^IF\\s+(.+)\\s+\"([^\"]*)\"\\s+\"([^\"]*)\"\\s*$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            string sniffedExpr = ifMatch.Success ? ifMatch.Groups[1].Value : "";
+            string sniffedTrue = ifMatch.Success ? ifMatch.Groups[2].Value : "";
+            string sniffedFalse = ifMatch.Success ? ifMatch.Groups[3].Value : "";
+
+            string effExpr = !string.IsNullOrEmpty(rewriteExpression) ? rewriteExpression : sniffedExpr;
+            string effTrue = hasRewriteTrueText ? (rewriteTrueText ?? "") : sniffedTrue;
+            string effFalse = hasRewriteFalseText ? (rewriteFalseText ?? "") : sniffedFalse;
+            if (string.IsNullOrEmpty(effExpr))
+                throw new ArgumentException("IF requires an 'expression' (none supplied and could not sniff from existing instruction).");
+
+            field.InstrCode.Text = $" IF {effExpr} \"{effTrue}\" \"{effFalse}\" ";
+            field.InstrCode.Space = SpaceProcessingModeValues.Preserve;
+            var beginCharI2 = field.BeginRun.GetFirstChild<FieldChar>();
+            if (beginCharI2 != null) beginCharI2.Dirty = true;
+            rebuiltTypeSpecific = true;
+        }
+        else if (!string.IsNullOrEmpty(rewriteSeqId)
+                 && existingInstrTrimmed.StartsWith("SEQ", StringComparison.OrdinalIgnoreCase))
+        {
+            // Replace the identifier token (first non-switch token after SEQ),
+            // preserve any trailing switches.
+            var seqMatch = System.Text.RegularExpressions.Regex.Match(
+                existingInstrTrimmed,
+                "^SEQ\\s+\\S+(.*)$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            string trailing = seqMatch.Success ? seqMatch.Groups[1].Value : "";
+            field.InstrCode.Text = $" SEQ {rewriteSeqId}{trailing} ";
+            field.InstrCode.Space = SpaceProcessingModeValues.Preserve;
+            var beginCharS = field.BeginRun.GetFirstChild<FieldChar>();
+            if (beginCharS != null) beginCharS.Dirty = true;
+            rebuiltTypeSpecific = true;
+        }
+
+        if (!rebuiltTypeSpecific
+            && (!string.IsNullOrEmpty(rewriteFieldType) || !string.IsNullOrEmpty(rewriteName) || hasRewriteFormat))
         {
             var existingInstr = field.InstrCode.Text ?? "";
             // Decide effective field type: prefer explicit fieldType, else
@@ -288,7 +352,16 @@ public partial class WordHandler
                 || key.Equals("stylename", StringComparison.OrdinalIgnoreCase)
                 || key.Equals("propertyName", StringComparison.OrdinalIgnoreCase)
                 || key.Equals("propertyname", StringComparison.OrdinalIgnoreCase)
-                || key.Equals("format", StringComparison.OrdinalIgnoreCase))
+                || key.Equals("format", StringComparison.OrdinalIgnoreCase)
+                // Type-specific IF / SEQ keys consumed by the rebuild block above.
+                || key.Equals("expression", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("condition", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("trueText", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("truetext", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("falseText", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("falsetext", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("identifier", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("id", StringComparison.OrdinalIgnoreCase))
                 continue;
             switch (key.ToLowerInvariant())
             {
