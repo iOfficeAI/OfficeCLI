@@ -424,9 +424,18 @@ public partial class WordHandler
             // must add the rel to the enclosing host part (e.g. header1.xml.rels),
             // not document.xml.rels. Otherwise Word can't resolve the rId.
             var hostPart = ResolveHostPart(hlPara);
-            if (!Uri.TryCreate(hlUrl, UriKind.Absolute, out var hlUri))
-                throw new ArgumentException($"Invalid hyperlink URL '{hlUrl}'. Expected a valid absolute URI (e.g. 'https://example.com').");
-            hlRelId = hostPart.AddHyperlinkRelationship(hlUri, isExternal: true).Id;
+            // BUG-DUMP27: accept fragment-only URIs (e.g. "#_ftn1") in addition
+            // to absolute URIs, to support dump→batch round-trip of internal-anchor
+            // hyperlinks stored as r:id relationships with Target="#anchor".
+            // Word's .rels accepts these per RFC 3986; mark them isExternal=false
+            // so the .rels TargetMode is omitted (consistent with native Word output).
+            var hlIsFragment = !string.IsNullOrEmpty(hlUrl) && hlUrl.StartsWith('#');
+            Uri? hlUri;
+            if (hlIsFragment)
+                hlUri = new Uri(hlUrl, UriKind.Relative);
+            else if (!Uri.TryCreate(hlUrl, UriKind.Absolute, out hlUri))
+                throw new ArgumentException($"Invalid hyperlink URL '{hlUrl}'. Expected a valid absolute URI (e.g. 'https://example.com') or a fragment-only anchor (e.g. '#bookmark').");
+            hlRelId = hostPart.AddHyperlinkRelationship(hlUri!, isExternal: !hlIsFragment).Id;
         }
 
         var hlRProps = new RunProperties();

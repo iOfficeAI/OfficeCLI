@@ -580,11 +580,13 @@ public partial class WordHandler
                     }
                     else
                     {
-                        // Accept both absolute and relative URIs (Open-XML-SDK supports both)
-                        var uri = Uri.TryCreate(value, UriKind.Absolute, out var absUri)
-                            ? absUri
-                            : new Uri(value, UriKind.Relative);
-                        var newRelId = hostPart3.AddHyperlinkRelationship(uri, isExternal: true).Id;
+                        // Accept both absolute and relative URIs (Open-XML-SDK supports both).
+                        // BUG-DUMP27: fragment-only URIs (e.g. "#_ftn1") are internal-anchor
+                        // hyperlinks; mark isExternal=false so .rels TargetMode is omitted.
+                        var isAbs = Uri.TryCreate(value, UriKind.Absolute, out var absUri);
+                        var uri = isAbs ? absUri! : new Uri(value, UriKind.Relative);
+                        var isFragment = !string.IsNullOrEmpty(value) && value.StartsWith('#');
+                        var newRelId = hostPart3.AddHyperlinkRelationship(uri, isExternal: !isFragment).Id;
                         if (run.Parent is Hyperlink existingHl)
                         {
                             existingHl.Id = newRelId;
@@ -827,10 +829,12 @@ public partial class WordHandler
                         if (oldRel?.Container != null)
                             oldRel.Container.DeleteReferenceRelationship(oldRel);
                     }
-                    var uri = Uri.TryCreate(value, UriKind.Absolute, out var absUri)
-                        ? absUri
-                        : new Uri(value, UriKind.Relative);
-                    var newRelId = hostPartHl.AddHyperlinkRelationship(uri, isExternal: true).Id;
+                    // BUG-DUMP27: fragment-only URIs (e.g. "#_ftn1") are internal-anchor
+                    // hyperlinks; mark isExternal=false so .rels TargetMode is omitted.
+                    var isAbs = Uri.TryCreate(value, UriKind.Absolute, out var absUri);
+                    var uri = isAbs ? absUri! : new Uri(value, UriKind.Relative);
+                    var isFragment = !string.IsNullOrEmpty(value) && value.StartsWith('#');
+                    var newRelId = hostPartHl.AddHyperlinkRelationship(uri, isExternal: !isFragment).Id;
                     hl.Id = newRelId;
                     break;
                 }
