@@ -29,7 +29,113 @@ namespace OfficeCli.Core;
 /// </summary>
 public static class BatchEmitter
 {
-    /// <summary>Emit a batch sequence for a Word document.</summary>
+    /// <summary>
+    /// Emit a batch sequence for a subtree of a Word document.
+    /// <para>
+    /// Path semantics: dump scopes purely to "what's under this path".
+    /// `/` = whole document including all parts (styles, numbering, theme,
+    /// settings, body, headers/footers, comments). A subtree path like
+    /// `/body/p[5]` emits only that paragraph — styles/numbering/theme are
+    /// NOT included because they live at sibling paths (`/styles`,
+    /// `/numbering`, etc.), not under the requested subtree. References
+    /// such as `style=Heading1` or `numId=3` are emitted as-is; replay
+    /// onto a target document that already defines them works, otherwise
+    /// the reference falls back to the target's defaults.
+    /// </para>
+    /// <para>
+    /// Known limitations of subtree (non-`/`) dumps:
+    /// — Footnote/endnote/chart references inside the emitted paragraph
+    ///   resolve to the first N items in the source document's notes/charts,
+    ///   not the original positions (cursors start at 0). Use `/` if the
+    ///   subtree contains such references.
+    /// — Image rels (rIds) reference the source package; the resource itself
+    ///   is not bundled.
+    /// </para>
+    /// </summary>
+    public static List<BatchItem> EmitWord(WordHandler word, string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            throw new CliException("dump path cannot be empty. Use '/' for the full document or a subtree path like /body/p[1].")
+                { Code = "invalid_path" };
+        if (path == "/") return EmitWord(word);
+
+        var items = new List<BatchItem>();
+        switch (path.ToLowerInvariant())
+        {
+            case "/theme": EmitThemeRaw(word, items); return items;
+            case "/settings": EmitSettingsRaw(word, items); return items;
+            case "/numbering": EmitNumberingRaw(word, items); return items;
+            case "/styles": EmitStyles(word, items); return items;
+            case "/body":
+                EmitBody(word, items, new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase));
+                return items;
+        }
+
+        // Reject bare /body/p and /body/tbl (no [N]). WordHandler.Get resolves
+        // bare name segments to FirstOrDefault, which would silently dump the
+        // first paragraph/table — almost never what the caller meant.
+        var lastSeg = path.Substring(path.LastIndexOf('/') + 1);
+        if (string.Equals(lastSeg, "p", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(lastSeg, "tbl", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new CliException(
+                $"dump path not supported: {path} (missing index predicate). " +
+                "Supported: /, /body, /body/p[N], /body/tbl[N], /theme, /settings, /numbering, /styles")
+            { Code = "unsupported_path" };
+        }
+
+        // Reject deep paths (e.g. /body/tbl[1]/tr[1]/tc[1]/p[1]). The dispatch
+        // below assumes parent="/body" and would silently emit a wrongly
+        // re-parented node. Supported subtree paths at this point are
+        // /body/p[N] or /body/tbl[N] — exactly 2 segments below root.
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length > 2)
+        {
+            throw new CliException(
+                $"dump path not supported: {path} (nested below /body). " +
+                "Supported: /, /body, /body/p[N], /body/tbl[N], /theme, /settings, /numbering, /styles")
+            { Code = "unsupported_path" };
+        }
+
+        DocumentNode node;
+        try { node = word.Get(path); }
+        catch (Exception ex)
+        {
+            throw new CliException($"dump path not found: {path} ({ex.Message})") { Code = "path_not_found" };
+        }
+
+        if (node.Type != "paragraph" && node.Type != "p" && node.Type != "table")
+        {
+            throw new CliException(
+                $"dump path not supported: {path} (type={node.Type}). " +
+                "Supported: /, /body, /body/p[N], /body/tbl[N], /theme, /settings, /numbering, /styles")
+            { Code = "unsupported_path" };
+        }
+
+        var ctx = new BodyEmitContext(
+            FootnoteTexts: word.Query("footnote").Select(n => n.Text ?? "").ToList(),
+            EndnoteTexts: word.Query("endnote").Select(n => n.Text ?? "").ToList(),
+            FootnoteCursor: new NoteCursor(),
+            EndnoteCursor: new NoteCursor(),
+            ChartSpecs: word.Query("chart").Select(c =>
+            {
+                var full = word.Get(c.Path);
+                return new ChartSpec(full.Format, full.Children ?? new List<DocumentNode>());
+            }).ToList(),
+            ChartCursor: new NoteCursor(),
+            ParaIdToTargetIdx: new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
+            DeferredBookmarks: new List<BatchItem>());
+
+        if (node.Type == "table")
+            EmitTable(word, path, 1, items, ctx);
+        else
+            EmitParagraph(word, path, "/body", 1, items, autoPresent: false, ctx);
+
+        items.AddRange(ctx.DeferredBookmarks);
+        return items;
+    }
+
+    /// <summary>Emit a batch sequence for a Word document (full document, equivalent to path "/").</summary>
     public static List<BatchItem> EmitWord(WordHandler word)
     {
         var items = new List<BatchItem>();
@@ -552,7 +658,21 @@ public static class BatchEmitter
     private static void EmitBody(WordHandler word, List<BatchItem> items,
                                  Dictionary<string, int>? paraIdToTargetIdx = null)
     {
-        var bodyNode = word.Get("/body");
+        // BUG-DUMP-R6-02: word.Get("/body") raises "Path not found: /body" on
+        // a zip lacking word/document.xml. Surface a CliException pointing at
+        // the file rather than leaking an internal path the user never asked
+        // for (common when dumping "/" on a corrupt or non-Word zip).
+        DocumentNode bodyNode;
+        try
+        {
+            bodyNode = word.Get("/body");
+        }
+        catch (Exception ex) when (ex is not CliException)
+        {
+            throw new CliException(
+                "dump failed: word/document.xml is missing — the file may not be a valid Word document")
+                { Code = "invalid_document" };
+        }
         if (bodyNode.Children == null) return;
 
         // Footnotes/endnotes are referenced by runs (rStyle=FootnoteReference)
@@ -776,7 +896,7 @@ public static class BatchEmitter
                 .ToList();
             if (carrierRuns.Count > 0)
             {
-                var carrierPath = $"/body/p[{targetIndex}]";
+                var carrierPath = $"/body/p[last()]";
                 foreach (var run in carrierRuns)
                 {
                     // Dispatch footnote/endnote refs through the same typed
@@ -1074,7 +1194,7 @@ public static class BatchEmitter
                     items.Add(new BatchItem
                     {
                         Command = "set",
-                        Path = $"{parentPath}/p[{targetIndex}]",
+                        Path = $"{parentPath}/p[last()]",
                         Props = props
                     });
                 }
@@ -1089,7 +1209,7 @@ public static class BatchEmitter
                     Props = props.Count > 0 ? props : null
                 });
             }
-            EmitTabStops($"{parentPath}/p[{targetIndex}]", pTabs, items);
+            EmitTabStops($"{parentPath}/p[last()]", pTabs, items);
             return;
         }
 
@@ -1114,7 +1234,7 @@ public static class BatchEmitter
                 items.Add(new BatchItem
                 {
                     Command = "set",
-                    Path = $"{parentPath}/p[{targetIndex}]",
+                    Path = $"{parentPath}/p[last()]",
                     Props = props
                 });
             }
@@ -1130,7 +1250,7 @@ public static class BatchEmitter
             });
         }
 
-        var paraTargetPath = $"{parentPath}/p[{targetIndex}]";
+        var paraTargetPath = $"{parentPath}/p[last()]";
         EmitTabStops(paraTargetPath, pTabs, items);
 
         // BUG-DUMP25-01: bookmarks now emit inline from the runs loop below
@@ -1673,7 +1793,7 @@ public static class BatchEmitter
         // table in the cell). For outer tables, it's /body/tbl[N].
         var tablePath = parentTablePath != null
             ? $"{parentTablePath}/tbl[1]"
-            : $"{containerPath}/tbl[{targetIndex}]";
+            : $"{containerPath}/tbl[last()]";
         for (int r = 0; r < rows.Count; r++)
         {
             // Emit row-level properties (header / height / height.rule) as a

@@ -13,6 +13,12 @@ static partial class CommandBuilder
     private static Command BuildDumpCommand(Option<bool> jsonOption)
     {
         var dumpFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.docx)" };
+        var dumpPathArg = new Argument<string>("path")
+        {
+            Description = "DOM path of the subtree to dump. Use '/' for the whole document. "
+                        + "Supported subtree paths: /body, /body/p[N], /body/tbl[N], /theme, /settings, /numbering, /styles. "
+                        + "Subtree dumps do NOT include resources at sibling paths (styles/numbering/theme); replay target must already define referenced styles/numIds."
+        };
         var formatOpt = new Option<string>("--format")
         {
             Description = "Output format (currently: batch)",
@@ -20,8 +26,9 @@ static partial class CommandBuilder
         };
         var outOpt = new Option<string?>("--out", "-o") { Description = "Write output to a file instead of stdout" };
 
-        var dumpCommand = new Command("dump", "Serialize a document into a replayable batch script (round-trip mechanism)");
+        var dumpCommand = new Command("dump", "Serialize a document subtree into a replayable batch script (round-trip mechanism)");
         dumpCommand.Add(dumpFileArg);
+        dumpCommand.Add(dumpPathArg);
         dumpCommand.Add(formatOpt);
         dumpCommand.Add(outOpt);
         dumpCommand.Add(jsonOption);
@@ -29,6 +36,7 @@ static partial class CommandBuilder
         dumpCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(dumpFileArg)!;
+            var path = result.GetValue(dumpPathArg) ?? "/";
             var format = (result.GetValue(formatOpt) ?? "batch").ToLowerInvariant();
             var outPath = result.GetValue(outOpt);
 
@@ -41,8 +49,21 @@ static partial class CommandBuilder
                 throw new CliException($"dump currently supports .docx only (got {ext})")
                     { Code = "unsupported_format" };
 
+            // BUG-DUMP-R6-01: route through the resident if one holds the file.
+            // Without this, dump opens its own WordHandler and collides with
+            // the resident's lock ("file being used by another process").
+            // Mirrors the TryResident calls in `get`/`query`/`set`.
+            if (TryResident(file.FullName, req =>
+            {
+                req.Command = "dump";
+                req.Json = json;
+                req.Args["path"] = path;
+                req.Args["format"] = format;
+                if (!string.IsNullOrEmpty(outPath)) req.Args["out"] = outPath!;
+            }, json) is {} rc) return rc;
+
             using var word = new WordHandler(file.FullName, editable: false);
-            var items = BatchEmitter.EmitWord(word);
+            var items = BatchEmitter.EmitWord(word, path);
 
             // Compact JSON (single line) is the canonical batch wire form:
             // `batch run` consumes it directly and AI tooling pipes it through

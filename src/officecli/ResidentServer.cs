@@ -714,6 +714,9 @@ public class ResidentServer : IDisposable
             case "batch":
                 ExecuteBatch(request);
                 break;
+            case "dump":
+                ExecuteDump(request, format);
+                break;
             default:
                 // BUG-FUZZER-R6-A-06/07: previously this branch only wrote to
                 // stderr and fell through, leaving the response with
@@ -1161,6 +1164,48 @@ public class ResidentServer : IDisposable
         }
 
         Console.WriteLine(OutputFormatter.FormatNode(node, format));
+    }
+
+    // BUG-DUMP-R6-01: dump used to bypass the resident and open its own
+    // WordHandler, which collided with the resident's lock. Mirror the
+    // direct-mode CommandBuilder.Dump.cs flow against `_handler`.
+    private void ExecuteDump(ResidentRequest req, OutputFormat format)
+    {
+        var path = req.GetArg("path", "/");
+        var dumpFormat = req.GetArg("format", "batch")!.ToLowerInvariant();
+        var outPath = req.GetArgOrNull("out");
+
+        if (dumpFormat != "batch")
+            throw new CliException($"Unsupported --format: {dumpFormat}. Valid: batch")
+                { Code = "invalid_format", ValidValues = ["batch"] };
+
+        if (_handler is not WordHandler word)
+            throw new CliException("dump currently supports .docx only")
+                { Code = "unsupported_format" };
+
+        var items = BatchEmitter.EmitWord(word, path);
+        var output = System.Text.Json.JsonSerializer.Serialize(items, BatchJsonContext.Default.ListBatchItem);
+
+        if (outPath == "-") outPath = null;
+        if (!string.IsNullOrEmpty(outPath))
+        {
+            File.WriteAllText(outPath, output);
+            if (req.Json)
+            {
+                var meta = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["outputFile"] = outPath,
+                    ["itemCount"] = items.Count
+                };
+                Console.WriteLine(meta.ToJsonString());
+            }
+            else
+                Console.WriteLine(outPath);
+        }
+        else
+        {
+            Console.WriteLine(output);
+        }
     }
 
     private void ExecuteQuery(ResidentRequest req, OutputFormat format)
