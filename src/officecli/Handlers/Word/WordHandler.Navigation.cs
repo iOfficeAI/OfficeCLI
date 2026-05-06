@@ -1600,6 +1600,12 @@ public partial class WordHandler
                     node.Format["markRPr.font.cs"] = rf.ComplexScript.Value;
                 var hl = pmrpForDump.GetFirstChild<Highlight>();
                 if (hl?.Val?.HasValue == true) node.Format["markRPr.highlight"] = hl.Val.InnerText;
+                // schemas/help/docx/paragraph.json declares rStyle add+set+get;
+                // Add.Text.cs:437 writes <w:rStyle> into ParagraphMarkRunProperties,
+                // but Get used to drop it. Emit at the paragraph-level canonical
+                // key (no markRPr prefix) to match the schema's declaration.
+                var rs = pmrpForDump.GetFirstChild<RunStyle>();
+                if (rs?.Val?.Value != null) node.Format["rStyle"] = rs.Val.Value;
             }
 
             // First-run formatting on the paragraph node (like PPTX does for shapes).
