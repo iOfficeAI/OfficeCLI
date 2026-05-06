@@ -88,12 +88,16 @@ tests/fixtures/common/visual-thresholds.json
 ```
 
 Hard fails (page-count mismatch, missing SVG page, missing render evidence
-for a visual-validated operation) cannot be tolerated. Thresholded fails
-(text-only layout drift, unexpected blank render, exact SVG hash mismatch)
-have declared bounds. As of Phase 36.4 only `render_svg` is a visual-validated
-operation; mutation operations may declare drift tolerance but cannot claim
-visual validation without a linked render evidence file. The renderer status
-remains `deferred` until OfficeCLI ships a stable in-CI renderer.
+for a visual-validated operation, and body proof markers in fixed-layout exam
+sheets) cannot be tolerated. Thresholded fails (text-only layout drift,
+unexpected blank render, exact SVG hash mismatch) have declared bounds. KICE
+style fixed-layout exam sheets use a stricter rule: proof markers must stay out
+of the visible question body and visible layout drift is `0%` unless the
+requested edit explicitly changes exam content. As of Phase 36.4 only
+`render_svg` is a visual-validated operation; mutation operations may declare
+drift tolerance but cannot claim visual validation without a linked render
+evidence file. The renderer status remains `deferred` until OfficeCLI ships a
+stable in-CI renderer.
 
 ## Round-Trip Cases
 
