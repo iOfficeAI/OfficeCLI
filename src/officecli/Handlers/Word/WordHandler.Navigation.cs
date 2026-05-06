@@ -1319,6 +1319,10 @@ public partial class WordHandler
                             pProps.SpacingBetweenLines.Line.Value,
                             pProps.SpacingBetweenLines.LineRule?.InnerText);
                     }
+                    if (pProps.SpacingBetweenLines.LineRule?.HasValue == true)
+                    {
+                        node.Format["lineRule"] = pProps.SpacingBetweenLines.LineRule.InnerText;
+                    }
                 }
                 if (pProps.Indentation != null)
                 {
