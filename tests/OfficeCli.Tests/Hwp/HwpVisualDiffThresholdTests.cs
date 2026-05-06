@@ -94,6 +94,50 @@ public sealed class HwpVisualDiffThresholdTests
         Assert.Contains(HwpCapabilityConstants.OperationFillField, appliesTo);
     }
 
+    [Fact]
+    public void FixedLayoutExamBodyMarkersAreHardFail()
+    {
+        var thresholds = ReadJson(ThresholdsPath);
+        var hardFail = thresholds["hardFail"]!.AsArray()
+            .Select(n => n!.GetValue<string>())
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Contains("body-marker-in-fixed-layout-exam", hardFail);
+
+        var rules = thresholds["fixedLayoutExamRules"]!.AsObject();
+        Assert.Equal(0.0, rules["maxLayoutDriftFraction"]!.GetValue<double>());
+
+        var detectors = rules["detectors"]!.AsArray()
+            .Select(n => n!.GetValue<string>())
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.Contains("newspaper-columns", detectors);
+        Assert.Contains("exam-title", detectors);
+        Assert.Contains("question-numbering", detectors);
+
+        var evidence = rules["evidenceRequired"]!.AsArray()
+            .Select(n => n!.GetValue<string>())
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.Contains("before-screenshot", evidence);
+        Assert.Contains("after-screenshot", evidence);
+        Assert.Contains("manual-visual-review", evidence);
+    }
+
+    [Theory]
+    [InlineData("[CU TEMPLATE EDIT 04] kice Korean copy edited via Hancom Office HWP UI")]
+    [InlineData("VISUAL QA marker inserted into question body")]
+    [InlineData("copy edited via Hancom Office HWP UI at 2026-05-06")]
+    public void FixedLayoutExamRuleRejectsAdHocBodyProofMarkers(string bodyText)
+    {
+        var thresholds = ReadJson(ThresholdsPath);
+        var markers = thresholds["fixedLayoutExamRules"]!["forbiddenBodyMarkers"]!.AsArray()
+            .Select(n => n!.GetValue<string>())
+            .ToArray();
+
+        Assert.Contains(
+            markers,
+            marker => bodyText.Contains(marker, StringComparison.Ordinal));
+    }
+
     private static JsonNode ReadJson(string relativePath)
         => JsonNode.Parse(File.ReadAllText(LocateRepoFile(relativePath)))!;
 

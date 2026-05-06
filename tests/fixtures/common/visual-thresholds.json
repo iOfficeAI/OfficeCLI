@@ -4,7 +4,8 @@
   "hardFail": [
     "page-count-mismatch",
     "missing-expected-svg-page",
-    "missing-render-evidence-for-visual-validated-operation"
+    "missing-render-evidence-for-visual-validated-operation",
+    "body-marker-in-fixed-layout-exam"
   ],
   "thresholdedFail": [
     {
@@ -41,6 +42,25 @@
   "visualValidatedOperations": [
     "render_svg"
   ],
+  "fixedLayoutExamRules": {
+    "description": "KICE-style fixed-layout exam sheets must preserve visible body layout. QA markers or proof text inserted into the question body are hard failures even when save/readback succeeds.",
+    "detectors": [
+      "newspaper-columns",
+      "exam-title",
+      "question-numbering"
+    ],
+    "forbiddenBodyMarkers": [
+      "[CU TEMPLATE EDIT",
+      "VISUAL QA",
+      "edited via Hancom Office HWP UI"
+    ],
+    "maxLayoutDriftFraction": 0.0,
+    "evidenceRequired": [
+      "before-screenshot",
+      "after-screenshot",
+      "manual-visual-review"
+    ]
+  },
   "rendererStatus": "deferred",
   "rendererNotes": "OfficeCLI CI does not yet ship a stable HWP/HWPX renderer. Until it does, visual claims require an explicit render evidence link in expected-capabilities.json. The threshold contract above remains authoritative when a renderer is connected."
 }

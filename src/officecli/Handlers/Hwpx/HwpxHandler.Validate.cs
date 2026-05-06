@@ -177,8 +177,10 @@ public partial class HwpxHandler
             }
         }
 
-        // Plan 81: version.xml check (warning only)
-        var versionEntry = _doc.Archive.GetEntry("Contents/version.xml");
+        // Plan 81: version.xml check (warning only). Real Hancom exports have
+        // appeared with version.xml at the package root, so accept both forms.
+        var versionEntry = _doc.Archive.GetEntry("Contents/version.xml")
+            ?? _doc.Archive.GetEntry("version.xml");
         if (versionEntry == null)
         {
             errors.Add(new ValidationError(
@@ -578,9 +580,13 @@ public partial class HwpxHandler
                 if (binRef != null) referenced.Add(binRef);
             }
 
+        foreach (var manifestRef in GetManifestBinDataIds())
+            referenced.Add(manifestRef);
+
         var actual = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in _doc.Archive.Entries)
-            if (entry.FullName.Contains("BinData/", StringComparison.OrdinalIgnoreCase))
+            if (entry.FullName.Contains("BinData/", StringComparison.OrdinalIgnoreCase)
+                && !entry.FullName.EndsWith("/", StringComparison.Ordinal))
                 actual.Add(System.IO.Path.GetFileNameWithoutExtension(entry.FullName));
 
         foreach (var missing in referenced.Except(actual))
@@ -592,6 +598,29 @@ public partial class HwpxHandler
             errors.Add(new ValidationError("bindata_orphan",
                 $"Orphan binary '{orphan}' not referenced by any element",
                 "/BinData", null));
+    }
+
+    private IEnumerable<string> GetManifestBinDataIds()
+    {
+        if (_doc.ManifestDoc?.Root == null) yield break;
+
+        foreach (var item in _doc.ManifestDoc.Descendants())
+        {
+            var href = item.Attribute("href")?.Value;
+            if (href == null || !href.StartsWith("BinData/", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var id = item.Attribute("id")?.Value;
+            if (!string.IsNullOrWhiteSpace(id))
+            {
+                yield return id;
+                continue;
+            }
+
+            var fileId = System.IO.Path.GetFileNameWithoutExtension(href);
+            if (!string.IsNullOrWhiteSpace(fileId))
+                yield return fileId;
+        }
     }
 
     // Plan 94: Field pair consistency (merged from ViewAsIssues Level 8)
