@@ -427,10 +427,32 @@ public partial class WordHandler
                 return null;
             }
 
-            var beforeVal = pProps.SpacingBetweenLines?.Before?.Value
-                            ?? styleSpacing?.Before?.Value;
-            var beforeLinesVal = pProps.SpacingBetweenLines?.BeforeLines?.Value
-                                 ?? styleSpacing?.BeforeLines?.Value;
+            // OOXML §17.3.1.5 beforeAutospacing / §17.3.1.4 afterAutospacing:
+            // when set, the spec's "application-determined autospacing"
+            // substitutes a 280-twip (14pt) baseline for the literal
+            // Before/After before margin collapse. Common in HTML-imported
+            // docx where the flag mirrors browser <p>-margin defaults.
+            //
+            // Suppression in table cells: the cell boundary (tcMar) already
+            // provides the visual gap, so autospacing is fully suppressed
+            // for paragraphs directly inside a TableCell — both for adjacent
+            // pairs (cell-internal collapse) and for first/last paragraphs
+            // in the cell (cell-edge collapse).
+            const string AutospacingTwips = "280";
+            var inTableCell = para.Parent is TableCell;
+            var prevInSameCell = inTableCell;
+            var nextInSameCell = inTableCell;
+
+            var beforeAutoRaw = (pProps.SpacingBetweenLines?.BeforeAutoSpacing?.Value
+                                 ?? styleSpacing?.BeforeAutoSpacing?.Value) == true;
+            var beforeAuto = beforeAutoRaw && !prevInSameCell;
+            var beforeVal = beforeAuto ? AutospacingTwips
+                : (beforeAutoRaw && prevInSameCell ? "0"
+                   : (pProps.SpacingBetweenLines?.Before?.Value
+                      ?? styleSpacing?.Before?.Value));
+            var beforeLinesVal = beforeAuto || beforeAutoRaw ? null
+                : (pProps.SpacingBetweenLines?.BeforeLines?.Value
+                   ?? styleSpacing?.BeforeLines?.Value);
 
             // Word collapses adjacent spaceBefore/spaceAfter: max(prev.after, cur.before)
             // instead of adding them. CSS flexbox doesn't collapse margins, so we subtract
@@ -441,10 +463,17 @@ public partial class WordHandler
                 var prevPProps = prevPara.ParagraphProperties;
                 var prevSId = prevPProps?.ParagraphStyleId?.Val?.Value;
                 var prevStyleSpacing = ResolveSpacingFromStyle(prevSId);
-                var prevAfter = prevPProps?.SpacingBetweenLines?.After?.Value
-                                ?? prevStyleSpacing?.After?.Value;
-                var prevAfterLines = prevPProps?.SpacingBetweenLines?.AfterLines?.Value
-                                     ?? prevStyleSpacing?.AfterLines?.Value;
+                var prevAfterAutoRaw = (prevPProps?.SpacingBetweenLines?.AfterAutoSpacing?.Value
+                                        ?? prevStyleSpacing?.AfterAutoSpacing?.Value) == true;
+                // Same-cell suppression mirrors the cur side.
+                var prevAfterAuto = prevAfterAutoRaw && !prevInSameCell;
+                var prevAfter = prevAfterAuto ? AutospacingTwips
+                    : (prevAfterAutoRaw && prevInSameCell ? "0"
+                       : (prevPProps?.SpacingBetweenLines?.After?.Value
+                          ?? prevStyleSpacing?.After?.Value));
+                var prevAfterLines = prevAfterAuto || prevAfterAutoRaw ? null
+                    : (prevPProps?.SpacingBetweenLines?.AfterLines?.Value
+                       ?? prevStyleSpacing?.AfterLines?.Value);
                 prevSpaceAfterPt = ResolveSpacingPt(prevAfter, prevAfterLines) ?? 0;
             }
 
@@ -463,10 +492,16 @@ public partial class WordHandler
                 }
             }
 
-            var afterVal = pProps.SpacingBetweenLines?.After?.Value
-                           ?? styleSpacing?.After?.Value;
-            var afterLinesVal = pProps.SpacingBetweenLines?.AfterLines?.Value
-                                ?? styleSpacing?.AfterLines?.Value;
+            var afterAutoRaw = (pProps.SpacingBetweenLines?.AfterAutoSpacing?.Value
+                                ?? styleSpacing?.AfterAutoSpacing?.Value) == true;
+            var afterAuto = afterAutoRaw && !nextInSameCell;
+            var afterVal = afterAuto ? AutospacingTwips
+                : (afterAutoRaw && nextInSameCell ? "0"
+                   : (pProps.SpacingBetweenLines?.After?.Value
+                      ?? styleSpacing?.After?.Value));
+            var afterLinesVal = afterAuto || afterAutoRaw ? null
+                : (pProps.SpacingBetweenLines?.AfterLines?.Value
+                   ?? styleSpacing?.AfterLines?.Value);
             if (suppressAfter)
             {
                 parts.Add($"{vSpacingPropAfter}:0");
@@ -489,10 +524,18 @@ public partial class WordHandler
                 {
                     if (int.TryParse(lv, out var lvNum))
                     {
-                        // Correct for font metrics ratio
+                        // OOXML §17.3.1.33 "auto" rule: line-height is the
+                        // larger of the font's natural single-line height
+                        // and the per-paragraph multiplier `lvNum/240 ×
+                        // font_size`. The multiplier is anchored to
+                        // font_size, not to the natural-line-height — so
+                        // `lvNum/240 × ratio` double-counts the ratio.
+                        // In CSS unitless line-height (browser multiplies
+                        // by font-size): line-height = max(ratio, lvNum/240).
                         var paraFont = ResolveParaFontForLineHeight(para);
                         var ratio = FontMetricsReader.GetRatio(paraFont);
-                        parts.Add($"line-height:{lvNum / 240.0 * ratio:0.####}");
+                        var lh = Math.Max(ratio, lvNum / 240.0);
+                        parts.Add($"line-height:{lh:0.####}");
                     }
                 }
                 else if (rule == "exact" || rule == "atLeast")
@@ -543,14 +586,28 @@ public partial class WordHandler
             if (builtIn == null && DocCarriesNormalDefaults())
                 builtIn = BuiltInStyleDefaults["Normal"];
 
+            // contextualSpacing must suppress before/after between same-style
+            // siblings even when the resolved spacing comes from BuiltInStyleDefaults
+            // (typical for ListParagraph: built-in After=10pt, but contextualSpacing
+            // on the style should collapse it to 0 between adjacent bullets).
+            var hasContextualSpacing = pProps.ContextualSpacing != null
+                || ResolveContextualSpacingFromStyle(styleId);
+            var prevPara = para.PreviousSibling<Paragraph>();
+            var nextPara = para.NextSibling<Paragraph>();
+            var prevStyleId = prevPara?.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
+            var nextStyleId = nextPara?.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
+            bool suppressBefore = hasContextualSpacing && prevPara != null
+                && (prevStyleId ?? "") == (styleId ?? "");
+            bool suppressAfter = hasContextualSpacing && nextPara != null
+                && (nextStyleId ?? "") == (styleId ?? "");
+
             // Margin collapse: subtract previous sibling's effective spaceAfter
             // from this paragraph's spaceBefore (CSS flexbox doesn't collapse).
             double prevAfterPt = 0;
-            var prevP = para.PreviousSibling<Paragraph>();
-            if (prevP != null)
+            if (prevPara != null && !suppressBefore)
             {
-                var prevSId = prevP.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
-                var prevSpacing = prevP.ParagraphProperties?.SpacingBetweenLines
+                var prevSId = prevStyleId;
+                var prevSpacing = prevPara.ParagraphProperties?.SpacingBetweenLines
                                   ?? ResolveSpacingFromStyle(prevSId);
                 if (prevSpacing?.After?.Value is string pa && int.TryParse(pa, out var paT))
                     prevAfterPt = paT / 20.0;
@@ -565,11 +622,12 @@ public partial class WordHandler
 
             if (builtIn != null)
             {
-                var beforePt = Math.Max(0, builtIn.Before - prevAfterPt);
+                var beforePt = suppressBefore ? 0 : Math.Max(0, builtIn.Before - prevAfterPt);
                 if (beforePt > 0)
                     parts.Add($"{vSpacingPropBefore}:{beforePt:0.##}pt");
-                if (builtIn.After > 0)
-                    parts.Add($"{vSpacingPropAfter}:{builtIn.After:0.##}pt");
+                var afterPt = suppressAfter ? 0 : builtIn.After;
+                if (afterPt > 0)
+                    parts.Add($"{vSpacingPropAfter}:{afterPt:0.##}pt");
                 // Use built-in line multiplier, but raise to font metric ratio when the
                 // font's natural ascent+descent exceeds it (CJK / glyph-tall fonts).
                 var lhDef = Math.Max(builtIn.Line, ratioDef);
@@ -895,61 +953,81 @@ public partial class WordHandler
         var styles = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles;
         if (styles == null) return null;
 
-        if (styleId == null)
+        var merged = new SpacingBetweenLines();
+        bool anySet = false;
+
+        void MergeFrom(SpacingBetweenLines? sp)
+        {
+            if (sp == null) return;
+            if (merged.Before == null && sp.Before != null) { merged.Before = sp.Before.Value; anySet = true; }
+            if (merged.BeforeLines == null && sp.BeforeLines != null) { merged.BeforeLines = sp.BeforeLines.Value; anySet = true; }
+            if (merged.BeforeAutoSpacing == null && sp.BeforeAutoSpacing != null) { merged.BeforeAutoSpacing = sp.BeforeAutoSpacing.Value; anySet = true; }
+            if (merged.After == null && sp.After != null) { merged.After = sp.After.Value; anySet = true; }
+            if (merged.AfterLines == null && sp.AfterLines != null) { merged.AfterLines = sp.AfterLines.Value; anySet = true; }
+            if (merged.AfterAutoSpacing == null && sp.AfterAutoSpacing != null) { merged.AfterAutoSpacing = sp.AfterAutoSpacing.Value; anySet = true; }
+            if (merged.Line == null && sp.Line != null) { merged.Line = sp.Line.Value; anySet = true; }
+            if (merged.LineRule == null && sp.LineRule != null) { merged.LineRule = sp.LineRule.Value; anySet = true; }
+        }
+
+        // Resolve starting style: explicit styleId or document's default paragraph style.
+        var startStyleId = styleId;
+        if (startStyleId == null)
         {
             var defaultStyle = styles.Elements<Style>()
                 .FirstOrDefault(s => s.Type?.Value == StyleValues.Paragraph && s.Default?.Value == true);
-            return defaultStyle?.StyleParagraphProperties?.SpacingBetweenLines;
+            startStyleId = defaultStyle?.StyleId?.Value;
         }
 
-        var merged = new SpacingBetweenLines();
-        bool anySet = false;
+        // Walk basedOn chain derived → base, merging attributes not yet set.
         var visited = new HashSet<string>();
-        var currentStyleId = styleId;
+        var currentStyleId = startStyleId;
         while (currentStyleId != null && visited.Add(currentStyleId))
         {
             var style = styles.Elements<Style>()
                 .FirstOrDefault(s => s.StyleId?.Value == currentStyleId);
             if (style == null) break;
-            var sp = style.StyleParagraphProperties?.SpacingBetweenLines;
-            if (sp != null)
-            {
-                // Walk runs derived→base; only fill attributes that are not
-                // already set so the derived style wins.
-                if (merged.Before == null && sp.Before != null) { merged.Before = sp.Before.Value; anySet = true; }
-                if (merged.BeforeLines == null && sp.BeforeLines != null) { merged.BeforeLines = sp.BeforeLines.Value; anySet = true; }
-                if (merged.BeforeAutoSpacing == null && sp.BeforeAutoSpacing != null) { merged.BeforeAutoSpacing = sp.BeforeAutoSpacing.Value; anySet = true; }
-                if (merged.After == null && sp.After != null) { merged.After = sp.After.Value; anySet = true; }
-                if (merged.AfterLines == null && sp.AfterLines != null) { merged.AfterLines = sp.AfterLines.Value; anySet = true; }
-                if (merged.AfterAutoSpacing == null && sp.AfterAutoSpacing != null) { merged.AfterAutoSpacing = sp.AfterAutoSpacing.Value; anySet = true; }
-                if (merged.Line == null && sp.Line != null) { merged.Line = sp.Line.Value; anySet = true; }
-                if (merged.LineRule == null && sp.LineRule != null) { merged.LineRule = sp.LineRule.Value; anySet = true; }
-            }
+            MergeFrom(style.StyleParagraphProperties?.SpacingBetweenLines);
             currentStyleId = style.BasedOn?.Val?.Value;
         }
+
+        // Final fallback: docDefaults pPrDefault — fills any attribute the
+        // style chain left unset. Without this, a doc whose only spacing
+        // declaration is in <w:pPrDefault> emits zero margin and the
+        // before/after collapse computes incorrectly for adjacent paras.
+        MergeFrom(styles.DocDefaults?.ParagraphPropertiesDefault
+            ?.ParagraphPropertiesBaseStyle?.SpacingBetweenLines);
+
         return anySet ? merged : null;
     }
 
-    /// <summary>Resolve contextualSpacing from the style chain.</summary>
+    /// <summary>Resolve contextualSpacing from the style chain, with docDefaults fallback.</summary>
     private bool ResolveContextualSpacingFromStyle(string? styleId)
     {
-        if (styleId == null)
+        var styles = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles;
+        if (styles == null) return false;
+
+        var startStyleId = styleId;
+        if (startStyleId == null)
         {
-            var defaultStyle = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
-                ?.Elements<Style>().FirstOrDefault(s => s.Type?.Value == StyleValues.Paragraph && s.Default?.Value == true);
-            return defaultStyle?.StyleParagraphProperties?.ContextualSpacing != null;
+            var defaultStyle = styles.Elements<Style>()
+                .FirstOrDefault(s => s.Type?.Value == StyleValues.Paragraph && s.Default?.Value == true);
+            startStyleId = defaultStyle?.StyleId?.Value;
         }
+
         var visited = new HashSet<string>();
-        var currentStyleId = styleId;
+        var currentStyleId = startStyleId;
         while (currentStyleId != null && visited.Add(currentStyleId))
         {
-            var style = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
-                ?.Elements<Style>().FirstOrDefault(s => s.StyleId?.Value == currentStyleId);
+            var style = styles.Elements<Style>()
+                .FirstOrDefault(s => s.StyleId?.Value == currentStyleId);
             if (style == null) break;
             if (style.StyleParagraphProperties?.ContextualSpacing != null) return true;
             currentStyleId = style.BasedOn?.Val?.Value;
         }
-        return false;
+
+        // Fallback: docDefaults pPrDefault.
+        return styles.DocDefaults?.ParagraphPropertiesDefault
+            ?.ParagraphPropertiesBaseStyle?.ContextualSpacing != null;
     }
 
     /// <summary>
@@ -1058,7 +1136,17 @@ public partial class WordHandler
                     {
                         var rule = spacing.LineRule?.InnerText;
                         if ((rule == "auto" || rule == null) && int.TryParse(lv, out var val))
-                            parts.Add($"line-height:{val / 240.0:0.####}");
+                        {
+                            // OOXML §17.3.1.33 "auto" rule: max of natural
+                            // line-height (font_size × ratio) and the
+                            // multiplier (val/240 × font_size). In CSS
+                            // unitless line-height: max(ratio, val/240).
+                            var paraFont = ResolveParaFontForLineHeight(para);
+                            var ratio = FontMetricsReader.GetRatio(paraFont);
+                            parts.Add($"line-height:{Math.Max(ratio, val / 240.0):0.####}");
+                        }
+                        else if (rule == "exact" || rule == "atLeast")
+                            parts.Add($"line-height:{Units.TwipsToPt(lv):0.##}pt");
                     }
                 }
 
@@ -1083,6 +1171,64 @@ public partial class WordHandler
 
             currentStyleId = style.BasedOn?.Val?.Value;
         }
+
+        // docDefaults pPrDefault fallback: when the entire style chain left
+        // spacing/indent unset, pick up <w:pPrDefault> values. Without this,
+        // a paragraph with no <w:pPr> in a doc whose only spacing source is
+        // pPrDefault (typical of synthetic / cli-authored docs) emits zero
+        // margin-bottom and the next paragraph's spaceBefore-vs-prev.spaceAfter
+        // collapse computes incorrectly.
+        var defPPr = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
+            ?.DocDefaults?.ParagraphPropertiesDefault?.ParagraphPropertiesBaseStyle;
+        if (defPPr != null)
+        {
+            const double LineUnitPt = 12.0;
+            var spacing = defPPr.SpacingBetweenLines;
+            if (spacing != null)
+            {
+                if (!parts.Any(p => p.StartsWith("margin-top")))
+                {
+                    if (spacing.BeforeLines?.Value is int bl && bl != 0)
+                        parts.Add($"margin-top:{bl / 100.0 * LineUnitPt:0.##}pt");
+                    else if (spacing.Before?.Value is string b && b != "0")
+                        parts.Add($"margin-top:{Units.TwipsToPt(b):0.##}pt");
+                }
+                if (!parts.Any(p => p.StartsWith("margin-bottom")))
+                {
+                    if (spacing.AfterLines?.Value is int al && al != 0)
+                        parts.Add($"margin-bottom:{al / 100.0 * LineUnitPt:0.##}pt");
+                    else if (spacing.After?.Value is string a)
+                        parts.Add($"margin-bottom:{Units.TwipsToPt(a):0.##}pt");
+                }
+                if (spacing.Line?.Value is string lv && !parts.Any(p => p.StartsWith("line-height")))
+                {
+                    var rule = spacing.LineRule?.InnerText;
+                    if ((rule == "auto" || rule == null) && int.TryParse(lv, out var val))
+                    {
+                        // OOXML §17.3.1.33 "auto" rule (see ResolveSpacing
+                        // path above for derivation).
+                        var paraFont = ResolveParaFontForLineHeight(para);
+                        var ratio = FontMetricsReader.GetRatio(paraFont);
+                        parts.Add($"line-height:{Math.Max(ratio, val / 240.0):0.####}");
+                    }
+                    else if (rule == "exact" || rule == "atLeast")
+                        parts.Add($"line-height:{Units.TwipsToPt(lv):0.##}pt");
+                }
+            }
+            var ind = defPPr.Indentation;
+            if (ind != null)
+            {
+                if (ind.Left?.Value is string leftTwips && leftTwips != "0" && !parts.Any(p => p.StartsWith("margin-left")))
+                    parts.Add($"margin-left:{Units.TwipsToPt(leftTwips):0.##}pt");
+                if (ind.Right?.Value is string rightTwips && rightTwips != "0" && !parts.Any(p => p.StartsWith("margin-right")))
+                    parts.Add($"margin-right:{Units.TwipsToPt(rightTwips):0.##}pt");
+                if (ind.FirstLine?.Value is string fl && fl != "0" && !parts.Any(p => p.StartsWith("text-indent")))
+                    parts.Add($"text-indent:{Units.TwipsToPt(fl):0.##}pt");
+                if (ind.Hanging?.Value is string hg && hg != "0" && !parts.Any(p => p.StartsWith("text-indent")))
+                    parts.Add($"text-indent:-{Units.TwipsToPt(hg):0.##}pt");
+            }
+        }
+
         return string.Join(";", parts);
     }
 
@@ -2147,8 +2293,8 @@ public partial class WordHandler
             padding-bottom: 0.3em; }}
         .doc-footer {{ position: absolute; bottom: {pg.FooterDistancePt:0.#}pt; left: {mL}; right: {mR};
             padding-top: 0.3em; }}
-        h1, h2, h3, h4, h5, h6 {{ line-height: {dd.LineHeight * FontMetricsReader.GetRatio(dd.Font):0.####}; }}
-        p {{ margin: 0; margin-bottom: {(dd.SpaceAfterPt > 0 ? $"{dd.SpaceAfterPt:0.##}pt" : "0")}; line-height: {dd.LineHeight * FontMetricsReader.GetRatio(dd.Font):0.####}; text-align: {dd.DefaultAlign};{(dd.DefaultAlign == "justify" ? " text-justify: inter-character;" : "")} text-autospace: ideograph-alpha ideograph-numeric; }}
+        h1, h2, h3, h4, h5, h6 {{ line-height: {Math.Max(FontMetricsReader.GetRatio(dd.Font), dd.LineHeight):0.####}; }}
+        p {{ margin: 0; margin-bottom: {(dd.SpaceAfterPt > 0 ? $"{dd.SpaceAfterPt:0.##}pt" : "0")}; line-height: {Math.Max(FontMetricsReader.GetRatio(dd.Font), dd.LineHeight):0.####}; text-align: {dd.DefaultAlign};{(dd.DefaultAlign == "justify" ? " text-justify: inter-character;" : "")} text-autospace: ideograph-alpha ideograph-numeric; }}
         a {{ color: #2B579A; }} a:hover {{ color: #1a3c6e; }}
         .toc {{ display: flex; text-indent: 0 !important; }}
         .toc a {{ color: inherit; text-decoration: none; display: flex; flex: 1; }}
