@@ -553,10 +553,13 @@ public partial class ExcelHandler
                         styleProps["numberformat"] = "m/d/yy";
                     break;
                 case "clear":
+                    // Per schemas/help/xlsx/cell.json: clear erases value/formula
+                    // before applying new content. StyleIndex (font/alignment/
+                    // border/numfmt) is independent state and must survive clear,
+                    // matching `set`'s overall merge semantics.
                     cell.CellValue = null;
                     cell.CellFormula = null;
-                    cell.DataType = null; // Reset type on clear
-                    cell.StyleIndex = null; // Also reset style/formatting
+                    cell.DataType = null;
                     break;
                 case "arrayformula":
                 {
