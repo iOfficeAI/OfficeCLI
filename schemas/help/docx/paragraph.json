@@ -1067,6 +1067,96 @@
       "description": "hanging indent in 1/100 character units (CT_Ind @hangingChars). Word's chars-relative variant of hangingIndent.",
       "readback": "integer 1/100-char units",
       "enforcement": "report"
+    },
+    "markRPr.bold": {
+      "type": "bool",
+      "description": "paragraph-mark run property — bold flag on the ¶ glyph (w:pPr/w:rPr/w:b). Distinct from per-run bold; affects how the mark itself renders and is inherited by appended runs without their own bold setting.",
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "markRPr.italic": {
+      "type": "bool",
+      "description": "paragraph-mark run italic (w:pPr/w:rPr/w:i).",
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "markRPr.strike": {
+      "type": "bool",
+      "description": "paragraph-mark run strike (w:pPr/w:rPr/w:strike).",
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "markRPr.underline": {
+      "type": "string",
+      "description": "paragraph-mark run underline style (w:pPr/w:rPr/w:u @val).",
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "underline style enum (single, double, dotted, …)",
+      "enforcement": "report"
+    },
+    "markRPr.size": {
+      "type": "length",
+      "description": "paragraph-mark run font size (w:pPr/w:rPr/w:sz, half-points internally).",
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "unit-qualified pt (e.g. 11pt)",
+      "enforcement": "report"
+    },
+    "markRPr.color": {
+      "type": "color",
+      "description": "paragraph-mark run color (w:pPr/w:rPr/w:color). Returns scheme color name for theme refs, or #-prefixed hex.",
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "scheme color name or #RRGGBB",
+      "enforcement": "report"
+    },
+    "markRPr.highlight": {
+      "type": "string",
+      "description": "paragraph-mark run highlight color (w:pPr/w:rPr/w:highlight @val).",
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "highlight color enum",
+      "enforcement": "report"
+    },
+    "markRPr.font.latin": {
+      "type": "string",
+      "description": "paragraph-mark run Ascii font (w:pPr/w:rPr/w:rFonts @ascii).",
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "font name",
+      "enforcement": "report"
+    },
+    "markRPr.font.ea": {
+      "type": "string",
+      "description": "paragraph-mark run EastAsia font (w:pPr/w:rPr/w:rFonts @eastAsia).",
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "font name",
+      "enforcement": "report"
+    },
+    "markRPr.font.cs": {
+      "type": "string",
+      "description": "paragraph-mark run ComplexScript font (w:pPr/w:rPr/w:rFonts @cs).",
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "font name",
+      "enforcement": "report"
     }
   }
 }

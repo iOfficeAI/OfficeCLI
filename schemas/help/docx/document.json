@@ -631,6 +631,15 @@
       "description": "document-default columns separator flag (sectPr cols @sep on the body sectPr).",
       "readback": "true|false",
       "enforcement": "report"
+    },
+    "locale": {
+      "type": "string",
+      "description": "primary document locale derived from theme themeFontLang (e.g. 'en-US', 'zh-CN', 'ar-SA'). Read-only summary — change via run lang.* slots or theme themeFontLang.",
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "BCP-47 locale string",
+      "enforcement": "report"
     }
   }
 }

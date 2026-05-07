@@ -132,6 +132,16 @@
       "readback": "true/false",
       "enforcement": "report",
       "description": " Set after Add not supported — formatting lives on inner runs (Set the run, not the hyperlink wrapper)."
+    },
+    "docLocation": {
+      "type": "string",
+      "description": "w:docLocation — frame name (or location-within-document for non-text-anchor refs). Preserved on dump round-trip. Get only; set via the underlying hyperlink rewrite path on Add.",
+      "aliases": ["doclocation"],
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "doc location string",
+      "enforcement": "report"
     }
   }
 }

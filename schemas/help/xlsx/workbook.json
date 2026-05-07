@@ -308,6 +308,87 @@
       "description": "WorkbookProperties Date1904 flag — true means dates use the 1904 epoch (Mac legacy).",
       "readback": "true|false",
       "enforcement": "report"
+    },
+    "workbook.dateCompatibility": {
+      "type": "bool",
+      "aliases": ["datecompatibility"],
+      "add": false,
+      "set": true,
+      "get": true,
+      "description": "WorkbookProperties DateCompatibility flag — controls 1900 vs 1904 date system compatibility.",
+      "examples": [
+        "--prop workbook.dateCompatibility=true"
+      ],
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "workbook.filterPrivacy": {
+      "type": "bool",
+      "aliases": ["filterprivacy"],
+      "add": false,
+      "set": true,
+      "get": true,
+      "description": "WorkbookProperties FilterPrivacy flag — when true, Excel hides personal info from filter saves.",
+      "examples": [
+        "--prop workbook.filterPrivacy=true"
+      ],
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "workbook.showObjects": {
+      "type": "enum",
+      "values": ["all", "placeholders", "none"],
+      "aliases": ["showobjects"],
+      "add": false,
+      "set": true,
+      "get": true,
+      "description": "WorkbookProperties ShowObjects — visibility of embedded objects (charts, pictures, shapes) in the workbook view.",
+      "examples": [
+        "--prop workbook.showObjects=all",
+        "--prop workbook.showObjects=none"
+      ],
+      "readback": "all|placeholders|none",
+      "enforcement": "report"
+    },
+    "workbook.lockStructure": {
+      "type": "bool",
+      "aliases": ["lockstructure"],
+      "add": false,
+      "set": true,
+      "get": true,
+      "description": "WorkbookProtection LockStructure flag — when true, sheets cannot be added/deleted/renamed/reordered.",
+      "examples": [
+        "--prop workbook.lockStructure=true"
+      ],
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "workbook.lockWindows": {
+      "type": "bool",
+      "aliases": ["lockwindows"],
+      "add": false,
+      "set": true,
+      "get": true,
+      "description": "WorkbookProtection LockWindows flag — when true, workbook window size and position are locked.",
+      "examples": [
+        "--prop workbook.lockWindows=true"
+      ],
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "workbook.password": {
+      "type": "string",
+      "aliases": ["workbookpassword"],
+      "add": false,
+      "set": true,
+      "get": true,
+      "description": "WorkbookProtection legacy password (ECMA-376 short hash). Set the plaintext to apply; pass empty or 'none' to clear. Get returns '***' when present (the plaintext is not recoverable from the stored hash). Known weak — back-compat only.",
+      "examples": [
+        "--prop workbook.password=secret",
+        "--prop workbook.password=none"
+      ],
+      "readback": "*** if set, otherwise omitted",
+      "enforcement": "report"
     }
   }
 }

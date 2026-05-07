@@ -772,6 +772,9 @@
         "xaxis.labelrotation",
         "valaxis.labelrotation",
         "yaxis.labelrotation",
+        "xaxis.labelRotation",
+        "valaxis.labelRotation",
+        "yaxis.labelRotation",
         "xaxislabelrotation",
         "valaxislabelrotation",
         "yaxislabelrotation"
