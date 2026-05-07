@@ -131,13 +131,40 @@ public partial class ExcelHandler
 
     private string AddRow(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
     {
-        var index = position?.Index;
         var segments = parentPath.TrimStart('/').Split('/', 2);
         var sheetName = segments[0];
         var worksheet = FindWorksheet(sheetName)
             ?? throw new ArgumentException($"Sheet not found: {sheetName}");
         var sheetData = GetSheet(worksheet).GetFirstChild<SheetData>()
             ?? GetSheet(worksheet).AppendChild(new SheetData());
+
+        // Resolve --before / --after anchors (same shape as Excel CopyFrom):
+        // anchor must be /<sheetName>/row[K] in the same sheet.
+        int? index = position?.Index;
+        if (index == null && position != null && (position.After != null || position.Before != null))
+        {
+            int FindAnchorRow(string anchorPath)
+            {
+                var aSegs = anchorPath.TrimStart('/').Split('/', 2);
+                if (aSegs.Length < 2)
+                    throw new ArgumentException(
+                        $"Anchor must be a row path like /{sheetName}/row[K], got: {anchorPath}");
+                if (!aSegs[0].Equals(sheetName, StringComparison.OrdinalIgnoreCase))
+                    throw new ArgumentException(
+                        $"Anchor sheet '{aSegs[0]}' must match target sheet '{sheetName}'");
+                var am = Regex.Match(aSegs[1], @"^row\[(\d+)\]$");
+                if (!am.Success)
+                    throw new ArgumentException(
+                        $"Anchor must be a row path like /{sheetName}/row[K], got: {anchorPath}");
+                return (int)uint.Parse(am.Groups[1].Value);
+            }
+            // For row insertion, --before /Sheet1/row[5] means "the new row
+            // takes the row[5] slot, original row[5] shifts to row[6]". So
+            // resolved index == anchor row number. --after /Sheet1/row[5]
+            // means index == anchor + 1.
+            if (position.Before != null) index = FindAnchorRow(position.Before);
+            else index = FindAnchorRow(position.After!) + 1;
+        }
 
         var rowIdx = index ?? ((int)(sheetData.Elements<Row>().LastOrDefault()?.RowIndex?.Value ?? 0) + 1);
 
