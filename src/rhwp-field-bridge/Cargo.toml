@@ -5,5 +5,5 @@ edition = "2021"
 publish = false
 
 [dependencies]
-rhwp = { git = "https://github.com/edwardkim/rhwp.git", rev = "0fb3e6758b8ad11d2f3c3849c83b914684e83863" }
+rhwp = { git = "https://github.com/edwardkim/rhwp.git", rev = "62a458aa317e962cd3d0eec6096728c172d57110" }
 serde_json = "1"
