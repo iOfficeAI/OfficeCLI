@@ -30,6 +30,7 @@ $source = $null
 
 # Step 1: Try downloading (mirror first, github fallback)
 $tempFile = "$env:TEMP\$binary"
+$assetBase = $asset -replace '\.exe$', ''
 Write-Host "Downloading OfficeCLI..."
 if (Fetch-WithFallback "$mirrorBase/releases/latest/download/$asset" "$githubReleaseBase/$asset" $tempFile) {
     # Verify checksum if available
@@ -99,6 +100,35 @@ if ($existing) {
 
 New-Item -ItemType Directory -Force -Path $installDir | Out-Null
 Copy-Item -Force $source "$installDir\$binary"
+
+foreach ($sidecar in @("rhwp-field-bridge", "rhwp-officecli-bridge")) {
+    $sidecarAsset = "$assetBase-$sidecar.exe"
+    $sidecarTemp = "$env:TEMP\$sidecarAsset"
+    $sidecarTarget = Join-Path $installDir "$sidecar.exe"
+    $sidecarSource = $null
+
+    Write-Host "Checking optional HWP sidecar $sidecarAsset..."
+    try {
+        Invoke-WebRequest -Uri "https://github.com/$repo/releases/latest/download/$sidecarAsset" -OutFile $sidecarTemp
+        $sidecarSource = $sidecarTemp
+    } catch {
+        $candidates = @(".\$sidecarAsset", ".\bin\$sidecarAsset", ".\bin\release\$sidecarAsset", ".\$sidecar.exe", ".\bin\$sidecar.exe", ".\bin\release\$sidecar.exe")
+        foreach ($candidate in $candidates) {
+            if (Test-Path $candidate) {
+                $sidecarSource = $candidate
+                break
+            }
+        }
+    }
+
+    if ($sidecarSource) {
+        Copy-Item -Force $sidecarSource $sidecarTarget
+        Write-Host "Installed HWP sidecar: $sidecarTarget"
+    } else {
+        Write-Host "Optional HWP sidecar unavailable: $sidecarAsset. Binary .hwp create/read/edit will be dependency-gated."
+    }
+    Remove-Item -Force $sidecarTemp -ErrorAction SilentlyContinue
+}
 
 Remove-Item -Force $tempFile -ErrorAction SilentlyContinue
 

@@ -72,6 +72,7 @@ esac
 SOURCE=""
 
 # Step 1: Try downloading (mirror first, github fallback)
+ASSET_BASE="${ASSET%.exe}"
 echo "Downloading OfficeCLI ($ASSET)..."
 if fetch_with_fallback \
         "$MIRROR_BASE/releases/latest/download/$ASSET" \
@@ -158,6 +159,45 @@ if [ "$(uname -s)" = "Darwin" ]; then
 fi
 
 mv -f "$INSTALL_DIR/$BINARY_NAME.new" "$INSTALL_DIR/$BINARY_NAME"
+
+install_sidecar() {
+    local sidecar="$1"
+    local sidecar_asset="${ASSET_BASE}-${sidecar}"
+    local sidecar_source=""
+    local tmp_path="/tmp/${sidecar_asset}"
+    local target_path="$INSTALL_DIR/$sidecar"
+
+    echo "Checking optional HWP sidecar $sidecar_asset..."
+    if curl -fsSL "https://github.com/$REPO/releases/latest/download/$sidecar_asset" -o "$tmp_path" 2>/dev/null; then
+        sidecar_source="$tmp_path"
+    else
+        for candidate in "./$sidecar_asset" "./bin/$sidecar_asset" "./bin/release/$sidecar_asset" "./$sidecar" "./bin/$sidecar" "./bin/release/$sidecar"; do
+            if [ -f "$candidate" ]; then
+                sidecar_source="$candidate"
+                break
+            fi
+        done
+    fi
+
+    if [ -z "$sidecar_source" ]; then
+        echo "Optional HWP sidecar unavailable: $sidecar_asset. Binary .hwp create/read/edit will be dependency-gated."
+        rm -f "$tmp_path"
+        return 0
+    fi
+
+    cp "$sidecar_source" "$target_path.new"
+    chmod +x "$target_path.new"
+    if [ "$(uname -s)" = "Darwin" ]; then
+        xattr -d com.apple.quarantine "$target_path.new" 2>/dev/null || true
+        codesign -s - -f "$target_path.new" 2>/dev/null || true
+    fi
+    mv -f "$target_path.new" "$target_path"
+    rm -f "$tmp_path"
+    echo "Installed HWP sidecar: $target_path"
+}
+
+install_sidecar "rhwp-field-bridge"
+install_sidecar "rhwp-officecli-bridge"
 
 # Auto-add to PATH if needed
 case ":$PATH:" in
