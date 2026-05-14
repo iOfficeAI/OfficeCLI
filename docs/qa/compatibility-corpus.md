@@ -74,8 +74,9 @@ HWPX `custom` remains the default provider; rhwp-bridge stays opt-in only and
 must not be promoted to default until evidence parity is reached. HWP defaults
 to `rhwp-bridge`. The matrix covers every expected-capability operation for
 both `custom` and `rhwp-bridge`, with blocked provider paths carrying typed
-reasons such as `unsupported_engine`, `binary_hwp_mutation_forbidden`, and
-`binary_hwp_write_forbidden`. Hancom is `optional` on every row; it can support
+reasons such as `unsupported_engine`, `binary_hwp_mutation_forbidden`,
+`binary_hwp_write_forbidden`, `rhwp_runtime_missing`, and `rhwp_api_missing`.
+Hancom is `optional` on every row; it can support
 a future status promotion but must not be required by normal CI.
 
 ## Visual Diff Thresholds

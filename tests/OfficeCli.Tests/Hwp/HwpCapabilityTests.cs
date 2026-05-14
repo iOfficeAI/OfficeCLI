@@ -33,6 +33,7 @@ public class HwpCapabilityTests : IDisposable
             Assert.Contains("read_text", capability.Operations.Keys);
             Assert.Contains("render_svg", capability.Operations.Keys);
             Assert.Contains("fill_field", capability.Operations.Keys);
+            Assert.Contains("create_blank", capability.Operations.Keys);
             Assert.Contains("save_original", capability.Operations.Keys);
             Assert.Contains("save_as_hwp", capability.Operations.Keys);
         }
@@ -58,6 +59,8 @@ public class HwpCapabilityTests : IDisposable
     {
         Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", null);
         Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", null);
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", null);
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", null);
         var report = HwpCapabilityFactory.BuildReport("officecli:test");
         var hwp = report.Formats["hwp"];
 
@@ -69,7 +72,7 @@ public class HwpCapabilityTests : IDisposable
             hwp.Operations["fill_field"].Status);
         Assert.Equal("binary_hwp_write_forbidden",
             hwp.Operations["save_original"].UnsupportedReason);
-        Assert.Equal("binary_hwp_write_forbidden",
+        Assert.Equal("bridge_not_enabled",
             hwp.Operations["save_as_hwp"].UnsupportedReason);
     }
 

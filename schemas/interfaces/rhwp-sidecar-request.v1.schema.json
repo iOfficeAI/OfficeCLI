@@ -3,15 +3,39 @@
   "$id": "officecli/interfaces/rhwp-sidecar-request/v1",
   "title": "OfficeCLI rhwp Sidecar Request",
   "type": "object",
-  "required": ["schemaVersion", "operation", "format", "inputPath"],
+  "required": ["schemaVersion", "operation", "format"],
   "properties": {
     "schemaVersion": { "type": "integer", "const": 1 },
-    "operation": { "type": "string" },
+    "operation": {
+      "type": "string",
+      "enum": [
+        "create_blank",
+        "read_text",
+        "render_svg",
+        "list_fields",
+        "read_field",
+        "fill_field",
+        "replace_text",
+        "table_map",
+        "set_table_cell",
+        "save_as_hwp"
+      ]
+    },
     "format": { "type": "string", "enum": ["hwp", "hwpx"] },
     "inputPath": { "type": "string" },
     "outputPath": { "type": "string" },
     "arguments": { "type": "object" },
     "json": { "type": "boolean" }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": { "operation": { "const": "create_blank" } },
+        "required": ["operation"]
+      },
+      "then": { "required": ["outputPath"] },
+      "else": { "required": ["inputPath"] }
+    }
+  ]
 }

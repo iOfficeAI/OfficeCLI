@@ -7,6 +7,7 @@ using DocumentFormat.OpenXml.Spreadsheet;
 using DocumentFormat.OpenXml.Wordprocessing;
 using DocumentFormat.OpenXml.Presentation;
 using OfficeCli.Core;
+using OfficeCli.Handlers.Hwp;
 
 namespace OfficeCli;
 
@@ -28,6 +29,9 @@ public static class BlankDocCreator
                 break;
             case ".hwpx":
                 CreateHwpx(path);
+                break;
+            case ".hwp":
+                HwpBlankCreator.Create(path);
                 break;
             default:
                 if (TryCreateViaPlugin(path, ext)) break;

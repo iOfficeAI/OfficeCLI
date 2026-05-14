@@ -4,7 +4,7 @@
 
 **모든 AI 에이전트에게 Word, Excel, PowerPoint의 완전한 제어권을 — 단 한 줄의 코드로.**
 
-오픈소스. 단일 바이너리. Office 설치 불필요. 의존성 제로. 모든 플랫폼 지원.
+오픈소스. 자체 완결형 바이너리. Office 설치 불필요. 모든 플랫폼 지원.
 
 **에이전트 친화적 렌더링 엔진 내장** — 에이전트가 자신이 만든 것을 "볼" 수 있고, Office 불필요. `.docx` / `.xlsx` / `.pptx`를 HTML 또는 PNG로 렌더링하며, *렌더링 → 보기 → 수정* 루프는 바이너리가 실행되는 어디서나 닫힙니다.
 
@@ -198,7 +198,9 @@ officecli add deck.pptx / --type slide --prop title="Q4 Report"
 
 ## 설치
 
-단일 자체 완결형 바이너리로 제공. .NET 런타임 내장 -- 설치할 것도, 관리할 런타임도 없습니다.
+자체 완결형 OfficeCLI 바이너리로 제공됩니다. 실험적 binary HWP 지원은
+`rhwp-officecli-bridge`와 `rhwp-field-bridge` sidecar를 바이너리 옆에 함께
+설치해 `.hwp` 생성/읽기/렌더링/수정 경로가 수동 환경변수 없이 동작하게 합니다.
 
 **원라인 설치:**
 

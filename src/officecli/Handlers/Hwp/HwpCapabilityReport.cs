@@ -54,6 +54,7 @@ public static class HwpCapabilityConstants
     public const string OperationFillField = "fill_field";
     public const string OperationReplaceText = "replace_text";
     public const string OperationSetTableCell = "set_table_cell";
+    public const string OperationCreateBlank = "create_blank";
     public const string OperationSaveOriginal = "save_original";
     public const string OperationSaveAsHwp = "save_as_hwp";
 
@@ -66,6 +67,8 @@ public static class HwpCapabilityConstants
     public const string ReasonBridgeTimeout = "bridge_timeout";
     public const string ReasonBridgeInvalidJson = "bridge_invalid_json";
     public const string ReasonBridgeExitNonZero = "bridge_exit_nonzero";
+    public const string ReasonRhwpRuntimeMissing = "rhwp_runtime_missing";
+    public const string ReasonRhwpApiMissing = "rhwp_api_missing";
     public const string ReasonBinaryHwpMutationForbidden = "binary_hwp_mutation_forbidden";
     public const string ReasonBinaryHwpWriteForbidden = "binary_hwp_write_forbidden";
     public const string ReasonFixtureValidationFailed = "fixture_validation_failed";

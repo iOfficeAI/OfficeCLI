@@ -33,6 +33,7 @@ public sealed class HwpCompatibilityCorpusTests
         HwpCapabilityConstants.OperationFillField,
         HwpCapabilityConstants.OperationReplaceText,
         HwpCapabilityConstants.OperationSetTableCell,
+        HwpCapabilityConstants.OperationCreateBlank,
         HwpCapabilityConstants.OperationSaveOriginal,
         HwpCapabilityConstants.OperationSaveAsHwp
     };
@@ -60,6 +61,8 @@ public sealed class HwpCompatibilityCorpusTests
         HwpCapabilityConstants.ReasonBridgeTimeout,
         HwpCapabilityConstants.ReasonBridgeInvalidJson,
         HwpCapabilityConstants.ReasonBridgeExitNonZero,
+        HwpCapabilityConstants.ReasonRhwpRuntimeMissing,
+        HwpCapabilityConstants.ReasonRhwpApiMissing,
         HwpCapabilityConstants.ReasonBinaryHwpMutationForbidden,
         HwpCapabilityConstants.ReasonBinaryHwpWriteForbidden,
         HwpCapabilityConstants.ReasonFixtureValidationFailed,

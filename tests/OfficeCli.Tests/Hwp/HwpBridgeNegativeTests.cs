@@ -10,11 +10,15 @@ public class HwpBridgeNegativeTests : IDisposable
     private readonly List<string> _tempFiles = new();
     private readonly string? _oldEngine = Environment.GetEnvironmentVariable("OFFICECLI_HWP_ENGINE");
     private readonly string? _oldBridge = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH");
+    private readonly string? _oldRhwp = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_BIN");
+    private readonly string? _oldApi = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_API_BIN");
 
     public void Dispose()
     {
         Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", _oldEngine);
         Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", _oldBridge);
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", _oldRhwp);
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", _oldApi);
         foreach (var path in _tempFiles)
         {
             try { File.Delete(path); } catch { }
@@ -25,6 +29,9 @@ public class HwpBridgeNegativeTests : IDisposable
     public void HwpViewTextJson_WithoutExperimentalEnv_ReturnsBridgeNotEnabled()
     {
         Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", null);
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", null);
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", null);
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", null);
         var hwp = CreateFakeHwp();
 
         var (exitCode, stdout) = Invoke(["view", hwp, "text", "--json"]);

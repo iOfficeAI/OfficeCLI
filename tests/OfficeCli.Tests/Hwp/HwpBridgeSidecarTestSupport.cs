@@ -127,6 +127,75 @@ exit 2
         File.WriteAllText(path, """
 #!/bin/sh
 cmd="$1"
+if [ "$cmd" = "create-blank" ]; then
+  output=""
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--output" ]; then
+      shift
+      output="$1"
+    fi
+    shift
+  done
+  printf 'fake blank hwp' > "$output"
+  printf '{"created":true,"operation":"create-blank","output":"%s","engineVersion":"rhwp-api v0.test","format":"hwp","warnings":["experimental create-blank"]}\n' "$output"
+  exit 0
+fi
+if [ "$cmd" = "read-text" ]; then
+  input=""
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--input" ]; then
+      shift
+      input="$1"
+    fi
+    shift
+  done
+  text="$(cat "$input" 2>/dev/null || printf '')"
+  if [ "${input##*.}" = "hwpx" ]; then
+    text="$(python3 - "$input" <<'PY'
+import html
+import re
+import sys
+import zipfile
+
+texts = []
+with zipfile.ZipFile(sys.argv[1]) as archive:
+    for name in sorted(archive.namelist()):
+        if name.startswith("Contents/section") and name.endswith(".xml"):
+            xml = archive.read(name).decode("utf-8", errors="ignore")
+            texts.extend(html.unescape(value) for value in re.findall(r"<(?:\w+:)?t[^>]*>(.*?)</(?:\w+:)?t>", xml, re.S))
+print(" ".join(texts), end="")
+PY
+)"
+  fi
+  python3 - "$text" <<'PY'
+import json
+import sys
+
+text = sys.argv[1]
+print(json.dumps({
+    "text": text,
+    "pages": [{"page": 1, "text": text}],
+    "engineVersion": "rhwp-api v0.test",
+    "format": "hwp",
+    "warnings": []
+}, ensure_ascii=False))
+PY
+  exit 0
+fi
+if [ "$cmd" = "render-svg" ]; then
+  out=""
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--out-dir" ]; then
+      shift
+      out="$1"
+    fi
+    shift
+  done
+  mkdir -p "$out"
+  printf '<svg><text>api page</text></svg>' > "$out/page_001.svg"
+  printf '{"engineVersion":"rhwp-api v0.test","format":"hwp","manifest":"%s/manifest.json","pages":[{"page":1,"path":"%s/page_001.svg","sha256":"abc123"}],"warnings":[]}\n' "$out" "$out"
+  exit 0
+fi
 if [ "$cmd" = "list-fields" ]; then
   printf '%s\n' '{"fields":[{"fieldId":7,"fieldType":"clickhere","name":"applicant","value":"홍길동"}],"engineVersion":"rhwp-api v0.test","format":"hwp","warnings":[]}'
   exit 0
@@ -199,6 +268,19 @@ PY
 fi
 if [ "$cmd" = "get-cell-text" ]; then
   printf '%s\n' '{"cell":{"section":0,"parentPara":2,"control":0,"cell":1,"cellPara":0,"offset":0,"count":1000,"text":"셀값"},"engineVersion":"rhwp-api v0.test","format":"hwp","warnings":[]}'
+  exit 0
+fi
+if [ "$cmd" = "save-as-hwp" ]; then
+  output=""
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--output" ]; then
+      shift
+      output="$1"
+    fi
+    shift
+  done
+  printf 'fake exported hwp' > "$output"
+  printf '{"saved":true,"operation":"save-as-hwp","output":"%s","outputFormat":"hwp","engineVersion":"rhwp-api v0.test","format":"hwpx","warnings":["experimental save-as-hwp"]}\n' "$output"
   exit 0
 fi
 echo "unexpected api command: $cmd" >&2

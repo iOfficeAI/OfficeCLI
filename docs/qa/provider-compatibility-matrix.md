@@ -39,8 +39,9 @@ external-manual
   HWPX operation it claims.
 - HWP → `rhwp-bridge` is the default provider. `custom` is unsupported for
   binary HWP read/render paths under `unsupported_engine` and for mutations
-  (`fill_field`, `replace_text`, `set_table_cell`, `save_as_hwp`) under the
-  binary-write block.
+  (`fill_field`, `replace_text`, `set_table_cell`) under the binary mutation
+  block. `create_blank` and `save_as_hwp` are rhwp-backed package-sidecar
+  operations.
 - Hancom — every row carries `hancomLane = optional`. Hancom evidence may
   *support* a future status promotion but never replaces corpus or round-trip
   evidence and must not be required by normal CI.
@@ -74,6 +75,8 @@ binary_hwp_write_forbidden
 fixture_validation_failed
 capability_schema_invalid
 bridge_*
+rhwp_runtime_missing
+rhwp_api_missing
 ```
 
 ## Tests

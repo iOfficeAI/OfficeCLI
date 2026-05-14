@@ -40,6 +40,8 @@ public sealed class HwpRoundTripCorpusTests
         HwpCapabilityConstants.ReasonBridgeTimeout,
         HwpCapabilityConstants.ReasonBridgeInvalidJson,
         HwpCapabilityConstants.ReasonBridgeExitNonZero,
+        HwpCapabilityConstants.ReasonRhwpRuntimeMissing,
+        HwpCapabilityConstants.ReasonRhwpApiMissing,
         HwpCapabilityConstants.ReasonBinaryHwpMutationForbidden,
         HwpCapabilityConstants.ReasonBinaryHwpWriteForbidden,
         HwpCapabilityConstants.ReasonFixtureValidationFailed,

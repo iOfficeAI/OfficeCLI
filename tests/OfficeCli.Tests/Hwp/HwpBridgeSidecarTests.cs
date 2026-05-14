@@ -95,6 +95,62 @@ public partial class HwpBridgeSidecarTests : IDisposable
     }
 
     [Fact]
+    public void ReadText_PrefersRhwpApiBridgeWhenConfigured()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var bridgeDll = LocateBridgeDll();
+        var fakeApi = CreateFakeRhwpApi();
+        var input = CreateInput(".hwp");
+
+        var result = RunBridge(
+            bridgeDll,
+            CreateFakeRhwp(),
+            ["read-text", "--format", "hwp", "--input", input, "--json"],
+            fakeApi);
+
+        Assert.Equal(0, result.ExitCode);
+        var root = JsonNode.Parse(result.Stdout)!;
+        Assert.Equal("before before", root["text"]!.GetValue<string>());
+        Assert.Equal("rhwp-api v0.test", root["engineVersion"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void CreateBlank_DelegatesToRhwpApiBridgeAndCreatesOutput()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var bridgeDll = LocateBridgeDll();
+        var fakeApi = CreateFakeRhwpApi();
+        var output = CreateOutput(".hwp");
+
+        var result = RunBridge(
+            bridgeDll,
+            CreateFakeRhwp(),
+            ["create-blank", "--output", output, "--json"],
+            fakeApi);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.True(File.Exists(output));
+        var root = JsonNode.Parse(result.Stdout)!;
+        Assert.True(root["created"]!.GetValue<bool>());
+        Assert.Equal(output, root["output"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void OfficeCliCreateHwp_RoutesThroughRhwpApiBridge()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", CreateFakeRhwpApi());
+        var output = CreateOutput(".hwp");
+
+        var (exitCode, stdout) = InvokeOfficeCli(["create", output, "--json"]);
+
+        Assert.Equal(0, exitCode);
+        Assert.True(File.Exists(output));
+        var root = JsonNode.Parse(stdout)!;
+        Assert.True(root["success"]!.GetValue<bool>());
+    }
+
+    [Fact]
     public void ListFields_DelegatesToRhwpApiBridge()
     {
         if (OperatingSystem.IsWindows()) return;
@@ -184,6 +240,52 @@ public partial class HwpBridgeSidecarTests : IDisposable
         var root = JsonNode.Parse(result.Stdout)!;
         Assert.Equal(output, root["output"]!.GetValue<string>());
         Assert.Equal(2, root["replacement"]!["count"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public void SaveAsHwp_DelegatesToRhwpApiBridgeAndCreatesOutput()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var bridgeDll = LocateBridgeDll();
+        var fakeApi = CreateFakeRhwpApi();
+        var input = CreateInput(".hwpx");
+        var output = CreateOutput(".hwp");
+
+        var result = RunBridge(
+            bridgeDll,
+            CreateFakeRhwp(),
+            ["save-as-hwp", "--format", "hwpx", "--input", input, "--output", output, "--json"],
+            fakeApi);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.True(File.Exists(output));
+        var root = JsonNode.Parse(result.Stdout)!;
+        Assert.True(root["saved"]!.GetValue<bool>());
+        Assert.Equal(output, root["output"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void OfficeCliSetSaveAsHwp_RoutesThroughRhwpBridge()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", LocateBridgeDll());
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", CreateFakeRhwpApi());
+        var input = CreateInput(".hwpx");
+        var output = CreateOutput(".hwp");
+
+        var (exitCode, stdout) = InvokeOfficeCli(
+            [
+                "set", input, "/save-as-hwp",
+                "--prop", $"output={output}",
+                "--json"
+            ]);
+
+        Assert.Equal(0, exitCode);
+        Assert.True(File.Exists(output));
+        var root = JsonNode.Parse(stdout)!;
+        Assert.True(root["success"]!.GetValue<bool>());
+        Assert.Equal(output, root["data"]!["outputPath"]!.GetValue<string>());
+        Assert.Equal("rhwp-bridge", root["data"]!["engine"]!.GetValue<string>());
     }
 
     [Fact]

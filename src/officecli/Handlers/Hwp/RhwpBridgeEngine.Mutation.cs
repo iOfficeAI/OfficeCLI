@@ -363,9 +363,22 @@ public sealed partial class RhwpBridgeEngine
         => Task.FromException<HwpMutationResult>(
             MutationUnsupported(request.Format, HwpCapabilityConstants.OperationSaveOriginal));
 
-    public Task<HwpMutationResult> SaveAsHwpAsync(HwpSaveAsHwpRequest request, CancellationToken ct)
-        => Task.FromException<HwpMutationResult>(
-            MutationUnsupported(request.Format, HwpCapabilityConstants.OperationSaveAsHwp));
+    public async Task<HwpMutationResult> SaveAsHwpAsync(HwpSaveAsHwpRequest request, CancellationToken ct)
+    {
+        var formatArg = FormatKey(request.Format);
+        var args = new[]
+        {
+            "save-as-hwp", "--format", formatArg, "--input", request.InputPath,
+            "--output", request.OutputPath, "--json"
+        };
+        var outputJson = await RunBridgeAsync(args, RenderSvgTimeoutMs, ct).ConfigureAwait(false);
+        EnsureOutputExists(request.OutputPath);
+        return ParseMutationResult(
+            outputJson,
+            request.OutputPath,
+            "save-as-hwp",
+            "rhwp-api save-as-hwp output file created; caller must verify round-trip before production use.");
+    }
 
     private static void EnsureOutputExists(string outputPath)
     {

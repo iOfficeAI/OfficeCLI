@@ -70,6 +70,7 @@ static partial class CommandBuilder
         {
             var commands = HwpCapabilityJsonMapper.ToJsonArray([
                 "officecli capabilities --json",
+                "officecli create file.hwp --json",
                 "officecli view file.hwp text --json",
                 "officecli view file.hwp svg --page 1 --json",
                 "officecli view file.hwp fields --json",
@@ -77,10 +78,12 @@ static partial class CommandBuilder
                 "officecli set file.hwp /field --prop name=회사명 --prop value=리지 --prop output=out.hwp --json",
                 "officecli set file.hwp /text --prop find=마케팅 --prop value=브릿지 --prop output=out.hwp --json",
                 "officecli set file.hwp /text --prop find=마케팅 --prop value=브릿지 --in-place --backup --verify --json",
-                "officecli set file.hwp /table/cell --prop section=0 --prop parent-para=3 --prop control=0 --prop cell=0 --prop value=오피스셀 --prop output=out.hwp --json"
+                "officecli set file.hwp /table/cell --prop section=0 --prop parent-para=3 --prop control=0 --prop cell=0 --prop value=오피스셀 --prop output=out.hwp --json",
+                "officecli set file.hwpx /save-as-hwp --prop output=out.hwp --json"
             ]);
             var setup = HwpCapabilityJsonMapper.ToJsonArray([
-                "export OFFICECLI_HWP_ENGINE=rhwp-experimental",
+                "run ./dev-install.sh to install officecli with rhwp sidecars",
+                "optional: export OFFICECLI_HWP_ENGINE=rhwp-experimental",
                 "export OFFICECLI_RHWP_BIN=/path/to/rhwp",
                 "export OFFICECLI_RHWP_BRIDGE_PATH=/path/to/rhwp-officecli-bridge.dll",
                 "export OFFICECLI_RHWP_API_BIN=/path/to/rhwp-field-bridge"
@@ -91,10 +94,10 @@ static partial class CommandBuilder
                 "claiming corpus-wide round-trip fidelity without fixtures"
             ]);
             var requiredEnv = new JsonArray();
-            requiredEnv.Add((JsonNode?)BuildEnvSpec("OFFICECLI_HWP_ENGINE", "rhwp-experimental", "selects the experimental rhwp bridge"));
-            requiredEnv.Add((JsonNode?)BuildEnvSpec("OFFICECLI_RHWP_BIN", "/path/to/rhwp", "stock rhwp CLI for text/SVG read-render"));
-            requiredEnv.Add((JsonNode?)BuildEnvSpec("OFFICECLI_RHWP_BRIDGE_PATH", "/path/to/rhwp-officecli-bridge.dll", "C# bridge invoked by OfficeCLI"));
-            requiredEnv.Add((JsonNode?)BuildEnvSpec("OFFICECLI_RHWP_API_BIN", "/path/to/rhwp-field-bridge", "Rust rhwp API sidecar for fields/text/table mutation"));
+            requiredEnv.Add((JsonNode?)BuildEnvSpec("OFFICECLI_HWP_ENGINE", "rhwp-experimental", "optional override; packaged sidecars are auto-discovered when present"));
+            requiredEnv.Add((JsonNode?)BuildEnvSpec("OFFICECLI_RHWP_BIN", "/path/to/rhwp", "optional stock rhwp CLI fallback for text/SVG read-render"));
+            requiredEnv.Add((JsonNode?)BuildEnvSpec("OFFICECLI_RHWP_BRIDGE_PATH", "/path/to/rhwp-officecli-bridge.dll", "optional explicit C# bridge path invoked by OfficeCLI"));
+            requiredEnv.Add((JsonNode?)BuildEnvSpec("OFFICECLI_RHWP_API_BIN", "/path/to/rhwp-field-bridge", "optional explicit Rust rhwp API sidecar path for create/fields/text/table/export"));
             var diagnostics = HwpCapabilityJsonMapper.ToJsonArray([
                 "officecli hwp doctor --json",
                 "officecli capabilities --json",
@@ -102,6 +105,7 @@ static partial class CommandBuilder
             ]);
             var recipes = new JsonObject
             {
+                ["createBlank"] = "officecli create file.hwp --json",
                 ["readText"] = "officecli view file.hwp text --json",
                 ["renderSvg"] = "officecli view file.hwp svg --page 1 --json",
                 ["listFields"] = "officecli view file.hwp fields --json",
@@ -109,7 +113,8 @@ static partial class CommandBuilder
                 ["setField"] = "officecli set file.hwp /field --prop name=회사명 --prop value=리지 --prop output=out.hwp --json",
                 ["replaceText"] = "officecli set file.hwp /text --prop find=마케팅 --prop value=브릿지 --prop output=out.hwp --json",
                 ["replaceTextInPlace"] = "officecli set file.hwp /text --prop find=마케팅 --prop value=브릿지 --in-place --backup --verify --json",
-                ["setTableCell"] = "officecli set file.hwp /table/cell --prop section=0 --prop parent-para=3 --prop control=0 --prop cell=0 --prop value=오피스셀 --prop output=out.hwp --json"
+                ["setTableCell"] = "officecli set file.hwp /table/cell --prop section=0 --prop parent-para=3 --prop control=0 --prop cell=0 --prop value=오피스셀 --prop output=out.hwp --json",
+                ["saveAsHwp"] = "officecli set file.hwpx /save-as-hwp --prop output=out.hwp --json"
             };
             var policies = HwpCapabilityJsonMapper.ToJsonArray([
                 "default mutation mode writes to --prop output=<path>",
@@ -141,6 +146,8 @@ static partial class CommandBuilder
         writer.WriteLine("HWP / rhwp Bridge Help (experimental)");
         writer.WriteLine();
         writer.WriteLine("Setup:");
+        writer.WriteLine("  ./dev-install.sh");
+        writer.WriteLine("  # optional explicit overrides:");
         writer.WriteLine("  export OFFICECLI_HWP_ENGINE=rhwp-experimental");
         writer.WriteLine("  export OFFICECLI_RHWP_BIN=/path/to/rhwp");
         writer.WriteLine("  export OFFICECLI_RHWP_BRIDGE_PATH=/path/to/rhwp-officecli-bridge.dll");
@@ -155,6 +162,7 @@ static partial class CommandBuilder
         writer.WriteLine("  officecli rhwp");
         writer.WriteLine();
         writer.WriteLine("Read/render:");
+        writer.WriteLine("  officecli create file.hwp --json");
         writer.WriteLine("  officecli view file.hwp text --json");
         writer.WriteLine("  officecli view file.hwp svg --page 1 --json");
         writer.WriteLine("  officecli view file.hwp fields --json");
@@ -165,13 +173,14 @@ static partial class CommandBuilder
         writer.WriteLine("  officecli set file.hwp /field --prop id=1584999796 --prop value=리지 --prop output=out.hwp --json");
         writer.WriteLine("  officecli set file.hwp /text --prop find=마케팅 --prop value=브릿지 --prop output=out.hwp --json");
         writer.WriteLine("  officecli set file.hwp /table/cell --prop section=0 --prop parent-para=3 --prop control=0 --prop cell=0 --prop value=오피스셀 --prop output=out.hwp --json");
+        writer.WriteLine("  officecli set file.hwpx /save-as-hwp --prop output=out.hwp --json");
         writer.WriteLine();
         writer.WriteLine("Safe in-place text replacement (experimental, creates backup + manifest first):");
         writer.WriteLine("  officecli set file.hwp /text --prop find=마케팅 --prop value=브릿지 --in-place --backup --verify --json");
         writer.WriteLine();
         writer.WriteLine("Sidecar binaries used by the experimental bridge:");
-        writer.WriteLine("  OFFICECLI_RHWP_BRIDGE_PATH  C# bridge for rhwp CLI read/render");
-        writer.WriteLine("  OFFICECLI_RHWP_API_BIN      Rust rhwp API sidecar for fields/text/table mutation");
+        writer.WriteLine("  rhwp-officecli-bridge       C# bridge for OfficeCLI HWP routing");
+        writer.WriteLine("  rhwp-field-bridge           Rust rhwp API sidecar for create/read/render/fields/text/table/export");
         writer.WriteLine();
         writer.WriteLine("Boundaries:");
         writer.WriteLine("  - experimental only; do not claim production default HWP support");
@@ -185,34 +194,48 @@ static partial class CommandBuilder
 
     private static JsonObject BuildHwpDoctorReport()
     {
+        var runtime = HwpRuntimeProbe.Probe();
         var checks = new JsonArray();
-        checks.Add((JsonNode?)BuildEnvCheck(
-                "OFFICECLI_HWP_ENGINE",
-                "rhwp-experimental",
-                requireFile: false,
-                "export OFFICECLI_HWP_ENGINE=rhwp-experimental"));
-        checks.Add((JsonNode?)BuildEnvCheck(
-                "OFFICECLI_RHWP_BIN",
-                expectedValue: null,
-                requireFile: true,
-                "export OFFICECLI_RHWP_BIN=/path/to/rhwp"));
-        checks.Add((JsonNode?)BuildEnvCheck(
-                "OFFICECLI_RHWP_BRIDGE_PATH",
-                expectedValue: null,
-                requireFile: true,
-                "export OFFICECLI_RHWP_BRIDGE_PATH=/path/to/rhwp-officecli-bridge.dll"));
-        checks.Add((JsonNode?)BuildEnvCheck(
-                "OFFICECLI_RHWP_API_BIN",
-                expectedValue: null,
-                requireFile: true,
-                "export OFFICECLI_RHWP_API_BIN=/path/to/rhwp-field-bridge"));
+        checks.Add((JsonNode?)BuildRuntimeCheck(
+            "OFFICECLI_HWP_ENGINE",
+            runtime.EngineRequested || (runtime.BridgeAvailable && runtime.ApiAvailable),
+            Environment.GetEnvironmentVariable("OFFICECLI_HWP_ENGINE"),
+            "optional when rhwp sidecars are installed beside officecli",
+            "export OFFICECLI_HWP_ENGINE=rhwp-experimental"));
+        checks.Add((JsonNode?)BuildRuntimeCheck(
+            "rhwp-officecli-bridge",
+            runtime.BridgeAvailable,
+            runtime.BridgePath,
+            "C# bridge sidecar discovered from env, officecli directory, current directory, or PATH",
+            "run ./dev-install.sh or export OFFICECLI_RHWP_BRIDGE_PATH=/path/to/rhwp-officecli-bridge"));
+        checks.Add((JsonNode?)BuildRuntimeCheck(
+            "rhwp-field-bridge",
+            runtime.ApiAvailable,
+            runtime.ApiPath,
+            "Rust rhwp API sidecar for .hwp create/mutate/export and direct read/render",
+            "run ./dev-install.sh or export OFFICECLI_RHWP_API_BIN=/path/to/rhwp-field-bridge"));
+        checks.Add((JsonNode?)BuildRuntimeCheck(
+            "read-render runtime",
+            runtime.ApiAvailable || runtime.RhwpAvailable,
+            runtime.ApiPath ?? runtime.RhwpPath,
+            "rhwp-field-bridge is preferred; stock rhwp is accepted only as read/render fallback",
+            "install rhwp-field-bridge beside officecli, or export OFFICECLI_RHWP_BIN=/path/to/rhwp"));
 
-        var ok = checks.OfType<JsonObject>().All(check => check["ok"]?.GetValue<bool>() == true);
+        var ok = runtime.BridgeAvailable && runtime.ApiAvailable;
         return new JsonObject
         {
             ["schemaVersion"] = 1,
             ["topic"] = "hwp-rhwp-doctor",
             ["ok"] = ok,
+            ["autoDiscovery"] = new JsonObject
+            {
+                ["bridgePath"] = runtime.BridgePath,
+                ["apiPath"] = runtime.ApiPath,
+                ["rhwpPath"] = runtime.RhwpPath,
+                ["readRenderAvailable"] = runtime.ReadRenderAvailable,
+                ["mutationAvailable"] = runtime.MutationAvailable,
+                ["createBlankAvailable"] = runtime.CreateBlankAvailable
+            },
             ["checks"] = checks,
             ["nextCommand"] = ok ? "officecli capabilities --json" : "officecli help hwp",
             ["capabilityProbe"] = "officecli capabilities --json"
@@ -248,6 +271,22 @@ static partial class CommandBuilder
             ["hint"] = ok ? null : hint
         };
     }
+
+    private static JsonObject BuildRuntimeCheck(
+        string name,
+        bool ok,
+        string? value,
+        string detail,
+        string hint)
+        => new()
+        {
+            ["name"] = name,
+            ["ok"] = ok,
+            ["isSet"] = !string.IsNullOrWhiteSpace(value),
+            ["value"] = value,
+            ["detail"] = detail,
+            ["hint"] = ok ? null : hint
+        };
 
     private static void WriteHwpDoctorText(TextWriter writer, JsonObject report)
     {

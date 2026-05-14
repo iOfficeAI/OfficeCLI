@@ -7,3 +7,4 @@ publish = false
 [dependencies]
 rhwp = { git = "https://github.com/edwardkim/rhwp.git", rev = "62a458aa317e962cd3d0eec6096728c172d57110" }
 serde_json = "1"
+sha2 = "0.10"

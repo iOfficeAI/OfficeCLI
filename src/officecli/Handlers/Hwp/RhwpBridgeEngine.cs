@@ -13,8 +13,6 @@ namespace OfficeCli.Handlers.Hwp;
 /// </summary>
 public sealed partial class RhwpBridgeEngine : IHwpEngine
 {
-    private const string BridgeExecutableName = "rhwp-officecli-bridge";
-    private const int CapabilitiesTimeoutMs = 2_000;
     private const int ReadTextTimeoutMs = 10_000;
     private const int RenderSvgTimeoutMs = 60_000;
     private const int FieldReadTimeoutMs = 10_000;
@@ -38,7 +36,7 @@ public sealed partial class RhwpBridgeEngine : IHwpEngine
     public static RhwpBridgeEngine? TryCreate(out string? missingReason)
     {
         missingReason = null;
-        var bridgePath = DiscoverBridge();
+        var bridgePath = HwpRuntimeProbe.DiscoverBridgePath();
         if (bridgePath == null)
         {
             missingReason = "bridge not found in OFFICECLI_RHWP_BRIDGE_PATH, executable directory, or PATH";
@@ -340,36 +338,6 @@ public sealed partial class RhwpBridgeEngine : IHwpEngine
             foreach (var w in wArr)
                 if (w?.GetValue<string>() is { } ws) warnings.Add(ws);
         return warnings.ToArray();
-    }
-
-    private static string? DiscoverBridge()
-    {
-        var envPath = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH");
-        if (!string.IsNullOrEmpty(envPath) && File.Exists(envPath))
-            return envPath;
-
-        var exeDir = Path.GetDirectoryName(
-            Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName);
-        if (exeDir != null)
-        {
-            foreach (var name in new[] { BridgeExecutableName, BridgeExecutableName + ".exe", BridgeExecutableName + ".dll" })
-            {
-                var candidate = Path.Combine(exeDir, name);
-                if (File.Exists(candidate)) return candidate;
-            }
-        }
-
-        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
-        foreach (var dir in pathEnv.Split(Path.PathSeparator))
-        {
-            foreach (var name in new[] { BridgeExecutableName, BridgeExecutableName + ".exe", BridgeExecutableName + ".dll" })
-            {
-                var candidate = Path.Combine(dir, name);
-                if (File.Exists(candidate)) return candidate;
-            }
-        }
-
-        return null;
     }
 
     private static string BridgeFileName(string bridgePath)

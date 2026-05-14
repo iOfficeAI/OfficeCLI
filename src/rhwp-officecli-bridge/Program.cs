@@ -16,8 +16,9 @@ internal static class BridgeProgram
         {
             return args[0] switch
             {
-                "read-text" => ReadText(args[1..]),
-                "render-svg" => RenderSvg(args[1..]),
+                "create-blank" => ApiBridge(args),
+                "read-text" => ApiBridgeAvailable() ? ApiBridge(args) : ReadText(args[1..]),
+                "render-svg" => ApiBridgeAvailable() ? ApiBridge(args) : RenderSvg(args[1..]),
                 "list-fields" => ApiBridge(args),
                 "get-field" => ApiBridge(args),
                 "set-field" => ApiBridge(args),
@@ -25,6 +26,7 @@ internal static class BridgeProgram
                 "get-cell-text" => ApiBridge(args),
                 "scan-cells" => ApiBridge(args),
                 "set-cell-text" => ApiBridge(args),
+                "save-as-hwp" => ApiBridge(args),
                 _ => Error($"unsupported command: {args[0]}", "unsupported_command")
             };
         }
@@ -112,10 +114,24 @@ internal static class BridgeProgram
             : throw new ArgumentException($"missing required option: {key}");
 
     private static string RhwpBinary()
-        => Environment.GetEnvironmentVariable("OFFICECLI_RHWP_BIN") ?? "rhwp";
+        => DiscoverExecutable(
+            Environment.GetEnvironmentVariable("OFFICECLI_RHWP_BIN"),
+            OperatingSystem.IsWindows() ? ["rhwp.exe", "rhwp"] : ["rhwp"])
+            ?? "rhwp";
 
     private static string RhwpApiBinary()
-        => Environment.GetEnvironmentVariable("OFFICECLI_RHWP_API_BIN") ?? "";
+        => DiscoverExecutable(
+            Environment.GetEnvironmentVariable("OFFICECLI_RHWP_API_BIN"),
+            OperatingSystem.IsWindows()
+                ? ["rhwp-field-bridge.exe", "rhwp-field-bridge"]
+                : ["rhwp-field-bridge"])
+            ?? "";
+
+    private static bool ApiBridgeAvailable()
+    {
+        var api = RhwpApiBinary();
+        return !string.IsNullOrWhiteSpace(api) && File.Exists(api);
+    }
 
     private static int ApiBridge(string[] args)
     {
@@ -180,8 +196,51 @@ internal static class BridgeProgram
 
     private static int Help()
     {
-        Console.WriteLine("rhwp-officecli-bridge read-text|render-svg|list-fields|get-field|set-field|replace-text|get-cell-text|scan-cells|set-cell-text --format hwp|hwpx --input <path> --json");
+        Console.WriteLine("rhwp-officecli-bridge create-blank|read-text|render-svg|list-fields|get-field|set-field|replace-text|get-cell-text|scan-cells|set-cell-text|save-as-hwp --format hwp|hwpx [--input <path>] [--output <path>] --json");
         return 0;
+    }
+
+    private static string? DiscoverExecutable(string? explicitPath, string[] names)
+    {
+        if (!string.IsNullOrWhiteSpace(explicitPath) && File.Exists(explicitPath))
+            return explicitPath;
+
+        foreach (var dir in CandidateDirectories())
+        {
+            foreach (var name in names)
+            {
+                var candidate = Path.Combine(dir, name);
+                if (File.Exists(candidate)) return candidate;
+            }
+        }
+
+        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
+        foreach (var dir in pathEnv.Split(Path.PathSeparator))
+        {
+            if (string.IsNullOrWhiteSpace(dir)) continue;
+            foreach (var name in names)
+            {
+                var candidate = Path.Combine(dir, name);
+                if (File.Exists(candidate)) return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static IEnumerable<string> CandidateDirectories()
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var dir in new[]
+        {
+            AppContext.BaseDirectory,
+            Path.GetDirectoryName(Environment.ProcessPath ?? ""),
+            Directory.GetCurrentDirectory()
+        })
+        {
+            if (string.IsNullOrWhiteSpace(dir)) continue;
+            var full = Path.GetFullPath(dir);
+            if (seen.Add(full)) yield return full;
+        }
     }
 
     private static void WriteJson<T>(T value)

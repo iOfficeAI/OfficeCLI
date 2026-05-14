@@ -93,31 +93,7 @@ public static class HwpCapabilityJsonMapper
         if (!IsReady(capability))
             return false;
 
-        var rhwp = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_BIN") ?? "rhwp";
-        var api = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_API_BIN");
-        return CommandOrFileExists(rhwp) && CommandOrFileExists(api);
-    }
-
-    private static bool CommandOrFileExists(string? pathOrCommand)
-    {
-        if (string.IsNullOrWhiteSpace(pathOrCommand))
-            return false;
-
-        if (pathOrCommand.Contains(Path.DirectorySeparatorChar)
-            || pathOrCommand.Contains(Path.AltDirectorySeparatorChar))
-        {
-            return File.Exists(pathOrCommand);
-        }
-
-        var path = Environment.GetEnvironmentVariable("PATH") ?? "";
-        foreach (var directory in path.Split(Path.PathSeparator))
-        {
-            if (string.IsNullOrWhiteSpace(directory)) continue;
-            if (File.Exists(Path.Combine(directory, pathOrCommand))) return true;
-            if (OperatingSystem.IsWindows()
-                && File.Exists(Path.Combine(directory, pathOrCommand + ".exe"))) return true;
-        }
-        return false;
+        return HwpRuntimeProbe.Probe().MutationAvailable;
     }
 
     private static IEnumerable<string> BuildBlockedBy(HwpOperationCapability capability)
@@ -132,9 +108,11 @@ public static class HwpCapabilityJsonMapper
     {
         if (capability.Operations.Values.Any(op =>
                 op.UnsupportedReason is HwpCapabilityConstants.ReasonBridgeNotEnabled
-                    or HwpCapabilityConstants.ReasonBridgeMissing))
+                    or HwpCapabilityConstants.ReasonBridgeMissing
+                    or HwpCapabilityConstants.ReasonRhwpRuntimeMissing
+                    or HwpCapabilityConstants.ReasonRhwpApiMissing))
         {
-            yield return "export OFFICECLI_HWP_ENGINE=rhwp-experimental";
+            yield return "run ./dev-install.sh to install rhwp sidecars beside officecli";
             yield return "export OFFICECLI_RHWP_BIN=/path/to/rhwp";
             yield return "export OFFICECLI_RHWP_BRIDGE_PATH=/path/to/rhwp-officecli-bridge.dll";
             yield return "export OFFICECLI_RHWP_API_BIN=/path/to/rhwp-field-bridge";
@@ -169,6 +147,9 @@ public static class HwpCapabilityJsonMapper
                 yield return "value";
                 yield return "output";
                 break;
+            case HwpCapabilityConstants.OperationSaveAsHwp:
+                yield return "output";
+                break;
         }
     }
 
@@ -182,6 +163,8 @@ public static class HwpCapabilityJsonMapper
             HwpCapabilityConstants.OperationFillField => "officecli set input.hwp /field --prop name=회사명 --prop value=리지 --prop output=output.hwp --json",
             HwpCapabilityConstants.OperationReplaceText => "officecli set input.hwp /text --prop find=마케팅 --prop value=브릿지 --prop output=output.hwp --json",
             HwpCapabilityConstants.OperationSetTableCell => "officecli set input.hwp /table/cell --prop section=0 --prop parent-para=3 --prop control=0 --prop cell=0 --prop value=오피스셀 --prop output=output.hwp --json",
+            HwpCapabilityConstants.OperationCreateBlank => "officecli create output.hwp --json",
+            HwpCapabilityConstants.OperationSaveAsHwp => "officecli set input.hwpx /save-as-hwp --prop output=output.hwp --json",
             _ => null
         };
 

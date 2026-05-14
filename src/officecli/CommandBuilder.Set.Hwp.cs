@@ -216,4 +216,56 @@ static partial class CommandBuilder
         }
         return 1;
     }
+
+    private static int HandleHwpSaveAsHwp(
+        string inputPath,
+        HwpFormat format,
+        Dictionary<string, string> properties,
+        bool json)
+    {
+        var output = FirstValue(properties, "output", "out");
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            var message = "HWP save-as-hwp requires --prop output=<path>.";
+            if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(message));
+            else Console.Error.WriteLine(message);
+            return 1;
+        }
+
+        var outputPath = Path.GetFullPath(output);
+        var outputDir = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrEmpty(outputDir)) Directory.CreateDirectory(outputDir);
+
+        var formatKey = format == HwpFormat.Hwp
+            ? HwpCapabilityConstants.FormatHwp
+            : HwpCapabilityConstants.FormatHwpx;
+        var engine = HwpEngineSelector.GetEngine(formatKey, HwpCapabilityConstants.OperationSaveAsHwp);
+        var request = new HwpSaveAsHwpRequest(format, inputPath, outputPath, json);
+        var result = engine.SaveAsHwpAsync(request, CancellationToken.None).GetAwaiter().GetResult();
+
+        if (json)
+        {
+            var envelope = new System.Text.Json.Nodes.JsonObject
+            {
+                ["success"] = true,
+                ["message"] = $"Saved HWP output -> {result.OutputPath}",
+                ["data"] = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["outputPath"] = result.OutputPath,
+                    ["engine"] = result.Engine,
+                    ["engineVersion"] = result.EngineVersion,
+                    ["evidence"] = HwpCapabilityJsonMapper.ToJsonArray(result.Evidence)
+                },
+                ["warnings"] = HwpCapabilityJsonMapper.ToJsonArray(result.Warnings)
+            };
+            Console.WriteLine(envelope.ToJsonString(OutputFormatter.PublicJsonOptions));
+        }
+        else
+        {
+            Console.WriteLine($"Saved HWP output -> {result.OutputPath}");
+            foreach (var warning in result.Warnings)
+                Console.Error.WriteLine($"WARNING: {warning}");
+        }
+        return 0;
+    }
 }

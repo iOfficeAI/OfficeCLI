@@ -175,7 +175,7 @@ officecli add deck.pptx / --type slide --prop title="Q4 Report"
 | Excel (.xlsx) | ✅ | ✅ | ✅ |
 | PowerPoint (.pptx) | ✅ | ✅ | ✅ |
 | HWPX (.hwpx) | 🧪 | 🧪 | 🧪 (`Resources/base.hwpx`) |
-| HWP (.hwp, binary) | 🧪 (rhwp bridge) | 🧪 (output-first + safe in-place text) | — |
+| HWP (.hwp, binary) | 🧪 (rhwp bridge) | 🧪 (output-first + safe in-place text) | 🧪 (rhwp sidecar) |
 
 > 🧪 = experimental, evidence-gated. HWP/HWPX support is active on `feat/hwpx` and is **not** at DOCX parity. Operation truth lives in `officecli capabilities --json`, the corpus manifests under `tests/fixtures/{hwp,hwpx,common}`, and Phase 36 docs in `docs/qa/`. See [`structure/03-format-support.md`](structure/03-format-support.md) and [`structure/04-providers.md`](structure/04-providers.md) before making any HWP/HWPX claim.
 
@@ -204,7 +204,10 @@ officecli add deck.pptx / --type slide --prop title="Q4 Report"
 
 ## Installation
 
-Ships as a single self-contained binary. The .NET runtime is embedded -- nothing to install, no runtime to manage.
+Ships as a self-contained OfficeCLI binary. Experimental binary HWP support
+also installs `rhwp-officecli-bridge` and `rhwp-field-bridge` sidecars beside
+the binary so `.hwp` create/read/render/mutation paths can run without manual
+environment variables.
 
 **One-line install:**
 

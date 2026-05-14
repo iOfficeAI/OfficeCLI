@@ -31,8 +31,9 @@ static partial class CommandBuilder
               officecli set form.hwp /text --prop find=마케팅 --prop value=브릿지 --prop output=out.hwp --json
               officecli set form.hwp /text --prop find=마케팅 --prop value=브릿지 --in-place --backup --verify --json
               officecli set table.hwp /table/cell --prop section=0 --prop parent-para=3 --prop control=0 --prop cell=0 --prop value=오피스셀 --prop output=out.hwp --json
+              officecli set form.hwpx /save-as-hwp --prop output=out.hwp --json
 
-            HWP requires OFFICECLI_HWP_ENGINE=rhwp-experimental plus bridge paths; run `officecli help hwp`.
+            HWP uses packaged rhwp sidecars when present, or OFFICECLI_HWP_ENGINE=rhwp-experimental plus bridge paths; run `officecli help hwp`.
             """) { TreatUnmatchedTokensAsErrors = false };
         setCommand.Add(setFileArg);
         setCommand.Add(setPathArg);
@@ -188,15 +189,27 @@ static partial class CommandBuilder
             if (string.Equals(extension, ".hwp", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(path, "/table/cell", StringComparison.OrdinalIgnoreCase))
                 return HandleHwpTableCellSet(file.FullName, HwpFormat.Hwp, properties, json);
+            if (string.Equals(extension, ".hwp", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(path, "/save-as-hwp", StringComparison.OrdinalIgnoreCase))
+                return HandleHwpSaveAsHwp(file.FullName, HwpFormat.Hwp, properties, json);
 
             if (string.Equals(extension, ".hwpx", StringComparison.OrdinalIgnoreCase)
-                && HwpEngineSelector.IsExperimentalBridgeEnabled()
+                && (HwpEngineSelector.IsExperimentalBridgeEnabled()
+                    || HwpEngineSelector.CanUseInstalledRuntime(
+                        HwpCapabilityConstants.FormatHwpx,
+                        HwpCapabilityConstants.OperationFillField))
                 && string.Equals(path, "/field", StringComparison.OrdinalIgnoreCase))
                 return HandleHwpFieldSet(file.FullName, HwpFormat.Hwpx, properties, json);
             if (string.Equals(extension, ".hwpx", StringComparison.OrdinalIgnoreCase)
-                && HwpEngineSelector.IsExperimentalBridgeEnabled()
+                && (HwpEngineSelector.IsExperimentalBridgeEnabled()
+                    || HwpEngineSelector.CanUseInstalledRuntime(
+                        HwpCapabilityConstants.FormatHwpx,
+                        HwpCapabilityConstants.OperationReplaceText))
                 && string.Equals(path, "/text", StringComparison.OrdinalIgnoreCase))
                 return HandleHwpTextReplace(file.FullName, HwpFormat.Hwpx, properties, json, inPlace, backup, verify);
+            if (string.Equals(extension, ".hwpx", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(path, "/save-as-hwp", StringComparison.OrdinalIgnoreCase))
+                return HandleHwpSaveAsHwp(file.FullName, HwpFormat.Hwpx, properties, json);
 
             if (TryResident(file.FullName, req =>
             {

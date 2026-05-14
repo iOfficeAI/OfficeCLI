@@ -596,14 +596,20 @@ static partial class CommandBuilder
         var formatKey = format == HwpFormat.Hwp
             ? HwpCapabilityConstants.FormatHwp
             : HwpCapabilityConstants.FormatHwpx;
+        var operation = modeKey is "text" or "t" ? HwpCapabilityConstants.OperationReadText
+            : modeKey is "svg" or "g" ? HwpCapabilityConstants.OperationRenderSvg
+            : modeKey is "fields" ? HwpCapabilityConstants.OperationListFields
+            : modeKey is "field" ? HwpCapabilityConstants.OperationReadField
+            : null;
 
-        if (!HwpEngineSelector.IsExperimentalBridgeEnabled())
+        if (!HwpEngineSelector.IsExperimentalBridgeEnabled()
+            && !HwpEngineSelector.CanUseInstalledRuntime(formatKey, operation))
         {
             var label = format == HwpFormat.Hwp ? "Binary .hwp" : "HWPX";
             throw new HwpEngineException(
-                $"{label} bridge view requires OFFICECLI_HWP_ENGINE=rhwp-experimental.",
+                $"{label} bridge view requires packaged rhwp sidecars or OFFICECLI_HWP_ENGINE=rhwp-experimental.",
                 HwpCapabilityConstants.ReasonBridgeNotEnabled,
-                "Set OFFICECLI_HWP_ENGINE=rhwp-experimental and install rhwp-officecli-bridge.",
+                "Run ./dev-install.sh, or set OFFICECLI_HWP_ENGINE=rhwp-experimental and install rhwp-officecli-bridge.",
                 [
                     HwpCapabilityConstants.OperationReadText,
                     HwpCapabilityConstants.OperationRenderSvg,
@@ -620,11 +626,6 @@ static partial class CommandBuilder
                 HwpCapabilityConstants.ModeNone);
         }
 
-        var operation = modeKey is "text" or "t" ? HwpCapabilityConstants.OperationReadText
-            : modeKey is "svg" or "g" ? HwpCapabilityConstants.OperationRenderSvg
-            : modeKey is "fields" ? HwpCapabilityConstants.OperationListFields
-            : modeKey is "field" ? HwpCapabilityConstants.OperationReadField
-            : null;
         var engine = HwpEngineSelector.GetEngine(formatKey, operation);
         var fileInfo = new FileInfo(filePath);
         var ct = CancellationToken.None;

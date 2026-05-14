@@ -56,6 +56,7 @@
               "fill_field",
               "replace_text",
               "set_table_cell",
+              "create_blank",
               "save_original",
               "save_as_hwp",
               "table_map"
@@ -88,6 +89,7 @@
             "fill_field",
             "replace_text",
             "set_table_cell",
+            "create_blank",
             "save_original",
             "save_as_hwp",
             "table_map"
@@ -105,6 +107,8 @@
             "bridge_timeout",
             "bridge_invalid_json",
             "bridge_exit_nonzero",
+            "rhwp_runtime_missing",
+            "rhwp_api_missing",
             "binary_hwp_mutation_forbidden",
             "binary_hwp_write_forbidden",
             "fixture_validation_failed",
@@ -150,6 +154,8 @@
             "bridge_timeout",
             "bridge_invalid_json",
             "bridge_exit_nonzero",
+            "rhwp_runtime_missing",
+            "rhwp_api_missing",
             "binary_hwp_mutation_forbidden",
             "binary_hwp_write_forbidden",
             "fixture_validation_failed",
@@ -168,6 +174,7 @@
               "fill_field",
               "replace_text",
               "set_table_cell",
+              "create_blank",
               "save_original",
               "save_as_hwp",
               "table_map"

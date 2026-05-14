@@ -31,9 +31,9 @@ Required fields:
 - `schemaVersion`
 - `operation`
 - `format`
-- `inputPath`
 
-Mutating operations must also include `outputPath`.
+All operations except `create_blank` must include `inputPath`. `create_blank`
+and mutating/export operations must include `outputPath`.
 
 ## Response Shape
 
@@ -55,6 +55,7 @@ Required fields:
 
 Supported HWP operations:
 
+- `create-blank`
 - `read-text`
 - `render-svg`
 - `list-fields`
@@ -63,6 +64,7 @@ Supported HWP operations:
 - `replace-text`
 - `table-map`
 - `set-table-cell`
+- `save-as-hwp`
 
 Supported HWPX rhwp operations:
 
@@ -72,6 +74,7 @@ Supported HWPX rhwp operations:
 - `read-field`
 - `fill-field`
 - `replace-text`
+- `save-as-hwp`
 
 Blocked operations must return typed errors instead of silent fallback.
 
@@ -105,6 +108,8 @@ Examples:
 ```text
 bridge_not_enabled
 bridge_missing
+rhwp_runtime_missing
+rhwp_api_missing
 unsupported_operation
 roundtrip_unverified
 binary_hwp_write_forbidden

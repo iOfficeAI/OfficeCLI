@@ -37,6 +37,8 @@ public sealed class HwpProviderCompatibilityMatrixTests
         HwpCapabilityConstants.ReasonBridgeTimeout,
         HwpCapabilityConstants.ReasonBridgeInvalidJson,
         HwpCapabilityConstants.ReasonBridgeExitNonZero,
+        HwpCapabilityConstants.ReasonRhwpRuntimeMissing,
+        HwpCapabilityConstants.ReasonRhwpApiMissing,
         HwpCapabilityConstants.ReasonBinaryHwpMutationForbidden,
         HwpCapabilityConstants.ReasonBinaryHwpWriteForbidden,
         HwpCapabilityConstants.ReasonFixtureValidationFailed,

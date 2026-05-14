@@ -98,6 +98,30 @@
     },
     {
       "format": "hwp",
+      "operation": "create_blank",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "src/rhwp-field-bridge/src/main.rs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "save_as_hwp",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "src/rhwp-field-bridge/src/main.rs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
       "operation": "read_text",
       "provider": "custom",
       "status": "unsupported",
@@ -167,6 +191,26 @@
       "hancomLane": "optional"
     },
     {
+      "format": "hwp",
+      "operation": "create_blank",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "unsupported_engine",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "save_as_hwp",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "binary_hwp_write_forbidden",
+      "hancomLane": "optional"
+    },
+    {
       "format": "hwpx",
       "operation": "read_text",
       "provider": "custom",
@@ -215,6 +259,18 @@
     },
     {
       "format": "hwpx",
+      "operation": "create_blank",
+      "provider": "custom",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "src/officecli/Resources/base.hwpx"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
       "operation": "read_text",
       "provider": "rhwp-bridge",
       "status": "experimental",
@@ -251,6 +307,16 @@
       "defaultProvider": false,
       "evidence": [],
       "blockedReason": "roundtrip_unverified",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "create_blank",
+      "provider": "rhwp-bridge",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "unsupported_engine",
       "hancomLane": "optional"
     }
   ]

@@ -3,6 +3,7 @@ set -e
 
 PROJECT="src/officecli/officecli.csproj"
 ALL_TARGETS="osx-arm64:officecli-mac-arm64 osx-x64:officecli-mac-x64 linux-x64:officecli-linux-x64 linux-arm64:officecli-linux-arm64 linux-musl-x64:officecli-linux-alpine-x64 linux-musl-arm64:officecli-linux-alpine-arm64 win-x64:officecli-win-x64.exe win-arm64:officecli-win-arm64.exe"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Detect current platform RID
 detect_local_rid() {
@@ -78,6 +79,8 @@ build_config() {
 
         mv -f "$OUTPUT/$NAME.new" "$OUTPUT/$NAME"
         cp "$TMPDIR/officecli.pdb" "$OUTPUT/${NAME%.*}.pdb"
+
+        "$SCRIPT_DIR/scripts/build-rhwp-sidecars.sh" "$OUTPUT" "$RID" "$CONFIG"
 
         rm -rf "$TMPDIR"
     done

@@ -32,6 +32,14 @@
         "set_table_cell": {
           "status": "experimental",
           "evidence": ["tests/golden/hwp/rhwp-tables/officecli-set-cell-hwp-table-readback.json"]
+        },
+        "create_blank": {
+          "status": "experimental",
+          "evidence": ["src/rhwp-field-bridge/src/main.rs"]
+        },
+        "save_as_hwp": {
+          "status": "experimental",
+          "evidence": ["src/rhwp-field-bridge/src/main.rs"]
         }
       }
     },
@@ -54,6 +62,10 @@
           "status": "unsupported",
           "reason": "roundtrip_unverified",
           "evidence": []
+        },
+        "create_blank": {
+          "status": "experimental",
+          "evidence": ["src/officecli/Resources/base.hwpx"]
         }
       }
     }

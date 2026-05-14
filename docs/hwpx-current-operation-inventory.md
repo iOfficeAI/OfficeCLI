@@ -10,7 +10,8 @@ evidence files listed here are complete.
 | `render_svg` | `none` | `unsupported` | none | none | no |
 | `fill_field` | `custom` | `experimental` | planned | none yet | no |
 | `save_original` | `custom` | `experimental` | planned | none yet | no |
-| `save_as_hwp` | `none` | `unsupported` | none | none | no |
+| `create_blank` | `custom` | `experimental` | `src/officecli/Resources/base.hwpx` | none yet | no |
+| `save_as_hwp` | `rhwp-bridge` | `experimental` | `src/rhwp-field-bridge/src/main.rs` | none yet | no |
 
 Current public wording must be:
 

@@ -298,7 +298,7 @@ internal static class OutputFormatter
 
     private static string BuildHwpNextCommand(string? code, string? operation)
     {
-        if (code is "bridge_not_enabled" or "bridge_missing")
+        if (code is "bridge_not_enabled" or "bridge_missing" or "rhwp_runtime_missing" or "rhwp_api_missing")
             return "officecli hwp doctor --json";
 
         if (operation is not null)
