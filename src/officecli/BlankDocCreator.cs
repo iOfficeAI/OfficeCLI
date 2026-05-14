@@ -35,7 +35,7 @@ public static class BlankDocCreator
                 break;
             default:
                 if (TryCreateViaPlugin(path, ext)) break;
-                throw new NotSupportedException($"Unsupported file type: {ext}. Supported: .docx, .xlsx, .pptx, .hwpx, or any extension served by an installed format-handler plugin that implements `create`.");
+                throw new NotSupportedException($"Unsupported file type: {ext}. Supported: .docx, .xlsx, .pptx, .hwpx, experimental .hwp, or any extension served by an installed format-handler plugin that implements `create`.");
         }
     }
 

@@ -16,8 +16,6 @@ static partial class CommandBuilder
     {
         var output = FirstValue(properties, "output", "out");
         var value = FirstValue(properties, "value", "text");
-        if (format != HwpFormat.Hwp)
-            return HwpTableCellError("HWP table cell set is currently supported only for .hwp input.", json);
         if (string.IsNullOrWhiteSpace(output) || value == null)
             return HwpTableCellError("HWP table cell set requires --prop value=<text> --prop output=<path>.", json);
         if (!TryReadInt(properties, out var section, "section", "sec")
@@ -39,8 +37,11 @@ static partial class CommandBuilder
         var outputDir = Path.GetDirectoryName(outputPath);
         if (!string.IsNullOrEmpty(outputDir)) Directory.CreateDirectory(outputDir);
 
+        var formatKey = format == HwpFormat.Hwp
+            ? HwpCapabilityConstants.FormatHwp
+            : HwpCapabilityConstants.FormatHwpx;
         var engine = HwpEngineSelector.GetEngine(
-            HwpCapabilityConstants.FormatHwp,
+            formatKey,
             HwpCapabilityConstants.OperationSetTableCell);
         var request = new HwpTableCellSetRequest(
             format,
@@ -62,7 +63,7 @@ static partial class CommandBuilder
             var envelope = new System.Text.Json.Nodes.JsonObject
             {
                 ["success"] = true,
-                ["message"] = $"Updated HWP table cell ({parentPara},{control},{cell}) -> {result.OutputPath}",
+                ["message"] = $"Updated {formatKey.ToUpperInvariant()} table cell ({parentPara},{control},{cell}) -> {result.OutputPath}",
                 ["data"] = new System.Text.Json.Nodes.JsonObject
                 {
                     ["outputPath"] = result.OutputPath,
@@ -76,7 +77,7 @@ static partial class CommandBuilder
         }
         else
         {
-            Console.WriteLine($"Updated HWP table cell ({parentPara},{control},{cell}) -> {result.OutputPath}");
+            Console.WriteLine($"Updated {formatKey.ToUpperInvariant()} table cell ({parentPara},{control},{cell}) -> {result.OutputPath}");
             foreach (var warning in result.Warnings)
                 Console.Error.WriteLine($"WARNING: {warning}");
         }

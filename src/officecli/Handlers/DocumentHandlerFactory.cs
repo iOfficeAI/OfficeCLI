@@ -75,13 +75,11 @@ public static class DocumentHandlerFactory
             ".pptx" => new PowerPointHandler(filePath, editable),
             ".hwpx" => new HwpxHandler(filePath, editable),
             ".hwp" => throw new CliException(
-                "Binary .hwp files require pyhwp for reading. " +
-                "Convert to .hwpx in Hancom Office, or install pyhwp and convert: " +
-                "pip install pyhwp && hwp5txt input.hwp > output.txt")
+                "Binary .hwp files are handled by operation-specific rhwp-backed OfficeCLI routes, not the generic OOXML document handler.")
             {
-                Code = "unsupported_format",
-                Suggestion = "Save as .hwpx in Hancom Office (File → Save As → HWPX)",
-                Help = "pip install pyhwp && hwp5txt input.hwp > output.txt"
+                Code = "hwp_generic_handler_unsupported",
+                Suggestion = "Run `officecli hwp doctor --json`, then use `officecli view file.hwp text --json`, `officecli create file.hwp --json`, or `officecli hwp --json` recipes.",
+                Help = "officecli hwp doctor --json"
             },
             _ => TryOpenViaPlugin(filePath, ext, editable)
                 ?? throw UnsupportedTypeException(ext)
@@ -191,12 +189,12 @@ public static class DocumentHandlerFactory
 
     private static CliException UnsupportedTypeException(string ext) =>
         new CliException(
-            $"Unsupported file type: {ext}. Supported: .docx, .xlsx, .pptx, .hwpx. " +
+            $"Unsupported file type: {ext}. Supported: .docx, .xlsx, .pptx, .hwpx, experimental .hwp. " +
             $"Other formats may be opened via plugins — run `officecli plugins list` to see installed plugins, " +
             $"or see docs/plugin-protocol.md for installation paths.")
         {
             Code = "unsupported_type",
-            ValidValues = [".docx", ".xlsx", ".pptx", ".hwpx"]
+            ValidValues = [".docx", ".xlsx", ".pptx", ".hwpx", ".hwp"]
         };
 
     private static bool IsEncodingException(Exception ex)

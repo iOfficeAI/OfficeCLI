@@ -59,9 +59,8 @@
           "evidence": ["tests/golden/hwp/rhwp-fields/officecli-replace-hwpx-government.json"]
         },
         "set_table_cell": {
-          "status": "unsupported",
-          "reason": "roundtrip_unverified",
-          "evidence": []
+          "status": "experimental",
+          "evidence": ["tests/OfficeCli.Tests/Hwp/HwpBridgeTableScanTests.cs"]
         },
         "create_blank": {
           "status": "experimental",

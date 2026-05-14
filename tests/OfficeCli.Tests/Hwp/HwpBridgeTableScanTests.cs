@@ -94,7 +94,36 @@ public class HwpBridgeTableScanTests : IDisposable
                 "--json"
             ]);
 
-        Assert.Equal(0, exitCode);
+        Assert.True(exitCode == 0, stdout);
+        Assert.True(File.Exists(output));
+        var root = JsonNode.Parse(stdout)!;
+        Assert.True(root["success"]!.GetValue<bool>());
+        Assert.Equal(output, root["data"]!["outputPath"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void OfficeCliSetTableCell_RoutesHwpxThroughRhwpBridge()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", "rhwp-experimental");
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", LocateBridgeDll());
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", CreateFakeRhwpApi());
+        var input = CreateInput(".hwpx");
+        var output = CreateOutput(".hwpx");
+
+        var (exitCode, stdout) = InvokeOfficeCli(
+            [
+                "set", input, "/table/cell",
+                "--prop", "section=0",
+                "--prop", "parent-para=1",
+                "--prop", "control=0",
+                "--prop", "cell=0",
+                "--prop", "value=리지시점",
+                "--prop", $"output={output}",
+                "--json"
+            ]);
+
+        Assert.True(exitCode == 0, stdout);
         Assert.True(File.Exists(output));
         var root = JsonNode.Parse(stdout)!;
         Assert.True(root["success"]!.GetValue<bool>());
@@ -164,6 +193,7 @@ fi
 if [ "$1" = "set-cell-text" ]; then
   output=""
   value=""
+  output_format="hwp"
   while [ "$#" -gt 0 ]; do
     if [ "$1" = "--output" ]; then
       shift
@@ -174,8 +204,11 @@ if [ "$1" = "set-cell-text" ]; then
     fi
     shift
   done
+  case "$output" in
+    *.hwpx) output_format="hwpx" ;;
+  esac
   printf 'fake hwp cell output' > "$output"
-  printf '{"cell":{"oldText":"보도시점","newText":"%s"},"output":"%s","outputFormat":"hwp","engineVersion":"rhwp-api v0.test","format":"hwpx","warnings":["experimental set-cell-text"]}\n' "$value" "$output"
+  printf '{"cell":{"oldText":"보도시점","newText":"%s"},"output":"%s","outputFormat":"%s","engineVersion":"rhwp-api v0.test","format":"hwpx","warnings":["experimental set-cell-text"]}\n' "$value" "$output" "$output_format"
   exit 0
 fi
 echo "unexpected api command: $1" >&2

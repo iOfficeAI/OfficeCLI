@@ -130,6 +130,46 @@ public class HwpCapabilityTests : IDisposable
     }
 
     [Fact]
+    public void HwpDoctorJson_ReportsCreateReadyWhenOnlyRhwpApiIsAvailable()
+    {
+        var fakeApi = Path.Combine(Path.GetTempPath(), $"fake-rhwp-api-{Guid.NewGuid():N}");
+        var isolatedDir = Path.Combine(Path.GetTempPath(), $"hwp-doctor-isolated-{Guid.NewGuid():N}");
+        var oldPath = Environment.GetEnvironmentVariable("PATH");
+        var oldCwd = Directory.GetCurrentDirectory();
+        Directory.CreateDirectory(isolatedDir);
+        File.WriteAllText(fakeApi, "#!/bin/sh\nexit 0\n");
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(fakeApi,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+        try
+        {
+            Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", null);
+            Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", null);
+            Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", null);
+            Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", fakeApi);
+            Environment.SetEnvironmentVariable("PATH", isolatedDir);
+            Directory.SetCurrentDirectory(isolatedDir);
+
+            var (exitCode, stdout) = Invoke(["hwp", "doctor", "--json"]);
+            var root = JsonNode.Parse(stdout)!;
+
+            Assert.Equal(0, exitCode);
+            Assert.True(root["data"]!["ok"]!.GetValue<bool>());
+            Assert.True(root["data"]!["operations"]!["create_blank"]!["ready"]!.GetValue<bool>());
+            Assert.False(root["data"]!["operations"]!["read_text"]!["ready"]!.GetValue<bool>());
+            Assert.True(root["data"]!["autoDiscovery"]!["createBlankAvailable"]!.GetValue<bool>());
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(oldCwd);
+            Environment.SetEnvironmentVariable("PATH", oldPath);
+            File.Delete(fakeApi);
+            Directory.Delete(isolatedDir);
+        }
+    }
+
+    [Fact]
     public void HwpBridgeErrorJson_IncludesNextCommand()
     {
         Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", null);

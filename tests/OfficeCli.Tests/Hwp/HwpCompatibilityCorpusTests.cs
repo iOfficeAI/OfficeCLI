@@ -165,8 +165,6 @@ public sealed class HwpCompatibilityCorpusTests
     public void BlockedOperationsRequireReasonAndNoEvidenceUnlessExplained()
     {
         var expectedCapabilities = ReadJson(ExpectedCapabilitiesPath);
-        var observedHwpxTableCellBlock = false;
-
         foreach (var path in ManifestPaths)
         {
             var manifest = ReadJson(path);
@@ -186,14 +184,13 @@ public sealed class HwpCompatibilityCorpusTests
                     Assert.Equal(reason, RequireString(operationCapability, "reason"));
                     Assert.Empty(GetArray(operationCapability, "evidence"));
 
-                    observedHwpxTableCellBlock |= format == HwpCapabilityConstants.FormatHwpx
-                        && operation == HwpCapabilityConstants.OperationSetTableCell
-                        && reason == HwpCapabilityConstants.ReasonRoundTripUnverified;
+                    Assert.False(
+                        format == HwpCapabilityConstants.FormatHwpx
+                            && operation == HwpCapabilityConstants.OperationSetTableCell,
+                        "HWPX set_table_cell should be rhwp-backed when mutation runtime is ready, not policy-blocked.");
                 }
             }
         }
-
-        Assert.True(observedHwpxTableCellBlock, "HWPX set_table_cell must remain blocked as roundtrip_unverified.");
     }
 
     [Fact]

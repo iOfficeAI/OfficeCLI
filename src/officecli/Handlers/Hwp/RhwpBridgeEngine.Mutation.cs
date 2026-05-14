@@ -328,12 +328,11 @@ public sealed partial class RhwpBridgeEngine
 
     public async Task<HwpMutationResult> SetTableCellAsync(HwpTableCellSetRequest request, CancellationToken ct)
     {
-        if (request.Format != HwpFormat.Hwp)
-            throw MutationUnsupported(request.Format, HwpCapabilityConstants.OperationSetTableCell);
+        var formatArg = FormatKey(request.Format);
 
         var args = new List<string>
         {
-            "set-cell-text", "--format", HwpCapabilityConstants.FormatHwp,
+            "set-cell-text", "--format", formatArg,
             "--input", request.InputPath, "--output", request.OutputPath,
             "--section", request.Section.ToString(),
             "--parent-para", request.ParentParagraph.ToString(),
@@ -356,7 +355,7 @@ public sealed partial class RhwpBridgeEngine
             outputJson,
             request.OutputPath,
             "set-cell-text",
-            "rhwp-api set-cell-text output file created; verified only for HWP input fixtures.");
+            $"rhwp-api set-cell-text output file created for {formatArg} input.");
     }
 
     public Task<HwpMutationResult> SaveOriginalAsync(HwpSaveOriginalRequest request, CancellationToken ct)

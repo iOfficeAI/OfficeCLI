@@ -120,8 +120,8 @@ static partial class CommandBuilder
 
     private static Command BuildCreateCommand(Option<bool> jsonOption)
     {
-        var createFileArg = new Argument<string>("file") { Description = "Output file path (.docx, .xlsx, .pptx, .hwpx)" };
-        var createTypeOpt = new Option<string>("--type") { Description = "Document type (docx, xlsx, pptx, hwpx) — optional, inferred from file extension" };
+        var createFileArg = new Argument<string>("file") { Description = "Output file path (.docx, .xlsx, .pptx, .hwpx, experimental .hwp)" };
+        var createTypeOpt = new Option<string>("--type") { Description = "Document type (docx, xlsx, pptx, hwpx, hwp) — optional, inferred from file extension" };
         var createForceOpt = new Option<bool>("--force") { Description = "Overwrite an existing file." };
         var createLocaleOpt = new Option<string>("--locale") { Description = "Locale tag (e.g. zh-CN, ja, ko, ar, he) — sets per-script default fonts in docDefaults. Without it, host application's UI-locale fallback applies. Currently only honored for .docx." };
         var createMinimalOpt = new Option<bool>("--minimal") { Description = "(.docx only) Skip Word's Normal.dotm-style baseline (Calibri 11pt + Normal style + theme1.xml) and emit a raw OOXML-spec docx instead. Use for testing edge cases or producing maximally compact output. Without this flag, the doc carries Word-aligned defaults so it renders identically in Word, other producers, and the cli preview." };

@@ -45,8 +45,9 @@ public static class HwpCapabilityFactory
             [HwpCapabilityConstants.OperationReplaceText] = runtime.MutationAvailable
                 ? ExperimentalBridge(["tests/golden/hwp/rhwp-fields/replace-hwpx-government.json"])
                 : ExperimentalCustom(engineVersion, []),
-            [HwpCapabilityConstants.OperationSetTableCell] = Unsupported(
-                HwpCapabilityConstants.ReasonRoundTripUnverified),
+            [HwpCapabilityConstants.OperationSetTableCell] = runtime.MutationAvailable
+                ? ExperimentalBridge(["tests/OfficeCli.Tests/Hwp/HwpBridgeTableScanTests.cs"])
+                : ExperimentalBridgeBlocked(apiBlockedReason),
             [HwpCapabilityConstants.OperationCreateBlank] = ExperimentalCustom(engineVersion,
                 ["src/officecli/Resources/base.hwpx"]),
             [HwpCapabilityConstants.OperationSaveOriginal] = ExperimentalCustom(engineVersion, []),
@@ -61,7 +62,7 @@ public static class HwpCapabilityFactory
             HwpCapabilityConstants.EngineCustom,
             operations,
             runtime.ReadRenderAvailable || runtime.MutationAvailable
-                ? ["HWPX default engine remains custom; rhwp bridge is used only for opt-in text/svg/field/text-replace paths."]
+                ? ["HWPX default engine remains custom, and rhwp sidecars are used for operations that the bridge exposes."]
                 : ["HWPX operations are advertised only after per-operation round-trip evidence exists."]);
     }
 

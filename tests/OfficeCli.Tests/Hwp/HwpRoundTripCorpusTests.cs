@@ -95,8 +95,6 @@ public sealed class HwpRoundTripCorpusTests
     [Fact]
     public void BlockedCasesReturnTypedErrors()
     {
-        var observedHwpxBlocked = false;
-
         foreach (var item in LoadCases())
         {
             var expected = item["expected"]!.AsObject();
@@ -110,14 +108,11 @@ public sealed class HwpRoundTripCorpusTests
 
             Assert.Contains("typed-error-if-blocked", GetStringArray(item, "requiredChecks"));
 
-            observedHwpxBlocked |= RequireString(item, "format") == HwpCapabilityConstants.FormatHwpx
-                && RequireString(item, "operation") == HwpCapabilityConstants.OperationSetTableCell
-                && code == HwpCapabilityConstants.ReasonRoundTripUnverified;
+            Assert.False(
+                RequireString(item, "format") == HwpCapabilityConstants.FormatHwpx
+                    && RequireString(item, "operation") == HwpCapabilityConstants.OperationSetTableCell,
+                "HWPX set_table_cell should be rhwp-backed when mutation runtime is ready, not policy-blocked.");
         }
-
-        Assert.True(
-            observedHwpxBlocked,
-            "HWPX set_table_cell must be present as a blocked case with reason roundtrip_unverified.");
     }
 
     [Fact]

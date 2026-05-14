@@ -97,11 +97,11 @@
       "notes": "HWPX replace_text via custom handler; readback evidence at tests/golden/hwp/rhwp-fields/officecli-replace-hwpx-government.json."
     },
     {
-      "id": "hwpx-set-table-cell-blocked",
+      "id": "hwpx-set-table-cell",
       "format": "hwpx",
       "fixtureId": "hwpx-table-vpos-news",
       "operation": "set_table_cell",
-      "provider": "custom",
+      "provider": "rhwp-bridge",
       "inputPath": "tests/fixtures/hwp/rhwp-smoke/table-vpos-01.hwpx",
       "outputMode": "output",
       "args": {
@@ -111,16 +111,15 @@
         "value": "Phase36"
       },
       "expected": {
-        "status": "blocked",
-        "error": {
-          "code": "roundtrip_unverified"
-        }
+        "status": "success"
       },
       "requiredChecks": [
-        "typed-error-if-blocked",
-        "source-unchanged"
+        "source-unchanged",
+        "output-created",
+        "provider-readback",
+        "semantic-delta"
       ],
-      "notes": "HWPX set_table_cell remains blocked until Hancom-grade roundtrip is verified; typed reason roundtrip_unverified is enforced by capability evidence and this case."
+      "notes": "HWPX set_table_cell is routed through the rhwp bridge when mutation runtime is ready; no policy-level block should remain."
     }
   ]
 }
