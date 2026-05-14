@@ -35,7 +35,7 @@ description: "Use this skill any time a .hwpx file is involved -- as input, outp
 | Watch live preview | ✅ Yes | `watch file.hwpx` |
 | Validate .hwpx | ✅ Yes | `validate` (9-level: ZIP, package, XML, IDRef, table, NS, BinData, field, section) |
 | Raw XML | ✅ Yes | `raw`, `raw-set` |
-| Open .hwp (binary) | ❌ No | Convert to .hwpx first (Hancom Office) |
+| Open .hwp (binary) | 🟡 Capability-gated | Run `officecli hwp doctor --json` and `officecli capabilities --json`; use native rhwp read/render/mutate/create routes only when the specific operation is ready. Do not silently convert to `.hwpx`. |
 
 ---
 
@@ -378,7 +378,7 @@ KICE template at `/private/tmp/kice-full-edit-v2.hwpx` (836 equations, verified 
 |---------|-----------------|
 | `--props text=Hello` | `--prop text=Hello` — 반드시 singular `--prop` |
 | `/body/p[1]` path | HWPX는 `/section[1]/p[1]` — body가 아닌 section 기반 |
-| `.hwp` (binary) 열기 | `.hwpx`로 변환 필수 |
+| `.hwp` (binary) 열기 | 먼저 `officecli hwp doctor --json` / `officecli capabilities --json` 확인. native rhwp operation이 ready면 그대로 처리하고, not-ready면 typed dependency reason을 보고한다. `.hwpx` 변환은 사용자 승인 fallback일 때만 사용 |
 | Unquoted `[N]` in shell | `"/section[1]/p[1]"` — 반드시 따옴표 |
 | fontsize 미지정 | `--prop fontsize=11` 항상 명시 — charPr 오염 방지 |
 | `--type formfield`를 build-local이 못 알아봄 | source tree prototype이 있어도 release acceptance 전까지는 blocked로 취급 |

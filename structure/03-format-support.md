@@ -10,7 +10,7 @@ This file describes current support without over-claiming HWP/HWPX parity. For H
 | `.xlsx` | Yes | Yes | Yes | HTML, screenshot | Stable OpenXML handler with Excel-specific cells, formulas, charts, pivots, tables, slicers, validations. |
 | `.pptx` | Yes | Yes | Yes | HTML, SVG/screenshot flows | Stable OpenXML handler with slides, shapes, charts, media, morph/transition/3D/theme features. |
 | `.hwpx` | Yes (`Resources/base.hwpx`) | Yes through custom ZIP/XML handler; rhwp opt-in for selected read/render/field paths | Experimental, operation-gated; do not advertise broad writing | HTML/custom views; rhwp SVG opt-in when enabled | Active branch focus; custom provider default. |
-| `.hwp` | No blank creator | Experimental read/render/mutation through rhwp bridge | Experimental output-first and safe in-place text replacement only where gates pass | rhwp SVG bridge | Active branch focus; rhwp bridge default provider for binary HWP. |
+| `.hwp` | Capability-gated via `rhwp-field-bridge create-blank` | Experimental read/render/mutation through rhwp bridge | Experimental output-first and safe in-place text replacement only where gates pass | rhwp SVG bridge | Active branch focus; rhwp bridge default provider for binary HWP. |
 
 ## HWP/HWPX Phase 36 status
 

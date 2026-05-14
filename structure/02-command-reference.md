@@ -28,10 +28,10 @@ This reference follows `Program.cs`, `CommandBuilder.cs`, and generated help sch
 | `add <file> <parent> --type <type>` | Add typed elements. |
 | `remove`, `move`, `swap` | Reorganize elements. |
 | `raw`, `raw-set`, `add-part` | Raw OpenXML/XML escape hatch. |
-| `validate <file>` / `check <file>` | Schema validation and layout/content checks. |
+| `validate <file>` | Schema/package validation. Use `view <file> issues` and render/app-open proof for layout/content checks. |
 | `batch <file>` | Execute JSON command arrays in one open/save cycle. |
 | `import <file> <parent-path> <source-file>` | Import CSV/TSV data into Excel/HWPX paths where supported. |
-| `create` / `new <file>` | Create blank `.docx`, `.xlsx`, `.pptx`, or `.hwpx`. |
+| `create` / `new <file>` | Create blank `.docx`, `.xlsx`, `.pptx`, `.hwpx`, and capability-gated `.hwp` when rhwp sidecars are ready. |
 | `merge <template> <output>` | Merge `{{key}}` JSON/template data. |
 | `compare <fileA> <fileB>` | Compare HWPX documents. |
 | `capabilities` | Machine-readable HWP/HWPX capability report. |
@@ -65,11 +65,11 @@ officecli capabilities --json
 officecli view file.hwp text --json
 officecli view file.hwp svg --page 1 --json
 officecli view file.hwp fields --json
-officecli view file.hwp field --field-name .DS_Store .agents .claude .migrated-v1 .shared_plan.md .skills_clone_meta.json AGENTS.md CLAUDE.md _INBOX _thread auth backup-memory-v1 browser-profile heartbeat.json jaw.db jaw.db-shm jaw.db-wal logs mcp.json memory prompts screenshots settings.json skills skills_ref tmp uploads week_05_2_production_shocks.md week_06_2_complete_markets.md week_06_2_complete_markets_stt_vir.md worklogs  --json
-officecli set file.hwp /field --prop name=.DS_Store .agents .claude .migrated-v1 .shared_plan.md .skills_clone_meta.json AGENTS.md CLAUDE.md _INBOX _thread auth backup-memory-v1 browser-profile heartbeat.json jaw.db jaw.db-shm jaw.db-wal logs mcp.json memory prompts screenshots settings.json skills skills_ref tmp uploads week_05_2_production_shocks.md week_06_2_complete_markets.md week_06_2_complete_markets_stt_vir.md worklogs  --prop value= --prop output=out.hwp --json
-codesign -dv --verbose=4 /Applications/Codex Computer Use.app 2>&1 | head -20 --prop value= --prop output=out.hwp --json
-codesign -dv --verbose=4 /Applications/Codex Computer Use.app 2>&1 | head -20 --prop value= --in-place --backup --verify --json
-codesign -dv --verbose=4 /Applications/Codex Computer Use.app 2>&1 | head -20 --prop output=out.hwp --json
+officecli view file.hwp field --field-name CustomerName --json
+officecli set file.hwp /field --prop name=CustomerName --prop value="Jun" --prop output=out.hwp --json
+officecli set file.hwp /text --prop find="old" --prop value="new" --prop output=out.hwp --json
+officecli set file.hwp /text --prop find="old" --prop value="new" --in-place --backup --verify --json
+officecli create blank.hwp --json
 ```
 
 ## Output conventions

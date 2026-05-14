@@ -143,7 +143,10 @@ officecli close "$FILE"
 officecli validate "$FILE"
 ```
 
-Verified: `validate` returns `no errors found`, `B5` resolves to `135000`. This is the shape of every build: open → set cells/formulas → format → close → validate.
+Verified: `validate` returns `no errors found`, `B5` resolves to `135000` in
+this simple fixture. This is the shape of every build: open → set
+cells/formulas → format → close → validate. For formula-heavy work, add the
+formula-error/recalc gate; structural validation alone is not delivery proof.
 
 ## CSV / bulk import
 

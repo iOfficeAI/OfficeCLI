@@ -133,7 +133,11 @@ officecli close "$FILE"
 officecli validate "$FILE"
 ```
 
-Verified end-to-end on a 12-row revenue CSV: `validate` reports no errors, Dashboard opens first, `Dashboard/A2.cachedValue` resolves (2,075,000 for the test data), chart renders with values linked.
+Verified end-to-end on a 12-row revenue CSV: `validate` reports no structural
+errors, Dashboard opens first, formulas remain formulas, and chart ranges link
+to the intended cells. Treat `cachedValue` as helpful evidence only, not proof
+that the target spreadsheet app has recalculated; run the recalc/error gate or
+record the app-open caveat before delivery.
 
 ## Design Ideas
 

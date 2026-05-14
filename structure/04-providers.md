@@ -40,7 +40,9 @@ officecli capabilities --json
 
 Supported HWP sidecar operations listed in that contract:
 
-- `read-text`, `render-svg`, `list-fields`, `read-field`, `fill-field`, `replace-text`, `table-map`, `set-table-cell`.
+- `read-text`, `render-svg`, `list-fields`, `read-field`, `fill-field`,
+  `replace-text`, `table-map`, `set-table-cell`, `create-blank`,
+  `save-as-hwp`.
 
 Supported HWPX rhwp operations listed there:
 

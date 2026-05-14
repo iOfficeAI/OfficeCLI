@@ -421,7 +421,7 @@ officecli add "$FILE" /body --type paragraph --prop text="2. Market Diagnosis ..
 # ... one per heading
 ```
 
-Use this when the live-field option leaves the literal prompt visible to the reader. Page numbers are manually set. For approximate pagination preview: `officecli view "$FILE" html` and read the returned HTML file to eyeball layout. For exact page numbers: open in your target viewer (Word / WPS / etc.) — precise numbers only come from the final render in that viewer. This recipe assumes you can get approximate page positions from the document structure. `add --type toc` (live field) remains correct for recipients whose viewer recalculates on open (or who will press F9) — this recipe is for everyone else.
+Use this when the live-field option leaves the literal prompt visible to the reader. Page numbers are manually set. For approximate pagination preview: `officecli view "$FILE" html` and read the returned HTML file to eyeball layout. For exact page numbers: open in your target viewer (Word / WPS / etc.) — precise numbers only come from the final render in that viewer. This recipe assumes you can get approximate page positions from the document structure. `add --type toc` (live field) remains correct for recipients whose viewer updates Word fields on open (or who will press F9) — this recipe is for everyone else.
 
 ### Forcing page breaks — belt-and-suspenders for cross-viewer reliability
 
