@@ -7,39 +7,141 @@
       "operations": {
         "read_text": {
           "status": "experimental",
-          "evidence": ["tests/golden/hwp/rhwp-smoke/officecli-view/text.pretty.json"]
+          "evidence": [
+            "tests/golden/hwp/rhwp-smoke/officecli-view/text.pretty.json"
+          ]
         },
         "render_svg": {
           "status": "experimental",
-          "evidence": ["tests/golden/hwp/rhwp-smoke/officecli-view/svg.pretty.json"]
+          "evidence": [
+            "tests/golden/hwp/rhwp-smoke/officecli-view/svg.pretty.json"
+          ]
+        },
+        "render_png": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_view.rs"
+          ]
+        },
+        "export_markdown": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_view.rs"
+          ]
+        },
+        "thumbnail": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_view.rs"
+          ]
+        },
+        "document_info": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_view.rs"
+          ]
+        },
+        "diagnostics": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_view.rs"
+          ]
+        },
+        "dump_pages": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_view.rs"
+          ]
         },
         "list_fields": {
           "status": "experimental",
-          "evidence": ["tests/golden/hwp/rhwp-fields/field-list.json"]
+          "evidence": [
+            "tests/golden/hwp/rhwp-fields/field-list.json"
+          ]
         },
         "read_field": {
           "status": "experimental",
-          "evidence": ["tests/golden/hwp/rhwp-fields/field-read-company-name.json"]
+          "evidence": [
+            "tests/golden/hwp/rhwp-fields/field-read-company-name.json"
+          ]
         },
         "fill_field": {
           "status": "experimental",
-          "evidence": ["tests/golden/hwp/rhwp-fields/field-set-company-name-cli-readback.json"]
+          "evidence": [
+            "tests/golden/hwp/rhwp-fields/field-set-company-name-cli-readback.json"
+          ]
+        },
+        "insert_text": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_text.rs"
+          ]
         },
         "replace_text": {
           "status": "experimental",
-          "evidence": ["tests/golden/hwp/rhwp-fields/officecli-replace-marketing-title.json"]
+          "evidence": [
+            "tests/golden/hwp/rhwp-fields/officecli-replace-marketing-title.json"
+          ]
+        },
+        "read_table_cell": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops.rs"
+          ]
+        },
+        "scan_cells": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops.rs"
+          ]
         },
         "set_table_cell": {
           "status": "experimental",
-          "evidence": ["tests/golden/hwp/rhwp-tables/officecli-set-cell-hwp-table-readback.json"]
+          "evidence": [
+            "tests/golden/hwp/rhwp-tables/officecli-set-cell-hwp-table-readback.json"
+          ]
         },
         "create_blank": {
           "status": "experimental",
-          "evidence": ["src/rhwp-field-bridge/src/main.rs"]
+          "evidence": [
+            "src/rhwp-field-bridge/src/main.rs"
+          ]
+        },
+        "convert_to_editable": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops.rs"
+          ]
         },
         "save_as_hwp": {
           "status": "experimental",
-          "evidence": ["src/rhwp-field-bridge/src/main.rs"]
+          "evidence": [
+            "src/rhwp-field-bridge/src/main.rs"
+          ]
+        },
+        "export_pdf": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_view.rs"
+          ]
+        },
+        "dump_controls": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_view.rs"
+          ]
+        },
+        "native_read": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_native.rs"
+          ]
+        },
+        "native_mutation": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_native.rs"
+          ]
         }
       }
     },
@@ -48,23 +150,117 @@
       "operations": {
         "read_text": {
           "status": "experimental",
-          "evidence": ["tests/golden/hwp/rhwp-smoke/hwpx-officecli-view/text.pretty.json"]
+          "evidence": [
+            "tests/golden/hwp/rhwp-smoke/hwpx-officecli-view/text.pretty.json"
+          ]
         },
         "render_svg": {
           "status": "experimental",
-          "evidence": ["tests/golden/hwp/rhwp-smoke/hwpx-officecli-view/svg.pretty.json"]
+          "evidence": [
+            "tests/golden/hwp/rhwp-smoke/hwpx-officecli-view/svg.pretty.json"
+          ]
+        },
+        "insert_text": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_text.rs"
+          ]
         },
         "replace_text": {
           "status": "experimental",
-          "evidence": ["tests/golden/hwp/rhwp-fields/officecli-replace-hwpx-government.json"]
+          "evidence": [
+            "tests/golden/hwp/rhwp-fields/officecli-replace-hwpx-government.json"
+          ]
         },
         "set_table_cell": {
           "status": "experimental",
-          "evidence": ["tests/OfficeCli.Tests/Hwp/HwpBridgeTableScanTests.cs"]
+          "evidence": [
+            "tests/OfficeCli.Tests/Hwp/HwpBridgeTableScanTests.cs"
+          ]
         },
         "create_blank": {
           "status": "experimental",
-          "evidence": ["src/officecli/Resources/base.hwpx"]
+          "evidence": [
+            "src/officecli/Resources/base.hwpx"
+          ]
+        },
+        "render_png": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_view.rs"
+          ]
+        },
+        "export_pdf": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_view.rs"
+          ]
+        },
+        "export_markdown": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_view.rs"
+          ]
+        },
+        "thumbnail": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_view.rs"
+          ]
+        },
+        "document_info": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_view.rs"
+          ]
+        },
+        "diagnostics": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_view.rs"
+          ]
+        },
+        "dump_controls": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_view.rs"
+          ]
+        },
+        "dump_pages": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_view.rs"
+          ]
+        },
+        "list_fields": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops.rs"
+          ]
+        },
+        "read_field": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops.rs"
+          ]
+        },
+        "native_read": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_native.rs"
+          ]
+        },
+        "native_mutation": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/ops_native.rs"
+          ]
+        },
+        "save_as_hwp": {
+          "status": "experimental",
+          "evidence": [
+            "src/rhwp-field-bridge/src/main.rs"
+          ]
         }
       }
     }

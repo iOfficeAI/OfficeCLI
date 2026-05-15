@@ -64,10 +64,21 @@ officecli capabilities --json
 # Binary HWP through experimental rhwp bridge
 officecli view file.hwp text --json
 officecli view file.hwp svg --page 1 --json
+officecli view file.hwp png --page 1 --out /tmp/hwp-png --json
+officecli view file.hwp pdf --page 1 --out out.pdf --json
+officecli view file.hwp markdown --json
+officecli view file.hwp info --json
+officecli view file.hwp diagnostics --json
+officecli view file.hwp dump --json
 officecli view file.hwp fields --json
 officecli view file.hwp field --field-name CustomerName --json
+officecli view file.hwp table-cell --section 0 --parent-para 3 --control 0 --cell 0 --cell-para 0 --json
+officecli view file.hwp native --op get-style-list --json
 officecli set file.hwp /field --prop name=CustomerName --prop value="Jun" --prop output=out.hwp --json
 officecli set file.hwp /text --prop find="old" --prop value="new" --prop output=out.hwp --json
+officecli add file.hwp /text --type paragraph --prop value="new paragraph" --prop output=out.hwp --json
+officecli set file.hwp /convert-to-editable --prop output=editable.hwp --json
+officecli set file.hwp /native-op --prop op=split-paragraph --prop paragraph=0 --prop offset=5 --prop output=out.hwp --json
 officecli set file.hwp /text --prop find="old" --prop value="new" --in-place --backup --verify --json
 officecli create blank.hwp --json
 ```

@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[features]
+native-skia = ["rhwp/native-skia"]
+
 [dependencies]
 rhwp = { git = "https://github.com/edwardkim/rhwp.git", rev = "62a458aa317e962cd3d0eec6096728c172d57110" }
 serde_json = "1"

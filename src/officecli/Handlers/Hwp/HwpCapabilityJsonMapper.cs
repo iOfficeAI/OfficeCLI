@@ -110,7 +110,8 @@ public static class HwpCapabilityJsonMapper
                 op.UnsupportedReason is HwpCapabilityConstants.ReasonBridgeNotEnabled
                     or HwpCapabilityConstants.ReasonBridgeMissing
                     or HwpCapabilityConstants.ReasonRhwpRuntimeMissing
-                    or HwpCapabilityConstants.ReasonRhwpApiMissing))
+                    or HwpCapabilityConstants.ReasonRhwpApiMissing
+                    or HwpCapabilityConstants.ReasonRhwpApiMissingOrTooOld))
         {
             yield return "run ./dev-install.sh to install rhwp sidecars beside officecli";
             yield return "export OFFICECLI_RHWP_BIN=/path/to/rhwp";
@@ -139,6 +140,38 @@ public static class HwpCapabilityJsonMapper
                 yield return "--backup when --in-place";
                 yield return "--verify when --in-place";
                 break;
+            case HwpCapabilityConstants.OperationInsertText:
+                yield return "value";
+                yield return "output";
+                yield return "section? default 0";
+                yield return "paragraph? default 0";
+                yield return "offset? default 0";
+                break;
+            case HwpCapabilityConstants.OperationRenderPng:
+            case HwpCapabilityConstants.OperationExportMarkdown:
+            case HwpCapabilityConstants.OperationDumpPages:
+                yield return "page? default all";
+                break;
+            case HwpCapabilityConstants.OperationExportPdf:
+                yield return "output";
+                yield return "page? default all";
+                break;
+            case HwpCapabilityConstants.OperationDumpControls:
+                yield break;
+            case HwpCapabilityConstants.OperationThumbnail:
+                yield return "output";
+                break;
+            case HwpCapabilityConstants.OperationReadTableCell:
+                yield return "section";
+                yield return "parent-para";
+                yield return "control";
+                yield return "cell";
+                yield return "cell-para";
+                break;
+            case HwpCapabilityConstants.OperationScanCells:
+                yield return "section? default 0";
+                yield return "max-parent-para? default 50";
+                break;
             case HwpCapabilityConstants.OperationSetTableCell:
                 yield return "section";
                 yield return "parent-para";
@@ -147,8 +180,18 @@ public static class HwpCapabilityJsonMapper
                 yield return "value";
                 yield return "output";
                 break;
+            case HwpCapabilityConstants.OperationConvertToEditable:
             case HwpCapabilityConstants.OperationSaveAsHwp:
                 yield return "output";
+                break;
+            case HwpCapabilityConstants.OperationNativeRead:
+                yield return "op";
+                yield return "native-arg? key=value";
+                break;
+            case HwpCapabilityConstants.OperationNativeMutation:
+                yield return "op";
+                yield return "output";
+                yield return "operation-specific props";
                 break;
         }
     }
@@ -158,12 +201,26 @@ public static class HwpCapabilityJsonMapper
         {
             HwpCapabilityConstants.OperationReadText => "officecli view input.hwp text --json",
             HwpCapabilityConstants.OperationRenderSvg => "officecli view input.hwp svg --page 1 --json",
+            HwpCapabilityConstants.OperationRenderPng => "officecli view input.hwp png --page 1 --out /tmp/hwp-png --json",
+            HwpCapabilityConstants.OperationExportPdf => "officecli view input.hwp pdf --page 1 --out output.pdf --json",
+            HwpCapabilityConstants.OperationExportMarkdown => "officecli view input.hwp markdown --json",
+            HwpCapabilityConstants.OperationThumbnail => "officecli view input.hwp thumbnail --out thumb.png --json",
+            HwpCapabilityConstants.OperationDocumentInfo => "officecli view input.hwp info --json",
+            HwpCapabilityConstants.OperationDiagnostics => "officecli view input.hwp diagnostics --json",
+            HwpCapabilityConstants.OperationDumpControls => "officecli view input.hwp dump --json",
+            HwpCapabilityConstants.OperationDumpPages => "officecli view input.hwp pages --page 1 --json",
             HwpCapabilityConstants.OperationListFields => "officecli view input.hwp fields --json",
             HwpCapabilityConstants.OperationReadField => "officecli view input.hwp field --field-name 회사명 --json",
             HwpCapabilityConstants.OperationFillField => "officecli set input.hwp /field --prop name=회사명 --prop value=리지 --prop output=output.hwp --json",
             HwpCapabilityConstants.OperationReplaceText => "officecli set input.hwp /text --prop find=마케팅 --prop value=브릿지 --prop output=output.hwp --json",
+            HwpCapabilityConstants.OperationInsertText => "officecli add input.hwp /text --type text --prop value=본문 --prop output=output.hwp --json",
+            HwpCapabilityConstants.OperationReadTableCell => "officecli view input.hwp table-cell --section 0 --parent-para 3 --control 0 --cell 0 --cell-para 0 --json",
+            HwpCapabilityConstants.OperationScanCells => "officecli view input.hwp tables --section 0 --json",
             HwpCapabilityConstants.OperationSetTableCell => "officecli set input.hwp /table/cell --prop section=0 --prop parent-para=3 --prop control=0 --prop cell=0 --prop value=오피스셀 --prop output=output.hwp --json",
             HwpCapabilityConstants.OperationCreateBlank => "officecli create output.hwp --json",
+            HwpCapabilityConstants.OperationConvertToEditable => "officecli set input.hwp /convert-to-editable --prop output=editable.hwp --json",
+            HwpCapabilityConstants.OperationNativeRead => "officecli view input.hwp native --op get-style-list --json",
+            HwpCapabilityConstants.OperationNativeMutation => "officecli set input.hwp /native-op --prop op=split-paragraph --prop paragraph=0 --prop offset=5 --prop output=output.hwp --json",
             HwpCapabilityConstants.OperationSaveAsHwp => "officecli set input.hwpx /save-as-hwp --prop output=output.hwp --json",
             _ => null
         };

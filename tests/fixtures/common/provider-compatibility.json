@@ -35,6 +35,84 @@
     },
     {
       "format": "hwp",
+      "operation": "render_png",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_view.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "external-manual"
+    },
+    {
+      "format": "hwp",
+      "operation": "export_markdown",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_view.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "thumbnail",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_view.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "document_info",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_view.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "diagnostics",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_view.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "dump_pages",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_view.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
       "operation": "list_fields",
       "provider": "rhwp-bridge",
       "status": "experimental",
@@ -85,6 +163,19 @@
     },
     {
       "format": "hwp",
+      "operation": "insert_text",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_text.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeTextInsertTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "external-manual"
+    },
+    {
+      "format": "hwp",
       "operation": "set_table_cell",
       "provider": "rhwp-bridge",
       "status": "fixture-backed",
@@ -92,6 +183,32 @@
       "evidence": [
         "tests/golden/hwp/rhwp-tables/officecli-set-cell-hwp-table-readback.json",
         "tests/fixtures/common/roundtrip-cases.json#hwp-set-table-cell"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "read_table_cell",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "scan_cells",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
       ],
       "blockedReason": null,
       "hancomLane": "optional"
@@ -122,6 +239,19 @@
     },
     {
       "format": "hwp",
+      "operation": "convert_to_editable",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeConvertTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "external-manual"
+    },
+    {
+      "format": "hwp",
       "operation": "read_text",
       "provider": "custom",
       "status": "unsupported",
@@ -133,6 +263,66 @@
     {
       "format": "hwp",
       "operation": "render_svg",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "unsupported_engine",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "render_png",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "unsupported_engine",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "export_markdown",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "unsupported_engine",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "thumbnail",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "unsupported_engine",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "document_info",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "unsupported_engine",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "diagnostics",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "unsupported_engine",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "dump_pages",
       "provider": "custom",
       "status": "unsupported",
       "defaultProvider": false,
@@ -182,12 +372,42 @@
     },
     {
       "format": "hwp",
+      "operation": "insert_text",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "binary_hwp_mutation_forbidden",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
       "operation": "set_table_cell",
       "provider": "custom",
       "status": "unsupported",
       "defaultProvider": false,
       "evidence": [],
       "blockedReason": "binary_hwp_mutation_forbidden",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "read_table_cell",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "unsupported_engine",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "scan_cells",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "unsupported_engine",
       "hancomLane": "optional"
     },
     {
@@ -208,6 +428,16 @@
       "defaultProvider": false,
       "evidence": [],
       "blockedReason": "binary_hwp_write_forbidden",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "convert_to_editable",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "binary_hwp_mutation_forbidden",
       "hancomLane": "optional"
     },
     {
@@ -245,6 +475,16 @@
         "tests/fixtures/common/roundtrip-cases.json#hwpx-replace-text-government"
       ],
       "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "insert_text",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": true,
+      "evidence": [],
+      "blockedReason": "roundtrip_unverified",
       "hancomLane": "optional"
     },
     {
@@ -301,12 +541,26 @@
     },
     {
       "format": "hwpx",
+      "operation": "insert_text",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": false,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_text.rs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
       "operation": "set_table_cell",
       "provider": "rhwp-bridge",
-      "status": "unsupported",
+      "status": "experimental",
       "defaultProvider": false,
-      "evidence": [],
-      "blockedReason": "roundtrip_unverified",
+      "evidence": [
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeTableScanTests.cs"
+      ],
+      "blockedReason": null,
       "hancomLane": "optional"
     },
     {
@@ -318,6 +572,394 @@
       "evidence": [],
       "blockedReason": "unsupported_engine",
       "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "export_pdf",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_view.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "external-manual"
+    },
+    {
+      "format": "hwp",
+      "operation": "export_pdf",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "unsupported_engine",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "dump_controls",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_view.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "dump_controls",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "unsupported_engine",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "native_read",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_native.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeNativeOpTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "native_read",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "unsupported_engine",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwp",
+      "operation": "native_mutation",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": true,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_native.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeNativeOpTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "external-manual"
+    },
+    {
+      "format": "hwp",
+      "operation": "native_mutation",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": false,
+      "evidence": [],
+      "blockedReason": "binary_hwp_mutation_forbidden",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "render_png",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": true,
+      "evidence": [],
+      "blockedReason": "roundtrip_unverified",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "render_png",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": false,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_view.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "export_pdf",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": true,
+      "evidence": [],
+      "blockedReason": "roundtrip_unverified",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "export_pdf",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": false,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_view.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "external-manual"
+    },
+    {
+      "format": "hwpx",
+      "operation": "export_markdown",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": true,
+      "evidence": [],
+      "blockedReason": "roundtrip_unverified",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "export_markdown",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": false,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_view.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "thumbnail",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": true,
+      "evidence": [],
+      "blockedReason": "roundtrip_unverified",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "thumbnail",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": false,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_view.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "document_info",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": true,
+      "evidence": [],
+      "blockedReason": "roundtrip_unverified",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "document_info",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": false,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_view.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "diagnostics",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": true,
+      "evidence": [],
+      "blockedReason": "roundtrip_unverified",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "diagnostics",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": false,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_view.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "dump_controls",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": true,
+      "evidence": [],
+      "blockedReason": "roundtrip_unverified",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "dump_controls",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": false,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_view.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "dump_pages",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": true,
+      "evidence": [],
+      "blockedReason": "roundtrip_unverified",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "dump_pages",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": false,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_view.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeJsonViewTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "list_fields",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": true,
+      "evidence": [],
+      "blockedReason": "roundtrip_unverified",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "list_fields",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": false,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops.rs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "read_field",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": true,
+      "evidence": [],
+      "blockedReason": "roundtrip_unverified",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "read_field",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": false,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops.rs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "native_read",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": true,
+      "evidence": [],
+      "blockedReason": "roundtrip_unverified",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "native_read",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": false,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_native.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeNativeOpTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "native_mutation",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": true,
+      "evidence": [],
+      "blockedReason": "roundtrip_unverified",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "native_mutation",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": false,
+      "evidence": [
+        "src/rhwp-field-bridge/src/ops_native.rs",
+        "tests/OfficeCli.Tests/Hwp/HwpBridgeNativeOpTests.cs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "external-manual"
+    },
+    {
+      "format": "hwpx",
+      "operation": "save_as_hwp",
+      "provider": "custom",
+      "status": "unsupported",
+      "defaultProvider": true,
+      "evidence": [],
+      "blockedReason": "roundtrip_unverified",
+      "hancomLane": "optional"
+    },
+    {
+      "format": "hwpx",
+      "operation": "save_as_hwp",
+      "provider": "rhwp-bridge",
+      "status": "experimental",
+      "defaultProvider": false,
+      "evidence": [
+        "src/rhwp-field-bridge/src/main.rs"
+      ],
+      "blockedReason": null,
+      "hancomLane": "external-manual"
     }
   ]
 }

@@ -12,6 +12,7 @@ public class HwpBridgeNegativeTests : IDisposable
     private readonly string? _oldBridge = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH");
     private readonly string? _oldRhwp = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_BIN");
     private readonly string? _oldApi = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_API_BIN");
+    private readonly string? _oldPath = Environment.GetEnvironmentVariable("PATH");
 
     public void Dispose()
     {
@@ -19,6 +20,7 @@ public class HwpBridgeNegativeTests : IDisposable
         Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", _oldBridge);
         Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", _oldRhwp);
         Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", _oldApi);
+        Environment.SetEnvironmentVariable("PATH", _oldPath);
         foreach (var path in _tempFiles)
         {
             try { File.Delete(path); } catch { }
@@ -28,10 +30,7 @@ public class HwpBridgeNegativeTests : IDisposable
     [Fact]
     public void HwpViewTextJson_WithoutExperimentalEnv_ReturnsBridgeNotEnabled()
     {
-        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", null);
-        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", null);
-        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", null);
-        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", null);
+        ClearHwpRuntimeForMissingRuntimeAssertions();
         var hwp = CreateFakeHwp();
 
         var (exitCode, stdout) = Invoke(["view", hwp, "text", "--json"]);
@@ -212,6 +211,14 @@ printf '%s\n' '{"engineVersion":"fake-rhwp-0.1","manifest":"/tmp/fake-manifest.j
 #!/bin/sh
 printf '%s\n' '{"fields":[{"fieldId":7,"name":"applicant","value":"홍길동"}],"engineVersion":"fake-rhwp-api-0.1","warnings":[]}'
 """));
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", CreateFakeBridge("""
+#!/bin/sh
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+  echo "rhwp-field-bridge list-fields --json"
+  exit 0
+fi
+exit 0
+"""));
         var hwp = CreateFakeHwp();
 
         var (exitCode, stdout) = Invoke(["view", hwp, "fields", "--json"]);
@@ -235,6 +242,14 @@ printf '%s\n' '{"fields":[{"fieldId":7,"name":"applicant","value":"홍길동"}],
         Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", CreateFakeBridge("""
 #!/bin/sh
 printf '%s\n' '{"field":{"ok":true,"fieldId":7,"value":"홍길동"},"engineVersion":"fake-rhwp-api-0.1","warnings":[]}'
+"""));
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", CreateFakeBridge("""
+#!/bin/sh
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+  echo "rhwp-field-bridge get-field --json"
+  exit 0
+fi
+exit 0
 """));
         var hwp = CreateFakeHwp();
 
@@ -301,5 +316,14 @@ printf '%s\n' '{"field":{"ok":true,"fieldId":7,"value":"홍길동"},"engineVersi
         {
             Console.SetOut(originalOut);
         }
+    }
+
+    private static void ClearHwpRuntimeForMissingRuntimeAssertions()
+    {
+        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", null);
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", null);
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", null);
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", null);
+        Environment.SetEnvironmentVariable("PATH", "");
     }
 }

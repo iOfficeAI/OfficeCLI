@@ -9,8 +9,8 @@ This file describes current support without over-claiming HWP/HWPX parity. For H
 | `.docx` | Yes | Yes | Yes | HTML, screenshot; native page render on Windows+Word when requested | Stable OpenXML handler. |
 | `.xlsx` | Yes | Yes | Yes | HTML, screenshot | Stable OpenXML handler with Excel-specific cells, formulas, charts, pivots, tables, slicers, validations. |
 | `.pptx` | Yes | Yes | Yes | HTML, SVG/screenshot flows | Stable OpenXML handler with slides, shapes, charts, media, morph/transition/3D/theme features. |
-| `.hwpx` | Yes (`Resources/base.hwpx`) | Yes through custom ZIP/XML handler; rhwp opt-in for selected read/render/field paths | Experimental, operation-gated; do not advertise broad writing | HTML/custom views; rhwp SVG opt-in when enabled | Active branch focus; custom provider default. |
-| `.hwp` | Capability-gated via `rhwp-field-bridge create-blank` | Experimental read/render/mutation through rhwp bridge | Experimental output-first and safe in-place text replacement only where gates pass | rhwp SVG bridge | Active branch focus; rhwp bridge default provider for binary HWP. |
+| `.hwpx` | Yes (`Resources/base.hwpx`) | Yes through custom ZIP/XML handler; rhwp opt-in for selected read/render/field/native paths | Experimental, operation-gated; do not advertise broad writing | HTML/custom views; rhwp SVG/PNG/PDF opt-in when enabled | Active branch focus; custom provider default. |
+| `.hwp` | Capability-gated via `rhwp-field-bridge create-blank` | Experimental read/render/export/mutation through rhwp bridge | Experimental output-first, native-op, and safe in-place text replacement only where gates pass | rhwp SVG/PNG/PDF bridge | Active branch focus; rhwp bridge default provider for binary HWP. |
 
 ## HWP/HWPX Phase 36 status
 
@@ -33,12 +33,13 @@ Binary HWP operation-level coverage currently listed in `docs/qa/compatibility-c
 - `read_field`
 - `fill_field`
 - `replace_text`
+- `insert_text`
 - `set_table_cell`
 
 HWPX coverage is provider-specific:
 
 - `custom` remains default;
-- `rhwp-bridge` is opt-in for read/render/text replacement paths;
+- `rhwp-bridge` is opt-in for read/render/export/text/native-operation paths;
 - `set_table_cell` remains blocked until package and Hancom compatibility gates pass.
 
 ## Current HWPX wording rule

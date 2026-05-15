@@ -19,13 +19,24 @@ internal static class BridgeProgram
                 "create-blank" => ApiBridge(args),
                 "read-text" => ApiBridgeAvailable() ? ApiBridge(args) : ReadText(args[1..]),
                 "render-svg" => ApiBridgeAvailable() ? ApiBridge(args) : RenderSvg(args[1..]),
+                "render-png" => ApiBridge(args),
+                "export-pdf" => ApiBridge(args),
+                "export-markdown" => ApiBridge(args),
+                "document-info" => ApiBridge(args),
+                "diagnostics" => ApiBridge(args),
+                "dump-controls" => ApiBridge(args),
+                "dump-pages" => ApiBridge(args),
+                "thumbnail" => ApiBridge(args),
                 "list-fields" => ApiBridge(args),
                 "get-field" => ApiBridge(args),
                 "set-field" => ApiBridge(args),
                 "replace-text" => ApiBridge(args),
+                "insert-text" => ApiBridge(args),
                 "get-cell-text" => ApiBridge(args),
                 "scan-cells" => ApiBridge(args),
                 "set-cell-text" => ApiBridge(args),
+                "convert-to-editable" => ApiBridge(args),
+                "native-op" => ApiBridge(args),
                 "save-as-hwp" => ApiBridge(args),
                 _ => Error($"unsupported command: {args[0]}", "unsupported_command")
             };
@@ -143,7 +154,11 @@ internal static class BridgeProgram
 
         var result = RunProcess(api, args);
         if (result.ExitCode != 0)
-            return Error($"rhwp API bridge failed: {result.Stderr.Trim()}", "api_bridge_failed");
+        {
+            if (TryForwardJsonError(result.Stdout, result.Stderr))
+                return result.ExitCode;
+            return Error(BuildApiBridgeFailureMessage(result), "api_bridge_failed");
+        }
 
         Console.Write(result.Stdout);
         if (!result.Stdout.EndsWith('\n')) Console.WriteLine();
@@ -166,6 +181,38 @@ internal static class BridgeProgram
         var stderr = process.StandardError.ReadToEnd();
         process.WaitForExit();
         return new ProcessResult(process.ExitCode, stdout, stderr);
+    }
+
+    private static bool TryForwardJsonError(string stdout, string stderr)
+    {
+        if (string.IsNullOrWhiteSpace(stdout))
+            return false;
+        try
+        {
+            using var _ = JsonDocument.Parse(stdout);
+            Console.Write(stdout);
+            if (!stdout.EndsWith('\n')) Console.WriteLine();
+            if (!string.IsNullOrWhiteSpace(stderr))
+                Console.Error.WriteLine(stderr.Trim());
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static string BuildApiBridgeFailureMessage(ProcessResult result)
+    {
+        var stderr = result.Stderr.Trim();
+        var stdout = result.Stdout.Trim();
+        if (stdout.Length > 512)
+            stdout = stdout[..512] + "...";
+        if (string.IsNullOrWhiteSpace(stderr))
+            stderr = "(no stderr)";
+        return string.IsNullOrWhiteSpace(stdout)
+            ? $"rhwp API bridge failed with exit code {result.ExitCode}: {stderr}"
+            : $"rhwp API bridge failed with exit code {result.ExitCode}: {stderr}; stdout: {stdout}";
     }
 
     private static string? EngineVersion(string rhwp)
@@ -196,14 +243,14 @@ internal static class BridgeProgram
 
     private static int Help()
     {
-        Console.WriteLine("rhwp-officecli-bridge create-blank|read-text|render-svg|list-fields|get-field|set-field|replace-text|get-cell-text|scan-cells|set-cell-text|save-as-hwp --format hwp|hwpx [--input <path>] [--output <path>] --json");
+        Console.WriteLine("rhwp-officecli-bridge create-blank|read-text|render-svg|render-png|export-pdf|export-markdown|document-info|diagnostics|dump-controls|dump-pages|thumbnail|list-fields|get-field|set-field|replace-text|insert-text|get-cell-text|scan-cells|set-cell-text|convert-to-editable|native-op|save-as-hwp --format hwp|hwpx [--input <path>] [--op <native-op>] [--output <path>] --json");
         return 0;
     }
 
     private static string? DiscoverExecutable(string? explicitPath, string[] names)
     {
-        if (!string.IsNullOrWhiteSpace(explicitPath) && File.Exists(explicitPath))
-            return explicitPath;
+        if (!string.IsNullOrWhiteSpace(explicitPath))
+            return File.Exists(explicitPath) ? explicitPath : null;
 
         foreach (var dir in CandidateDirectories())
         {

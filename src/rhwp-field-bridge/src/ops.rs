@@ -1,10 +1,9 @@
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{collections::BTreeMap, fs};
 
 use rhwp::wasm_api::HwpDocument;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 
-use crate::options::{optional_usize, required, required_usize, selected_pages};
+use crate::options::{optional_usize, required, required_usize};
 
 pub(crate) fn create_blank(options: &BTreeMap<String, String>) -> Result<(), String> {
     let output = required(options, "--output")?;
@@ -25,83 +24,6 @@ pub(crate) fn create_blank(options: &BTreeMap<String, String>) -> Result<(), Str
             "documentInfo": document_info,
             "engineVersion": concat!("rhwp-api ", env!("CARGO_PKG_VERSION")),
             "warnings": ["experimental blank HWP creation; verify with provider readback before production use"]
-        })
-    );
-    Ok(())
-}
-
-pub(crate) fn read_text(
-    doc: &HwpDocument,
-    format: &str,
-    options: &BTreeMap<String, String>,
-) -> Result<(), String> {
-    let page_count = doc.page_count();
-    let pages = selected_pages(options, page_count)?;
-    let mut page_payload = Vec::new();
-    let mut text = String::new();
-    for page_idx in pages {
-        let mut page_text = doc
-            .extract_page_text_native(page_idx)
-            .map_err(|e| format!("page {} text extraction failed: {e}", page_idx + 1))?;
-        if !page_text.ends_with('\n') {
-            page_text.push('\n');
-        }
-        text.push_str(&page_text);
-        page_payload.push(json!({
-            "page": page_idx + 1,
-            "text": page_text
-        }));
-    }
-    println!(
-        "{}",
-        json!({
-            "text": text,
-            "pages": page_payload,
-            "engineVersion": concat!("rhwp-api ", env!("CARGO_PKG_VERSION")),
-            "format": format,
-            "warnings": []
-        })
-    );
-    Ok(())
-}
-
-pub(crate) fn render_svg(
-    doc: &HwpDocument,
-    format: &str,
-    options: &BTreeMap<String, String>,
-) -> Result<(), String> {
-    let out_dir = required(options, "--out-dir")?;
-    fs::create_dir_all(out_dir).map_err(|e| format!("output directory create failed: {e}"))?;
-    let page_count = doc.page_count();
-    let pages = selected_pages(options, page_count)?;
-    let mut page_payload = Vec::new();
-    for page_idx in pages {
-        let svg = doc
-            .render_page_svg_native(page_idx)
-            .map_err(|e| format!("page {} SVG render failed: {e}", page_idx + 1))?;
-        let path = Path::new(out_dir).join(format!("page_{:03}.svg", page_idx + 1));
-        fs::write(&path, svg.as_bytes()).map_err(|e| format!("SVG write failed: {e}"))?;
-        page_payload.push(json!({
-            "page": page_idx + 1,
-            "path": path.to_string_lossy(),
-            "sha256": sha256_bytes(svg.as_bytes())
-        }));
-    }
-    let manifest = Path::new(out_dir).join("manifest.json");
-    fs::write(
-        &manifest,
-        serde_json::to_vec_pretty(&json!({ "pages": page_payload }))
-            .map_err(|e| format!("manifest JSON encode failed: {e}"))?,
-    )
-    .map_err(|e| format!("manifest write failed: {e}"))?;
-    println!(
-        "{}",
-        json!({
-            "pages": page_payload,
-            "manifest": manifest.to_string_lossy(),
-            "engineVersion": concat!("rhwp-api ", env!("CARGO_PKG_VERSION")),
-            "format": format,
-            "warnings": []
         })
     );
     Ok(())
@@ -432,6 +354,33 @@ pub(crate) fn set_cell_text(
     Ok(())
 }
 
+pub(crate) fn convert_to_editable(
+    doc: &mut HwpDocument,
+    format: &str,
+    options: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    let output = required(options, "--output")?;
+    let conversion_json = doc
+        .convert_to_editable_native()
+        .map_err(|e| format!("convert-to-editable failed: {e}"))?;
+    write_document(doc, "hwp", output)?;
+
+    let conversion: Value = serde_json::from_str(&conversion_json)
+        .map_err(|e| format!("convert-to-editable JSON parse failed: {e}"))?;
+    println!(
+        "{}",
+        json!({
+            "converted": conversion,
+            "output": output,
+            "outputFormat": "hwp",
+            "engineVersion": concat!("rhwp-api ", env!("CARGO_PKG_VERSION")),
+            "format": format,
+            "warnings": ["experimental editable-HWP conversion; verify with provider readback and Hancom before production use"]
+        })
+    );
+    Ok(())
+}
+
 pub(crate) fn save_as_hwp(
     doc: &mut HwpDocument,
     format: &str,
@@ -454,7 +403,11 @@ pub(crate) fn save_as_hwp(
     Ok(())
 }
 
-fn write_document(doc: &mut HwpDocument, format: &str, output: &str) -> Result<(), String> {
+pub(crate) fn write_document(
+    doc: &mut HwpDocument,
+    format: &str,
+    output: &str,
+) -> Result<(), String> {
     let bytes = match format {
         "hwp" => doc
             .export_hwp_with_adapter()
@@ -465,9 +418,4 @@ fn write_document(doc: &mut HwpDocument, format: &str, output: &str) -> Result<(
         other => return Err(format!("unsupported --format: {other}")),
     };
     fs::write(output, bytes).map_err(|e| format!("output write failed: {e}"))
-}
-
-fn sha256_bytes(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    format!("{digest:x}")
 }

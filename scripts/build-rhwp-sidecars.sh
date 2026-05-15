@@ -95,11 +95,19 @@ chmod +x "$OUT_DIR/$(basename "$BRIDGE_OUT")" 2>/dev/null || true
 
 echo "Building rhwp-field-bridge ($LOCAL_RID)..."
 CONFIG_LOWER="$(printf '%s' "$CONFIG" | tr '[:upper:]' '[:lower:]')"
+API_FEATURES="${OFFICECLI_RHWP_API_FEATURES:-native-skia}"
+if [ "$API_FEATURES" = "none" ]; then
+    API_FEATURES=""
+fi
+FEATURE_ARGS=()
+if [ -n "$API_FEATURES" ]; then
+    FEATURE_ARGS=(--features "$API_FEATURES")
+fi
 if [ "$CONFIG_LOWER" = "release" ]; then
-    cargo build --manifest-path "$API_MANIFEST" --release
+    cargo build --manifest-path "$API_MANIFEST" --release "${FEATURE_ARGS[@]}"
     API_BIN="$ROOT_DIR/src/rhwp-field-bridge/target/release/rhwp-field-bridge"
 else
-    cargo build --manifest-path "$API_MANIFEST"
+    cargo build --manifest-path "$API_MANIFEST" "${FEATURE_ARGS[@]}"
     API_BIN="$ROOT_DIR/src/rhwp-field-bridge/target/debug/rhwp-field-bridge"
 fi
 

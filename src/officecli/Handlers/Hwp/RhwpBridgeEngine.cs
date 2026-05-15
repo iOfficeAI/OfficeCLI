@@ -77,6 +77,29 @@ public sealed partial class RhwpBridgeEngine : IHwpEngine
         return ParseRenderResult(output, request.OutputDirectory);
     }
 
+    public async Task<HwpJsonViewResult> ViewJsonAsync(HwpJsonViewRequest request, CancellationToken ct)
+    {
+        var formatArg = request.Format == HwpFormat.Hwp ? "hwp" : "hwpx";
+        var timeout = request.InputSizeBytes > LargeFileSizeBytes
+            ? RenderSvgTimeoutMs * 3
+            : RenderSvgTimeoutMs;
+        var args = new List<string>
+        {
+            request.BridgeCommand,
+            "--format", formatArg,
+            "--input", request.InputPath,
+            "--json"
+        };
+        foreach (var entry in request.Args)
+        {
+            args.Add(entry.Key);
+            args.Add(entry.Value);
+        }
+
+        var output = await RunBridgeAsync(args.ToArray(), timeout, ct);
+        return ParseJsonViewResult(output, request.Operation, request.BridgeCommand);
+    }
+
     public async Task<HwpFieldListResult> ListFieldsAsync(HwpFieldListRequest request, CancellationToken ct)
     {
         var formatArg = request.Format == HwpFormat.Hwp ? "hwp" : "hwpx";
@@ -285,6 +308,31 @@ public sealed partial class RhwpBridgeEngine : IHwpEngine
             pages, manifestPath,
             HwpCapabilityConstants.EngineRhwpBridge,
             engineVersion, [], warnings.ToArray());
+    }
+
+    private static HwpJsonViewResult ParseJsonViewResult(string json, string operation, string bridgeCommand)
+    {
+        JsonNode? node;
+        try { node = JsonNode.Parse(json); }
+        catch
+        {
+            throw new HwpEngineException(
+                $"rhwp-officecli-bridge {bridgeCommand} produced unparseable JSON.",
+                HwpCapabilityConstants.ReasonBridgeInvalidJson,
+                operation: operation,
+                engine: HwpCapabilityConstants.EngineRhwpBridge,
+                engineMode: HwpCapabilityConstants.ModeExperimental);
+        }
+
+        var payload = node?.AsObject() ?? new JsonObject();
+        var engineVersion = node?["engineVersion"]?.GetValue<string>();
+        var warnings = ParseWarnings(node);
+        return new HwpJsonViewResult(
+            payload,
+            HwpCapabilityConstants.EngineRhwpBridge,
+            engineVersion,
+            [$"rhwp-api {bridgeCommand} output parsed"],
+            warnings);
     }
 
     private static HwpFieldListResult ParseFieldListResult(string json)

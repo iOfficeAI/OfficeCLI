@@ -234,16 +234,116 @@ static partial class CommandBuilder
                 "existing .hwp SVG/page render",
                 runtime.ReadRenderAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge or stock rhwp",
                 "officecli view file.hwp svg --page 1 --json"),
+            ["render_png"] = BuildDoctorOperation(
+                runtime.RenderPngAvailable,
+                "existing .hwp PNG/page render",
+                runtime.RenderPngAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with render-png support",
+                "officecli view file.hwp png --page 1 --out /tmp/hwp-png --json"),
+            ["export_pdf"] = BuildDoctorOperation(
+                runtime.ExportPdfAvailable,
+                "existing .hwp PDF export",
+                runtime.ExportPdfAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with export-pdf support",
+                "officecli view file.hwp pdf --page 1 --out out.pdf --json"),
+            ["export_markdown"] = BuildDoctorOperation(
+                runtime.ExportMarkdownAvailable,
+                "existing .hwp markdown export",
+                runtime.ExportMarkdownAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with export-markdown support",
+                "officecli view file.hwp markdown --json"),
+            ["document_info"] = BuildDoctorOperation(
+                runtime.DocumentInfoAvailable,
+                "existing .hwp document information",
+                runtime.DocumentInfoAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with document-info support",
+                "officecli view file.hwp info --json"),
+            ["diagnostics"] = BuildDoctorOperation(
+                runtime.DiagnosticsAvailable,
+                "existing .hwp provider diagnostics",
+                runtime.DiagnosticsAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with diagnostics support",
+                "officecli view file.hwp diagnostics --json"),
+            ["dump_controls"] = BuildDoctorOperation(
+                runtime.DumpControlsAvailable,
+                "existing .hwp full control/document dump diagnostics",
+                runtime.DumpControlsAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with dump-controls support",
+                "officecli view file.hwp dump --json"),
+            ["dump_pages"] = BuildDoctorOperation(
+                runtime.DumpPagesAvailable,
+                "existing .hwp page dump diagnostics",
+                runtime.DumpPagesAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with dump-pages support",
+                "officecli view file.hwp pages --page 1 --json"),
+            ["thumbnail"] = BuildDoctorOperation(
+                runtime.ThumbnailAvailable,
+                "existing .hwp thumbnail extraction",
+                runtime.ThumbnailAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with thumbnail support",
+                "officecli view file.hwp thumbnail --out thumb.png --json"),
             ["mutate_output"] = BuildDoctorOperation(
                 runtime.MutationAvailable,
-                "existing .hwp output-first field/text/table mutation",
+                "aggregate .hwp output-first mutation runtime",
                 runtime.MutationAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge",
+                "officecli hwp doctor --json"),
+            ["list_fields"] = BuildDoctorOperation(
+                runtime.ListFieldsAvailable,
+                "existing .hwp field listing",
+                runtime.ListFieldsAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with list-fields support",
+                "officecli view file.hwp fields --json"),
+            ["read_field"] = BuildDoctorOperation(
+                runtime.ReadFieldAvailable,
+                "existing .hwp field read",
+                runtime.ReadFieldAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with get-field support",
+                "officecli view file.hwp field --field-name name --json"),
+            ["fill_field"] = BuildDoctorOperation(
+                runtime.FillFieldAvailable,
+                "existing .hwp output-first field fill",
+                runtime.FillFieldAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with set-field support",
+                "officecli set file.hwp /field --prop name=field --prop value=TEXT --prop output=out.hwp --json"),
+            ["replace_text"] = BuildDoctorOperation(
+                runtime.ReplaceTextAvailable,
+                "existing .hwp output-first text replacement",
+                runtime.ReplaceTextAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with replace-text support",
                 "officecli set file.hwp /text --prop find=OLD --prop value=NEW --prop output=out.hwp --json"),
+            ["insert_text"] = BuildDoctorOperation(
+                runtime.InsertTextAvailable,
+                "existing .hwp output-first body text insertion",
+                runtime.InsertTextAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with insert-text support",
+                "officecli add file.hwp /text --type paragraph --prop value=TEXT --prop output=out.hwp --json"),
+            ["read_table_cell"] = BuildDoctorOperation(
+                runtime.ReadTableCellAvailable,
+                "existing .hwp table cell read by rhwp coordinates",
+                runtime.ReadTableCellAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with get-cell-text support",
+                "officecli view file.hwp table-cell --section 0 --parent-para 3 --control 0 --cell 0 --cell-para 0 --json"),
+            ["scan_cells"] = BuildDoctorOperation(
+                runtime.ScanCellsAvailable,
+                "bounded .hwp table cell scan",
+                runtime.ScanCellsAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with scan-cells support",
+                "officecli view file.hwp tables --section 0 --json"),
+            ["set_table_cell"] = BuildDoctorOperation(
+                runtime.SetTableCellAvailable,
+                "existing .hwp output-first table cell mutation",
+                runtime.SetTableCellAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with set-cell-text support",
+                "officecli set file.hwp /table/cell --prop section=0 --prop parentPara=3 --prop control=0 --prop cell=0 --prop value=TEXT --prop output=out.hwp --json"),
+            ["convert_to_editable"] = BuildDoctorOperation(
+                runtime.ConvertToEditableAvailable,
+                "existing distribution/read-only .hwp -> editable .hwp conversion",
+                runtime.ConvertToEditableAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with convert-to-editable support",
+                "officecli set file.hwp /convert-to-editable --prop output=editable.hwp --json"),
+            ["native_read"] = BuildDoctorOperation(
+                runtime.NativeOpAvailable,
+                "rhwp native read/query API escape hatch",
+                runtime.NativeOpAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with native-op support",
+                "officecli view file.hwp native --op get-style-list --json"),
+            ["native_mutation"] = BuildDoctorOperation(
+                runtime.NativeOpAvailable,
+                "rhwp native output-first mutation API escape hatch",
+                runtime.NativeOpAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with native-op support",
+                "officecli set file.hwp /native-op --prop op=split-paragraph --prop paragraph=0 --prop offset=5 --prop output=out.hwp --json"),
             ["create_blank"] = BuildDoctorOperation(
                 runtime.CreateBlankAvailable,
                 "new blank binary .hwp creation",
                 runtime.CreateBlankAvailable ? null : "requires rhwp-field-bridge",
-                "officecli create file.hwp --json")
+                "officecli create file.hwp --json"),
+            ["save_as_hwp"] = BuildDoctorOperation(
+                runtime.SaveAsHwpAvailable,
+                ".hwpx/.hwp save-as-hwp bridge export",
+                runtime.SaveAsHwpAvailable ? null : "requires rhwp-officecli-bridge plus rhwp-field-bridge with save-as-hwp support",
+                "officecli set file.hwpx /save-as-hwp --prop output=out.hwp --json")
         };
 
         var ok = runtime.ReadRenderAvailable || runtime.MutationAvailable || runtime.CreateBlankAvailable;
@@ -259,7 +359,27 @@ static partial class CommandBuilder
                 ["rhwpPath"] = runtime.RhwpPath,
                 ["readRenderAvailable"] = runtime.ReadRenderAvailable,
                 ["mutationAvailable"] = runtime.MutationAvailable,
-                ["createBlankAvailable"] = runtime.CreateBlankAvailable
+                ["createBlankAvailable"] = runtime.CreateBlankAvailable,
+                ["listFieldsAvailable"] = runtime.ListFieldsAvailable,
+                ["readFieldAvailable"] = runtime.ReadFieldAvailable,
+                ["fillFieldAvailable"] = runtime.FillFieldAvailable,
+                ["replaceTextAvailable"] = runtime.ReplaceTextAvailable,
+                ["insertTextAvailable"] = runtime.InsertTextAvailable,
+                ["renderPngAvailable"] = runtime.RenderPngAvailable,
+                ["exportPdfAvailable"] = runtime.ExportPdfAvailable,
+                ["exportMarkdownAvailable"] = runtime.ExportMarkdownAvailable,
+                ["documentInfoAvailable"] = runtime.DocumentInfoAvailable,
+                ["diagnosticsAvailable"] = runtime.DiagnosticsAvailable,
+                ["dumpControlsAvailable"] = runtime.DumpControlsAvailable,
+                ["dumpPagesAvailable"] = runtime.DumpPagesAvailable,
+                ["thumbnailAvailable"] = runtime.ThumbnailAvailable,
+                ["readTableCellAvailable"] = runtime.ReadTableCellAvailable,
+                ["scanCellsAvailable"] = runtime.ScanCellsAvailable,
+                ["setTableCellAvailable"] = runtime.SetTableCellAvailable,
+                ["convertToEditableAvailable"] = runtime.ConvertToEditableAvailable,
+                ["nativeOpAvailable"] = runtime.NativeOpAvailable,
+                ["saveAsHwpAvailable"] = runtime.SaveAsHwpAvailable,
+                ["apiCommands"] = HwpCapabilityJsonMapper.ToJsonArray(runtime.ApiCommands.Order(StringComparer.Ordinal).ToArray())
             },
             ["operations"] = operations,
             ["checks"] = checks,

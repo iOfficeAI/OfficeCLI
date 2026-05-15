@@ -13,7 +13,7 @@ static partial class CommandBuilder
     private static Command BuildViewCommand(Option<bool> jsonOption)
     {
         var viewFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.docx, .xlsx, .pptx, .hwpx, experimental .hwp)" };
-        var viewModeArg = new Argument<string>("mode") { Description = "View mode: text, annotated, outline, stats, issues, html, svg, screenshot, pdf, forms, styles, tables, markdown, objects, fields, field" };
+        var viewModeArg = new Argument<string>("mode") { Description = "View mode: text, annotated, outline, stats, issues, html, svg, screenshot, pdf, forms, styles, tables, markdown, objects, fields, field, native" };
         var startLineOpt = new Option<int?>("--start") { Description = "Start line/paragraph number" };
         var endLineOpt = new Option<int?>("--end") { Description = "End line/paragraph number" };
         var maxLinesOpt = new Option<int?>("--max-lines") { Description = "Maximum number of lines/rows/slides to output (truncates with total count)" };
@@ -31,8 +31,22 @@ static partial class CommandBuilder
         var withPagesOpt = new Option<bool>("--page-count") { Description = "stats mode (docx only): also report total page count via Word repagination (Win + Word required; slow on long docs)" };
         var autoOpt = new Option<bool>("--auto") { Description = "Auto-recognize label-value fields in tables (hwpx forms only)" };
         var objectTypeOpt = new Option<string?>("--object-type") { Description = "Object type filter: picture, field, bookmark, equation, formfield (hwpx objects mode)" };
+        var nativeOpOpt = new Option<string?>("--op") { Description = "HWP rhwp native read operation for native view mode" };
+        var nativeArgOpt = new Option<string[]>("--native-arg") { Description = "HWP native view argument (key=value), repeatable", AllowMultipleArgumentsPerToken = true };
         var fieldNameOpt = new Option<string?>("--field-name") { Description = "Field name for HWP/HWPX field read mode" };
         var fieldIdOpt = new Option<int?>("--field-id") { Description = "Field id for HWP/HWPX field read mode" };
+        var sectionOpt = new Option<int?>("--section") { Description = "HWP rhwp section index for table/page operations" };
+        var parentParaOpt = new Option<int?>("--parent-para") { Description = "HWP rhwp parent paragraph index for table operations" };
+        var controlOpt = new Option<int?>("--control") { Description = "HWP rhwp control index for table operations" };
+        var cellOpt = new Option<int?>("--cell") { Description = "HWP rhwp cell index for table operations" };
+        var cellParaOpt = new Option<int?>("--cell-para") { Description = "HWP rhwp cell paragraph index for table operations" };
+        var offsetOpt = new Option<int?>("--offset") { Description = "HWP rhwp text offset for table cell read" };
+        var countOpt = new Option<int?>("--count") { Description = "HWP rhwp count/limit for table cell read" };
+        var maxParentParaOpt = new Option<int?>("--max-parent-para") { Description = "HWP rhwp scan upper bound for parent paragraphs" };
+        var maxControlOpt = new Option<int?>("--max-control") { Description = "HWP rhwp scan upper bound for controls" };
+        var maxCellOpt = new Option<int?>("--max-cell") { Description = "HWP rhwp scan upper bound for cells" };
+        var maxCellParaOpt = new Option<int?>("--max-cell-para") { Description = "HWP rhwp scan upper bound for cell paragraphs" };
+        var includeEmptyOpt = new Option<bool>("--include-empty") { Description = "Include empty HWP table cells in scan output" };
 
         var viewCommand = new Command("view", BuildViewDescription());
         viewCommand.Add(viewFileArg);
@@ -53,8 +67,22 @@ static partial class CommandBuilder
         viewCommand.Add(withPagesOpt);
         viewCommand.Add(autoOpt);
         viewCommand.Add(objectTypeOpt);
+        viewCommand.Add(nativeOpOpt);
+        viewCommand.Add(nativeArgOpt);
         viewCommand.Add(fieldNameOpt);
         viewCommand.Add(fieldIdOpt);
+        viewCommand.Add(sectionOpt);
+        viewCommand.Add(parentParaOpt);
+        viewCommand.Add(controlOpt);
+        viewCommand.Add(cellOpt);
+        viewCommand.Add(cellParaOpt);
+        viewCommand.Add(offsetOpt);
+        viewCommand.Add(countOpt);
+        viewCommand.Add(maxParentParaOpt);
+        viewCommand.Add(maxControlOpt);
+        viewCommand.Add(maxCellOpt);
+        viewCommand.Add(maxCellParaOpt);
+        viewCommand.Add(includeEmptyOpt);
         viewCommand.Add(jsonOption);
 
         viewCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
@@ -79,15 +107,39 @@ static partial class CommandBuilder
             var withPages = result.GetValue(withPagesOpt);
             var autoRecognize = result.GetValue(autoOpt);
             var objectTypeFilter = result.GetValue(objectTypeOpt);
+            var nativeOp = result.GetValue(nativeOpOpt);
+            var nativeArgs = result.GetValue(nativeArgOpt);
             var fieldName = result.GetValue(fieldNameOpt);
             var fieldId = result.GetValue(fieldIdOpt);
+            var hwpViewArgs = new Dictionary<string, string>(StringComparer.Ordinal);
+            AddHwpViewOption(hwpViewArgs, "--section", result.GetValue(sectionOpt));
+            AddHwpViewOption(hwpViewArgs, "--parent-para", result.GetValue(parentParaOpt));
+            AddHwpViewOption(hwpViewArgs, "--control", result.GetValue(controlOpt));
+            AddHwpViewOption(hwpViewArgs, "--cell", result.GetValue(cellOpt));
+            AddHwpViewOption(hwpViewArgs, "--cell-para", result.GetValue(cellParaOpt));
+            AddHwpViewOption(hwpViewArgs, "--offset", result.GetValue(offsetOpt));
+            AddHwpViewOption(hwpViewArgs, "--count", result.GetValue(countOpt));
+            AddHwpViewOption(hwpViewArgs, "--max-parent-para", result.GetValue(maxParentParaOpt));
+            AddHwpViewOption(hwpViewArgs, "--max-control", result.GetValue(maxControlOpt));
+            AddHwpViewOption(hwpViewArgs, "--max-cell", result.GetValue(maxCellOpt));
+            AddHwpViewOption(hwpViewArgs, "--max-cell-para", result.GetValue(maxCellParaOpt));
+            if (result.GetValue(includeEmptyOpt))
+                hwpViewArgs["--include-empty"] = "true";
 
             // pdf mode runs entirely through an exporter plugin (no handler
             // open, no resident hop — the plugin gets a snapshot of the
             // source and writes the PDF). Handled before TryResident
             // because exporter invocation needs the file lock released, and
             // ExporterInvoker closes the resident itself when present.
-            if (mode.ToLowerInvariant() is "pdf")
+            var lowerMode = mode.ToLowerInvariant();
+            var earlyExtension = Path.GetExtension(file.FullName);
+            var bridgeOwnsPdf = string.Equals(earlyExtension, ".hwp", StringComparison.OrdinalIgnoreCase)
+                || (string.Equals(earlyExtension, ".hwpx", StringComparison.OrdinalIgnoreCase)
+                    && (HwpEngineSelector.IsExperimentalBridgeEnabled()
+                        || HwpEngineSelector.CanUseInstalledRuntime(
+                            HwpCapabilityConstants.FormatHwpx,
+                            HwpCapabilityConstants.OperationExportPdf)));
+            if (lowerMode is "pdf" && !bridgeOwnsPdf)
             {
                 var pdfPath = outArg ?? Path.ChangeExtension(file.FullName, "pdf");
                 var exp = OfficeCli.Core.Plugins.ExporterInvoker.Run(file.FullName, ".pdf", pdfPath);
@@ -144,14 +196,19 @@ static partial class CommandBuilder
 
             // Binary .hwp: route through HWP engine (bridge when experimental, else unsupported)
             if (string.Equals(extension, ".hwp", StringComparison.OrdinalIgnoreCase))
-                return HandleHwpView(file.FullName, HwpFormat.Hwp, mode, pageFilter, json, fieldName, fieldId);
+                return HandleHwpView(file.FullName, HwpFormat.Hwp, mode, pageFilter, json, fieldName, fieldId, outArg, hwpViewArgs, nativeOp, nativeArgs);
 
             // HWPX stays on the custom XML handler by default. The rhwp bridge can be
             // opted into for read/render smoke coverage without changing stable HWPX behavior.
+            var hwpxModeKey = mode.Trim().ToLowerInvariant();
+            var hwpxOperation = HwpViewOperationForMode(hwpxModeKey);
             if (string.Equals(extension, ".hwpx", StringComparison.OrdinalIgnoreCase)
-                && HwpEngineSelector.IsExperimentalBridgeEnabled()
-                && mode.Trim().ToLowerInvariant() is "text" or "t" or "svg" or "g" or "fields" or "field")
-                return HandleHwpView(file.FullName, HwpFormat.Hwpx, mode, pageFilter, json, fieldName, fieldId);
+                && hwpxOperation != null
+                && (HwpEngineSelector.IsExperimentalBridgeEnabled()
+                    || HwpEngineSelector.CanUseInstalledRuntime(
+                        HwpCapabilityConstants.FormatHwpx,
+                        hwpxOperation)))
+                return HandleHwpView(file.FullName, HwpFormat.Hwpx, mode, pageFilter, json, fieldName, fieldId, outArg, hwpViewArgs, nativeOp, nativeArgs);
 
             using var handler = DocumentHandlerFactory.Open(file.FullName);
 
@@ -583,6 +640,12 @@ static partial class CommandBuilder
         return (p, p);
     }
 
+    private static void AddHwpViewOption(Dictionary<string, string> args, string key, int? value)
+    {
+        if (value.HasValue)
+            args[key] = value.Value.ToString();
+    }
+
     private static int HandleHwpView(
         string filePath,
         HwpFormat format,
@@ -590,17 +653,17 @@ static partial class CommandBuilder
         string? pageFilter,
         bool json,
         string? fieldName = null,
-        int? fieldId = null)
+        int? fieldId = null,
+        string? outArg = null,
+        IReadOnlyDictionary<string, string>? viewArgs = null,
+        string? nativeOp = null,
+        string[]? nativeArgs = null)
     {
         var modeKey = mode.Trim().ToLowerInvariant();
         var formatKey = format == HwpFormat.Hwp
             ? HwpCapabilityConstants.FormatHwp
             : HwpCapabilityConstants.FormatHwpx;
-        var operation = modeKey is "text" or "t" ? HwpCapabilityConstants.OperationReadText
-            : modeKey is "svg" or "g" ? HwpCapabilityConstants.OperationRenderSvg
-            : modeKey is "fields" ? HwpCapabilityConstants.OperationListFields
-            : modeKey is "field" ? HwpCapabilityConstants.OperationReadField
-            : null;
+        var operation = HwpViewOperationForMode(modeKey);
 
         if (!HwpEngineSelector.IsExperimentalBridgeEnabled()
             && !HwpEngineSelector.CanUseInstalledRuntime(formatKey, operation))
@@ -613,15 +676,22 @@ static partial class CommandBuilder
                 [
                     HwpCapabilityConstants.OperationReadText,
                     HwpCapabilityConstants.OperationRenderSvg,
+                    HwpCapabilityConstants.OperationRenderPng,
+                    HwpCapabilityConstants.OperationExportPdf,
+                    HwpCapabilityConstants.OperationExportMarkdown,
+                    HwpCapabilityConstants.OperationThumbnail,
+                    HwpCapabilityConstants.OperationDocumentInfo,
+                    HwpCapabilityConstants.OperationDiagnostics,
+                    HwpCapabilityConstants.OperationDumpControls,
+                    HwpCapabilityConstants.OperationDumpPages,
                     HwpCapabilityConstants.OperationListFields,
-                    HwpCapabilityConstants.OperationReadField
+                    HwpCapabilityConstants.OperationReadField,
+                    HwpCapabilityConstants.OperationReadTableCell,
+                    HwpCapabilityConstants.OperationScanCells,
+                    HwpCapabilityConstants.OperationNativeRead
                 ],
                 formatKey,
-                modeKey is "text" or "t" ? HwpCapabilityConstants.OperationReadText
-                    : modeKey is "svg" or "g" ? HwpCapabilityConstants.OperationRenderSvg
-                    : modeKey is "fields" ? HwpCapabilityConstants.OperationListFields
-                    : modeKey is "field" ? HwpCapabilityConstants.OperationReadField
-                    : null,
+                operation,
                 HwpCapabilityConstants.EngineNone,
                 HwpCapabilityConstants.ModeNone);
         }
@@ -694,6 +764,125 @@ static partial class CommandBuilder
             return 0;
         }
 
+        if (modeKey is "png" or "pdf" or "markdown" or "md" or "thumbnail" or "info" or "diagnostics" or "diag" or "dump" or "controls" or "pages" or "dump-pages" or "table-cell" or "cell" or "tables" or "cells" or "native" or "native-op")
+        {
+            var args = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (viewArgs != null)
+                foreach (var entry in viewArgs)
+                    args[entry.Key] = entry.Value;
+            string bridgeCommand;
+            var effectiveOperation = operation ?? HwpCapabilityConstants.OperationReadText;
+            if (modeKey is "png")
+            {
+                bridgeCommand = "render-png";
+                args["--out-dir"] = outArg != null
+                    ? Path.GetFullPath(outArg)
+                    : Path.Combine(Path.GetTempPath(), $"officecli_hwp_png_{Guid.NewGuid():N}");
+                args["--page"] = pageFilter ?? "all";
+                Directory.CreateDirectory(args["--out-dir"]);
+            }
+            else if (modeKey is "pdf")
+            {
+                bridgeCommand = "export-pdf";
+                args["--output"] = outArg != null
+                    ? Path.GetFullPath(outArg)
+                    : Path.GetFullPath(Path.ChangeExtension(filePath, ".pdf"));
+                args["--page"] = pageFilter ?? "all";
+            }
+            else if (modeKey is "markdown" or "md")
+            {
+                bridgeCommand = "export-markdown";
+                args["--page"] = pageFilter ?? "all";
+            }
+            else if (modeKey is "thumbnail")
+            {
+                bridgeCommand = "thumbnail";
+                args["--output"] = outArg != null
+                    ? Path.GetFullPath(outArg)
+                    : Path.Combine(Path.GetTempPath(), $"officecli_hwp_thumbnail_{Guid.NewGuid():N}.png");
+            }
+            else if (modeKey is "info")
+            {
+                bridgeCommand = "document-info";
+            }
+            else if (modeKey is "diagnostics" or "diag")
+            {
+                bridgeCommand = "diagnostics";
+            }
+            else if (modeKey is "dump" or "controls")
+            {
+                bridgeCommand = "dump-controls";
+            }
+            else if (modeKey is "pages" or "dump-pages")
+            {
+                bridgeCommand = "dump-pages";
+                if (!string.IsNullOrWhiteSpace(pageFilter))
+                    args["--page"] = pageFilter;
+            }
+            else if (modeKey is "table-cell" or "cell")
+            {
+                bridgeCommand = "get-cell-text";
+            }
+            else if (modeKey is "native" or "native-op")
+            {
+                if (string.IsNullOrWhiteSpace(nativeOp))
+                    throw new HwpEngineException(
+                        "HWP native view requires --op <rhwp-native-op>.",
+                        HwpCapabilityConstants.ReasonUnsupportedOperation,
+                        "Example: officecli view input.hwp native --op get-style-list --json",
+                        [HwpCapabilityConstants.OperationNativeRead],
+                        formatKey,
+                        HwpCapabilityConstants.OperationNativeRead,
+                        HwpCapabilityConstants.EngineRhwpBridge,
+                        HwpCapabilityConstants.ModeExperimental);
+                ValidateHwpNativeViewRequest(formatKey, nativeOp, nativeArgs ?? Array.Empty<string>());
+                bridgeCommand = "native-op";
+                args["--op"] = nativeOp;
+                foreach (var (key, value) in ParsePropsArray(nativeArgs ?? Array.Empty<string>()))
+                {
+                    var normalized = key.StartsWith("--", StringComparison.Ordinal) ? key : $"--{key}";
+                    args[normalized] = value;
+                }
+            }
+            else
+            {
+                bridgeCommand = "scan-cells";
+            }
+
+            var request = new HwpJsonViewRequest(format, filePath, fileInfo.Length, effectiveOperation, bridgeCommand, args, json);
+            var result = engine.ViewJsonAsync(request, ct).GetAwaiter().GetResult();
+            if (json)
+            {
+                var data = (System.Text.Json.Nodes.JsonObject)result.Data.DeepClone();
+                data["engine"] = result.Engine;
+                data["engineVersion"] = result.EngineVersion;
+                var envelope = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["success"] = true,
+                    ["data"] = data,
+                    ["warnings"] = HwpCapabilityJsonMapper.ToJsonArray(result.Warnings)
+                };
+                Console.WriteLine(envelope.ToJsonString(OfficeCli.Core.OutputFormatter.PublicJsonOptions));
+            }
+            else if (result.Data["markdown"]?.GetValue<string>() is { } markdown)
+            {
+                Console.WriteLine(markdown);
+            }
+            else if (result.Data["dump"]?.GetValue<string>() is { } dump)
+            {
+                Console.WriteLine(dump);
+            }
+            else if (result.Data["pdf"]?["path"]?.GetValue<string>() is { } pdfPath)
+            {
+                Console.WriteLine(pdfPath);
+            }
+            else
+            {
+                Console.WriteLine(result.Data.ToJsonString(OfficeCli.Core.OutputFormatter.PublicJsonOptions));
+            }
+            return 0;
+        }
+
         if (modeKey is "fields")
         {
             var request = new HwpFieldListRequest(format, filePath, fileInfo.Length, json);
@@ -741,14 +930,25 @@ static partial class CommandBuilder
         }
 
         throw new HwpEngineException(
-            $"{formatKey} bridge view mode '{mode}' is not supported. Use 'text', 'svg', 'fields', or 'field'.",
+            $"{formatKey} bridge view mode '{mode}' is not supported. Use text, svg, png, pdf, markdown, thumbnail, info, diagnostics, dump, pages, fields, field, table-cell, tables, or native.",
             HwpCapabilityConstants.ReasonUnsupportedOperation,
             null,
             [
                 HwpCapabilityConstants.OperationReadText,
                 HwpCapabilityConstants.OperationRenderSvg,
+                HwpCapabilityConstants.OperationRenderPng,
+                HwpCapabilityConstants.OperationExportPdf,
+                HwpCapabilityConstants.OperationExportMarkdown,
+                HwpCapabilityConstants.OperationThumbnail,
+                HwpCapabilityConstants.OperationDocumentInfo,
+                HwpCapabilityConstants.OperationDiagnostics,
+                HwpCapabilityConstants.OperationDumpControls,
+                HwpCapabilityConstants.OperationDumpPages,
                 HwpCapabilityConstants.OperationListFields,
-                HwpCapabilityConstants.OperationReadField
+                HwpCapabilityConstants.OperationReadField,
+                HwpCapabilityConstants.OperationReadTableCell,
+                HwpCapabilityConstants.OperationScanCells,
+                HwpCapabilityConstants.OperationNativeRead
             ],
             formatKey,
             null,

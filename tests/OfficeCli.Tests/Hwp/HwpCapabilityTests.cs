@@ -10,6 +10,7 @@ public class HwpCapabilityTests : IDisposable
     private readonly string? _oldBridge = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH");
     private readonly string? _oldRhwp = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_BIN");
     private readonly string? _oldApi = Environment.GetEnvironmentVariable("OFFICECLI_RHWP_API_BIN");
+    private readonly string? _oldPath = Environment.GetEnvironmentVariable("PATH");
 
     public void Dispose()
     {
@@ -17,6 +18,7 @@ public class HwpCapabilityTests : IDisposable
         Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", _oldBridge);
         Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", _oldRhwp);
         Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", _oldApi);
+        Environment.SetEnvironmentVariable("PATH", _oldPath);
     }
 
     [Fact]
@@ -33,6 +35,7 @@ public class HwpCapabilityTests : IDisposable
             Assert.Contains("read_text", capability.Operations.Keys);
             Assert.Contains("render_svg", capability.Operations.Keys);
             Assert.Contains("fill_field", capability.Operations.Keys);
+            Assert.Contains("insert_text", capability.Operations.Keys);
             Assert.Contains("create_blank", capability.Operations.Keys);
             Assert.Contains("save_original", capability.Operations.Keys);
             Assert.Contains("save_as_hwp", capability.Operations.Keys);
@@ -42,6 +45,7 @@ public class HwpCapabilityTests : IDisposable
     [Fact]
     public void Json_IncludesNullEngineVersionForUnsupportedOperations()
     {
+        ClearHwpRuntimeForMissingRuntimeAssertions();
         var report = HwpCapabilityFactory.BuildReport("officecli:test");
         var envelope = HwpCapabilityJsonMapper.BuildEnvelope(report);
         var json = envelope.ToJsonString(OfficeCli.Core.OutputFormatter.PublicJsonOptions);
@@ -57,10 +61,7 @@ public class HwpCapabilityTests : IDisposable
     [Fact]
     public void BinaryHwp_MutationIsExperimentalButNotReadyWithoutBridge()
     {
-        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", null);
-        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", null);
-        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", null);
-        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", null);
+        ClearHwpRuntimeForMissingRuntimeAssertions();
         var report = HwpCapabilityFactory.BuildReport("officecli:test");
         var hwp = report.Formats["hwp"];
 
@@ -113,10 +114,7 @@ public class HwpCapabilityTests : IDisposable
     [Fact]
     public void HwpDoctorJson_ReportsMissingRuntimeAndNextCommand()
     {
-        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", null);
-        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", null);
-        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", null);
-        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", null);
+        ClearHwpRuntimeForMissingRuntimeAssertions();
 
         var (exitCode, stdout) = Invoke(["hwp", "doctor", "--json"]);
         var root = JsonNode.Parse(stdout)!;
@@ -157,8 +155,10 @@ public class HwpCapabilityTests : IDisposable
             Assert.Equal(0, exitCode);
             Assert.True(root["data"]!["ok"]!.GetValue<bool>());
             Assert.True(root["data"]!["operations"]!["create_blank"]!["ready"]!.GetValue<bool>());
+            Assert.False(root["data"]!["operations"]!["insert_text"]!["ready"]!.GetValue<bool>());
             Assert.False(root["data"]!["operations"]!["read_text"]!["ready"]!.GetValue<bool>());
             Assert.True(root["data"]!["autoDiscovery"]!["createBlankAvailable"]!.GetValue<bool>());
+            Assert.False(root["data"]!["autoDiscovery"]!["insertTextAvailable"]!.GetValue<bool>());
         }
         finally
         {
@@ -170,10 +170,59 @@ public class HwpCapabilityTests : IDisposable
     }
 
     [Fact]
+    public void CapabilityJson_BlocksInsertTextWhenApiSidecarIsTooOld()
+    {
+        var fakeBridge = Path.Combine(Path.GetTempPath(), $"fake-rhwp-bridge-{Guid.NewGuid():N}");
+        var fakeApi = Path.Combine(Path.GetTempPath(), $"fake-rhwp-api-{Guid.NewGuid():N}");
+        var isolatedDir = Path.Combine(Path.GetTempPath(), $"hwp-capabilities-isolated-{Guid.NewGuid():N}");
+        var oldPath = Environment.GetEnvironmentVariable("PATH");
+        var oldCwd = Directory.GetCurrentDirectory();
+        Directory.CreateDirectory(isolatedDir);
+        File.WriteAllText(fakeBridge, "#!/bin/sh\nexit 0\n");
+        File.WriteAllText(fakeApi, "#!/bin/sh\necho 'rhwp-field-bridge create-blank|read-text|replace-text --json'\nexit 0\n");
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(fakeBridge,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            File.SetUnixFileMode(fakeApi,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
+        try
+        {
+            Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", null);
+            Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", null);
+            Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", fakeBridge);
+            Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", fakeApi);
+            Environment.SetEnvironmentVariable("PATH", isolatedDir);
+            Directory.SetCurrentDirectory(isolatedDir);
+
+            var report = HwpCapabilityFactory.BuildReport("officecli:test");
+            var hwp = report.Formats["hwp"];
+
+            Assert.Equal(HwpCapabilityConstants.ReasonRhwpApiMissingOrTooOld,
+                hwp.Operations[HwpCapabilityConstants.OperationInsertText].UnsupportedReason);
+            Assert.Equal(HwpCapabilityConstants.ReasonRoundTripUnverified,
+                hwp.Operations[HwpCapabilityConstants.OperationReplaceText].UnsupportedReason);
+            Assert.Equal(HwpCapabilityConstants.ReasonRhwpApiMissingOrTooOld,
+                hwp.Operations[HwpCapabilityConstants.OperationSetTableCell].UnsupportedReason);
+            Assert.Equal(HwpCapabilityConstants.ReasonRhwpApiMissingOrTooOld,
+                hwp.Operations[HwpCapabilityConstants.OperationSaveAsHwp].UnsupportedReason);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(oldCwd);
+            Environment.SetEnvironmentVariable("PATH", oldPath);
+            File.Delete(fakeBridge);
+            File.Delete(fakeApi);
+            Directory.Delete(isolatedDir);
+        }
+    }
+
+    [Fact]
     public void HwpBridgeErrorJson_IncludesNextCommand()
     {
-        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", null);
-        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", null);
+        ClearHwpRuntimeForMissingRuntimeAssertions();
         var input = Path.Combine(Path.GetTempPath(), $"officecli-hwp-{Guid.NewGuid():N}.hwp");
         File.WriteAllText(input, "not a real hwp");
 
@@ -208,5 +257,14 @@ public class HwpCapabilityTests : IDisposable
         {
             Console.SetOut(originalOut);
         }
+    }
+
+    private static void ClearHwpRuntimeForMissingRuntimeAssertions()
+    {
+        Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", null);
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", null);
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", null);
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", null);
+        Environment.SetEnvironmentVariable("PATH", "");
     }
 }

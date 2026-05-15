@@ -31,6 +31,8 @@ static partial class CommandBuilder
               officecli set form.hwp /text --prop find=마케팅 --prop value=브릿지 --prop output=out.hwp --json
               officecli set form.hwp /text --prop find=마케팅 --prop value=브릿지 --in-place --backup --verify --json
               officecli set table.hwp /table/cell --prop section=0 --prop parent-para=3 --prop control=0 --prop cell=0 --prop value=오피스셀 --prop output=out.hwp --json
+              officecli set readonly.hwp /convert-to-editable --prop output=editable.hwp --json
+              officecli set form.hwp /native-op --prop op=split-paragraph --prop paragraph=0 --prop offset=5 --prop output=out.hwp --json
               officecli set form.hwpx /save-as-hwp --prop output=out.hwp --json
 
             HWP uses packaged rhwp sidecars when present, or OFFICECLI_HWP_ENGINE=rhwp-experimental plus bridge paths; run `officecli help hwp`.
@@ -190,6 +192,12 @@ static partial class CommandBuilder
                 && string.Equals(path, "/table/cell", StringComparison.OrdinalIgnoreCase))
                 return HandleHwpTableCellSet(file.FullName, HwpFormat.Hwp, properties, json);
             if (string.Equals(extension, ".hwp", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(path, "/convert-to-editable", StringComparison.OrdinalIgnoreCase))
+                return HandleHwpConvertToEditable(file.FullName, HwpFormat.Hwp, properties, json);
+            if (string.Equals(extension, ".hwp", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(path, "/native-op", StringComparison.OrdinalIgnoreCase))
+                return HandleHwpNativeMutation(file.FullName, HwpFormat.Hwp, properties, json);
+            if (string.Equals(extension, ".hwp", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(path, "/save-as-hwp", StringComparison.OrdinalIgnoreCase))
                 return HandleHwpSaveAsHwp(file.FullName, HwpFormat.Hwp, properties, json);
 
@@ -217,6 +225,9 @@ static partial class CommandBuilder
             if (string.Equals(extension, ".hwpx", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(path, "/save-as-hwp", StringComparison.OrdinalIgnoreCase))
                 return HandleHwpSaveAsHwp(file.FullName, HwpFormat.Hwpx, properties, json);
+            if (string.Equals(extension, ".hwpx", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(path, "/native-op", StringComparison.OrdinalIgnoreCase))
+                return HandleHwpNativeMutation(file.FullName, HwpFormat.Hwpx, properties, json);
 
             if (TryResident(file.FullName, req =>
             {

@@ -27,6 +27,11 @@ public sealed class CustomHwpxEngine : IHwpEngine
         throw Unsupported(request.Format, HwpCapabilityConstants.OperationRenderSvg);
     }
 
+    public Task<HwpJsonViewResult> ViewJsonAsync(HwpJsonViewRequest request, CancellationToken ct)
+    {
+        throw Unsupported(request.Format, request.Operation);
+    }
+
     public Task<HwpFieldListResult> ListFieldsAsync(HwpFieldListRequest request, CancellationToken ct)
     {
         throw Unsupported(request.Format, HwpCapabilityConstants.OperationListFields);
@@ -47,6 +52,11 @@ public sealed class CustomHwpxEngine : IHwpEngine
         throw Unsupported(request.Format, HwpCapabilityConstants.OperationReplaceText);
     }
 
+    public Task<HwpMutationResult> InsertTextAsync(HwpInsertTextRequest request, CancellationToken ct)
+    {
+        throw Unsupported(request.Format, HwpCapabilityConstants.OperationInsertText);
+    }
+
     public Task<HwpMutationResult> SetTableCellAsync(HwpTableCellSetRequest request, CancellationToken ct)
     {
         throw Unsupported(request.Format, HwpCapabilityConstants.OperationSetTableCell);
@@ -55,6 +65,16 @@ public sealed class CustomHwpxEngine : IHwpEngine
     public Task<HwpMutationResult> SaveOriginalAsync(HwpSaveOriginalRequest request, CancellationToken ct)
     {
         throw Unsupported(request.Format, HwpCapabilityConstants.OperationSaveOriginal);
+    }
+
+    public Task<HwpMutationResult> ConvertToEditableAsync(HwpConvertToEditableRequest request, CancellationToken ct)
+    {
+        throw Unsupported(request.Format, HwpCapabilityConstants.OperationConvertToEditable);
+    }
+
+    public Task<HwpMutationResult> NativeMutationAsync(HwpNativeMutationRequest request, CancellationToken ct)
+    {
+        throw Unsupported(request.Format, HwpCapabilityConstants.OperationNativeMutation);
     }
 
     public Task<HwpMutationResult> SaveAsHwpAsync(HwpSaveAsHwpRequest request, CancellationToken ct)
@@ -83,10 +103,16 @@ public sealed class CustomHwpxEngine : IHwpEngine
             [
                 HwpCapabilityConstants.OperationReadText,
                 HwpCapabilityConstants.OperationRenderSvg,
+                HwpCapabilityConstants.OperationRenderPng,
+                HwpCapabilityConstants.OperationExportPdf,
+                HwpCapabilityConstants.OperationExportMarkdown,
                 HwpCapabilityConstants.OperationListFields,
                 HwpCapabilityConstants.OperationReadField,
                 HwpCapabilityConstants.OperationFillField,
                 HwpCapabilityConstants.OperationReplaceText,
+                HwpCapabilityConstants.OperationInsertText,
+                HwpCapabilityConstants.OperationNativeRead,
+                HwpCapabilityConstants.OperationNativeMutation,
                 HwpCapabilityConstants.OperationSaveOriginal,
                 HwpCapabilityConstants.OperationSaveAsHwp
             ],

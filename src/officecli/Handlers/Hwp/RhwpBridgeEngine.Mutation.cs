@@ -326,6 +326,155 @@ public sealed partial class RhwpBridgeEngine
         return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
     }
 
+    public async Task<HwpMutationResult> InsertTextAsync(HwpInsertTextRequest request, CancellationToken ct)
+    {
+        var formatArg = FormatKey(request.Format);
+        string? outputJson = null;
+        var sourceHash = ComputeSha256(request.InputPath);
+        var runner = new SafeSaveRunner();
+        var transaction = await runner.RunAsync(
+            new SafeSaveOptions(
+                request.InputPath,
+                request.OutputPath,
+                InPlace: false,
+                Backup: false,
+                Verify: false,
+                HwpCapabilityConstants.OperationInsertText,
+                formatArg,
+                BuildInsertTextSafeSavePolicy(request.Format)),
+            async tempPath =>
+            {
+                var args = new[]
+                {
+                    "insert-text", "--format", formatArg, "--input", request.InputPath,
+                    "--output", tempPath,
+                    "--section", request.Section.ToString(),
+                    "--paragraph", request.Paragraph.ToString(),
+                    "--offset", request.Offset.ToString(),
+                    "--value", request.Value,
+                    "--json"
+                };
+
+                outputJson = await RunBridgeAsync(args, RenderSvgTimeoutMs, ct).ConfigureAwait(false);
+                EnsureOutputExists(tempPath);
+            },
+            tempPath => ValidateInsertTextAsync(request, tempPath, sourceHash, ct),
+            ct).ConfigureAwait(false);
+
+        if (!transaction.Ok)
+        {
+            throw new HwpEngineException(
+                "insert_text safe-save transaction failed.",
+                HwpCapabilityConstants.ReasonFixtureValidationFailed,
+                "Inspect transaction checks and retry with a separate output path.",
+                [HwpCapabilityConstants.OperationInsertText],
+                FormatKey(request.Format),
+                HwpCapabilityConstants.OperationInsertText,
+                HwpCapabilityConstants.EngineRhwpBridge,
+                HwpCapabilityConstants.ModeExperimental,
+                SafeSaveJsonMapper.ToJson(transaction));
+        }
+
+        EnsureOutputExists(request.OutputPath);
+        var result = ParseMutationResult(
+            outputJson ?? "{}",
+            request.OutputPath,
+            "insert-text",
+            $"rhwp-api insert-text output file created for {formatArg} input.");
+        return result with { Transaction = SafeSaveJsonMapper.ToJson(transaction) };
+    }
+
+    private async Task<SafeSaveValidationResult> ValidateInsertTextAsync(
+        HwpInsertTextRequest request,
+        string tempPath,
+        string sourceHash,
+        CancellationToken ct)
+    {
+        var checks = new List<SafeSaveCheck>();
+        var semanticDelta = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["section"] = request.Section,
+            ["paragraph"] = request.Paragraph,
+            ["offset"] = request.Offset,
+            ["insertedTextLength"] = request.Value.Length
+        };
+
+        try
+        {
+            var sourceText = await ReadTextOnlyAsync(request.Format, request.InputPath, ct).ConfigureAwait(false);
+            var outputText = await ReadTextOnlyAsync(request.Format, tempPath, ct).ConfigureAwait(false);
+            checks.Add(new SafeSaveCheck(
+                "provider-readback",
+                true,
+                "info",
+                null,
+                new Dictionary<string, object?>
+                {
+                    ["sourceLength"] = sourceText.Length,
+                    ["outputLength"] = outputText.Length
+                }));
+
+            var insertedPresent = !string.IsNullOrEmpty(request.Value)
+                && outputText.Contains(request.Value, StringComparison.Ordinal);
+            var changed = !string.Equals(sourceText, outputText, StringComparison.Ordinal);
+            var semanticOk = insertedPresent && changed;
+            semanticDelta["insertedTextPresent"] = insertedPresent;
+            semanticDelta["changed"] = changed;
+
+            checks.Add(new SafeSaveCheck(
+                "semantic-delta",
+                semanticOk,
+                semanticOk ? "info" : "error",
+                semanticOk ? null : "Inserted text was not visible in provider readback.",
+                semanticDelta));
+        }
+        catch (Exception ex)
+        {
+            checks.Add(new SafeSaveCheck(
+                "provider-readback",
+                false,
+                "error",
+                ex.Message));
+        }
+
+        var currentSourceHash = ComputeSha256(request.InputPath);
+        var sourcePreserved = string.Equals(sourceHash, currentSourceHash, StringComparison.OrdinalIgnoreCase);
+        checks.Add(new SafeSaveCheck(
+            "source-preserved",
+            sourcePreserved,
+            sourcePreserved ? "info" : "error",
+            sourcePreserved ? null : "Source file changed before safe-save commit.",
+            new Dictionary<string, object?>
+            {
+                ["beforeSha256"] = sourceHash,
+                ["afterSha256"] = currentSourceHash
+            }));
+
+        Dictionary<string, object?>? packageIntegrity = null;
+        if (request.Format == HwpFormat.Hwpx)
+        {
+            var packageResult = HwpxPackageValidator.Validate(tempPath);
+            checks.AddRange(packageResult.Checks);
+            packageIntegrity = new Dictionary<string, object?>(packageResult.PackageIntegrity, StringComparer.Ordinal);
+        }
+
+        return new SafeSaveValidationResult(checks, semanticDelta, VisualDelta: null, packageIntegrity);
+    }
+
+    private static SafeSavePolicy BuildInsertTextSafeSavePolicy(HwpFormat format)
+    {
+        var required = new List<string>
+        {
+            "temp-write",
+            "provider-readback",
+            "semantic-delta",
+            "source-preserved"
+        };
+        if (format == HwpFormat.Hwpx)
+            required.Add("package-integrity");
+        return SafeSavePolicy.OutputMode(required.ToArray());
+    }
+
     public async Task<HwpMutationResult> SetTableCellAsync(HwpTableCellSetRequest request, CancellationToken ct)
     {
         var formatArg = FormatKey(request.Format);
@@ -361,6 +510,50 @@ public sealed partial class RhwpBridgeEngine
     public Task<HwpMutationResult> SaveOriginalAsync(HwpSaveOriginalRequest request, CancellationToken ct)
         => Task.FromException<HwpMutationResult>(
             MutationUnsupported(request.Format, HwpCapabilityConstants.OperationSaveOriginal));
+
+    public async Task<HwpMutationResult> ConvertToEditableAsync(HwpConvertToEditableRequest request, CancellationToken ct)
+    {
+        var formatArg = FormatKey(request.Format);
+        var args = new[]
+        {
+            "convert-to-editable", "--format", formatArg, "--input", request.InputPath,
+            "--output", request.OutputPath, "--json"
+        };
+        var outputJson = await RunBridgeAsync(args, RenderSvgTimeoutMs, ct).ConfigureAwait(false);
+        EnsureOutputExists(request.OutputPath);
+        return ParseMutationResult(
+            outputJson,
+            request.OutputPath,
+            "convert-to-editable",
+            "rhwp-api convert-to-editable output file created; caller must verify readback and Hancom before production use.");
+    }
+
+    public async Task<HwpMutationResult> NativeMutationAsync(HwpNativeMutationRequest request, CancellationToken ct)
+    {
+        var formatArg = FormatKey(request.Format);
+        var args = new List<string>
+        {
+            "native-op", "--format", formatArg, "--input", request.InputPath,
+            "--output", request.OutputPath, "--op", request.Operation, "--json"
+        };
+        foreach (var (key, value) in request.Args)
+        {
+            if (string.IsNullOrWhiteSpace(key) || value == null) continue;
+            var normalized = key.StartsWith("--", StringComparison.Ordinal) ? key : $"--{key}";
+            if (normalized is "--op" or "--output" or "--input" or "--format" or "--json")
+                continue;
+            args.Add(normalized);
+            args.Add(value);
+        }
+
+        var outputJson = await RunBridgeAsync(args.ToArray(), RenderSvgTimeoutMs, ct).ConfigureAwait(false);
+        EnsureOutputExists(request.OutputPath);
+        return ParseMutationResult(
+            outputJson,
+            request.OutputPath,
+            "native-op",
+            $"rhwp-api native-op '{request.Operation}' output file created; caller must verify readback and Hancom before production use.");
+    }
 
     public async Task<HwpMutationResult> SaveAsHwpAsync(HwpSaveAsHwpRequest request, CancellationToken ct)
     {

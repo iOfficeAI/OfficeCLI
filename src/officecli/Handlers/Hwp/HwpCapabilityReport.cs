@@ -49,13 +49,27 @@ public static class HwpCapabilityConstants
 
     public const string OperationReadText = "read_text";
     public const string OperationRenderSvg = "render_svg";
+    public const string OperationRenderPng = "render_png";
+    public const string OperationExportPdf = "export_pdf";
+    public const string OperationExportMarkdown = "export_markdown";
+    public const string OperationThumbnail = "thumbnail";
+    public const string OperationDocumentInfo = "document_info";
+    public const string OperationDiagnostics = "diagnostics";
+    public const string OperationDumpControls = "dump_controls";
+    public const string OperationDumpPages = "dump_pages";
     public const string OperationListFields = "list_fields";
     public const string OperationReadField = "read_field";
     public const string OperationFillField = "fill_field";
     public const string OperationReplaceText = "replace_text";
+    public const string OperationInsertText = "insert_text";
+    public const string OperationReadTableCell = "read_table_cell";
+    public const string OperationScanCells = "scan_cells";
     public const string OperationSetTableCell = "set_table_cell";
     public const string OperationCreateBlank = "create_blank";
     public const string OperationSaveOriginal = "save_original";
+    public const string OperationConvertToEditable = "convert_to_editable";
+    public const string OperationNativeRead = "native_read";
+    public const string OperationNativeMutation = "native_mutation";
     public const string OperationSaveAsHwp = "save_as_hwp";
 
     public const string ReasonUnsupportedFormat = "unsupported_format";
@@ -69,6 +83,7 @@ public static class HwpCapabilityConstants
     public const string ReasonBridgeExitNonZero = "bridge_exit_nonzero";
     public const string ReasonRhwpRuntimeMissing = "rhwp_runtime_missing";
     public const string ReasonRhwpApiMissing = "rhwp_api_missing";
+    public const string ReasonRhwpApiMissingOrTooOld = "rhwp_api_missing_or_too_old";
     public const string ReasonBinaryHwpMutationForbidden = "binary_hwp_mutation_forbidden";
     public const string ReasonBinaryHwpWriteForbidden = "binary_hwp_write_forbidden";
     public const string ReasonFixtureValidationFailed = "fixture_validation_failed";
@@ -129,6 +144,24 @@ public sealed record HwpRenderResult(
     string[] Warnings
 );
 
+public sealed record HwpJsonViewRequest(
+    HwpFormat Format,
+    string InputPath,
+    long InputSizeBytes,
+    string Operation,
+    string BridgeCommand,
+    IReadOnlyDictionary<string, string> Args,
+    bool Json
+);
+
+public sealed record HwpJsonViewResult(
+    JsonObject Data,
+    string Engine,
+    string? EngineVersion,
+    string[] Evidence,
+    string[] Warnings
+);
+
 public sealed record HwpFieldListRequest(HwpFormat Format, string InputPath, long InputSizeBytes, bool Json);
 public sealed record HwpFieldReadRequest(
     HwpFormat Format,
@@ -178,6 +211,17 @@ public sealed record HwpReplaceTextRequest(
     bool Json
 );
 
+public sealed record HwpInsertTextRequest(
+    HwpFormat Format,
+    string InputPath,
+    string OutputPath,
+    int Section,
+    int Paragraph,
+    int Offset,
+    string Value,
+    bool Json
+);
+
 public sealed record HwpTableCellSetRequest(
     HwpFormat Format,
     string InputPath,
@@ -194,6 +238,15 @@ public sealed record HwpTableCellSetRequest(
 );
 
 public sealed record HwpSaveOriginalRequest(HwpFormat Format, string InputPath, string OutputPath, bool Json);
+public sealed record HwpConvertToEditableRequest(HwpFormat Format, string InputPath, string OutputPath, bool Json);
+public sealed record HwpNativeMutationRequest(
+    HwpFormat Format,
+    string InputPath,
+    string OutputPath,
+    string Operation,
+    IReadOnlyDictionary<string, string> Args,
+    bool Json
+);
 public sealed record HwpSaveAsHwpRequest(HwpFormat Format, string InputPath, string OutputPath, bool Json);
 public sealed record HwpMutationResult(
     string OutputPath,

@@ -63,7 +63,9 @@ public static class HwpEngineSelector
                 engine: HwpCapabilityConstants.EngineRhwpBridge,
                 engineMode: HwpCapabilityConstants.ModeExperimental);
 
-        var runtimeReason = explicitBridge ? null : RuntimeBlockedReason(runtime, operation);
+        var runtimeReason = explicitBridge && !OperationRequiresApiCommand(operation)
+            ? null
+            : RuntimeBlockedReason(runtime, operation);
         if (runtimeReason != null)
             throw new HwpEngineException(
                 $"rhwp runtime is not available for operation '{operation ?? "unknown"}'.",
@@ -97,11 +99,25 @@ public static class HwpEngineSelector
     private static bool IsBridgeBackedOperation(string? operation)
         => operation is HwpCapabilityConstants.OperationReadText
             or HwpCapabilityConstants.OperationRenderSvg
+            or HwpCapabilityConstants.OperationRenderPng
+            or HwpCapabilityConstants.OperationExportPdf
+            or HwpCapabilityConstants.OperationExportMarkdown
+            or HwpCapabilityConstants.OperationThumbnail
+            or HwpCapabilityConstants.OperationDocumentInfo
+            or HwpCapabilityConstants.OperationDiagnostics
+            or HwpCapabilityConstants.OperationDumpControls
+            or HwpCapabilityConstants.OperationDumpPages
             or HwpCapabilityConstants.OperationListFields
             or HwpCapabilityConstants.OperationReadField
             or HwpCapabilityConstants.OperationFillField
             or HwpCapabilityConstants.OperationReplaceText
+            or HwpCapabilityConstants.OperationInsertText
+            or HwpCapabilityConstants.OperationReadTableCell
+            or HwpCapabilityConstants.OperationScanCells
             or HwpCapabilityConstants.OperationSetTableCell
+            or HwpCapabilityConstants.OperationConvertToEditable
+            or HwpCapabilityConstants.OperationNativeRead
+            or HwpCapabilityConstants.OperationNativeMutation
             or HwpCapabilityConstants.OperationSaveAsHwp;
 
     private static bool OperationRuntimeAvailable(HwpRuntimeProbeResult runtime, string? operation)
@@ -109,13 +125,44 @@ public static class HwpEngineSelector
         {
             HwpCapabilityConstants.OperationReadText or HwpCapabilityConstants.OperationRenderSvg
                 => runtime.ReadRenderAvailable,
+            HwpCapabilityConstants.OperationRenderPng
+                => runtime.RenderPngAvailable,
+            HwpCapabilityConstants.OperationExportPdf
+                => runtime.ExportPdfAvailable,
+            HwpCapabilityConstants.OperationExportMarkdown
+                => runtime.ExportMarkdownAvailable,
+            HwpCapabilityConstants.OperationThumbnail
+                => runtime.ThumbnailAvailable,
+            HwpCapabilityConstants.OperationDocumentInfo
+                => runtime.DocumentInfoAvailable,
+            HwpCapabilityConstants.OperationDiagnostics
+                => runtime.DiagnosticsAvailable,
+            HwpCapabilityConstants.OperationDumpControls
+                => runtime.DumpControlsAvailable,
+            HwpCapabilityConstants.OperationDumpPages
+                => runtime.DumpPagesAvailable,
             HwpCapabilityConstants.OperationListFields
-                or HwpCapabilityConstants.OperationReadField
-                or HwpCapabilityConstants.OperationFillField
-                or HwpCapabilityConstants.OperationReplaceText
-                or HwpCapabilityConstants.OperationSetTableCell
-                or HwpCapabilityConstants.OperationSaveAsHwp
-                => runtime.MutationAvailable,
+                => runtime.ListFieldsAvailable,
+            HwpCapabilityConstants.OperationReadField
+                => runtime.ReadFieldAvailable,
+            HwpCapabilityConstants.OperationFillField
+                => runtime.FillFieldAvailable,
+            HwpCapabilityConstants.OperationReplaceText
+                => runtime.ReplaceTextAvailable,
+            HwpCapabilityConstants.OperationSetTableCell
+                => runtime.SetTableCellAvailable,
+            HwpCapabilityConstants.OperationSaveAsHwp
+                => runtime.SaveAsHwpAvailable,
+            HwpCapabilityConstants.OperationConvertToEditable
+                => runtime.ConvertToEditableAvailable,
+            HwpCapabilityConstants.OperationNativeRead or HwpCapabilityConstants.OperationNativeMutation
+                => runtime.NativeOpAvailable,
+            HwpCapabilityConstants.OperationInsertText
+                => runtime.InsertTextAvailable,
+            HwpCapabilityConstants.OperationReadTableCell
+                => runtime.ReadTableCellAvailable,
+            HwpCapabilityConstants.OperationScanCells
+                => runtime.ScanCellsAvailable,
             _ => runtime.BridgeAvailable
         };
 
@@ -128,8 +175,32 @@ public static class HwpEngineSelector
         if (operation is HwpCapabilityConstants.OperationReadText or HwpCapabilityConstants.OperationRenderSvg
             && !runtime.ApiAvailable && !runtime.RhwpAvailable)
             return HwpCapabilityConstants.ReasonRhwpRuntimeMissing;
+        if (OperationRequiresApiCommand(operation) && !OperationRuntimeAvailable(runtime, operation))
+            return HwpCapabilityConstants.ReasonRhwpApiMissingOrTooOld;
         if (!runtime.ApiAvailable)
             return HwpCapabilityConstants.ReasonRhwpApiMissing;
         return HwpCapabilityConstants.ReasonBridgeMissing;
     }
+
+    private static bool OperationRequiresApiCommand(string? operation)
+        => operation is HwpCapabilityConstants.OperationListFields
+            or HwpCapabilityConstants.OperationReadField
+            or HwpCapabilityConstants.OperationFillField
+            or HwpCapabilityConstants.OperationReplaceText
+            or HwpCapabilityConstants.OperationInsertText
+            or HwpCapabilityConstants.OperationRenderPng
+            or HwpCapabilityConstants.OperationExportPdf
+            or HwpCapabilityConstants.OperationExportMarkdown
+            or HwpCapabilityConstants.OperationThumbnail
+            or HwpCapabilityConstants.OperationDocumentInfo
+            or HwpCapabilityConstants.OperationDiagnostics
+            or HwpCapabilityConstants.OperationDumpControls
+            or HwpCapabilityConstants.OperationDumpPages
+            or HwpCapabilityConstants.OperationReadTableCell
+            or HwpCapabilityConstants.OperationScanCells
+            or HwpCapabilityConstants.OperationSetTableCell
+            or HwpCapabilityConstants.OperationConvertToEditable
+            or HwpCapabilityConstants.OperationNativeRead
+            or HwpCapabilityConstants.OperationNativeMutation
+            or HwpCapabilityConstants.OperationSaveAsHwp;
 }

@@ -26,34 +26,67 @@ public static class HwpCapabilityFactory
 
     private static HwpFormatCapability BuildHwpx(string engineVersion, HwpRuntimeProbeResult runtime)
     {
-        var apiBlockedReason = ApiBlockedReason(runtime);
         var readRenderBlockedReason = ReadRenderBlockedReason(runtime);
         var operations = new Dictionary<string, HwpOperationCapability>
         {
-            [HwpCapabilityConstants.OperationReadText] = ExperimentalCustom(engineVersion,
-                ["docs/hwpx-current-operation-inventory.md"]),
+            [HwpCapabilityConstants.OperationReadText] = runtime.ReadRenderAvailable
+                ? ExperimentalBridge(["tests/golden/hwp/rhwp-smoke/hwpx-officecli-view/text.pretty.json"])
+                : ExperimentalCustom(engineVersion, ["tests/golden/hwp/rhwp-smoke/hwpx-officecli-view/text.pretty.json"]),
             [HwpCapabilityConstants.OperationRenderSvg] = runtime.ReadRenderAvailable
-                ? ExperimentalBridge([ "tests/golden/hwp/rhwp-smoke/officecli-view/hwpx-svg.pretty.json" ])
+                ? ExperimentalBridge(["tests/golden/hwp/rhwp-smoke/hwpx-officecli-view/svg.pretty.json"])
                 : ExperimentalBridgeBlocked(readRenderBlockedReason),
-            [HwpCapabilityConstants.OperationListFields] = runtime.MutationAvailable
-                ? ExperimentalBridge([])
-                : ExperimentalBridgeBlocked(apiBlockedReason),
-            [HwpCapabilityConstants.OperationReadField] = runtime.MutationAvailable
-                ? ExperimentalBridge([])
-                : ExperimentalBridgeBlocked(apiBlockedReason),
+            [HwpCapabilityConstants.OperationRenderPng] = runtime.RenderPngAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_view.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "render-png")),
+            [HwpCapabilityConstants.OperationExportPdf] = runtime.ExportPdfAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_view.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "export-pdf")),
+            [HwpCapabilityConstants.OperationExportMarkdown] = runtime.ExportMarkdownAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_view.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "export-markdown")),
+            [HwpCapabilityConstants.OperationThumbnail] = runtime.ThumbnailAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_view.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "thumbnail")),
+            [HwpCapabilityConstants.OperationDocumentInfo] = runtime.DocumentInfoAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_view.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "document-info")),
+            [HwpCapabilityConstants.OperationDiagnostics] = runtime.DiagnosticsAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_view.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "diagnostics")),
+            [HwpCapabilityConstants.OperationDumpControls] = runtime.DumpControlsAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_view.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "dump-controls")),
+            [HwpCapabilityConstants.OperationDumpPages] = runtime.DumpPagesAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_view.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "dump-pages")),
+            [HwpCapabilityConstants.OperationListFields] = runtime.ListFieldsAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "list-fields")),
+            [HwpCapabilityConstants.OperationReadField] = runtime.ReadFieldAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "get-field")),
             [HwpCapabilityConstants.OperationFillField] = ExperimentalCustom(engineVersion, []),
-            [HwpCapabilityConstants.OperationReplaceText] = runtime.MutationAvailable
-                ? ExperimentalBridge(["tests/golden/hwp/rhwp-fields/replace-hwpx-government.json"])
+            [HwpCapabilityConstants.OperationReplaceText] = runtime.ReplaceTextAvailable
+                ? ExperimentalBridge(["tests/golden/hwp/rhwp-fields/officecli-replace-hwpx-government.json"])
                 : ExperimentalCustom(engineVersion, []),
-            [HwpCapabilityConstants.OperationSetTableCell] = runtime.MutationAvailable
+            [HwpCapabilityConstants.OperationInsertText] = runtime.InsertTextAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_text.rs"])
+                : ExperimentalBridgeBlocked(InsertTextBlockedReason(runtime)),
+            [HwpCapabilityConstants.OperationSetTableCell] = runtime.SetTableCellAvailable
                 ? ExperimentalBridge(["tests/OfficeCli.Tests/Hwp/HwpBridgeTableScanTests.cs"])
-                : ExperimentalBridgeBlocked(apiBlockedReason),
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "set-cell-text")),
             [HwpCapabilityConstants.OperationCreateBlank] = ExperimentalCustom(engineVersion,
                 ["src/officecli/Resources/base.hwpx"]),
             [HwpCapabilityConstants.OperationSaveOriginal] = ExperimentalCustom(engineVersion, []),
-            [HwpCapabilityConstants.OperationSaveAsHwp] = runtime.MutationAvailable
+            [HwpCapabilityConstants.OperationNativeRead] = runtime.NativeOpAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_native.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "native-op")),
+            [HwpCapabilityConstants.OperationNativeMutation] = runtime.NativeOpAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_native.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "native-op")),
+            [HwpCapabilityConstants.OperationSaveAsHwp] = runtime.SaveAsHwpAvailable
                 ? ExperimentalBridge(["src/rhwp-field-bridge/src/main.rs"])
-                : ExperimentalBridgeBlocked(apiBlockedReason)
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "save-as-hwp"))
         };
 
         return new HwpFormatCapability(
@@ -69,7 +102,6 @@ public static class HwpCapabilityFactory
     private static HwpFormatCapability BuildHwp(HwpRuntimeProbeResult runtime)
     {
         var readRenderBlockedReason = ReadRenderBlockedReason(runtime);
-        var apiBlockedReason = ApiBlockedReason(runtime);
         var createBlockedReason = runtime.ApiAvailable
             ? HwpCapabilityConstants.ReasonRoundTripUnverified
             : HwpCapabilityConstants.ReasonRhwpApiMissing;
@@ -81,29 +113,71 @@ public static class HwpCapabilityFactory
             [HwpCapabilityConstants.OperationRenderSvg] = runtime.ReadRenderAvailable
                 ? ExperimentalBridge(["tests/golden/hwp/rhwp-smoke/officecli-view/svg.pretty.json"])
                 : ExperimentalBridgeBlocked(readRenderBlockedReason),
-            [HwpCapabilityConstants.OperationListFields] = runtime.MutationAvailable
+            [HwpCapabilityConstants.OperationRenderPng] = runtime.RenderPngAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_view.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "render-png")),
+            [HwpCapabilityConstants.OperationExportPdf] = runtime.ExportPdfAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_view.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "export-pdf")),
+            [HwpCapabilityConstants.OperationExportMarkdown] = runtime.ExportMarkdownAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_view.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "export-markdown")),
+            [HwpCapabilityConstants.OperationThumbnail] = runtime.ThumbnailAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_view.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "thumbnail")),
+            [HwpCapabilityConstants.OperationDocumentInfo] = runtime.DocumentInfoAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_view.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "document-info")),
+            [HwpCapabilityConstants.OperationDiagnostics] = runtime.DiagnosticsAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_view.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "diagnostics")),
+            [HwpCapabilityConstants.OperationDumpControls] = runtime.DumpControlsAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_view.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "dump-controls")),
+            [HwpCapabilityConstants.OperationDumpPages] = runtime.DumpPagesAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_view.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "dump-pages")),
+            [HwpCapabilityConstants.OperationListFields] = runtime.ListFieldsAvailable
                 ? ExperimentalBridge(["tests/golden/hwp/rhwp-fields/field-list.json"])
-                : ExperimentalBridgeBlocked(apiBlockedReason),
-            [HwpCapabilityConstants.OperationReadField] = runtime.MutationAvailable
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "list-fields")),
+            [HwpCapabilityConstants.OperationReadField] = runtime.ReadFieldAvailable
                 ? ExperimentalBridge(["tests/golden/hwp/rhwp-fields/field-read-company-name.json"])
-                : ExperimentalBridgeBlocked(apiBlockedReason),
-            [HwpCapabilityConstants.OperationFillField] = runtime.MutationAvailable
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "get-field")),
+            [HwpCapabilityConstants.OperationFillField] = runtime.FillFieldAvailable
                 ? ExperimentalBridge(["tests/golden/hwp/rhwp-fields/field-set-company-name-cli-readback.json"])
-                : ExperimentalBridgeBlocked(apiBlockedReason),
-            [HwpCapabilityConstants.OperationReplaceText] = runtime.MutationAvailable
-                ? ExperimentalBridge(["tests/golden/hwp/rhwp-fields/replace-marketing-title.json"])
-                : ExperimentalBridgeBlocked(apiBlockedReason),
-            [HwpCapabilityConstants.OperationSetTableCell] = runtime.MutationAvailable
-                ? ExperimentalBridge(["tests/golden/hwp/rhwp-tables/table-cell-set-news-title.json"])
-                : ExperimentalBridgeBlocked(apiBlockedReason),
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "set-field")),
+            [HwpCapabilityConstants.OperationReplaceText] = runtime.ReplaceTextAvailable
+                ? ExperimentalBridge(["tests/golden/hwp/rhwp-fields/officecli-replace-marketing-title.json"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "replace-text")),
+            [HwpCapabilityConstants.OperationInsertText] = runtime.InsertTextAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_text.rs"])
+                : ExperimentalBridgeBlocked(InsertTextBlockedReason(runtime)),
+            [HwpCapabilityConstants.OperationReadTableCell] = runtime.ReadTableCellAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "get-cell-text")),
+            [HwpCapabilityConstants.OperationScanCells] = runtime.ScanCellsAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "scan-cells")),
+            [HwpCapabilityConstants.OperationSetTableCell] = runtime.SetTableCellAvailable
+                ? ExperimentalBridge(["tests/golden/hwp/rhwp-tables/officecli-set-cell-hwp-table-readback.json"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "set-cell-text")),
             [HwpCapabilityConstants.OperationCreateBlank] = runtime.CreateBlankAvailable
                 ? ExperimentalBridge(["src/rhwp-field-bridge/src/main.rs"])
                 : ExperimentalBridgeBlocked(createBlockedReason),
             [HwpCapabilityConstants.OperationSaveOriginal] = Unsupported(
                 HwpCapabilityConstants.ReasonBinaryHwpWriteForbidden),
-            [HwpCapabilityConstants.OperationSaveAsHwp] = runtime.MutationAvailable
+            [HwpCapabilityConstants.OperationConvertToEditable] = runtime.ConvertToEditableAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "convert-to-editable")),
+            [HwpCapabilityConstants.OperationNativeRead] = runtime.NativeOpAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_native.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "native-op")),
+            [HwpCapabilityConstants.OperationNativeMutation] = runtime.NativeOpAvailable
+                ? ExperimentalBridge(["src/rhwp-field-bridge/src/ops_native.rs"])
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "native-op")),
+            [HwpCapabilityConstants.OperationSaveAsHwp] = runtime.SaveAsHwpAvailable
                 ? ExperimentalBridge(["src/rhwp-field-bridge/src/main.rs"])
-                : ExperimentalBridgeBlocked(apiBlockedReason)
+                : ExperimentalBridgeBlocked(ApiCommandBlockedReason(runtime, "save-as-hwp"))
         };
 
         return new HwpFormatCapability(
@@ -167,14 +241,25 @@ public static class HwpCapabilityFactory
         return HwpCapabilityConstants.ReasonBridgeMissing;
     }
 
-    private static string ApiBlockedReason(HwpRuntimeProbeResult runtime)
+    private static string InsertTextBlockedReason(HwpRuntimeProbeResult runtime)
     {
         if (!runtime.EngineRequested && !runtime.BridgeAvailable && !runtime.ApiAvailable)
             return HwpCapabilityConstants.ReasonBridgeNotEnabled;
         if (!runtime.BridgeAvailable)
             return HwpCapabilityConstants.ReasonBridgeMissing;
-        if (!runtime.ApiAvailable)
-            return HwpCapabilityConstants.ReasonRhwpApiMissing;
+        if (!runtime.ApiAvailable || !runtime.InsertTextAvailable)
+            return HwpCapabilityConstants.ReasonRhwpApiMissingOrTooOld;
+        return HwpCapabilityConstants.ReasonBridgeMissing;
+    }
+
+    private static string ApiCommandBlockedReason(HwpRuntimeProbeResult runtime, string command)
+    {
+        if (!runtime.EngineRequested && !runtime.BridgeAvailable && !runtime.ApiAvailable)
+            return HwpCapabilityConstants.ReasonBridgeNotEnabled;
+        if (!runtime.BridgeAvailable)
+            return HwpCapabilityConstants.ReasonBridgeMissing;
+        if (!runtime.ApiAvailable || !runtime.ApiCommands.Contains(command))
+            return HwpCapabilityConstants.ReasonRhwpApiMissingOrTooOld;
         return HwpCapabilityConstants.ReasonBridgeMissing;
     }
 

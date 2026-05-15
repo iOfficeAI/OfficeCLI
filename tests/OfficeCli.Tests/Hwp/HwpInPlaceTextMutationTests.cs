@@ -73,7 +73,9 @@ public partial class HwpBridgeSidecarTests
         Environment.SetEnvironmentVariable("OFFICECLI_HWP_ENGINE", "rhwp-experimental");
         Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", LocateBridgeDll());
         Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BIN", CreateFakeRhwp());
-        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", null);
+        Environment.SetEnvironmentVariable(
+            "OFFICECLI_RHWP_API_BIN",
+            Path.Combine(Path.GetTempPath(), "officecli-test-no-rhwp-api"));
 
         var (_, missingApiStdout) = InvokeOfficeCli(["capabilities", "--json"]);
         var missingApi = JsonNode.Parse(missingApiStdout)!["data"]!["formats"]!["hwp"]!["operations"]!["replace_text"]!["safeInPlace"]!;

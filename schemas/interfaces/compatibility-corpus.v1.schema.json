@@ -4,19 +4,40 @@
   "title": "OfficeCLI HWP/HWPX Compatibility Corpus",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "format", "description", "fixtures"],
+  "required": [
+    "schemaVersion",
+    "format",
+    "description",
+    "fixtures"
+  ],
   "properties": {
-    "schemaVersion": { "type": "integer", "const": 1 },
-    "format": { "type": "string", "enum": ["hwp", "hwpx"] },
-    "description": { "type": "string", "minLength": 1 },
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "hwp",
+        "hwpx"
+      ]
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
     "fixtures": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/fixture" }
+      "items": {
+        "$ref": "#/$defs/fixture"
+      }
     },
     "fixtureClassCoverage": {
       "type": "array",
-      "items": { "$ref": "#/$defs/fixtureClassCoverage" }
+      "items": {
+        "$ref": "#/$defs/fixtureClassCoverage"
+      }
     }
   },
   "$defs": {
@@ -34,14 +55,29 @@
         "notes"
       ],
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "path": { "type": "string", "minLength": 1 },
-        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
         "classes": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
         "verifiedOperations": {
           "type": "array",
@@ -51,13 +87,27 @@
             "enum": [
               "read_text",
               "render_svg",
+              "render_png",
+              "export_pdf",
+              "export_markdown",
+              "thumbnail",
+              "document_info",
+              "diagnostics",
+              "dump_controls",
+              "dump_pages",
               "list_fields",
               "read_field",
               "fill_field",
+              "insert_text",
               "replace_text",
+              "read_table_cell",
+              "scan_cells",
               "set_table_cell",
               "create_blank",
               "save_original",
+              "convert_to_editable",
+              "native_mutation",
+              "native_read",
               "save_as_hwp",
               "table_map"
             ]
@@ -65,19 +115,31 @@
         },
         "blockedOperations": {
           "type": "array",
-          "items": { "$ref": "#/$defs/blockedOperation" }
+          "items": {
+            "$ref": "#/$defs/blockedOperation"
+          }
         },
         "evidence": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
-        "notes": { "type": "string", "minLength": 1 }
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "blockedOperation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["operation", "reason", "notes"],
+      "required": [
+        "operation",
+        "reason",
+        "notes"
+      ],
       "properties": {
         "operation": {
           "type": "string",
@@ -109,19 +171,27 @@
             "bridge_exit_nonzero",
             "rhwp_runtime_missing",
             "rhwp_api_missing",
+            "rhwp_api_missing_or_too_old",
             "binary_hwp_mutation_forbidden",
             "binary_hwp_write_forbidden",
             "fixture_validation_failed",
             "capability_schema_invalid"
           ]
         },
-        "notes": { "type": "string", "minLength": 1 }
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "fixtureClassCoverage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["class", "state", "notes"],
+      "required": [
+        "class",
+        "state",
+        "notes"
+      ],
       "properties": {
         "class": {
           "type": "string",
@@ -138,10 +208,20 @@
         },
         "state": {
           "type": "string",
-          "enum": ["verified", "blocked", "external-manual"]
+          "enum": [
+            "verified",
+            "blocked",
+            "external-manual"
+          ]
         },
-        "fixtureId": { "type": "string", "minLength": 1 },
-        "externalLane": { "type": "string", "minLength": 1 },
+        "fixtureId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "externalLane": {
+          "type": "string",
+          "minLength": 1
+        },
         "reason": {
           "type": "string",
           "enum": [
@@ -156,6 +236,7 @@
             "bridge_exit_nonzero",
             "rhwp_runtime_missing",
             "rhwp_api_missing",
+            "rhwp_api_missing_or_too_old",
             "binary_hwp_mutation_forbidden",
             "binary_hwp_write_forbidden",
             "fixture_validation_failed",
@@ -181,25 +262,63 @@
             ]
           }
         },
-        "notes": { "type": "string", "minLength": 1 }
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        }
       },
       "allOf": [
         {
-          "if": { "properties": { "state": { "const": "verified" } } },
-          "then": { "required": ["fixtureId", "verifiedOperations"] }
-        },
-        {
-          "if": { "properties": { "state": { "const": "blocked" } } },
+          "if": {
+            "properties": {
+              "state": {
+                "const": "verified"
+              }
+            }
+          },
           "then": {
-            "required": ["reason"],
-            "not": { "required": ["verifiedOperations"] }
+            "required": [
+              "fixtureId",
+              "verifiedOperations"
+            ]
           }
         },
         {
-          "if": { "properties": { "state": { "const": "external-manual" } } },
+          "if": {
+            "properties": {
+              "state": {
+                "const": "blocked"
+              }
+            }
+          },
           "then": {
-            "required": ["externalLane"],
-            "not": { "required": ["verifiedOperations"] }
+            "required": [
+              "reason"
+            ],
+            "not": {
+              "required": [
+                "verifiedOperations"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "external-manual"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "externalLane"
+            ],
+            "not": {
+              "required": [
+                "verifiedOperations"
+              ]
+            }
           }
         }
       ]

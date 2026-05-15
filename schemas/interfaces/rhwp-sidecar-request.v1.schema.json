@@ -3,39 +3,88 @@
   "$id": "officecli/interfaces/rhwp-sidecar-request/v1",
   "title": "OfficeCLI rhwp Sidecar Request",
   "type": "object",
-  "required": ["schemaVersion", "operation", "format"],
+  "required": [
+    "schemaVersion",
+    "operation",
+    "format"
+  ],
   "properties": {
-    "schemaVersion": { "type": "integer", "const": 1 },
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
     "operation": {
       "type": "string",
       "enum": [
         "create_blank",
         "read_text",
         "render_svg",
+        "render_png",
+        "export_pdf",
+        "export_markdown",
+        "thumbnail",
+        "document_info",
+        "diagnostics",
+        "dump_controls",
+        "dump_pages",
         "list_fields",
         "read_field",
         "fill_field",
+        "insert_text",
         "replace_text",
+        "read_table_cell",
+        "scan_cells",
         "table_map",
         "set_table_cell",
+        "convert_to_editable",
+        "native_mutation",
+        "native_read",
         "save_as_hwp"
       ]
     },
-    "format": { "type": "string", "enum": ["hwp", "hwpx"] },
-    "inputPath": { "type": "string" },
-    "outputPath": { "type": "string" },
-    "arguments": { "type": "object" },
-    "json": { "type": "boolean" }
+    "format": {
+      "type": "string",
+      "enum": [
+        "hwp",
+        "hwpx"
+      ]
+    },
+    "inputPath": {
+      "type": "string"
+    },
+    "outputPath": {
+      "type": "string"
+    },
+    "arguments": {
+      "type": "object"
+    },
+    "json": {
+      "type": "boolean"
+    }
   },
   "additionalProperties": false,
   "allOf": [
     {
       "if": {
-        "properties": { "operation": { "const": "create_blank" } },
-        "required": ["operation"]
+        "properties": {
+          "operation": {
+            "const": "create_blank"
+          }
+        },
+        "required": [
+          "operation"
+        ]
       },
-      "then": { "required": ["outputPath"] },
-      "else": { "required": ["inputPath"] }
+      "then": {
+        "required": [
+          "outputPath"
+        ]
+      },
+      "else": {
+        "required": [
+          "inputPath"
+        ]
+      }
     }
   ]
 }

@@ -9,7 +9,8 @@ internal sealed record HwpRuntimeProbeResult(
     bool EngineRequested,
     string? BridgePath,
     string? ApiPath,
-    string? RhwpPath)
+    string? RhwpPath,
+    IReadOnlySet<string> ApiCommands)
 {
     public bool BridgeAvailable => BridgePath != null;
     public bool ApiAvailable => ApiPath != null;
@@ -17,6 +18,25 @@ internal sealed record HwpRuntimeProbeResult(
     public bool ReadRenderAvailable => BridgeAvailable && (ApiAvailable || RhwpAvailable);
     public bool MutationAvailable => BridgeAvailable && ApiAvailable;
     public bool CreateBlankAvailable => ApiAvailable;
+    public bool ListFieldsAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("list-fields");
+    public bool ReadFieldAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("get-field");
+    public bool FillFieldAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("set-field");
+    public bool ReplaceTextAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("replace-text");
+    public bool InsertTextAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("insert-text");
+    public bool RenderPngAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("render-png");
+    public bool ExportPdfAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("export-pdf");
+    public bool ExportMarkdownAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("export-markdown");
+    public bool ThumbnailAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("thumbnail");
+    public bool DocumentInfoAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("document-info");
+    public bool DiagnosticsAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("diagnostics");
+    public bool DumpControlsAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("dump-controls");
+    public bool DumpPagesAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("dump-pages");
+    public bool ReadTableCellAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("get-cell-text");
+    public bool ScanCellsAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("scan-cells");
+    public bool SetTableCellAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("set-cell-text");
+    public bool ConvertToEditableAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("convert-to-editable");
+    public bool NativeOpAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("native-op");
+    public bool SaveAsHwpAvailable => BridgeAvailable && ApiAvailable && ApiCommands.Contains("save-as-hwp");
 }
 
 internal static class HwpRuntimeProbe
@@ -24,13 +44,42 @@ internal static class HwpRuntimeProbe
     private const string BridgeExecutableName = "rhwp-officecli-bridge";
     private const string ApiExecutableName = "rhwp-field-bridge";
     private const string RhwpExecutableName = "rhwp";
+    private static readonly string[] KnownApiCommands =
+    [
+        "create-blank",
+        "read-text",
+        "render-svg",
+        "render-png",
+        "export-pdf",
+        "export-markdown",
+        "document-info",
+        "diagnostics",
+        "dump-controls",
+        "dump-pages",
+        "thumbnail",
+        "list-fields",
+        "get-field",
+        "set-field",
+        "replace-text",
+        "insert-text",
+        "get-cell-text",
+        "scan-cells",
+        "set-cell-text",
+        "convert-to-editable",
+        "native-op",
+        "save-as-hwp"
+    ];
 
     public static HwpRuntimeProbeResult Probe()
-        => new(
+    {
+        var apiPath = DiscoverApiPath();
+        return new(
             HwpEngineSelector.IsExperimentalBridgeEnabled(),
             DiscoverBridgePath(),
-            DiscoverApiPath(),
-            DiscoverRhwpPath());
+            apiPath,
+            DiscoverRhwpPath(),
+            DiscoverApiCommands(apiPath));
+    }
 
     public static string? DiscoverBridgePath()
         => DiscoverExecutable(
@@ -59,8 +108,8 @@ internal static class HwpRuntimeProbe
 
     private static string? DiscoverExecutable(string? explicitPath, string[] names)
     {
-        if (!string.IsNullOrWhiteSpace(explicitPath) && File.Exists(explicitPath))
-            return explicitPath;
+        if (!string.IsNullOrWhiteSpace(explicitPath))
+            return File.Exists(explicitPath) ? explicitPath : null;
 
         foreach (var dir in CandidateDirectories())
         {
@@ -83,6 +132,48 @@ internal static class HwpRuntimeProbe
         }
 
         return null;
+    }
+
+    private static IReadOnlySet<string> DiscoverApiCommands(string? apiPath)
+    {
+        var commands = new HashSet<string>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(apiPath) || !File.Exists(apiPath))
+            return commands;
+
+        try
+        {
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = apiPath,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                }
+            };
+            process.StartInfo.ArgumentList.Add("--help");
+            process.Start();
+            if (!process.WaitForExit(2_000))
+            {
+                try { process.Kill(); } catch { }
+                return commands;
+            }
+            var stdout = process.StandardOutput.ReadToEnd();
+
+            foreach (var command in KnownApiCommands)
+            {
+                if (stdout.Contains(command, StringComparison.Ordinal))
+                    commands.Add(command);
+            }
+        }
+        catch
+        {
+            return commands;
+        }
+
+        return commands;
     }
 
     private static IEnumerable<string> CandidateDirectories()

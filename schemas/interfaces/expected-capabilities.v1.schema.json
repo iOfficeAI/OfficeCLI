@@ -4,17 +4,34 @@
   "title": "OfficeCLI HWP/HWPX Expected Capabilities",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "description", "formats"],
+  "required": [
+    "schemaVersion",
+    "description",
+    "formats"
+  ],
   "properties": {
-    "schemaVersion": { "type": "integer", "const": 1 },
-    "description": { "type": "string", "minLength": 1 },
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
     "formats": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["hwp", "hwpx"],
+      "required": [
+        "hwp",
+        "hwpx"
+      ],
       "properties": {
-        "hwp": { "$ref": "#/$defs/formatCapabilities" },
-        "hwpx": { "$ref": "#/$defs/formatCapabilities" }
+        "hwp": {
+          "$ref": "#/$defs/formatCapabilities"
+        },
+        "hwpx": {
+          "$ref": "#/$defs/formatCapabilities"
+        }
       }
     }
   },
@@ -22,11 +39,18 @@
     "formatCapabilities": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["defaultEngine", "operations"],
+      "required": [
+        "defaultEngine",
+        "operations"
+      ],
       "properties": {
         "defaultEngine": {
           "type": "string",
-          "enum": ["custom", "rhwp-bridge", "none"]
+          "enum": [
+            "custom",
+            "rhwp-bridge",
+            "none"
+          ]
         },
         "operations": {
           "type": "object",
@@ -34,17 +58,33 @@
             "enum": [
               "read_text",
               "render_svg",
+              "render_png",
+              "export_pdf",
+              "export_markdown",
+              "thumbnail",
+              "document_info",
+              "diagnostics",
+              "dump_controls",
+              "dump_pages",
               "list_fields",
               "read_field",
               "fill_field",
+              "insert_text",
               "replace_text",
+              "read_table_cell",
+              "scan_cells",
               "set_table_cell",
               "create_blank",
               "save_original",
+              "convert_to_editable",
+              "native_mutation",
+              "native_read",
               "save_as_hwp"
             ]
           },
-          "additionalProperties": { "$ref": "#/$defs/operationCapability" },
+          "additionalProperties": {
+            "$ref": "#/$defs/operationCapability"
+          },
           "minProperties": 1
         }
       }
@@ -52,11 +92,18 @@
     "operationCapability": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "evidence"],
+      "required": [
+        "status",
+        "evidence"
+      ],
       "properties": {
         "status": {
           "type": "string",
-          "enum": ["experimental", "roundtrip-verified", "unsupported"]
+          "enum": [
+            "experimental",
+            "roundtrip-verified",
+            "unsupported"
+          ]
         },
         "reason": {
           "type": "string",
@@ -72,6 +119,7 @@
             "bridge_exit_nonzero",
             "rhwp_runtime_missing",
             "rhwp_api_missing",
+            "rhwp_api_missing_or_too_old",
             "binary_hwp_mutation_forbidden",
             "binary_hwp_write_forbidden",
             "fixture_validation_failed",
@@ -80,16 +128,29 @@
         },
         "evidence": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       },
       "allOf": [
         {
           "if": {
-            "properties": { "status": { "const": "unsupported" } },
-            "required": ["status"]
+            "properties": {
+              "status": {
+                "const": "unsupported"
+              }
+            },
+            "required": [
+              "status"
+            ]
           },
-          "then": { "required": ["reason"] }
+          "then": {
+            "required": [
+              "reason"
+            ]
+          }
         }
       ]
     }

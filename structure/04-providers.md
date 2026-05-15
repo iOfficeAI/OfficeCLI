@@ -10,7 +10,7 @@ OfficeCLI uses stable OpenXML handlers for DOCX/XLSX/PPTX and provider-gated eng
 | `.xlsx` | `ExcelHandler` + DocumentFormat.OpenXml | none documented as provider | `schemas/help/xlsx/**` | Formula evaluator, chart/pivot/table helpers live under `Core` and `Handlers/Excel`. |
 | `.pptx` | `PowerPointHandler` + DocumentFormat.OpenXml | HTML/SVG screenshot helpers for visual output | `schemas/help/pptx/**` | PPTX handler owns slides, shapes, media, charts, themes, animations. |
 | `.hwpx` | `custom` ZIP/XML provider | `rhwp-bridge` opt-in for selected read/render/field/text paths | `docs/qa/provider-compatibility-matrix.md`, `tests/fixtures/common/provider-compatibility.json` | Custom remains default until evidence parity says otherwise. |
-| `.hwp` | `rhwp-bridge` experimental provider | Hancom evidence lane is optional/manual, not CI-required | Same provider matrix plus `docs/providers/rhwp-sidecar-contract.md` | Binary HWP custom provider is unsupported for read/render and blocked for writes. |
+| `.hwp` | `rhwp-bridge` experimental provider | Hancom reopen evidence lane for mutation promotion | Same provider matrix plus `docs/providers/rhwp-sidecar-contract.md` | Binary HWP work is capability-gated through rhwp sidecars. Missing sidecars or unverified operations must fail closed instead of falling back to HWPX. |
 
 ## HWP/rhwp bridge
 
@@ -38,15 +38,21 @@ officecli capabilities --json
 - responses include `schemaVersion`, `ok`, `operation`, `format`, `engineVersion`, plus data or typed error;
 - errors include `code`, `message`, `format`, `operation`, `engine`, and `nextCommand` when useful.
 
-Supported HWP sidecar operations listed in that contract:
+Supported HWP sidecar operations listed in that contract and current bridge
+surface:
 
-- `read-text`, `render-svg`, `list-fields`, `read-field`, `fill-field`,
-  `replace-text`, `table-map`, `set-table-cell`, `create-blank`,
-  `save-as-hwp`.
+- `read-text`, `render-svg`, `render-png`, `export-pdf`, `export-markdown`,
+  `document-info`, `diagnostics`, `dump-controls`, `dump-pages`, `thumbnail`,
+  `list-fields`, `get-field`, `set-field`, `replace-text`, `insert-text`,
+  `get-cell-text`, `scan-cells`, `set-cell-text`, `convert-to-editable`,
+  `native-op`, `create-blank`, `save-as-hwp`.
 
 Supported HWPX rhwp operations listed there:
 
-- `read-text`, `render-svg`, `list-fields`, `read-field`, `fill-field`, `replace-text`.
+- `read-text`, `render-svg`, `render-png`, `export-pdf`, `export-markdown`,
+  `document-info`, `diagnostics`, `dump-controls`, `dump-pages`, `thumbnail`,
+  `list-fields`, `get-field`, `set-field`, `replace-text`, `insert-text`,
+  `get-cell-text`, `scan-cells`, `set-cell-text`, `native-op`, `save-as-hwp`.
 
 ## Safe-save policy
 
@@ -66,5 +72,9 @@ From `docs/qa/provider-compatibility-matrix.md`:
 - HWPX `custom` is the default provider.
 - HWP `rhwp-bridge` is the default provider.
 - Every expected capability must have rows for `custom` and `rhwp-bridge`.
-- Unsupported rows carry typed reasons such as `unsupported_engine`, `roundtrip_unverified`, `binary_hwp_mutation_forbidden`, or `binary_hwp_write_forbidden`.
-- Hancom evidence is optional and cannot be required by normal CI.
+- Unsupported rows carry typed reasons such as `unsupported_engine`,
+  `dependency_missing`, `operation_not_wired`, `roundtrip_unverified`, or
+  `hancom_reopen_unverified`.
+- Hancom evidence is the promotion lane for native HWP write claims. Normal CI
+  may keep it manual, but docs must not call rhwp-backed operations impossible
+  when the pinned rhwp source exposes the primitive.

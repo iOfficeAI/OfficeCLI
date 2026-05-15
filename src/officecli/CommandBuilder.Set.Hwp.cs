@@ -268,4 +268,116 @@ static partial class CommandBuilder
         }
         return 0;
     }
+
+    private static int HandleHwpConvertToEditable(
+        string inputPath,
+        HwpFormat format,
+        Dictionary<string, string> properties,
+        bool json)
+    {
+        var output = FirstValue(properties, "output", "out");
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            var message = "HWP convert-to-editable requires --prop output=<path>.";
+            if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(message));
+            else Console.Error.WriteLine(message);
+            return 1;
+        }
+
+        var outputPath = Path.GetFullPath(output);
+        var outputDir = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrEmpty(outputDir)) Directory.CreateDirectory(outputDir);
+
+        var formatKey = format == HwpFormat.Hwp
+            ? HwpCapabilityConstants.FormatHwp
+            : HwpCapabilityConstants.FormatHwpx;
+        var engine = HwpEngineSelector.GetEngine(formatKey, HwpCapabilityConstants.OperationConvertToEditable);
+        var request = new HwpConvertToEditableRequest(format, inputPath, outputPath, json);
+        var result = engine.ConvertToEditableAsync(request, CancellationToken.None).GetAwaiter().GetResult();
+
+        if (json)
+        {
+            var envelope = new System.Text.Json.Nodes.JsonObject
+            {
+                ["success"] = true,
+                ["message"] = $"Converted HWP to editable output -> {result.OutputPath}",
+                ["data"] = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["outputPath"] = result.OutputPath,
+                    ["engine"] = result.Engine,
+                    ["engineVersion"] = result.EngineVersion,
+                    ["evidence"] = HwpCapabilityJsonMapper.ToJsonArray(result.Evidence)
+                },
+                ["warnings"] = HwpCapabilityJsonMapper.ToJsonArray(result.Warnings)
+            };
+            Console.WriteLine(envelope.ToJsonString(OutputFormatter.PublicJsonOptions));
+        }
+        else
+        {
+            Console.WriteLine($"Converted HWP to editable output -> {result.OutputPath}");
+            foreach (var warning in result.Warnings)
+                Console.Error.WriteLine($"WARNING: {warning}");
+        }
+        return 0;
+    }
+
+    private static int HandleHwpNativeMutation(
+        string inputPath,
+        HwpFormat format,
+        Dictionary<string, string> properties,
+        bool json)
+    {
+        var op = FirstValue(properties, "op", "operation");
+        var output = FirstValue(properties, "output", "out");
+        if (string.IsNullOrWhiteSpace(op) || string.IsNullOrWhiteSpace(output))
+        {
+            var message = "HWP native-op requires --prop op=<rhwp-native-op> --prop output=<path>.";
+            if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(message));
+            else Console.Error.WriteLine(message);
+            return 1;
+        }
+
+        var outputPath = Path.GetFullPath(output);
+        var outputDir = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrEmpty(outputDir)) Directory.CreateDirectory(outputDir);
+
+        var args = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);
+        args.Remove("op");
+        args.Remove("operation");
+        args.Remove("output");
+        args.Remove("out");
+
+        var formatKey = format == HwpFormat.Hwp
+            ? HwpCapabilityConstants.FormatHwp
+            : HwpCapabilityConstants.FormatHwpx;
+        var engine = HwpEngineSelector.GetEngine(formatKey, HwpCapabilityConstants.OperationNativeMutation);
+        var request = new HwpNativeMutationRequest(format, inputPath, outputPath, op, args, json);
+        var result = engine.NativeMutationAsync(request, CancellationToken.None).GetAwaiter().GetResult();
+
+        if (json)
+        {
+            var envelope = new System.Text.Json.Nodes.JsonObject
+            {
+                ["success"] = true,
+                ["message"] = $"Ran HWP native-op '{op}' -> {result.OutputPath}",
+                ["data"] = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["operation"] = op,
+                    ["outputPath"] = result.OutputPath,
+                    ["engine"] = result.Engine,
+                    ["engineVersion"] = result.EngineVersion,
+                    ["evidence"] = HwpCapabilityJsonMapper.ToJsonArray(result.Evidence)
+                },
+                ["warnings"] = HwpCapabilityJsonMapper.ToJsonArray(result.Warnings)
+            };
+            Console.WriteLine(envelope.ToJsonString(OutputFormatter.PublicJsonOptions));
+        }
+        else
+        {
+            Console.WriteLine($"Ran HWP native-op '{op}' -> {result.OutputPath}");
+            foreach (var warning in result.Warnings)
+                Console.Error.WriteLine($"WARNING: {warning}");
+        }
+        return 0;
+    }
 }

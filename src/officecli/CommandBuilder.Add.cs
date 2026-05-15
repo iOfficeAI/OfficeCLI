@@ -4,6 +4,7 @@
 using System.CommandLine;
 using OfficeCli.Core;
 using OfficeCli.Handlers;
+using OfficeCli.Handlers.Hwp;
 using OfficeCli.Help;
 
 namespace OfficeCli;
@@ -174,6 +175,9 @@ static partial class CommandBuilder
                 // Reuse ParsePropsArray so the inline and resident-server paths
                 // stay in sync.
                 var properties = ParsePropsArray(props);
+                var extension = file.Extension;
+                if (IsHwpTextAdd(extension, parentPath, type))
+                    return HandleHwpTextAdd(file.FullName, HwpFormat.Hwp, properties, json);
 
                 // ARCHITECTURE(handler-as-truth): the handler is the single
                 // source of truth for "is this prop supported". We pass the

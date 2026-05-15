@@ -186,6 +186,10 @@ public class HwpBridgeTableScanTests : IDisposable
         var path = Path.Combine(Path.GetTempPath(), $"fake-rhwp-api-scan-{Guid.NewGuid():N}");
         File.WriteAllText(path, """
 #!/bin/sh
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+  echo "rhwp-field-bridge scan-cells|set-cell-text --json"
+  exit 0
+fi
 if [ "$1" = "scan-cells" ]; then
   printf '%s\n' '{"cells":[{"section":0,"parentPara":1,"control":0,"cell":0,"cellPara":0,"text":"보도시점"}],"count":1,"limits":{"section":0,"maxParentPara":3,"maxControl":1,"maxCell":4,"maxCellPara":0},"engineVersion":"rhwp-api v0.test","format":"hwpx","warnings":["bounded scan"]}'
   exit 0

@@ -32,7 +32,8 @@ public partial class HwpBridgeSidecarTests
         psi.ArgumentList.Add(bridgeDll);
         foreach (var arg in args) psi.ArgumentList.Add(arg);
         psi.Environment["OFFICECLI_RHWP_BIN"] = fakeRhwp;
-        if (fakeRhwpApi != null) psi.Environment["OFFICECLI_RHWP_API_BIN"] = fakeRhwpApi;
+        psi.Environment["OFFICECLI_RHWP_API_BIN"] = fakeRhwpApi
+            ?? Path.Combine(Path.GetTempPath(), "officecli-test-no-rhwp-api");
         using var process = Process.Start(psi)!;
         var stdout = process.StandardOutput.ReadToEnd();
         var stderr = process.StandardError.ReadToEnd();
@@ -127,6 +128,10 @@ exit 2
         File.WriteAllText(path, """
 #!/bin/sh
 cmd="$1"
+if [ "$cmd" = "--help" ] || [ "$cmd" = "-h" ]; then
+  echo "rhwp-field-bridge create-blank|read-text|render-svg|render-png|export-pdf|export-markdown|document-info|diagnostics|dump-controls|dump-pages|thumbnail|list-fields|get-field|set-field|replace-text|insert-text|get-cell-text|scan-cells|set-cell-text|convert-to-editable|native-op|save-as-hwp --format hwp|hwpx [--input <path>] [--op <native-op>] [--output <path>] [--out-dir <dir>] --json"
+  exit 0
+fi
 if [ "$cmd" = "create-blank" ]; then
   output=""
   while [ "$#" -gt 0 ]; do
@@ -194,6 +199,66 @@ if [ "$cmd" = "render-svg" ]; then
   mkdir -p "$out"
   printf '<svg><text>api page</text></svg>' > "$out/page_001.svg"
   printf '{"engineVersion":"rhwp-api v0.test","format":"hwp","manifest":"%s/manifest.json","pages":[{"page":1,"path":"%s/page_001.svg","sha256":"abc123"}],"warnings":[]}\n' "$out" "$out"
+  exit 0
+fi
+if [ "$cmd" = "render-png" ]; then
+  out=""
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--out-dir" ]; then
+      shift
+      out="$1"
+    fi
+    shift
+  done
+  mkdir -p "$out"
+  printf 'PNG' > "$out/page_001.png"
+  printf '{"engineVersion":"rhwp-api v0.test","format":"hwp","manifest":"%s/manifest.json","pages":[{"page":1,"path":"%s/page_001.png","sha256":"png123"}],"warnings":[]}\n' "$out" "$out"
+  exit 0
+fi
+if [ "$cmd" = "export-pdf" ]; then
+  output=""
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--output" ]; then
+      shift
+      output="$1"
+    fi
+    shift
+  done
+  printf 'PDF' > "$output"
+  printf '{"pdf":{"path":"%s","bytes":3,"sha256":"pdf123"},"pages":[{"page":1}],"engineVersion":"rhwp-api v0.test","format":"hwp","warnings":[]}\n' "$output"
+  exit 0
+fi
+if [ "$cmd" = "export-markdown" ]; then
+  printf '%s\n' '{"markdown":"# Fake HWP\n\n셀값","pages":[{"page":1,"markdown":"# Fake HWP"}],"engineVersion":"rhwp-api v0.test","format":"hwp","warnings":[]}'
+  exit 0
+fi
+if [ "$cmd" = "document-info" ]; then
+  printf '%s\n' '{"info":{"pages":1,"sections":1},"engineVersion":"rhwp-api v0.test","format":"hwp","warnings":[]}'
+  exit 0
+fi
+if [ "$cmd" = "diagnostics" ]; then
+  printf '%s\n' '{"diagnostics":[],"engineVersion":"rhwp-api v0.test","format":"hwp","warnings":[]}'
+  exit 0
+fi
+if [ "$cmd" = "dump-controls" ]; then
+  printf '%s\n' '{"dump":"full control dump","engineVersion":"rhwp-api v0.test","format":"hwp","warnings":[]}'
+  exit 0
+fi
+if [ "$cmd" = "dump-pages" ]; then
+  printf '%s\n' '{"dump":"page 1 dump","pages":[{"page":1,"dump":"page 1 dump"}],"engineVersion":"rhwp-api v0.test","format":"hwp","warnings":[]}'
+  exit 0
+fi
+if [ "$cmd" = "thumbnail" ]; then
+  output=""
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--output" ]; then
+      shift
+      output="$1"
+    fi
+    shift
+  done
+  printf 'PNG' > "$output"
+  printf '{"thumbnail":{"path":"%s","format":"png","width":120,"height":90},"engineVersion":"rhwp-api v0.test","format":"hwp","warnings":[]}\n' "$output"
   exit 0
 fi
 if [ "$cmd" = "list-fields" ]; then
@@ -266,8 +331,77 @@ PY
   printf '{"replacement":{"ok":true,"count":2},"output":"%s","engineVersion":"rhwp-api v0.test","format":"%s","warnings":["experimental replace-text"]}\n' "$output" "$format"
   exit 0
 fi
+if [ "$cmd" = "insert-text" ]; then
+  format="hwp"
+  output=""
+  value=""
+  section="0"
+  paragraph="0"
+  offset="0"
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--format" ]; then
+      shift
+      format="$1"
+    elif [ "$1" = "--output" ]; then
+      shift
+      output="$1"
+    elif [ "$1" = "--value" ]; then
+      shift
+      value="$1"
+    elif [ "$1" = "--section" ]; then
+      shift
+      section="$1"
+    elif [ "$1" = "--paragraph" ] || [ "$1" = "--para" ]; then
+      shift
+      paragraph="$1"
+    elif [ "$1" = "--offset" ]; then
+      shift
+      offset="$1"
+    fi
+    shift
+  done
+  printf '%s' "$value" > "$output"
+  printf '{"inserted":true,"operation":"insert-text","output":"%s","engineVersion":"rhwp-api v0.test","format":"%s","section":%s,"paragraph":%s,"offset":%s,"warnings":["experimental insert-text"]}\n' "$output" "$format" "$section" "$paragraph" "$offset"
+  exit 0
+fi
 if [ "$cmd" = "get-cell-text" ]; then
   printf '%s\n' '{"cell":{"section":0,"parentPara":2,"control":0,"cell":1,"cellPara":0,"offset":0,"count":1000,"text":"셀값"},"engineVersion":"rhwp-api v0.test","format":"hwp","warnings":[]}'
+  exit 0
+fi
+if [ "$cmd" = "scan-cells" ]; then
+  printf '%s\n' '{"cells":[{"section":0,"parentPara":2,"control":0,"cell":1,"cellPara":0,"text":"셀값"}],"engineVersion":"rhwp-api v0.test","format":"hwp","warnings":[]}'
+  exit 0
+fi
+if [ "$cmd" = "convert-to-editable" ]; then
+  output=""
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--output" ]; then
+      shift
+      output="$1"
+    fi
+    shift
+  done
+  printf 'fake editable hwp' > "$output"
+  printf '{"converted":{"ok":true,"converted":true},"output":"%s","outputFormat":"hwp","engineVersion":"rhwp-api v0.test","format":"hwp","warnings":["experimental convert-to-editable"]}\n' "$output"
+  exit 0
+fi
+if [ "$cmd" = "native-op" ]; then
+  output=""
+  op=""
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = "--output" ]; then
+      shift
+      output="$1"
+    elif [ "$1" = "--op" ]; then
+      shift
+      op="$1"
+    fi
+    shift
+  done
+  if [ -n "$output" ]; then
+    printf 'fake native op hwp' > "$output"
+  fi
+  printf '{"operation":"%s","result":{"ok":true},"output":"%s","engineVersion":"rhwp-api v0.test","format":"hwp","warnings":["experimental native-op"]}\n' "$op" "$output"
   exit 0
 fi
 if [ "$cmd" = "save-as-hwp" ]; then
