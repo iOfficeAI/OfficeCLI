@@ -193,6 +193,7 @@ public sealed partial class RhwpBridgeEngine : IHwpEngine
                 engineMode: HwpCapabilityConstants.ModeExperimental);
 
         string stdout;
+        string stderr;
         int exitCode;
         try
         {
@@ -200,7 +201,7 @@ public sealed partial class RhwpBridgeEngine : IHwpEngine
             var stderrTask = process.StandardError.ReadToEndAsync(cts.Token);
             await process.WaitForExitAsync(cts.Token);
             stdout = await stdoutTask;
-            _ = await stderrTask;
+            stderr = await stderrTask;
             exitCode = process.ExitCode;
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -220,7 +221,7 @@ public sealed partial class RhwpBridgeEngine : IHwpEngine
 
         if (exitCode != 0)
             throw new HwpEngineException(
-                $"rhwp-officecli-bridge exited with code {exitCode}.",
+                BuildBridgeExitMessage(exitCode, stdout, stderr),
                 HwpCapabilityConstants.ReasonBridgeExitNonZero,
                 engine: HwpCapabilityConstants.EngineRhwpBridge,
                 engineMode: HwpCapabilityConstants.ModeExperimental);
@@ -235,6 +236,22 @@ public sealed partial class RhwpBridgeEngine : IHwpEngine
 
         return trimmed;
     }
+
+    private static string BuildBridgeExitMessage(int exitCode, string stdout, string stderr)
+    {
+        var stderrTrimmed = TruncateDiagnostic(stderr.Trim());
+        var stdoutTrimmed = TruncateDiagnostic(stdout.Trim());
+        if (string.IsNullOrWhiteSpace(stderrTrimmed) && string.IsNullOrWhiteSpace(stdoutTrimmed))
+            return $"rhwp-officecli-bridge exited with code {exitCode}.";
+        if (string.IsNullOrWhiteSpace(stdoutTrimmed))
+            return $"rhwp-officecli-bridge exited with code {exitCode}: {stderrTrimmed}";
+        if (string.IsNullOrWhiteSpace(stderrTrimmed))
+            return $"rhwp-officecli-bridge exited with code {exitCode}: stdout={stdoutTrimmed}";
+        return $"rhwp-officecli-bridge exited with code {exitCode}: {stderrTrimmed}; stdout={stdoutTrimmed}";
+    }
+
+    private static string TruncateDiagnostic(string value)
+        => value.Length > 512 ? value[..512] + "..." : value;
 
     private static HwpTextResult ParseTextResult(string json)
     {
