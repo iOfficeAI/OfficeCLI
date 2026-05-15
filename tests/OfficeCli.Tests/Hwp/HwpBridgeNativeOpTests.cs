@@ -45,6 +45,29 @@ public partial class HwpBridgeSidecarTests
     }
 
     [Fact]
+    public void OfficeCliViewNative_AllowsExpandedReadOperationWhitelist()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", LocateBridgeDll());
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", CreateFakeRhwpApi());
+        var input = CreateInput(".hwp");
+
+        var (exitCode, stdout) = InvokeOfficeCli(
+            [
+                "view", input, "native",
+                "--op", "get-char-properties-at",
+                "--native-arg", "paragraph=0",
+                "--native-arg", "offset=0",
+                "--json"
+            ]);
+
+        Assert.Equal(0, exitCode);
+        var root = JsonNode.Parse(stdout)!;
+        Assert.True(root["success"]!.GetValue<bool>());
+        Assert.Equal("get-char-properties-at", root["data"]!["operation"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void OfficeCliViewNative_RejectsMutatingNativeOp()
     {
         if (OperatingSystem.IsWindows()) return;
@@ -109,6 +132,37 @@ public partial class HwpBridgeSidecarTests
                 "--prop", "op=split-paragraph",
                 "--prop", "paragraph=0",
                 "--prop", "offset=5",
+                "--prop", $"output={output}",
+                "--json"
+            ]);
+
+        Assert.Equal(0, exitCode);
+        Assert.True(File.Exists(output));
+        var root = JsonNode.Parse(stdout)!;
+        Assert.True(root["success"]!.GetValue<bool>());
+        Assert.Equal(output, root["data"]!["outputPath"]!.GetValue<string>());
+        Assert.Equal("rhwp-bridge", root["data"]!["engine"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void OfficeCliSetNativeOp_AllowsExpandedMutationOperation()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_BRIDGE_PATH", LocateBridgeDll());
+        Environment.SetEnvironmentVariable("OFFICECLI_RHWP_API_BIN", CreateFakeRhwpApi());
+        var input = CreateInput(".hwp");
+        var output = CreateOutput(".hwp");
+
+        var (exitCode, stdout) = InvokeOfficeCli(
+            [
+                "set", input, "/native-op",
+                "--prop", "op=apply-char-format-in-cell",
+                "--prop", "parent-para=0",
+                "--prop", "control=0",
+                "--prop", "cell=0",
+                "--prop", "cell-para=0",
+                "--prop", "start=0",
+                "--prop", "end=1",
                 "--prop", $"output={output}",
                 "--json"
             ]);

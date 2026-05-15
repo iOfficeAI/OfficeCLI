@@ -28,7 +28,12 @@ public sealed class HwpRhwpSurfaceParityTests
             "api.convert_to_editable_native",
             "api.render_page_html",
             "api.begin_batch",
-            "api.insert_text_native"
+            "api.insert_text_native",
+            "api.get_char_properties_at_native",
+            "api.get_header_footer_para_info_native",
+            "api.create_shape_control_native",
+            "api.render_equation_preview_native",
+            "api.delete_equation_control_native"
         ]);
     }
 
