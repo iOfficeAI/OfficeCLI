@@ -123,6 +123,12 @@ pub(crate) fn req_i16(options: &BTreeMap<String, String>, key: &str) -> Result<i
         .map_err(|e| format!("invalid {key} value: {e}"))
 }
 
+pub(crate) fn req_i32(options: &BTreeMap<String, String>, key: &str) -> Result<i32, String> {
+    required(options, key)?
+        .parse::<i32>()
+        .map_err(|e| format!("invalid {key} value: {e}"))
+}
+
 pub(crate) fn bool_opt(options: &BTreeMap<String, String>, key: &str, default: bool) -> bool {
     options
         .get(key)
@@ -146,6 +152,30 @@ pub(crate) fn parse_u32_list(value: Option<&str>) -> Result<Option<Vec<u32>>, St
         );
     }
     Ok((!output.is_empty()).then_some(output))
+}
+
+pub(crate) fn parse_targets(value: &str) -> Result<Vec<(usize, usize)>, String> {
+    let mut targets = Vec::new();
+    for item in value.split(',') {
+        let item = item.trim();
+        if item.is_empty() {
+            continue;
+        }
+        let (para, control) = item
+            .split_once(':')
+            .ok_or_else(|| format!("invalid --targets item '{item}'; expected para:control"))?;
+        targets.push((
+            para.parse::<usize>()
+                .map_err(|e| format!("invalid --targets paragraph '{para}': {e}"))?,
+            control
+                .parse::<usize>()
+                .map_err(|e| format!("invalid --targets control '{control}': {e}"))?,
+        ));
+    }
+    if targets.is_empty() {
+        return Err("missing non-empty --targets".to_string());
+    }
+    Ok(targets)
 }
 
 pub(crate) fn is_header(options: &BTreeMap<String, String>) -> bool {

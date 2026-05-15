@@ -1,6 +1,11 @@
 mod ops;
 mod ops_native;
+mod ops_native_header_footer;
+mod ops_native_objects;
+mod ops_native_style;
 mod ops_native_support;
+mod ops_native_table;
+mod ops_native_text;
 mod ops_text;
 mod ops_view;
 mod options;
