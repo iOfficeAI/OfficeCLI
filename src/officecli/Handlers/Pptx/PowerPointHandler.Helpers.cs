@@ -1385,7 +1385,12 @@ public partial class PowerPointHandler
         // enum object's CLR name ("SchemeColorValues { }"), not the semantic OOXML
         // name. Use InnerText to get "accent1"/"dark1"/... so the emitted gradient
         // string round-trips through BuildGradientFill's color parser.
-        if (scheme?.Val?.InnerText != null) return scheme.Val.InnerText;
+        // CONSISTENCY(scheme-color-roundtrip): emit canonical long name
+        // (dark1/light1/hyperlink/…) so OOXML internal short forms
+        // (dk1/lt1/hlink/…) round-trip through Get the same way
+        // ReadColorFromFill normalises them.
+        if (scheme?.Val?.InnerText != null)
+            return ParseHelpers.NormalizeSchemeColorName(scheme.Val.InnerText) ?? scheme.Val.InnerText;
         var sys = gs.GetFirstChild<Drawing.SystemColor>();
         if (sys?.Val?.InnerText != null) return sys.Val.InnerText;
         var preset = gs.GetFirstChild<Drawing.PresetColor>();

@@ -63,7 +63,15 @@ public partial class PowerPointHandler
         var rgbEl = parent.GetFirstChild<Drawing.RgbColorModelHex>();
         if (rgbEl?.Val?.Value != null) return FormatHexWithAlpha(rgbEl);
         var scheme = parent.GetFirstChild<Drawing.SchemeColor>()?.Val;
-        if (scheme?.HasValue == true) return scheme.InnerText;
+        // CONSISTENCY(scheme-color-roundtrip): emit canonical long names
+        // (dark1/light1/hyperlink/…) so OOXML internal short forms
+        // (dk1/lt1/hlink/…) round-trip through Get the same way
+        // ReadColorFromFill normalises them. Without this, shadow/glow/
+        // gradient-stop schemeClr readback surfaced raw InnerText
+        // ("dk1"/"hlink"/…), which Add/Set accepts but Get clients
+        // following the documented vocabulary wouldn't recognise.
+        if (scheme?.HasValue == true)
+            return ParseHelpers.NormalizeSchemeColorName(scheme.InnerText) ?? scheme.InnerText;
         return null;
     }
 
