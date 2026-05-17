@@ -78,6 +78,17 @@ public static partial class PptxBatchEmitter
             && bgVal.Equals("image", StringComparison.OrdinalIgnoreCase))
             result.Remove("background");
 
+        // Merge transitionSpeed into transition as a compound form
+        // (e.g. `transition=fade` + `transitionSpeed=slow` → `transition=fade-slow`).
+        // AddSlide/ApplyTransition only honor the compound form; emitting them
+        // as two separate props would drop the speed on replay.
+        if (result.TryGetValue("transitionSpeed", out var spd) && spd.Length > 0)
+        {
+            if (result.TryGetValue("transition", out var trans) && trans.Length > 0)
+                result["transition"] = $"{trans}-{spd}";
+            result.Remove("transitionSpeed");
+        }
+
         // Shape image="true" is a NodeBuilder marker emitted for shapes
         // carrying a blipFill — Add has no shape-fill image importer, so
         // pass-through would fail prop validation. Mirror the
