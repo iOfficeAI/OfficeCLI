@@ -288,7 +288,10 @@ public partial class PowerPointHandler
         var sb = new System.Text.StringBuilder();
         var cursor = 0;
         var rewritten = path;
-        var matches = Regex.Matches(path, @"(\w+)\[@(id|name)=([^\]]+)\]");
+        // Support quoted attr values so a name containing ']' (e.g. PowerPoint's
+        // auto-generated "Shape [1] copy") survives the predicate parse: the
+        // unquoted fallback stops at the first ']' as before.
+        var matches = Regex.Matches(path, @"(\w+)\[@(id|name)=(?:'([^']*)'|""([^""]*)""|([^\]]+))\]");
         foreach (Match m in matches)
         {
             sb.Append(path, cursor, m.Index - cursor);
@@ -296,7 +299,14 @@ public partial class PowerPointHandler
 
             var elementType = m.Groups[1].Value.ToLowerInvariant();
             var attrName = m.Groups[2].Value.ToLowerInvariant();
-            var attrValue = m.Groups[3].Value.Trim('"', '\'', ' ');
+            // Three alternation captures: single-quoted (3), double-quoted (4),
+            // unquoted (5). Pick the one that matched. Trim is still useful for
+            // the unquoted form because the schema documents @name=Foo Bar (no
+            // quotes) for legacy callers.
+            string attrValue;
+            if (m.Groups[3].Success) attrValue = m.Groups[3].Value;
+            else if (m.Groups[4].Success) attrValue = m.Groups[4].Value;
+            else attrValue = m.Groups[5].Value.Trim('"', '\'', ' ');
 
             var slideMatch = Regex.Match(prefix, @"/slide\[(\d+)\]");
             if (!slideMatch.Success)
