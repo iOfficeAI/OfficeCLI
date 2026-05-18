@@ -153,11 +153,23 @@ static partial class CommandBuilder
             var fullPath = Path.GetFullPath(file);
             if (ResidentClient.TryConnect(fullPath, out _))
             {
-                throw new CliException($"{Path.GetFileName(file)} is currently opened by a resident process. Please run 'officecli close \"{file}\"' first.")
+                // Stale-resident recovery: if the on-disk file is gone (typical
+                // example-script pattern: os.remove(FILE) then `create`), the
+                // resident is pinning a path that no longer exists. Auto-close
+                // it and proceed — refusing here would force every example
+                // script to wrap `create` in a defensive `close`.
+                if (!File.Exists(fullPath))
                 {
-                    Code = "file_locked",
-                    Suggestion = $"Run: officecli close \"{file}\""
-                };
+                    ResidentClient.SendClose(fullPath);
+                }
+                else
+                {
+                    throw new CliException($"{Path.GetFileName(file)} is currently opened by a resident process. Please run 'officecli close \"{file}\"' first.")
+                    {
+                        Code = "file_locked",
+                        Suggestion = $"Run: officecli close \"{file}\""
+                    };
+                }
             }
 
             // Refuse to silently overwrite an existing file unless --force is set.
