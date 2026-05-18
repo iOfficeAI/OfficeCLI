@@ -14,58 +14,213 @@ namespace OfficeCli.Core;
 internal static class ParseHelpers
 {
     /// <summary>
-    /// Map of common CSS/HTML named colors to 6-digit uppercase hex RGB.
+    /// Full SVG / CSS3 named-color set (147 names + the CSS keyword
+    /// <c>transparent</c>) mapped to 6-digit uppercase hex RGB. Lookup is
+    /// case-insensitive. <c>transparent</c> maps to <c>000000</c> here; the
+    /// transparent semantics (alpha = 0) are handled in the alpha-aware
+    /// resolver below — callers using only the RGB component get black, which
+    /// matches CSS's "transparent = transparent black" definition.
     /// </summary>
     private static readonly Dictionary<string, string> NamedColors = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["red"] = "FF0000", ["green"] = "008000", ["blue"] = "0000FF",
-        ["white"] = "FFFFFF", ["black"] = "000000", ["yellow"] = "FFFF00",
-        ["cyan"] = "00FFFF", ["aqua"] = "00FFFF", ["magenta"] = "FF00FF",
-        ["fuchsia"] = "FF00FF", ["orange"] = "FFA500", ["purple"] = "800080",
-        ["pink"] = "FFC0CB", ["brown"] = "A52A2A", ["gray"] = "808080",
-        ["grey"] = "808080", ["silver"] = "C0C0C0", ["gold"] = "FFD700",
-        ["navy"] = "000080", ["teal"] = "008080", ["maroon"] = "800000",
-        ["olive"] = "808000", ["lime"] = "00FF00", ["coral"] = "FF7F50",
-        ["salmon"] = "FA8072", ["tomato"] = "FF6347", ["crimson"] = "DC143C",
-        ["indigo"] = "4B0082", ["violet"] = "EE82EE", ["turquoise"] = "40E0D0",
-        ["tan"] = "D2B48C", ["khaki"] = "F0E68C", ["beige"] = "F5F5DC",
-        ["ivory"] = "FFFFF0", ["lavender"] = "E6E6FA", ["plum"] = "DDA0DD",
-        ["orchid"] = "DA70D6", ["chocolate"] = "D2691E", ["sienna"] = "A0522D",
-        ["peru"] = "CD853F", ["wheat"] = "F5DEB3", ["linen"] = "FAF0E6",
-        ["skyblue"] = "87CEEB", ["steelblue"] = "4682B4", ["slategray"] = "708090",
-        ["darkred"] = "8B0000", ["darkgreen"] = "006400", ["darkblue"] = "00008B",
-        ["darkcyan"] = "008B8B", ["darkmagenta"] = "8B008B", ["darkorange"] = "FF8C00",
+        ["aliceblue"] = "F0F8FF", ["antiquewhite"] = "FAEBD7", ["aqua"] = "00FFFF",
+        ["aquamarine"] = "7FFFD4", ["azure"] = "F0FFFF", ["beige"] = "F5F5DC",
+        ["bisque"] = "FFE4C4", ["black"] = "000000", ["blanchedalmond"] = "FFEBCD",
+        ["blue"] = "0000FF", ["blueviolet"] = "8A2BE2", ["brown"] = "A52A2A",
+        ["burlywood"] = "DEB887", ["cadetblue"] = "5F9EA0", ["chartreuse"] = "7FFF00",
+        ["chocolate"] = "D2691E", ["coral"] = "FF7F50", ["cornflowerblue"] = "6495ED",
+        ["cornsilk"] = "FFF8DC", ["crimson"] = "DC143C", ["cyan"] = "00FFFF",
+        ["darkblue"] = "00008B", ["darkcyan"] = "008B8B", ["darkgoldenrod"] = "B8860B",
+        ["darkgray"] = "A9A9A9", ["darkgrey"] = "A9A9A9", ["darkgreen"] = "006400",
+        ["darkkhaki"] = "BDB76B", ["darkmagenta"] = "8B008B", ["darkolivegreen"] = "556B2F",
+        ["darkorange"] = "FF8C00", ["darkorchid"] = "9932CC", ["darkred"] = "8B0000",
+        ["darksalmon"] = "E9967A", ["darkseagreen"] = "8FBC8F", ["darkslateblue"] = "483D8B",
+        ["darkslategray"] = "2F4F4F", ["darkslategrey"] = "2F4F4F", ["darkturquoise"] = "00CED1",
         ["darkviolet"] = "9400D3", ["deeppink"] = "FF1493", ["deepskyblue"] = "00BFFF",
-        ["lightgray"] = "D3D3D3", ["lightgreen"] = "90EE90", ["lightblue"] = "ADD8E6",
-        ["lightyellow"] = "FFFFE0", ["lightpink"] = "FFB6C1", ["lightcoral"] = "F08080",
-        ["darkgray"] = "A9A9A9", ["dimgray"] = "696969",
+        ["dimgray"] = "696969", ["dimgrey"] = "696969", ["dodgerblue"] = "1E90FF",
+        ["firebrick"] = "B22222", ["floralwhite"] = "FFFAF0", ["forestgreen"] = "228B22",
+        ["fuchsia"] = "FF00FF", ["gainsboro"] = "DCDCDC", ["ghostwhite"] = "F8F8FF",
+        ["gold"] = "FFD700", ["goldenrod"] = "DAA520", ["gray"] = "808080",
+        ["grey"] = "808080", ["green"] = "008000", ["greenyellow"] = "ADFF2F",
+        ["honeydew"] = "F0FFF0", ["hotpink"] = "FF69B4", ["indianred"] = "CD5C5C",
+        ["indigo"] = "4B0082", ["ivory"] = "FFFFF0", ["khaki"] = "F0E68C",
+        ["lavender"] = "E6E6FA", ["lavenderblush"] = "FFF0F5", ["lawngreen"] = "7CFC00",
+        ["lemonchiffon"] = "FFFACD", ["lightblue"] = "ADD8E6", ["lightcoral"] = "F08080",
+        ["lightcyan"] = "E0FFFF", ["lightgoldenrodyellow"] = "FAFAD2", ["lightgray"] = "D3D3D3",
+        ["lightgrey"] = "D3D3D3", ["lightgreen"] = "90EE90", ["lightpink"] = "FFB6C1",
+        ["lightsalmon"] = "FFA07A", ["lightseagreen"] = "20B2AA", ["lightskyblue"] = "87CEFA",
+        ["lightslategray"] = "778899", ["lightslategrey"] = "778899", ["lightsteelblue"] = "B0C4DE",
+        ["lightyellow"] = "FFFFE0", ["lime"] = "00FF00", ["limegreen"] = "32CD32",
+        ["linen"] = "FAF0E6", ["magenta"] = "FF00FF", ["maroon"] = "800000",
+        ["mediumaquamarine"] = "66CDAA", ["mediumblue"] = "0000CD", ["mediumorchid"] = "BA55D3",
+        ["mediumpurple"] = "9370DB", ["mediumseagreen"] = "3CB371", ["mediumslateblue"] = "7B68EE",
+        ["mediumspringgreen"] = "00FA9A", ["mediumturquoise"] = "48D1CC", ["mediumvioletred"] = "C71585",
+        ["midnightblue"] = "191970", ["mintcream"] = "F5FFFA", ["mistyrose"] = "FFE4E1",
+        ["moccasin"] = "FFE4B5", ["navajowhite"] = "FFDEAD", ["navy"] = "000080",
+        ["oldlace"] = "FDF5E6", ["olive"] = "808000", ["olivedrab"] = "6B8E23",
+        ["orange"] = "FFA500", ["orangered"] = "FF4500", ["orchid"] = "DA70D6",
+        ["palegoldenrod"] = "EEE8AA", ["palegreen"] = "98FB98", ["paleturquoise"] = "AFEEEE",
+        ["palevioletred"] = "DB7093", ["papayawhip"] = "FFEFD5", ["peachpuff"] = "FFDAB9",
+        ["peru"] = "CD853F", ["pink"] = "FFC0CB", ["plum"] = "DDA0DD",
+        ["powderblue"] = "B0E0E6", ["purple"] = "800080", ["rebeccapurple"] = "663399",
+        ["red"] = "FF0000", ["rosybrown"] = "BC8F8F", ["royalblue"] = "4169E1",
+        ["saddlebrown"] = "8B4513", ["salmon"] = "FA8072", ["sandybrown"] = "F4A460",
+        ["seagreen"] = "2E8B57", ["seashell"] = "FFF5EE", ["sienna"] = "A0522D",
+        ["silver"] = "C0C0C0", ["skyblue"] = "87CEEB", ["slateblue"] = "6A5ACD",
+        ["slategray"] = "708090", ["slategrey"] = "708090", ["snow"] = "FFFAFA",
+        ["springgreen"] = "00FF7F", ["steelblue"] = "4682B4", ["tan"] = "D2B48C",
+        ["teal"] = "008080", ["thistle"] = "D8BFD8", ["tomato"] = "FF6347",
+        ["turquoise"] = "40E0D0", ["violet"] = "EE82EE", ["wheat"] = "F5DEB3",
+        ["white"] = "FFFFFF", ["whitesmoke"] = "F5F5F5", ["yellow"] = "FFFF00",
+        ["yellowgreen"] = "9ACD32",
+        // CSS keyword: transparent black (rgb=000000, alpha=00). Lookup here
+        // returns the RGB component only; the alpha is injected by the
+        // alpha-aware path in NormalizeArgbColor / SanitizeColorForOoxml.
+        ["transparent"] = "000000",
     };
 
     /// <summary>
-    /// Try to resolve a named color (e.g. "red") or rgb() notation to 6-digit hex.
-    /// Returns null if the input is not a named color or rgb() expression.
+    /// Try to resolve a named color, <c>rgb()</c>, <c>rgba()</c>, <c>hsl()</c>,
+    /// or <c>hsla()</c> notation to a 6-digit hex RGB plus an optional alpha
+    /// byte. Returns <c>null</c> if the input is none of the above (callers
+    /// should then fall through to the bare-hex parsers).
+    ///
+    /// Accepted CSS forms (case-insensitive, leading/trailing whitespace
+    /// tolerated):
+    ///   rgb(r,g,b)           rgba(r,g,b,a)         — 0–255 ints or 0–100% percentages, mixable
+    ///   rgb(r g b)           rgba(r g b / a)       — CSS Level 4 space-separated
+    ///   hsl(h,s%,l%)         hsla(h,s%,l%,a)       — h: deg (or unitless = deg), s/l: %
+    ///   hsl(h s% l%)         hsla(h s% l% / a)     — CSS Level 4 space-separated
+    /// Alpha forms: 0..1 float (CSS default) or 0..100% (CSS Level 4).
     /// </summary>
-    private static string? TryResolveColorInput(string value)
+    private static (string Rgb, byte? Alpha)? TryResolveColorInput(string value)
     {
         var trimmed = value.Trim();
 
-        // Named color lookup
+        // Named color lookup. `transparent` is the only entry that carries an
+        // implicit alpha (= 0); everything else is opaque.
         if (NamedColors.TryGetValue(trimmed, out var hex))
-            return hex;
-
-        // rgb(r,g,b) notation
-        var m = Regex.Match(trimmed, @"^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$", RegexOptions.IgnoreCase);
-        if (m.Success)
         {
-            var r = int.Parse(m.Groups[1].Value);
-            var g = int.Parse(m.Groups[2].Value);
-            var b = int.Parse(m.Groups[3].Value);
-            if (r > 255 || g > 255 || b > 255)
-                throw new ArgumentException($"Invalid color value: '{value}'. RGB components must be 0-255.");
-            return $"{r:X2}{g:X2}{b:X2}";
+            if (string.Equals(trimmed, "transparent", StringComparison.OrdinalIgnoreCase))
+                return (hex, (byte)0);
+            return (hex, null);
+        }
+
+        // rgb(...) / rgba(...): three or four comma-separated OR space-
+        // separated components (CSS Level 4). The trailing alpha may be
+        // separated by `/` in the space-separated form, by `,` otherwise.
+        var rgbMatch = Regex.Match(trimmed,
+            @"^rgba?\(\s*([^\s,/]+)\s*[,\s]\s*([^\s,/]+)\s*[,\s]\s*([^\s,/]+)\s*(?:[,/]\s*([^\s,/]+)\s*)?\)$",
+            RegexOptions.IgnoreCase);
+        if (rgbMatch.Success)
+        {
+            byte r = ParseRgbComponent(rgbMatch.Groups[1].Value, value);
+            byte g = ParseRgbComponent(rgbMatch.Groups[2].Value, value);
+            byte b = ParseRgbComponent(rgbMatch.Groups[3].Value, value);
+            byte? a = rgbMatch.Groups[4].Success
+                ? ParseAlphaComponent(rgbMatch.Groups[4].Value, value)
+                : (byte?)null;
+            return ($"{r:X2}{g:X2}{b:X2}", a);
+        }
+
+        // hsl(...) / hsla(...). Hue: number (treated as degrees). Saturation
+        // / lightness: percentages. Alpha: 0..1 or 0..100%.
+        var hslMatch = Regex.Match(trimmed,
+            @"^hsla?\(\s*([^\s,/]+)\s*[,\s]\s*([^\s,/]+)\s*[,\s]\s*([^\s,/]+)\s*(?:[,/]\s*([^\s,/]+)\s*)?\)$",
+            RegexOptions.IgnoreCase);
+        if (hslMatch.Success)
+        {
+            double h = ParseHueDegrees(hslMatch.Groups[1].Value, value);
+            double s = ParsePercent01(hslMatch.Groups[2].Value, value);
+            double l = ParsePercent01(hslMatch.Groups[3].Value, value);
+            var (r, g, b) = HslToRgb(h, s, l);
+            byte? a = hslMatch.Groups[4].Success
+                ? ParseAlphaComponent(hslMatch.Groups[4].Value, value)
+                : (byte?)null;
+            return ($"{r:X2}{g:X2}{b:X2}", a);
         }
 
         return null;
+    }
+
+    private static byte ParseRgbComponent(string token, string original)
+    {
+        token = token.Trim();
+        if (token.EndsWith('%'))
+        {
+            if (!double.TryParse(token[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var pct)
+                || pct < 0 || pct > 100)
+                throw new ArgumentException($"Invalid color value: '{original}'. RGB percentage components must be 0%-100%.");
+            return (byte)Math.Round(pct / 100.0 * 255.0);
+        }
+        if (!int.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) || n < 0 || n > 255)
+            throw new ArgumentException($"Invalid color value: '{original}'. RGB components must be 0-255.");
+        return (byte)n;
+    }
+
+    private static byte ParseAlphaComponent(string token, string original)
+    {
+        token = token.Trim();
+        double a;
+        if (token.EndsWith('%'))
+        {
+            if (!double.TryParse(token[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var pct)
+                || pct < 0 || pct > 100)
+                throw new ArgumentException($"Invalid color value: '{original}'. Alpha percentage must be 0%-100%.");
+            a = pct / 100.0;
+        }
+        else
+        {
+            if (!double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out a) || a < 0 || a > 1)
+                throw new ArgumentException($"Invalid color value: '{original}'. Alpha must be 0-1 (e.g. 0.5) or 0%-100%.");
+        }
+        return (byte)Math.Round(a * 255.0);
+    }
+
+    private static double ParseHueDegrees(string token, string original)
+    {
+        token = token.Trim();
+        // Strip an optional `deg` suffix (CSS allows it; other angle units
+        // — turn/rad/grad — are out of scope for the input vocabulary we care
+        // about and would just need their own multipliers if asked for).
+        if (token.EndsWith("deg", StringComparison.OrdinalIgnoreCase))
+            token = token[..^3].Trim();
+        if (!double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out var h))
+            throw new ArgumentException($"Invalid color value: '{original}'. Hue must be a number in degrees.");
+        h %= 360;
+        if (h < 0) h += 360;
+        return h;
+    }
+
+    private static double ParsePercent01(string token, string original)
+    {
+        token = token.Trim();
+        if (!token.EndsWith('%'))
+            throw new ArgumentException($"Invalid color value: '{original}'. HSL saturation/lightness must be expressed as a percentage (e.g. 50%).");
+        if (!double.TryParse(token[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var pct)
+            || pct < 0 || pct > 100)
+            throw new ArgumentException($"Invalid color value: '{original}'. HSL saturation/lightness must be 0%-100%.");
+        return pct / 100.0;
+    }
+
+    private static (byte R, byte G, byte B) HslToRgb(double h, double s, double l)
+    {
+        // Standard HSL → RGB (CSS Color Module Level 3).
+        double c = (1 - Math.Abs(2 * l - 1)) * s;
+        double hp = h / 60.0;
+        double x = c * (1 - Math.Abs(hp % 2 - 1));
+        double r1 = 0, g1 = 0, b1 = 0;
+        if (hp < 1)      { r1 = c; g1 = x; b1 = 0; }
+        else if (hp < 2) { r1 = x; g1 = c; b1 = 0; }
+        else if (hp < 3) { r1 = 0; g1 = c; b1 = x; }
+        else if (hp < 4) { r1 = 0; g1 = x; b1 = c; }
+        else if (hp < 5) { r1 = x; g1 = 0; b1 = c; }
+        else             { r1 = c; g1 = 0; b1 = x; }
+        double m = l - c / 2;
+        return (
+            (byte)Math.Round((r1 + m) * 255),
+            (byte)Math.Round((g1 + m) * 255),
+            (byte)Math.Round((b1 + m) * 255));
     }
 
     /// <summary>
@@ -96,8 +251,8 @@ internal static class ParseHelpers
         }
         // Try resolving named colors (e.g. "silver" → "#C0C0C0")
         var resolved = TryResolveColorInput(rawValue);
-        if (resolved != null)
-            return "#" + resolved.ToUpperInvariant();
+        if (resolved is { } r)
+            return "#" + r.Rgb.ToUpperInvariant();
         // Sentinel tokens are case-insensitive in OOXML but the canonical
         // Format emit is lowercase — sources occasionally write `w:val="AUTO"`
         // (or `"NONE"`), and a case-only delta poisons dump round-trip
@@ -265,16 +420,43 @@ internal static class ParseHelpers
     /// </summary>
     public static string NormalizeArgbColor(string value)
     {
-        // Try named color / rgb() first
-        var resolved = TryResolveColorInput(value);
-        if (resolved != null) return "FF" + resolved;
+        // CONSISTENCY(color-input-whitespace): outer trim BEFORE any
+        // hash-strip / hex inspection so " #FF0000 " / " red " / "FF0000\n"
+        // (CLI pipes, JSON envelopes, copy-paste) parse the same as the bare
+        // value. Inner whitespace ("#FF 0000") remains invalid.
+        var trimmedInput = value.Trim();
 
-        var hadHashPrefix = value.StartsWith('#');
-        var hex = value.TrimStart('#').ToUpperInvariant();
+        // Try named color / rgb()/rgba()/hsl()/hsla() first
+        var resolved = TryResolveColorInput(trimmedInput);
+        if (resolved is { } cr)
+        {
+            var alpha = cr.Alpha ?? 0xFF;
+            return $"{alpha:X2}{cr.Rgb}";
+        }
+
+        var hadHashPrefix = trimmedInput.StartsWith('#');
+        var hex = trimmedInput.TrimStart('#').ToUpperInvariant();
         if (hex.Length == 3 && hex.All(char.IsAsciiHexDigit))
         {
             // Expand shorthand: "F00" → "FF0000"
             hex = new string(new[] { hex[0], hex[0], hex[1], hex[1], hex[2], hex[2] });
+        }
+        else if (hadHashPrefix && hex.Length == 4 && hex.All(char.IsAsciiHexDigit)
+                 && hex[3] != '0')
+        {
+            // CSS #RGBA shorthand → #RRGGBBAA. The hash prefix is required
+            // because bare 4-hex would be ambiguous with truncated AARRGGBB
+            // / RRGGBB-and-a-typo. Same expansion rule as #RGB.
+            //
+            // The non-zero-alpha guard rejects #XX00 (alpha = 0, fully
+            // transparent): the user almost certainly mistyped a 6-digit
+            // RGB, not "I want an invisible color via the 4-char shorthand"
+            // (the explicit `transparent` keyword or 8-digit #00000000 form
+            // exists for that intent and is unambiguous).
+            hex = new string(new[]
+            {
+                hex[0], hex[0], hex[1], hex[1], hex[2], hex[2], hex[3], hex[3],
+            });
         }
         if (hex.Length == 6 && hex.All(char.IsAsciiHexDigit))
             return "FF" + hex;
@@ -289,8 +471,8 @@ internal static class ParseHelpers
         }
         throw new ArgumentException(
             $"Invalid color value: '{value}'. Expected 6-digit hex RGB (e.g. FF0000), " +
-            $"8-digit AARRGGBB (e.g. 80FF0000), 3-digit shorthand (e.g. F00), " +
-            $"named color (e.g. red), or rgb() notation (e.g. rgb(255,0,0)).");
+            $"8-digit AARRGGBB (e.g. 80FF0000), 3-digit shorthand (e.g. F00) or 4-digit #RGBA shorthand (e.g. F00A), " +
+            $"named color (e.g. red), rgb()/rgba()/hsl()/hsla() notation, or 'transparent'.");
     }
 
     /// <summary>
@@ -383,13 +565,21 @@ internal static class ParseHelpers
     /// </summary>
     public static (string Rgb, int? AlphaPercent) SanitizeColorForOoxml(string value)
     {
+        // CONSISTENCY(color-input-whitespace): outer trim mirrors NormalizeArgbColor.
+        var trimmedInput = value.Trim();
+
         // "auto" is a legal OOXML value for shading Fill/Color — pass through unchanged
-        if (string.Equals(value, "auto", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(trimmedInput, "auto", StringComparison.OrdinalIgnoreCase))
             return ("auto", null);
 
-        // Try named color / rgb() first
-        var resolved = TryResolveColorInput(value);
-        if (resolved != null) return (resolved, null);
+        // Try named color / rgb()/rgba()/hsl()/hsla() first
+        var resolved = TryResolveColorInput(trimmedInput);
+        if (resolved is { } cr)
+        {
+            if (cr.Alpha is byte a && a != 0xFF)
+                return (cr.Rgb, (int)(a / 255.0 * 100000));
+            return (cr.Rgb, null);
+        }
 
         // CONSISTENCY(color-input-form): treat the leading '#' as a signal that
         // the input follows the CSS #RRGGBBAA convention (alpha last). Bare
@@ -397,8 +587,8 @@ internal static class ParseHelpers
         // Without this distinction, "#FFFFFFAA" was being parsed as AARRGGBB,
         // silently dropping the trailing AA byte and storing rgb=FFFFAA — the
         // user's RGB and alpha were both corrupted.
-        var hadHashPrefix = value.StartsWith('#');
-        var hex = value.TrimStart('#').ToUpperInvariant();
+        var hadHashPrefix = trimmedInput.StartsWith('#');
+        var hex = trimmedInput.TrimStart('#').ToUpperInvariant();
         if (hex.Length == 8 && hex.All(char.IsAsciiHexDigit))
         {
             byte alphaByte;
@@ -423,6 +613,22 @@ internal static class ParseHelpers
         // Validate: must be exactly 6 hex digits for srgbClr val
         if (hex.Length == 3 && hex.All(char.IsAsciiHexDigit))
             hex = new string(new[] { hex[0], hex[0], hex[1], hex[1], hex[2], hex[2] });
+        else if (hadHashPrefix && hex.Length == 4 && hex.All(char.IsAsciiHexDigit)
+                 && hex[3] != '0')
+        {
+            // CSS #RGBA shorthand → #RRGGBBAA; route through the 8-hex path
+            // above to share alpha handling. See NormalizeArgbColor for the
+            // non-zero-alpha-digit rationale (reject #XX00 as a typo guard).
+            var expanded = new string(new[]
+            {
+                hex[0], hex[0], hex[1], hex[1], hex[2], hex[2], hex[3], hex[3],
+            });
+            var rgb = expanded[..6];
+            var alphaByte = Convert.ToByte(expanded.Substring(6, 2), 16);
+            if (alphaByte == 0xFF)
+                return (rgb, null);
+            return (rgb, (int)(alphaByte / 255.0 * 100000));
+        }
 
         if (hex.Length != 6 || !hex.All(char.IsAsciiHexDigit))
         {
@@ -430,13 +636,13 @@ internal static class ParseHelpers
             // here — callers that support theme colors must check
             // IsSchemeColorName first and route to ThemeColor. Surface a
             // hint instead of advertising support we don't provide.
-            var schemeHint = IsSchemeColorName(value)
+            var schemeHint = IsSchemeColorName(trimmedInput)
                 ? " (scheme color names like 'accent1' must be set on properties that accept theme colors)"
                 : "";
             throw new ArgumentException(
                 $"Invalid color value: '{value}'. Expected 6-digit hex RGB (e.g. FF0000), " +
-                $"8-digit AARRGGBB (e.g. 80FF0000), 3-digit shorthand (e.g. F00), " +
-                $"named color (e.g. red), or rgb() notation (e.g. rgb(255,0,0))." + schemeHint);
+                $"8-digit AARRGGBB (e.g. 80FF0000), 3-digit shorthand (e.g. F00) or 4-digit #RGBA shorthand (e.g. F00A), " +
+                $"named color (e.g. red), rgb()/rgba()/hsl()/hsla() notation, or 'transparent'." + schemeHint);
         }
 
         return (hex, null);
