@@ -13,6 +13,27 @@ namespace OfficeCli.Handlers;
 
 public partial class PowerPointHandler
 {
+    /// <summary>
+    /// Return the 1-based positional index of the shape with the given OOXML
+    /// id on the slide at <paramref name="slideIdx"/>, or null if none matches.
+    /// Counts the same element types ResolveShape() exposes (plain <p:sp>),
+    /// matching what the /slide[N]/shape[K] positional path resolves to.
+    /// </summary>
+    internal int? ResolveShapeOrdinalById(int slideIdx, uint id)
+    {
+        var slideParts = GetSlideParts().ToList();
+        if (slideIdx < 1 || slideIdx > slideParts.Count) return null;
+        var shapeTree = GetSlide(slideParts[slideIdx - 1]).CommonSlideData?.ShapeTree;
+        if (shapeTree == null) return null;
+        var shapes = shapeTree.Elements<Shape>().ToList();
+        for (int i = 0; i < shapes.Count; i++)
+        {
+            var sid = shapes[i].NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value;
+            if (sid == id) return i + 1;
+        }
+        return null;
+    }
+
     private (SlidePart slidePart, Shape shape) ResolveShape(int slideIdx, int shapeIdx)
     {
         var slideParts = GetSlideParts().ToList();

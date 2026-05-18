@@ -154,6 +154,17 @@ public static partial class PptxBatchEmitter
         var full = ppt.Get(cxnNode.Path);
         var props = FilterEmittableProps(full.Format);
 
+        // R24 — NodeBuilder emits startShape / endShape as raw OOXML shape IDs.
+        // Replay reassigns IDs through AcquireShapeId, so the original numeric
+        // ID will reference the wrong shape (or be out of range) by the time
+        // Add runs on a fresh deck. Translate to the positional path form that
+        // ResolveShapeId already accepts (`/slide[N]/shape[K]`) so the endpoint
+        // re-resolves against whatever shape sits at that ordinal in the
+        // rebuilt slide. The translation is done eagerly against the source
+        // slide because the source still has the original IDs.
+        TranslateConnectorEndpoint(ppt, cxnNode, props, "startShape", "from");
+        TranslateConnectorEndpoint(ppt, cxnNode, props, "endShape", "to");
+
         items.Add(new BatchItem
         {
             Command = "add",
@@ -161,6 +172,28 @@ public static partial class PptxBatchEmitter
             Type = "connector",
             Props = props.Count > 0 ? props : null,
         });
+    }
+
+    private static void TranslateConnectorEndpoint(PowerPointHandler ppt,
+        DocumentNode cxnNode, Dictionary<string, string> props,
+        string srcKey, string dstKey)
+    {
+        if (!props.TryGetValue(srcKey, out var idStr)) return;
+        if (!uint.TryParse(idStr, out var id)) return;
+        // cxnNode.Path is /slide[N]/connector[K]; derive the slide number.
+        var slideMatch = System.Text.RegularExpressions.Regex.Match(cxnNode.Path ?? "", @"^/slide\[(\d+)\]");
+        if (!slideMatch.Success) return;
+        var slideIdx = int.Parse(slideMatch.Groups[1].Value);
+        var shapePathIdx = ppt.ResolveShapeOrdinalById(slideIdx, id);
+        if (shapePathIdx == null) return; // Endpoint refers to a shape we
+                                          // can't find on this slide (cross-
+                                          // slide cxn, group-nested, etc.);
+                                          // leave the raw id and let Add
+                                          // emit a warning instead.
+        props.Remove(srcKey);
+        props[dstKey] = $"/slide[{slideIdx}]/shape[{shapePathIdx}]";
+        // Drop the auxiliary index — Add re-derives the connection point.
+        props.Remove(srcKey == "startShape" ? "startIdx" : "endIdx");
     }
 
     private static void EmitGroup(PowerPointHandler ppt, DocumentNode grpNode, string parentSlidePath,
