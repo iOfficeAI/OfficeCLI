@@ -1989,6 +1989,35 @@ public partial class ExcelHandler
         if (!SingleMergeRefPattern.IsMatch(refUpper))
             throw new ArgumentException(
                 $"Invalid merge ref '{newRangeRef}': must be a single A1 cell (e.g. 'B2') or A1:B2 range (e.g. 'B4:E4').");
+        // CONSISTENCY(merge-orientation): the ref must read top-left to
+        // bottom-right. Z1:A1 / A10:A1 / B2:A1 (any reversed orientation)
+        // were silently accepted; Excel itself only writes the canonical
+        // form, so callers passing a reversed pair almost certainly typo'd.
+        // Reject with a hint to swap, mirroring the orientation guard the
+        // sheetShift normalizer applies after the fact (ExcelHandler.Set.cs
+        // L1918) and matching how other range-bearing props (validation,
+        // table, autofilter) demand canonical orientation up front.
+        var colonIdx = refUpper.IndexOf(':');
+        if (colonIdx > 0)
+        {
+            var lhs = refUpper.Substring(0, colonIdx);
+            var rhs = refUpper.Substring(colonIdx + 1);
+            try
+            {
+                var (lCol, lRow) = ParseCellReference(lhs);
+                var (rCol, rRow) = ParseCellReference(rhs);
+                int lColIdx = ColumnNameToIndex(lCol);
+                int rColIdx = ColumnNameToIndex(rCol);
+                if (lColIdx > rColIdx || lRow > rRow)
+                {
+                    throw new ArgumentException(
+                        $"Invalid merge ref '{newRangeRef}': range must read top-left to bottom-right. " +
+                        $"Pass the canonical orientation (e.g. 'A1:B2', not 'B2:A1').");
+                }
+            }
+            catch (ArgumentException) { throw; }
+            catch { /* parse failure already handled by SingleMergeRefPattern above */ }
+        }
     }
 
     private static void InsertMergeCellChecked(MergeCells mergeCells, string newRangeRef, WorksheetPart? worksheetPart = null)
