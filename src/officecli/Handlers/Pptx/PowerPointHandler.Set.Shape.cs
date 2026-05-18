@@ -744,6 +744,27 @@ public partial class PowerPointHandler
                 ApplyMotionPathAnimation(slidePart, shape, motionPathValue);
             if (linkValue != null)
                 ApplyShapeHyperlink(slidePart, shape, linkValue, tooltipValue);
+            else if (tooltipValue != null)
+            {
+                // Standalone tooltip update — apply in place to the existing
+                // hlinkClick on shape and all runs. Previously this was a silent
+                // no-op: set returned "Updated" but the tooltip slot was untouched.
+                // If no hyperlink exists, reject so callers don't believe a
+                // tooltip without a link was stored.
+                Core.XmlTextValidator.ValidateOrThrow(tooltipValue, "tooltip");
+                var shapeHl = shape.NonVisualShapeProperties?.NonVisualDrawingProperties
+                    ?.GetFirstChild<Drawing.HyperlinkOnClick>();
+                var runHls = shape.Descendants<Drawing.Run>()
+                    .Select(r => r.RunProperties?.GetFirstChild<Drawing.HyperlinkOnClick>())
+                    .Where(h => h != null)
+                    .ToList();
+                if (shapeHl == null && runHls.Count == 0)
+                    throw new ArgumentException(
+                        "tooltip requires an existing hyperlink — set 'link' in the same call (e.g. --prop link=https://example.com --prop tooltip=…) " +
+                        "or apply 'link' first, then update 'tooltip' on its own.");
+                if (shapeHl != null) shapeHl.Tooltip = tooltipValue;
+                foreach (var rh in runHls) rh!.Tooltip = tooltipValue;
+            }
 
             GetSlide(slidePart).Save();
             return unsupported;
