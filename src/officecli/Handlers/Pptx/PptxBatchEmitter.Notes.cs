@@ -98,4 +98,75 @@ public static partial class PptxBatchEmitter
             });
         }
     }
+
+    // Modern p188 threaded comments — distinct OOXML part from legacy p:cm.
+    // Emit one `add modernComment parent=/slide[N]` row per top-level thread
+    // followed by `add modernComment parent=/slide[N]` rows with
+    // parent=/slide[N]/modernComment[K] for each reply, in document order so
+    // replay rebuilds the thread tree in shape.
+    private static void EmitModernComments(PowerPointHandler ppt, string slidePath,
+                                           List<BatchItem> items, SlideEmitContext ctx)
+    {
+        var slideMatch = System.Text.RegularExpressions.Regex.Match(slidePath, @"^/slide\[(\d+)\]$");
+        if (!slideMatch.Success) return;
+        var slideIdx = int.Parse(slideMatch.Groups[1].Value);
+
+        List<DocumentNode> threads;
+        try { threads = ppt.EnumerateModernComments(slideIdx); }
+        catch { return; }
+        if (threads.Count == 0) return;
+
+        int topIdx = 0;
+        foreach (var top in threads)
+        {
+            topIdx++;
+            // Top-level row.
+            var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrEmpty(top.Text)) props["text"] = top.Text!;
+            foreach (var key in new[] { "author", "initials", "created" })
+            {
+                if (top.Format.TryGetValue(key, out var v) && v != null)
+                {
+                    var s = v.ToString() ?? "";
+                    if (s.Length > 0) props[key] = s;
+                }
+            }
+            // resolved is bool — only emit when true (false is the default).
+            if (top.Format.TryGetValue("resolved", out var rv) && rv is bool rb && rb)
+                props["resolved"] = "true";
+            items.Add(new BatchItem
+            {
+                Command = "add",
+                Parent = slidePath,
+                Type = "modernComment",
+                Props = props.Count > 0 ? props : null,
+            });
+
+            // Reply rows. The top-level rows we just emitted are indexed
+            // 1..N on the replayed deck in the same order we emit them, so
+            // parent= can reference /slide[N]/modernComment[topIdx].
+            var parentPath = $"/slide[{slideIdx}]/modernComment[{topIdx}]";
+            foreach (var r in top.Children)
+            {
+                var rp = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                if (!string.IsNullOrEmpty(r.Text)) rp["text"] = r.Text!;
+                foreach (var key in new[] { "author", "initials", "created" })
+                {
+                    if (r.Format.TryGetValue(key, out var v) && v != null)
+                    {
+                        var s = v.ToString() ?? "";
+                        if (s.Length > 0) rp[key] = s;
+                    }
+                }
+                rp["parent"] = parentPath;
+                items.Add(new BatchItem
+                {
+                    Command = "add",
+                    Parent = slidePath,
+                    Type = "modernComment",
+                    Props = rp,
+                });
+            }
+        }
+    }
 }

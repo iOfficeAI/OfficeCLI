@@ -460,6 +460,11 @@ public static partial class PptxBatchEmitter
         // Emit AFTER notes so the per-slide row order is stable: shapes →
         // notes → comments, mirroring how a reader would traverse the slide.
         EmitComments(ppt, slidePath, items, ctx);
+
+        // Modern p188 threaded comments — distinct from legacy p:cm; live in
+        // PowerPointCommentPart. Emit after legacy comments to keep a stable
+        // per-slide row ordering.
+        EmitModernComments(ppt, slidePath, items, ctx);
     }
 
     // Touch the raw slide XML to find content that has no handler vocabulary

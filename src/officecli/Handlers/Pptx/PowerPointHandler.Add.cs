@@ -73,6 +73,12 @@ public partial class PowerPointHandler
             "3dmodel" or "model3d" or "model" or "glb" => AddModel3D(parentPath, index, properties),
             // BUG-R36-B11: legacy slide comments lifecycle.
             "comment" or "note-comment" => AddSlideComment(parentPath, index, properties),
+            // Modern p188 (Office 2018/8) threaded comments — distinct OOXML
+            // element living in PowerPointCommentPart (/ppt/comments/…). Top-
+            // level threads and replies share the dispatch (parent= prop
+            // discriminates).
+            "moderncomment" or "modern-comment" or "thread" or "threadedcomment"
+                => AddModernComment(parentPath, index, properties),
             _ => AddDefault(parentPath, index, properties, type)
         };
     }

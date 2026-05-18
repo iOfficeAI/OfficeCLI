@@ -359,6 +359,28 @@ public partial class PowerPointHandler
             return unsupported;
         }
 
+        // Modern p188 threaded comments: /slide[N]/moderncomment[K] or
+        // /slide[N]/moderncomment[K]/reply[R]. Path was lowercased by
+        // NormalizePptxPathSegmentCasing, so match the folded form.
+        var mcReplyMatch = Regex.Match(path, @"^/slide\[(\d+)\]/moderncomment\[(\d+)\]/reply\[(\d+)\]$");
+        if (mcReplyMatch.Success)
+        {
+            var rResolved = ResolveModernCommentReply(path)
+                ?? throw new ArgumentException($"Modern comment reply not found: {path}");
+            var u = SetModernCommentProperties(rResolved.part, rResolved.reply, properties);
+            rResolved.part.CommentList!.Save();
+            return u;
+        }
+        var mcMatch = Regex.Match(path, @"^/slide\[(\d+)\]/moderncomment\[(\d+)\]$");
+        if (mcMatch.Success)
+        {
+            var resolved = ResolveModernComment(path)
+                ?? throw new ArgumentException($"Modern comment not found: {path}");
+            var u = SetModernCommentProperties(resolved.part, resolved.comment, properties);
+            resolved.part.CommentList!.Save();
+            return u;
+        }
+
         // Generic XML fallback: navigate to element and set attributes
         {
             SlidePart fbSlidePart;

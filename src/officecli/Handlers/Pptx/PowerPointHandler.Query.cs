@@ -307,6 +307,18 @@ public partial class PowerPointHandler
             return oleNodes[oleNodeIdx - 1];
         }
 
+        // Modern p188 comment reply: /slide[N]/moderncomment[K]/reply[R].
+        // (Top-level /slide[N]/moderncomment[K] is matched by the generic
+        // /slide[N]/<type>[K] branch below via elementType == "moderncomment".)
+        var mcReplyGetMatch = Regex.Match(path,
+            @"^/slide\[(\d+)\]/moderncomment\[(\d+)\]/reply\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (mcReplyGetMatch.Success)
+        {
+            var rr = ResolveModernCommentReply(path)
+                ?? throw new ArgumentException($"Modern comment reply not found: {path}");
+            return ModernCommentReplyToNode(rr.slideIdx, rr.parentIdx, rr.reply, rr.replyIdx);
+        }
+
         // Try notes path: /slide[N]/notes
         var notesGetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/notes$");
         if (notesGetMatch.Success)
@@ -1041,6 +1053,14 @@ public partial class PowerPointHandler
             return CommentToNode(targetSlidePart, slideIdx, comments[elementIdx - 1], elementIdx);
         }
 
+        // Modern p188 threaded comments live in PowerPointCommentPart(s).
+        if (elementType == "moderncomment")
+        {
+            var top = ResolveModernComment($"/slide[{slideIdx}]/moderncomment[{elementIdx}]")
+                ?? throw new ArgumentException($"Modern comment {elementIdx} not found on slide {slideIdx}");
+            return ModernCommentToNode(slideIdx, top.comment, elementIdx);
+        }
+
         if (elementType == "shape")
         {
             var shapes = shapeTreeEl.Elements<Shape>().ToList();
@@ -1247,6 +1267,8 @@ public partial class PowerPointHandler
                 or "tc" or "cell" or "tr" or "row"
                 // BUG-R36-B11: query("comment") enumerates all slide comments.
                 or "comment"
+                // Modern p188 threaded comments.
+                or "moderncomment" or "modern-comment" or "thread" or "threadedcomment"
                 // R8-8: paragraph/run as root selectors — walk every shape's
                 // text body and emit one node per paragraph or run, matching
                 // the docx surface where query("run") returns all body runs.
@@ -1350,6 +1372,23 @@ public partial class PowerPointHandler
             var slideFilter = parsed.SlideNum;
             var commentNodes = EnumerateComments(slideFilter);
             foreach (var n in commentNodes)
+            {
+                if (parsed.TextContains != null
+                    && !(n.Text ?? "").Contains(parsed.TextContains, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (MatchesGenericAttributes(n, parsed.Attributes))
+                    results.Add(n);
+            }
+            return results;
+        }
+
+        // Modern p188 threaded comments — enumerate top-level threads
+        // (replies live as children of each top-level node).
+        if (rawType is "moderncomment" or "modern-comment" or "thread" or "threadedcomment")
+        {
+            var slideFilter = parsed.SlideNum;
+            var mcNodes = EnumerateModernComments(slideFilter);
+            foreach (var n in mcNodes)
             {
                 if (parsed.TextContains != null
                     && !(n.Text ?? "").Contains(parsed.TextContains, StringComparison.OrdinalIgnoreCase))

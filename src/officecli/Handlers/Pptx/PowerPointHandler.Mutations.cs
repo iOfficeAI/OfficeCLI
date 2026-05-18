@@ -68,6 +68,18 @@ public partial class PowerPointHandler
             return null;
         }
 
+        // Modern p188 threaded comment removal — top-level path removes the
+        // whole thread (mirror PowerPoint UI); reply path removes just one
+        // reply.
+        var mcRemoveMatch = Regex.Match(path,
+            @"^/slide\[(\d+)\]/moderncomment\[(\d+)\](?:/reply\[(\d+)\])?$");
+        if (mcRemoveMatch.Success)
+        {
+            if (!RemoveModernComment(path))
+                throw new ArgumentException($"Modern comment not found: {path}");
+            return null;
+        }
+
         // Handle /slide[N]/notes path (no index bracket)
         var notesMatch = Regex.Match(path, @"^/slide\[(\d+)\]/notes$");
         if (notesMatch.Success)
