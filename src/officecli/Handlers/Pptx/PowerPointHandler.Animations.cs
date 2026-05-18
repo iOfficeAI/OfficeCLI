@@ -331,10 +331,10 @@ public partial class PowerPointHandler
             "r" or "right" => "r",
             "u" or "up" => "u",
             "d" or "down" => "d",
-            "lu" or "leftup" => "lu",
-            "ru" or "rightup" => "ru",
-            "ld" or "leftdown" => "ld",
-            "rd" or "rightdown" => "rd",
+            "lu" or "leftup" or "upleft" => "lu",
+            "ru" or "rightup" or "upright" => "ru",
+            "ld" or "leftdown" or "downleft" => "ld",
+            "rd" or "rightdown" or "downright" => "rd",
             _ => throw new ArgumentException($"Invalid direction: '{dir}'. Valid values: left, right, up, down, leftup, rightup, leftdown, rightdown.")
         };
 
