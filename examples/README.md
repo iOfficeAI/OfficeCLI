@@ -30,9 +30,12 @@ examples/
     │   └── charts-<type>.{md,py,pptx}
     │       (column, bar, line, pie, doughnut, area, scatter,
     │        bubble, radar, stock, combo, waterfall, 3d, advanced)
-    └── tables/                        # PowerPoint table showcases
-        └── tables-<topic>.{md,sh,pptx}
-            (basic, styled, merged, borders, rows-cols, financial)
+    ├── tables/                        # PowerPoint table showcases
+    │   └── tables-<topic>.{md,sh,pptx}
+    │       (basic, styled, merged, borders, rows-cols, financial)
+    └── transitions/                   # Slide transition showcases
+        └── transitions-<topic>.{md,sh,pptx}
+            (basic, directional, shapes, bands, dynamic, random, timing, morph)
 ```
 
 Each example follows the same trio: `<name>.md` (walkthrough), `<name>.sh`/`.py` (build script), `<name>.<ext>` (pre-generated output).
@@ -75,6 +78,14 @@ bash tables/tables-merged.sh        # gridSpan horizontal merge
 bash tables/tables-borders.sh       # Per-side / per-cell borders
 bash tables/tables-rows-cols.sh     # add row/column, per-row height, gridSpan + merge.down
 bash tables/tables-financial.sh     # End-to-end financial deck
+bash transitions/transitions-basic.sh        # cut/fade/dissolve/flash + 'none' clear
+bash transitions/transitions-directional.sh  # push/wipe/cover/uncover × direction matrix
+bash transitions/transitions-shapes.sh       # circle/diamond/wedge/wheel/zoom
+bash transitions/transitions-bands.sh        # blinds/strips/split/checker
+bash transitions/transitions-dynamic.sh      # 2010+ Exciting gallery (vortex/flip/...)
+bash transitions/transitions-random.sh       # newsflash / random
+bash transitions/transitions-timing.sh       # speed, duration, advanceTime, advanceClick
+bash transitions/transitions-morph.sh        # 2016+ Morph tweening
 ```
 
 ---
@@ -98,6 +109,7 @@ bash tables/tables-financial.sh     # End-to-end financial deck
 - Video and 3D model embedding
 - Native chart examples (column, bar, line, pie, doughnut, area, scatter, bubble, radar, stock, combo, waterfall, 3D, advanced)
 - Tables — basic, built-in styles, merged cells, borders, row/column ops, real-world financial deck
+- Slide transitions — all 47 schema tokens covered across 8 trios: basic, directional, shape, band, dynamic 3D, random, timing, and Morph
 
 ---
 
