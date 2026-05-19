@@ -529,12 +529,44 @@ internal static partial class ChartHelper
                 return true;
 
             case "linewidth":
+            case "outlinewidth":
                 ApplySeriesLineWidth(ser, (int)(ParseHelpers.SafeParseDouble(value, "series.lineWidth") * 12700));
                 return true;
 
             case "linedash" or "dash":
+            case "outlinedash":
                 ApplySeriesLineDash(ser, value);
                 return true;
+
+            case "outlinecolor":
+            case "linecolor":
+            {
+                // Reader emits per-series outline as separate keys
+                // (outlineColor, lineWidth, lineDash). The existing `outline`
+                // setter takes a compound `color:width:dash` spec and would
+                // require callers to round-trip via the compound form. Accept
+                // the read-side names directly so dump→batch replays one prop
+                // per emit. Update only the SolidFill child; preserve any
+                // existing width / dash on the outline element.
+                var spPr = ser.GetFirstChild<C.ChartShapeProperties>();
+                if (spPr == null) { spPr = new C.ChartShapeProperties(); ser.AppendChild(spPr); }
+                var ln = spPr.GetFirstChild<Drawing.Outline>();
+                if (ln == null)
+                {
+                    ln = new Drawing.Outline();
+                    var effLst = spPr.GetFirstChild<Drawing.EffectList>();
+                    if (effLst != null) spPr.InsertBefore(ln, effLst);
+                    else spPr.AppendChild(ln);
+                }
+                ln.RemoveAllChildren<Drawing.SolidFill>();
+                var newFill = new Drawing.SolidFill();
+                newFill.AppendChild(BuildChartColorElement(value));
+                // SolidFill must precede PrstDash inside a:ln per schema.
+                var prstDashEl = ln.GetFirstChild<Drawing.PresetDash>();
+                if (prstDashEl != null) ln.InsertBefore(newFill, prstDashEl);
+                else ln.PrependChild(newFill);
+                return true;
+            }
 
             case "shadow":
             {
