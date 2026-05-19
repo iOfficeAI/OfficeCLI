@@ -128,7 +128,8 @@ public static partial class PptxBatchEmitter
                 seriesIdx++;
                 foreach (var key in new[] { "color", "lineWidth", "lineDash",
                     "marker", "markerSize", "smooth", "outlineColor",
-                    "outlineWidth", "outlineDash", "transparency", "gradient" })
+                    "outlineWidth", "outlineDash", "transparency", "gradient",
+                    "trendline", "trendline.dispRSqr", "trendline.dispEq" })
                 {
                     if (s.Format.TryGetValue(key, out var val) && val != null)
                     {
