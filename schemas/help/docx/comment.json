@@ -45,6 +45,19 @@
       "get": true,
       "readback": "path of anchored paragraph/run",
       "enforcement": "report"
+    },
+    "runStart": {
+      "type": "int",
+      "description": "1-based run index inside the parent paragraph where the comment range starts. N=0 (default) anchors the comment to paragraph start; N>=1 places <w:commentRangeStart/> immediately after the Nth run so dump→batch round-trip restores intra-paragraph anchor positions.",
+      "aliases": ["runstart"],
+      "add": true,
+      "set": false,
+      "get": false,
+      "examples": [
+        "--prop runStart=2"
+      ],
+      "readback": "n/a (encoded inline; surfaces via anchoredTo path)",
+      "enforcement": "report"
     }
   }
 }

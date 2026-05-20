@@ -124,7 +124,7 @@ static partial class CommandBuilder
         var createTypeOpt = new Option<string>("--type") { Description = "Document type (docx, xlsx, pptx) — optional, inferred from file extension" };
         var createForceOpt = new Option<bool>("--force") { Description = "Overwrite an existing file." };
         var createLocaleOpt = new Option<string>("--locale") { Description = "Locale tag (e.g. zh-CN, ja, ko, ar, he) — sets per-script default fonts in docDefaults. Without it, host application's UI-locale fallback applies. Currently only honored for .docx." };
-        var createMinimalOpt = new Option<bool>("--minimal") { Description = "(.docx only) Skip Word's Normal.dotm-style baseline (Calibri 11pt + Normal style + theme1.xml) and emit a raw OOXML-spec docx instead. Use for testing edge cases or producing maximally compact output. Without this flag, the doc carries Word-aligned defaults so it renders identically in Word, LibreOffice, and the cli preview." };
+        var createMinimalOpt = new Option<bool>("--minimal") { Description = "(.docx only) Skip Word's Normal.dotm-style baseline (Calibri 11pt + Normal style + theme1.xml) and emit a raw OOXML-spec docx instead. Use for testing edge cases or producing maximally compact output. Without this flag, the doc carries Word-aligned defaults so it renders identically in Word, other producers, and the cli preview." };
         var createCommand = new Command("create", "Create a blank Office document");
         createCommand.Aliases.Add("new");
         createCommand.Add(createFileArg);
@@ -153,11 +153,23 @@ static partial class CommandBuilder
             var fullPath = Path.GetFullPath(file);
             if (ResidentClient.TryConnect(fullPath, out _))
             {
-                throw new CliException($"{Path.GetFileName(file)} is currently opened by a resident process. Please run 'officecli close \"{file}\"' first.")
+                // Stale-resident recovery: if the on-disk file is gone (typical
+                // example-script pattern: os.remove(FILE) then `create`), the
+                // resident is pinning a path that no longer exists. Auto-close
+                // it and proceed — refusing here would force every example
+                // script to wrap `create` in a defensive `close`.
+                if (!File.Exists(fullPath))
                 {
-                    Code = "file_locked",
-                    Suggestion = $"Run: officecli close \"{file}\""
-                };
+                    ResidentClient.SendClose(fullPath);
+                }
+                else
+                {
+                    throw new CliException($"{Path.GetFileName(file)} is currently opened by a resident process. Please run 'officecli close \"{file}\"' first.")
+                    {
+                        Code = "file_locked",
+                        Suggestion = $"Run: officecli close \"{file}\""
+                    };
+                }
             }
 
             // Refuse to silently overwrite an existing file unless --force is set.
@@ -241,13 +253,22 @@ static partial class CommandBuilder
 
             if (json)
             {
-                var jsonObj = new System.Text.Json.Nodes.JsonObject
+                var mergeData = new System.Text.Json.Nodes.JsonObject
                 {
-                    ["success"] = true,
                     ["output"] = Path.GetFullPath(output),
                     ["replacedKeys"] = mergeResult.UsedKeys.Count,
                     ["unresolvedPlaceholders"] = new System.Text.Json.Nodes.JsonArray(
                         mergeResult.UnresolvedPlaceholders.Select(p => (System.Text.Json.Nodes.JsonNode)p).ToArray())
+                };
+                var unresolvedCount = mergeResult.UnresolvedPlaceholders.Count;
+                var message = unresolvedCount > 0
+                    ? $"Merged {mergeResult.UsedKeys.Count} key(s), {unresolvedCount} unresolved placeholder(s)"
+                    : $"Merged {mergeResult.UsedKeys.Count} key(s)";
+                var jsonObj = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["success"] = true,
+                    ["data"] = mergeData,
+                    ["message"] = message,
                 };
                 Console.WriteLine(jsonObj.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = false }));
             }

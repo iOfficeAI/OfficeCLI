@@ -1,6 +1,7 @@
 // Copyright 2025 OfficeCLI (officecli.ai)
 // SPDX-License-Identifier: Apache-2.0
 
+using System.Text;
 using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
@@ -32,7 +33,7 @@ public partial class PowerPointHandler
                 var eqShapeTree = GetSlide(eqSlidePart).CommonSlideData?.ShapeTree
                     ?? throw new InvalidOperationException("Slide has no shape tree");
 
-                var eqShapeId = GenerateUniqueShapeId(eqShapeTree);
+                var eqShapeId = AcquireShapeId(eqShapeTree, properties);
                 var eqShapeName = properties.GetValueOrDefault("name", $"Equation {eqShapeTree.Elements<Shape>().Count() + 1}");
 
                 // Parse formula to OMML
@@ -129,7 +130,10 @@ public partial class PowerPointHandler
                     throw new ArgumentException($"Slide {notesSlideIdx} not found (total: {notesSlideParts.Count})");
                 var notesSlidePart = EnsureNotesSlidePart(notesSlideParts[notesSlideIdx - 1]);
                 if (properties.TryGetValue("text", out var notesText))
+                {
+                    XmlTextValidator.ValidateOrThrow(notesText, "text");
                     SetNotesText(notesSlidePart, notesText);
+                }
                 // Reading direction (Arabic / Hebrew speaker notes). Mirrors
                 // the AddShape direction handling — must run after SetNotesText
                 // so the paragraphs it creates pick up rtl=1.
@@ -170,14 +174,39 @@ public partial class PowerPointHandler
 
     private string AddParagraph(string parentPath, int? index, Dictionary<string, string> properties)
     {
-                // Add a paragraph to an existing shape: /slide[N]/shape[M]
+                // Add a paragraph to an existing shape or placeholder:
+                //   /slide[N]/shape[M] or /slide[N]/placeholder[X]
+                // CONSISTENCY(placeholder-paragraph-path): same dual-route the
+                // Set side ships at PowerPointHandler.Set.Shape.cs, so dump
+                // emit can target either form via positional ordinals.
                 var paraParentMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]/shape\[(\d+)\]$");
-                if (!paraParentMatch.Success)
-                    throw new ArgumentException("Paragraphs must be added to a shape: /slide[N]/shape[M]");
+                var paraPhMatch = paraParentMatch.Success ? null : Regex.Match(parentPath, @"^/slide\[(\d+)\]/placeholder\[(\w+)\]$");
+                if (!paraParentMatch.Success && (paraPhMatch == null || !paraPhMatch.Success))
+                    throw new ArgumentException("Paragraphs must be added to a shape or placeholder: /slide[N]/shape[M] or /slide[N]/placeholder[X]");
 
-                var paraSlideIdx = int.Parse(paraParentMatch.Groups[1].Value);
-                var paraShapeIdx = int.Parse(paraParentMatch.Groups[2].Value);
-                var (paraSlidePart, paraShape) = ResolveShape(paraSlideIdx, paraShapeIdx);
+                SlidePart paraSlidePart;
+                Shape paraShape;
+                int paraSlideIdx;
+                int paraShapeIdx;
+                if (paraParentMatch.Success)
+                {
+                    paraSlideIdx = int.Parse(paraParentMatch.Groups[1].Value);
+                    paraShapeIdx = int.Parse(paraParentMatch.Groups[2].Value);
+                    (paraSlidePart, paraShape) = ResolveShape(paraSlideIdx, paraShapeIdx);
+                }
+                else
+                {
+                    paraSlideIdx = int.Parse(paraPhMatch!.Groups[1].Value);
+                    var phToken = paraPhMatch.Groups[2].Value;
+                    var slideParts = GetSlideParts().ToList();
+                    if (paraSlideIdx < 1 || paraSlideIdx > slideParts.Count)
+                        throw new ArgumentException($"Slide {paraSlideIdx} not found (total: {slideParts.Count})");
+                    paraSlidePart = slideParts[paraSlideIdx - 1];
+                    paraShape = ResolvePlaceholderShape(paraSlidePart, phToken);
+                    // Synthetic index for return path — placeholder positional
+                    // lookup happens by Set's path resolver, this is informational.
+                    paraShapeIdx = 1;
+                }
 
                 var textBody = paraShape.TextBody
                     ?? throw new InvalidOperationException("Shape has no text body");
@@ -229,8 +258,13 @@ public partial class PowerPointHandler
 
                 // Create initial run with text and run-level properties
                 var paraText = properties.GetValueOrDefault("text", "");
+                XmlTextValidator.ValidateOrThrow(paraText, "text");
                 var newRun = new Drawing.Run();
                 var rProps = new Drawing.RunProperties { Language = "en-US" };
+                if (properties.TryGetValue("lang", out var pLang) && !string.IsNullOrEmpty(pLang))
+                    rProps.Language = pLang;
+                if (properties.TryGetValue("altLang", out var pAltLang) && !string.IsNullOrEmpty(pAltLang))
+                    rProps.AlternativeLanguage = pAltLang;
 
                 if (properties.TryGetValue("size", out var pSize)
                     || properties.TryGetValue("font.size", out pSize)
@@ -247,6 +281,29 @@ public partial class PowerPointHandler
                 {
                     rProps.Append(new Drawing.LatinFont { Typeface = pFont });
                     rProps.Append(new Drawing.EastAsianFont { Typeface = pFont });
+                }
+                // CONSISTENCY(font-4-slot): Set fans out font.latin/ea/cs to
+                // the matching OOXML child elements; Add must mirror so the
+                // CJK/complex slots round-trip through dump-replay instead of
+                // silently collapsing to the bare `font` value (or being lost).
+                if (properties.TryGetValue("font.latin", out var pFontLatin))
+                {
+                    rProps.RemoveAllChildren<Drawing.LatinFont>();
+                    rProps.Append(new Drawing.LatinFont { Typeface = pFontLatin });
+                }
+                if (properties.TryGetValue("font.ea", out var pFontEa)
+                    || properties.TryGetValue("font.eastasia", out pFontEa)
+                    || properties.TryGetValue("font.eastasian", out pFontEa))
+                {
+                    rProps.RemoveAllChildren<Drawing.EastAsianFont>();
+                    rProps.Append(new Drawing.EastAsianFont { Typeface = pFontEa });
+                }
+                if (properties.TryGetValue("font.cs", out var pFontCs)
+                    || properties.TryGetValue("font.complexscript", out pFontCs)
+                    || properties.TryGetValue("font.complex", out pFontCs))
+                {
+                    rProps.RemoveAllChildren<Drawing.ComplexScriptFont>();
+                    rProps.Append(new Drawing.ComplexScriptFont { Typeface = pFontCs });
                 }
                 if (properties.TryGetValue("spacing", out var pSpacing) || properties.TryGetValue("charspacing", out pSpacing))
                 {
@@ -270,10 +327,9 @@ public partial class PowerPointHandler
                 // inside a single <a:t> (paragraph-level only adds one paragraph
                 // here), but \t expands to <a:tab/> siblings between text runs
                 // so tabular text round-trips through PowerPoint.
-                var paraTextResolved = paraText.Replace("\\n", "\n").Replace("\\t", "\t");
-                if (paraTextResolved.Contains('\t'))
+                if (paraText.Contains('\t'))
                 {
-                    AppendLineWithTabs(newPara, paraTextResolved, seg => new Drawing.Run
+                    AppendLineWithTabs(newPara, paraText, seg => new Drawing.Run
                     {
                         RunProperties = (Drawing.RunProperties)rProps.CloneNode(true),
                         Text = new Drawing.Text { Text = seg }
@@ -282,7 +338,7 @@ public partial class PowerPointHandler
                 else
                 {
                     newRun.RunProperties = rProps;
-                    newRun.Text = new Drawing.Text { Text = paraTextResolved };
+                    newRun.Text = new Drawing.Text { Text = paraText };
                     newPara.Append(newRun);
                 }
 
@@ -308,23 +364,48 @@ public partial class PowerPointHandler
     private string AddRun(string parentPath, int? index, Dictionary<string, string> properties)
     {
                 // Add a run to a paragraph: /slide[N]/shape[M]/paragraph[P] or /slide[N]/shape[M]
+                //   also: /slide[N]/placeholder[X]/paragraph[P] or /slide[N]/placeholder[X]
                 // CONSISTENCY(path-aliases): accept short-form `/p[N]` alongside `/paragraph[N]`.
+                // CONSISTENCY(placeholder-paragraph-path): mirror the dual route that
+                // AddParagraph and SetParagraph already accept.
                 var runParaMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]/shape\[(\d+)\](?:/(?:paragraph|p)\[(\d+)\])?$");
-                if (!runParaMatch.Success)
-                    throw new ArgumentException("Runs must be added to a shape or paragraph: /slide[N]/shape[M] or /slide[N]/shape[M]/paragraph[P]");
+                var runPhMatch = runParaMatch.Success ? null : Regex.Match(parentPath, @"^/slide\[(\d+)\]/placeholder\[(\w+)\](?:/(?:paragraph|p)\[(\d+)\])?$");
+                if (!runParaMatch.Success && (runPhMatch == null || !runPhMatch.Success))
+                    throw new ArgumentException("Runs must be added to a shape/placeholder or paragraph: /slide[N]/shape[M], /slide[N]/placeholder[X], /slide[N]/shape[M]/paragraph[P], or /slide[N]/placeholder[X]/paragraph[P]");
 
-                var runSlideIdx = int.Parse(runParaMatch.Groups[1].Value);
-                var runShapeIdx = int.Parse(runParaMatch.Groups[2].Value);
-                var (runSlidePart, runShape) = ResolveShape(runSlideIdx, runShapeIdx);
+                SlidePart runSlidePart;
+                Shape runShape;
+                int runSlideIdx;
+                int runShapeIdx;
+                System.Text.RegularExpressions.Group paraGroup;
+                if (runParaMatch.Success)
+                {
+                    runSlideIdx = int.Parse(runParaMatch.Groups[1].Value);
+                    runShapeIdx = int.Parse(runParaMatch.Groups[2].Value);
+                    (runSlidePart, runShape) = ResolveShape(runSlideIdx, runShapeIdx);
+                    paraGroup = runParaMatch.Groups[3];
+                }
+                else
+                {
+                    runSlideIdx = int.Parse(runPhMatch!.Groups[1].Value);
+                    var phToken = runPhMatch.Groups[2].Value;
+                    var slideParts = GetSlideParts().ToList();
+                    if (runSlideIdx < 1 || runSlideIdx > slideParts.Count)
+                        throw new ArgumentException($"Slide {runSlideIdx} not found (total: {slideParts.Count})");
+                    runSlidePart = slideParts[runSlideIdx - 1];
+                    runShape = ResolvePlaceholderShape(runSlidePart, phToken);
+                    runShapeIdx = 1;
+                    paraGroup = runPhMatch.Groups[3];
+                }
 
                 var runTextBody = runShape.TextBody
                     ?? throw new InvalidOperationException("Shape has no text body");
 
                 Drawing.Paragraph targetPara;
                 int targetParaIdx;
-                if (runParaMatch.Groups[3].Success)
+                if (paraGroup.Success)
                 {
-                    targetParaIdx = int.Parse(runParaMatch.Groups[3].Value);
+                    targetParaIdx = int.Parse(paraGroup.Value);
                     var paras = runTextBody.Elements<Drawing.Paragraph>().ToList();
                     if (targetParaIdx < 1 || targetParaIdx > paras.Count)
                         throw new ArgumentException($"Paragraph {targetParaIdx} not found");
@@ -340,8 +421,13 @@ public partial class PowerPointHandler
                 }
 
                 var runText = properties.GetValueOrDefault("text", "");
+                XmlTextValidator.ValidateOrThrow(runText, "text");
                 var newRun = new Drawing.Run();
                 var rProps = new Drawing.RunProperties { Language = "en-US" };
+                if (properties.TryGetValue("lang", out var rLang) && !string.IsNullOrEmpty(rLang))
+                    rProps.Language = rLang;
+                if (properties.TryGetValue("altLang", out var rAltLang) && !string.IsNullOrEmpty(rAltLang))
+                    rProps.AlternativeLanguage = rAltLang;
 
                 if (properties.TryGetValue("size", out var rSize)
                     || properties.TryGetValue("font.size", out rSize)
@@ -379,8 +465,41 @@ public partial class PowerPointHandler
                     rProps.Append(new Drawing.LatinFont { Typeface = rFont });
                     rProps.Append(new Drawing.EastAsianFont { Typeface = rFont });
                 }
+                // CONSISTENCY(font-4-slot): mirror AddParagraph and Set for the
+                // per-script font slots (font.latin / font.ea / font.cs).
+                if (properties.TryGetValue("font.latin", out var rFontLatin))
+                {
+                    rProps.RemoveAllChildren<Drawing.LatinFont>();
+                    rProps.Append(new Drawing.LatinFont { Typeface = rFontLatin });
+                }
+                if (properties.TryGetValue("font.ea", out var rFontEa)
+                    || properties.TryGetValue("font.eastasia", out rFontEa)
+                    || properties.TryGetValue("font.eastasian", out rFontEa))
+                {
+                    rProps.RemoveAllChildren<Drawing.EastAsianFont>();
+                    rProps.Append(new Drawing.EastAsianFont { Typeface = rFontEa });
+                }
+                if (properties.TryGetValue("font.cs", out var rFontCs)
+                    || properties.TryGetValue("font.complexscript", out rFontCs)
+                    || properties.TryGetValue("font.complex", out rFontCs))
+                {
+                    rProps.RemoveAllChildren<Drawing.ComplexScriptFont>();
+                    rProps.Append(new Drawing.ComplexScriptFont { Typeface = rFontCs });
+                }
                 if (properties.TryGetValue("spacing", out var rSpacing) || properties.TryGetValue("charspacing", out rSpacing))
                     rProps.Spacing = (int)(ParseHelpers.SafeParseDouble(rSpacing, "charspacing") * 100);
+                // kern: raw OOXML hundredths-of-a-point integer, matches Set
+                // path semantics. Validated against ST_TextNonNegativePoint
+                // range [0, 400000]; symmetric with the Set rPr attribute
+                // branch (PowerPointHandler.ShapeProperties.cs) so that
+                // `add run kern=N` no longer reports UNSUPPORTED.
+                if (properties.TryGetValue("kern", out var rKern))
+                {
+                    if (!int.TryParse(rKern, out var kv) || kv < 0 || kv > 400000)
+                        throw new ArgumentException(
+                            $"Invalid kern '{rKern}': OOXML ST_TextNonNegativePoint requires an integer in [0, 400000] (hundredths of a point).");
+                    rProps.Kerning = kv;
+                }
                 if (properties.TryGetValue("baseline", out var rBaseline))
                 {
                     rProps.Baseline = rBaseline.ToLowerInvariant() switch
@@ -397,12 +516,20 @@ public partial class PowerPointHandler
                     rProps.Baseline = IsTruthy(rSub) ? -25000 : 0;
 
                 newRun.RunProperties = rProps;
+                // Hyperlink on the new run. Schema declares link.add=true with
+                // parent "shape|run" — without this branch the shape-level Add
+                // path accepts link= but `add ... --type run --prop link=...`
+                // reports UNSUPPORTED, forcing callers into a second Set call.
+                // Tooltip is paired with link (matches the AddShape / AddPicture
+                // / AddGroup pattern).
+                if (properties.TryGetValue("link", out var rLink))
+                    ApplyRunHyperlink(runSlidePart, newRun, rLink, properties.GetValueOrDefault("tooltip"));
                 // CONSISTENCY(escape-sequences): match shape-text path (\n and \t
                 // two-char escapes resolved). Run-add stays single-element, so
                 // tabs land as raw chars inside <a:t> rather than <a:tab/>;
                 // higher-level shape-text Add/Set splits on \t into separate
                 // runs with <a:tab/> siblings.
-                newRun.Text = new Drawing.Text { Text = runText.Replace("\\n", "\n").Replace("\\t", "\t") };
+                newRun.Text = new Drawing.Text { Text = runText };
 
                 // Insert run at specified index, or append
                 if (index.HasValue)
@@ -434,23 +561,30 @@ public partial class PowerPointHandler
     }
 
     // CONSISTENCY(escape-sequences): cross-handler convention — \t in paragraph
-    // text becomes an <a:tab/> element placed as a paragraph child between
-    // text-bearing <a:r> runs (the SDK has no strongly-typed class for it,
-    // so we emit OpenXmlUnknownElement). Caller has already split on real
-    // '\n' chars; this helper handles real '\t' chars within a single line.
-    // `runFactory` builds an <a:r> for a literal text segment; the helper
-    // appends runs and tabs to `paragraph` in left-to-right order.
+    // text becomes a literal U+0009 inside an <a:r><a:t> run, matching what
+    // PowerPoint itself writes. An earlier implementation emitted an
+    // <a:tab/> sibling via OpenXmlUnknownElement, but CT_TextParagraph in
+    // the DrawingML schema does not allow <a:tab/> as a direct child of
+    // <a:p> — the SDK validator and `view issues` both flagged the file.
+    // Caller has already split on real '\n' chars; this helper handles real
+    // '\t' chars within a single line by joining segments with a tab character
+    // and emitting a single run per segment.
     internal static void AppendLineWithTabs(
         Drawing.Paragraph paragraph,
         string line,
         Func<string, Drawing.Run> runFactory)
     {
-        const string aNs = "http://schemas.openxmlformats.org/drawingml/2006/main";
         var segments = line.Split('\t');
         for (int i = 0; i < segments.Length; i++)
         {
             if (i > 0)
-                paragraph.AppendChild(new OpenXmlUnknownElement("a", "tab", aNs));
+            {
+                // Emit the tab as its own run so the surrounding segment runs
+                // keep their independent rPr (formatting on either side of the
+                // tab is preserved). PowerPoint accepts a literal U+0009 inside
+                // <a:t> and renders it as a tab.
+                paragraph.AppendChild(runFactory("\t"));
+            }
             // Always emit a run per segment (including empty) so run formatting
             // is preserved on both sides of the tab. PowerPoint tolerates empty
             // <a:r><a:t/></a:r>.

@@ -125,16 +125,17 @@ public partial class WordHandler
 
     /// <summary>
     /// Inline marker CSS that takes the host paragraph into account. Replaces
-    /// the ratio-only line-height that <see cref="BuildMarkerCssProperties"/>
-    /// emits with one driven by a per-paragraph layout formula:
+    /// the ratio-only line-height with the per-paragraph layout formula:
     /// <code>
-    ///   final = body_mlh × line_multiplier
-    ///         + max(0, marker_ascent_pt − body_ascent_pt)
+    ///   final = max(body_asc, marker_asc) + body_dsc
+    ///         + max(body_mlh, marker_mlh) × (line_multiplier − 1)
     /// </code>
-    /// where ascent percentages come from <see cref="Core.FontMetricsReader.GetSplitAscDscOverride"/>
-    /// and the multiplier is read from spacing.line (auto rule). For markers
-    /// that are smaller than or equal to body content, the formula collapses
-    /// to <c>body_mlh × multiplier</c>, matching plain-paragraph layout.
+    /// per OOXML §17.3.1.33 auto-rule: extra leading (multiplier > 1) is
+    /// driven by the taller of body / marker mlh and added below the baseline.
+    /// Ascent / descent ratios come from
+    /// <see cref="Core.FontMetricsReader.GetSplitAscDscOverride"/>; the
+    /// multiplier is read from spacing.line. For markers smaller than or equal
+    /// to body content the formula collapses to <c>body_mlh × multiplier</c>.
     /// Falls back to the ratio-based output when marker font-size is absent or
     /// font metrics aren't readable.
     /// </summary>
@@ -161,7 +162,7 @@ public partial class WordHandler
 
         var rf = rpr?.GetFirstChild<RunFonts>();
         var markerFont = rf?.Ascii?.Value ?? rf?.HighAnsi?.Value ?? rf?.EastAsia?.Value ?? "Calibri";
-        var (markerAscPct, _) = Core.FontMetricsReader.GetSplitAscDscOverride(markerFont);
+        var (markerAscPct, markerDscPct) = Core.FontMetricsReader.GetSplitAscDscOverride(markerFont);
         if (markerAscPct <= 0) return basic;
 
         var lvlText = GetLevelText(numId, ilvl);
@@ -170,8 +171,11 @@ public partial class WordHandler
             && !Core.FontMetricsReader.HasGlyphsForChars(markerFont, lvlText))
             markerAscPct = Math.Max(markerAscPct, 108.0);
         var markerAscPt = markerSize * markerAscPct / 100.0;
+        var markerDscPt = markerSize * markerDscPct / 100.0;
 
-        var bodyExtraPt = (bodyAscPt + bodyDscPt) * (lineMulti - 1);
+        var bodyMlhPt = bodyAscPt + bodyDscPt;
+        var markerMlhPt = markerAscPt + markerDscPt;
+        var bodyExtraPt = Math.Max(bodyMlhPt, markerMlhPt) * (lineMulti - 1);
         var finalPt = Math.Max(bodyAscPt, markerAscPt) + bodyDscPt + bodyExtraPt;
         var lineHeight = finalPt / markerSize;
 
@@ -211,7 +215,7 @@ public partial class WordHandler
 
         var rf = rpr?.GetFirstChild<RunFonts>();
         var markerFont = rf?.Ascii?.Value ?? rf?.HighAnsi?.Value ?? rf?.EastAsia?.Value ?? "Calibri";
-        var (markerAscPct, _) = Core.FontMetricsReader.GetSplitAscDscOverride(markerFont);
+        var (markerAscPct, markerDscPct) = Core.FontMetricsReader.GetSplitAscDscOverride(markerFont);
         if (markerAscPct <= 0) return null;
 
         // When the marker font's cmap doesn't cover lvlText, the renderer
@@ -228,10 +232,15 @@ public partial class WordHandler
             && !Core.FontMetricsReader.HasGlyphsForChars(markerFont, lvlText))
             markerAscPct = Math.Max(markerAscPct, 108.0);
         var markerAscPt = markerSize * markerAscPct / 100.0;
+        var markerDscPt = markerSize * markerDscPct / 100.0;
 
         if (markerAscPt <= bodyAscPt) return null;
 
-        var bodyExtraPt = (bodyAscPt + bodyDscPt) * (lineMulti - 1);
+        // Auto-rule (OOXML §17.3.1.33) extra leading is driven by the taller
+        // of body / marker mlh, added below the baseline.
+        var bodyMlhPt = bodyAscPt + bodyDscPt;
+        var markerMlhPt = markerAscPt + markerDscPt;
+        var bodyExtraPt = Math.Max(bodyMlhPt, markerMlhPt) * (lineMulti - 1);
         return markerAscPt + bodyDscPt + bodyExtraPt;
     }
 

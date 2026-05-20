@@ -42,14 +42,14 @@ public partial class WordHandler : IDocumentHandler
     /// run, or the run carries no resolvable rId/embed target.
     ///
     /// <para>
-    /// Used by <c>BatchEmitter</c> to round-trip pictures through batch
+    /// Used by <c>WordBatchEmitter</c> to round-trip pictures through batch
     /// dumps — the bytes are encoded as a data URI in the emitted
     /// `src=` prop and re-imported via <c>ImageSource.Resolve</c> on replay.
     /// </para>
     /// </summary>
     /// <summary>
     /// Returns true if the run at <paramref name="runPath"/> wraps a chart
-    /// (c:chart inside a Drawing's graphicData). BatchEmitter uses this to
+    /// (c:chart inside a Drawing's graphicData). WordBatchEmitter uses this to
     /// distinguish chart-bearing runs from picture/OLE/background runs that
     /// also surface as type="picture" in Get — without this, an unsupported
     /// drawing's failed image extraction would consume the next chart spec
@@ -68,7 +68,7 @@ public partial class WordHandler : IDocumentHandler
     }
 
     /// <summary>
-    /// Outer XML of the element at <paramref name="path"/>. BatchEmitter
+    /// Outer XML of the element at <paramref name="path"/>. WordBatchEmitter
     /// uses this as a raw-XML fallback for content that has no typed Add
     /// path — wps:wsp background shapes being the motivating case. Returns
     /// null if the path doesn't resolve.

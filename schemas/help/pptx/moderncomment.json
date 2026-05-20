@@ -1,0 +1,90 @@
+{
+  "$schema": "../_schema.json",
+  "format": "pptx",
+  "element": "modernComment",
+  "parent": "slide",
+  "operations": {
+    "add": true,
+    "set": true,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "positional": [
+      "/slide[N]/modernComment[K]",
+      "/slide[N]/modernComment[K]/reply[R]"
+    ]
+  },
+  "note": "Modern p188 (Office 2018/8) threaded comments. Distinct OOXML element from the legacy /slide[N]/comment[M]. Top-level threads live in PowerPointCommentPart (/ppt/comments/…); authors live in the presentation-level PowerPointAuthorsPart. Replies are nested as /slide[N]/modernComment[K]/reply[R] and surface as children on Get of the top-level node. resolved is a thread-level state (top-level only). Removing a top-level path removes the whole thread, mirroring PowerPoint UI.",
+  "properties": {
+    "author": {
+      "type": "string",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop author=\"Alice\""],
+      "readback": "author name",
+      "enforcement": "report"
+    },
+    "initials": {
+      "type": "string",
+      "description": "author initials. Defaults to derived from author name when omitted.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop initials=A"],
+      "readback": "initials",
+      "enforcement": "report"
+    },
+    "text": {
+      "type": "string",
+      "description": "comment body (plain text — rich-text replies deferred).",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop text=\"Please review\""],
+      "readback": "comment body text",
+      "enforcement": "report"
+    },
+    "resolved": {
+      "type": "bool",
+      "description": "Thread-level resolved state. Applies only to top-level comments; set on a reply path is rejected as unsupported.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop resolved=true"],
+      "readback": "bool (true/false)",
+      "enforcement": "report"
+    },
+    "created": {
+      "type": "string",
+      "description": "ISO-8601 timestamp. Defaults to DateTime.UtcNow on add. Set accepts any ISO-8601 string; normalized to UTC `Z` form on readback.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop created=2026-01-15T10:30:00Z"],
+      "readback": "ISO-8601 UTC",
+      "enforcement": "report"
+    },
+    "parent": {
+      "type": "string",
+      "description": "Path of an existing top-level modernComment to reply to. Add only — supplying parent= turns the new comment into a reply nested under that thread. Empty/missing creates a top-level comment.",
+      "add": true,
+      "set": false,
+      "get": true,
+      "examples": ["--prop parent='/slide[1]/modernComment[1]'"],
+      "readback": "parent comment path, or null for top-level",
+      "enforcement": "report"
+    },
+    "id": {
+      "type": "string",
+      "description": "GUID identifier assigned by the engine on add.",
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "GUID in {…} form",
+      "enforcement": "report"
+    }
+  }
+}

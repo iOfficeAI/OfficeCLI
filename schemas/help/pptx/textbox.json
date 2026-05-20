@@ -188,6 +188,23 @@
       "readback": "one of: none | normal | shape",
       "enforcement": "report"
     },
+    "valign": {
+      "type": "enum",
+      "values": ["top", "center", "middle", "bottom"],
+      "description": "text vertical anchoring inside the textbox (a:bodyPr anchor). 'middle' is an input alias for 'center' — Get always reads back 'center'.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop valign=middle", "--prop valign=bottom"],
+      "readback": "one of: top | center | bottom",
+      "enforcement": "strict"
+    },
+    "margin": {
+      "type": "length",
+      "description": "text body insets (a:bodyPr lIns/tIns/rIns/bIns). Single value applies to all four sides; CSS-style 4-value form is 'lIns,tIns,rIns,bIns'. '0' / '0cm' is a valid round-trip and is preserved (not collapsed to default).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop margin=0.25cm", "--prop margin=0.2cm,0.5cm,0.2cm,0.5cm", "--prop margin=0"],
+      "readback": "single length (e.g. \"0.25cm\") when all four sides match, otherwise comma-separated 4-tuple",
+      "enforcement": "strict"
+    },
     "id": {
       "type": "number",
       "description": "OOXML shape id; source of the @id in the stable path /shape[@id=ID].",
@@ -197,9 +214,28 @@
     },
     "zorder": {
       "type": "number",
-      "description": "1-based z-order in slide shape tree.",
-      "add": false, "set": false, "get": true,
+      "description": "1-based z-order in slide shape tree. On add/set, repositions the shape within the shape tree (1 = back).",
+      "aliases": ["z-order", "order"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop zorder=1"],
       "readback": "1-based integer (1 = back)",
+      "enforcement": "report"
+    },
+    "name": {
+      "type": "string",
+      "description": "Override the auto-generated 'TextBox {N}' label on cNvPr @name.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop name=\"banner\""],
+      "readback": "shape name string (cNvPr @name)",
+      "enforcement": "report"
+    },
+    "lang": {
+      "type": "string",
+      "description": "BCP-47 language tag on first run rPr (drawingML rPr/@lang).",
+      "aliases": ["altLang", "altlang"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop lang=en-US"],
+      "readback": "BCP-47 language tag (e.g. \"en-US\")",
       "enforcement": "report"
     }
   }

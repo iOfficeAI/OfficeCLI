@@ -13,12 +13,12 @@
   "paths": {
     "positional": ["/slide[N]/shape[M]/animation[K]"]
   },
-  "note": "Animation attached to a specific shape. Effect name drives the timing preset; trigger controls sequencing (onClick / withPrevious / afterPrevious). On Get, returns individual keys: effect (preset name), class (entrance/emphasis/exit), presetId (numeric), trigger (onClick/afterPrevious/withPrevious), duration (ms integer). No composite 'animation' key is emitted. The `direction` parameter is consumed at Add time and not surfaced on Get. `repeat` and `restart` properties are not currently supported via prop — they are silently dropped with a stderr warning. Use raw-set on the timing nodes if needed.",
+  "note": "Animation attached to a specific shape. Effect name drives the timing preset; trigger controls sequencing (onClick / withPrevious / afterPrevious). On Get, returns individual keys: effect (preset name), class (entrance/emphasis/exit), presetId (numeric), trigger (onClick/afterPrevious/withPrevious), duration (ms integer), and (when set) repeat / restart / autoReverse. No composite 'animation' key is emitted. The `direction` parameter is consumed at Add time and not surfaced on Get.",
   "properties": {
     "effect": {
       "type": "enum",
-      "description": "animation preset. spin/grow/wave require class=emphasis; appear/fade/fly/zoom/wipe/bounce/float/swivel/split/wheel/checkerboard/blinds/dissolve/flash/box/circle/diamond/plus/strips/wedge/random work for entrance and exit. (disappear is not supported — use class=exit + appear or fade.)",
-      "values": ["appear", "fade", "fly", "zoom", "wipe", "bounce", "float", "swivel", "split", "wheel", "checkerboard", "blinds", "dissolve", "flash", "box", "circle", "diamond", "plus", "strips", "wedge", "random", "spin", "grow", "wave"],
+      "description": "animation preset. spin/grow/bold/wave require class=emphasis; appear/fade/fly/zoom/wipe/bounce/float/swivel/split/wheel/checkerboard/blinds/dissolve/flash/box/circle/diamond/plus/strips/wedge/random work for entrance and exit. (disappear is not supported — use class=exit + appear or fade.)",
+      "values": ["appear", "fade", "fly", "zoom", "wipe", "bounce", "float", "swivel", "split", "wheel", "checkerboard", "blinds", "dissolve", "flash", "box", "circle", "diamond", "plus", "strips", "wedge", "random", "spin", "grow", "wave", "bold"],
       "add": true, "set": true, "get": true,
       "examples": ["--prop effect=fade", "--prop effect=spin --prop class=emphasis"],
       "readback": "effect name",
@@ -26,11 +26,28 @@
     },
     "class": {
       "type": "enum",
-      "description": "animation category — entrance, exit, or emphasis. spin/grow/wave only work with emphasis.",
-      "values": ["entrance", "exit", "emphasis"],
+      "description": "animation category — entrance, exit, emphasis, or motion. spin/grow/wave only work with emphasis; motion needs path=<preset|custom>.",
+      "values": ["entrance", "exit", "emphasis", "motion"],
       "add": true, "set": true, "get": true,
-      "examples": ["--prop class=entrance"],
-      "readback": "entrance | exit | emphasis",
+      "examples": ["--prop class=entrance", "--prop class=motion --prop path=line"],
+      "readback": "entrance | exit | emphasis | motion",
+      "enforcement": "report"
+    },
+    "path": {
+      "type": "enum",
+      "description": "Motion-path preset (only valid when class=motion). 'custom' requires d=<SVG-like path data>. Direction-aware presets (line, arc) accept direction= for variants.",
+      "values": ["line", "arc", "circle", "diamond", "triangle", "square", "custom"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop class=motion --prop path=line --prop direction=right", "--prop class=motion --prop path=circle"],
+      "readback": "preset name (line | arc | circle | diamond | triangle | square | custom)",
+      "enforcement": "report"
+    },
+    "d": {
+      "type": "string",
+      "description": "Custom motion-path data (SVG-like; only valid when class=motion and path=custom). Coords are relative to slide (0..1). Must end with 'E' (auto-appended if missing).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop class=motion --prop path=custom --prop d='M 0 0 L 0.5 0 E'"],
+      "readback": "raw OOXML animMotion path string, only when path=custom",
       "enforcement": "report"
     },
     "trigger": {
@@ -64,6 +81,31 @@
       "add": true, "set": true, "get": false,
       "examples": ["--prop direction=in"],
       "readback": "packed into the 'animation' key value as 'effectName-class-direction-duration' (e.g. 'fly-entrance-left-500'); no standalone 'direction' key is emitted on Get",
+      "enforcement": "report"
+    },
+    "repeat": {
+      "type": "string",
+      "description": "Number of times the animation repeats. Accepts a positive integer (e.g. 3) or the literal 'indefinite' to loop forever. Stored as OOXML @repeatCount (count*1000 or 'indefinite').",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop repeat=3", "--prop repeat=indefinite"],
+      "readback": "positive integer count, or the literal 'indefinite'",
+      "enforcement": "report"
+    },
+    "restart": {
+      "type": "enum",
+      "description": "What happens when the trigger fires again after the animation has played. always = restart; whenNotActive = restart only if not currently playing; never = do nothing.",
+      "values": ["always", "whenNotActive", "never"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop restart=always", "--prop restart=whenNotActive"],
+      "readback": "always | whenNotActive | never",
+      "enforcement": "report"
+    },
+    "autoReverse": {
+      "type": "bool",
+      "description": "When true, the animation plays forward then in reverse, doubling its visible run. Maps to OOXML cTn @autoRev.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop autoReverse=true"],
+      "readback": "true when @autoRev=1 is present, omitted otherwise",
       "enforcement": "report"
     },
     "presetId": {

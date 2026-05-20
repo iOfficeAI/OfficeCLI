@@ -16,7 +16,7 @@
       "/slide[N]/shape[M]/p[K]/r[L]/hyperlink"
     ]
   },
-  "note": "Aliases: link. Attached to a shape (shape-wide link) or to a run (inline link). Exactly one of 'url' or 'slide' is required.",
+  "note": "Aliases: link. Attached to a shape (shape-wide link) or to a run (inline link). Internal slide jumps use link=slide[N]; named actions use link=firstslide|lastslide|nextslide|previousslide|endshow.",
   "extends": "_shared/hyperlink",
   "properties": {
     "link": {
@@ -34,16 +34,16 @@
       "readback": "URL string or internal target",
       "enforcement": "report"
     },
-    "slide": {
-      "type": "int",
-      "description": "internal target slide index (1-based).",
+    "tooltip": {
+      "type": "string",
+      "description": "hover-text shown by PowerPoint when the link is moused over. Paired with 'link'; standalone tooltip changes are a no-op.",
       "add": true,
       "set": true,
       "get": true,
       "examples": [
-        "--prop slide=3"
+        "--prop link=https://example.com --prop tooltip=\"Open docs\""
       ],
-      "readback": "target slide index",
+      "readback": "tooltip text",
       "enforcement": "report"
     }
   }

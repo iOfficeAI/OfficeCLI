@@ -66,7 +66,9 @@ public partial class PowerPointHandler
                         throw new ArgumentException($"Invalid 'cols' value: '{colsStr}'. Expected a positive integer.");
                 }
                 if (rows < 1 || cols < 1)
-                    throw new ArgumentException("rows and cols must be >= 1");
+                    // Prefix "Invalid" so OutputFormatter maps this to
+                    // invalid_value rather than the internal_error catch-all.
+                    throw new ArgumentException($"Invalid table dimensions: rows={rows}, cols={cols}. Both must be >= 1.");
 
                 // BUG-R6-D: enforce a practical upper bound on rows/cols so the
                 // EMU height/width calculations stay safely within int32 (the
@@ -98,7 +100,7 @@ public partial class PowerPointHandler
                 }
                 long colWidth = tblCx / cols;
 
-                var tblId = GenerateUniqueShapeId(tblShapeTree);
+                var tblId = AcquireShapeId(tblShapeTree, properties);
 
                 // Build GraphicFrame
                 var graphicFrame = new GraphicFrame();
@@ -176,6 +178,7 @@ public partial class PowerPointHandler
                         var cell = new Drawing.TableCell();
                         var cellText = tableData != null && r < tableData.Length && c < tableData[r].Length
                             ? tableData[r][c] : (properties.TryGetValue($"r{r + 1}c{c + 1}", out var rc) ? rc : "");
+                        XmlTextValidator.ValidateOrThrow(cellText, $"r{r + 1}c{c + 1}");
                         var cellPara = new Drawing.Paragraph();
                         if (!string.IsNullOrEmpty(cellText))
                             cellPara.Append(new Drawing.Run(
@@ -215,6 +218,11 @@ public partial class PowerPointHandler
                     .ToDictionary(kv => kv.Key, kv => kv.Value);
                 if (tblBorderProps.Count > 0)
                     ApplyTableBorderFanOut(table, tblBorderProps);
+
+                if (properties.TryGetValue("zorder", out var tblZ)
+                    || properties.TryGetValue("z-order", out tblZ)
+                    || properties.TryGetValue("order", out tblZ))
+                    ApplyZOrder(tblSlidePart, graphicFrame, tblZ);
 
                 GetSlide(tblSlidePart).Save();
 
@@ -352,26 +360,44 @@ public partial class PowerPointHandler
 
                 var rowSlidePart = rowLogical.Value.slidePart;
 
-                // Determine column count from existing grid
+                // Row width is fixed by the parent <a:tblGrid>. OOXML requires
+                // every <a:tr> to have <a:tc> count (gridSpan-summed) equal to
+                // <a:tblGrid> column count — there is no "narrower row" concept.
+                // We always emit `existingColCount` cells; user-supplied c1..cN
+                // populate text and unspecified positions stay empty (legal).
+                // An explicit `cols=` is only accepted when it matches the grid
+                // (no-op) — any other value is a misuse caused by treating a
+                // row as a width container, which OOXML doesn't model.
                 var existingColCount = rowTable.Elements<Drawing.TableGrid>().FirstOrDefault()
                     ?.Elements<Drawing.GridColumn>().Count() ?? 1;
-                int newColCount = existingColCount;
                 if (properties.TryGetValue("cols", out var rcVal))
                 {
-                    if (!int.TryParse(rcVal, out newColCount))
+                    if (!int.TryParse(rcVal, out var requested))
                         throw new ArgumentException($"Invalid 'cols' value: '{rcVal}'. Expected a positive integer.");
+                    if (requested != existingColCount)
+                        throw new ArgumentException(
+                            $"cols={requested} does not match the table's grid ({existingColCount} columns). " +
+                            "A row's cell count is fixed by <a:tblGrid> and cannot be narrower or wider. " +
+                            "Omit --prop cols and leave unused c1..cN empty, or use --prop gridSpan=N on c1 " +
+                            "(via set tr[i]/tc[1]) to merge cells into a wider span.");
                 }
+                int newColCount = existingColCount;
 
-                // Row height: default from first existing row, or 370840 EMU (~1cm)
+                // Row height: default from first existing row, or 370840 EMU (~1cm).
+                // CONSISTENCY(positive-size): ST_TableCellSize disallows negatives.
                 long newRowHeight = properties.TryGetValue("height", out var rhVal)
                     ? ParseEmu(rhVal)
                     : rowTable.Elements<Drawing.TableRow>().FirstOrDefault()?.Height?.Value ?? 370840;
+                if (newRowHeight < 0)
+                    throw new ArgumentException(
+                        $"Invalid height '{rhVal}': table row height cannot be negative.");
 
                 var newTblRow = new Drawing.TableRow { Height = newRowHeight };
                 for (int c = 0; c < newColCount; c++)
                 {
                     var newTblCell = new Drawing.TableCell();
                     var cellText = properties.TryGetValue($"c{c + 1}", out var ct) ? ct : "";
+                    XmlTextValidator.ValidateOrThrow(cellText, $"c{c + 1}");
                     var bodyProps = new Drawing.BodyProperties();
                     var listStyle = new Drawing.ListStyle();
                     var cellPara = new Drawing.Paragraph();
@@ -432,6 +458,10 @@ public partial class PowerPointHandler
                     : (existingGridCols.Count > 0
                         ? (long)existingGridCols.Average(gc => gc.Width?.Value ?? 914400)
                         : 914400); // default ~2.54cm
+                // CONSISTENCY(positive-size): ST_PositiveSize2D disallows negatives.
+                if (colWidth < 0)
+                    throw new ArgumentException(
+                        $"Invalid width '{wVal}': table column width cannot be negative.");
 
                 // Create and insert the new grid column
                 var newGridCol = new Drawing.GridColumn { Width = colWidth };
@@ -444,6 +474,7 @@ public partial class PowerPointHandler
 
                 // Cell text from property
                 var cellText = properties.GetValueOrDefault("text", "");
+                XmlTextValidator.ValidateOrThrow(cellText, "text");
 
                 // For each row, insert a new cell at the same column index
                 foreach (var row in colTable.Elements<Drawing.TableRow>())
@@ -493,14 +524,36 @@ public partial class PowerPointHandler
 
                 var cellSlidePart = cellLogical.Value.slidePart;
 
+                // Reject cell-append that would make the row wider than the
+                // table's <a:tblGrid>. Real PowerPoint silently DROPS cells
+                // beyond the gridCol count on render, so the user's content
+                // would be lost. The user almost certainly meant "add column"
+                // (which atomically grows tblGrid AND pads every sibling row);
+                // surface that explicitly rather than silently corrupting.
+                var parentTable = cellRow.Ancestors<Drawing.Table>().FirstOrDefault();
+                var gridColCount = parentTable?.GetFirstChild<Drawing.TableGrid>()
+                    ?.Elements<Drawing.GridColumn>().Count() ?? 0;
+                var currentCellCount = cellRow.Elements<Drawing.TableCell>().Count();
+                if (gridColCount > 0 && currentCellCount >= gridColCount)
+                {
+                    throw new ArgumentException(
+                        $"Row already has {currentCellCount} cell(s); table grid has {gridColCount} column(s). " +
+                        "Appending another cell would make the row wider than the grid and real PowerPoint " +
+                        "would silently drop the orphan on render. Use `add /slide[N]/table[M] --type column` " +
+                        "to grow the table rectangularly instead.");
+                }
+
                 var newCell = new Drawing.TableCell();
                 var cBodyProps = new Drawing.BodyProperties();
                 var cListStyle = new Drawing.ListStyle();
                 var cPara = new Drawing.Paragraph();
                 if (properties.TryGetValue("text", out var cText) && !string.IsNullOrEmpty(cText))
+                {
+                    XmlTextValidator.ValidateOrThrow(cText, "text");
                     cPara.Append(new Drawing.Run(
                         new Drawing.RunProperties { Language = "en-US" },
                         new Drawing.Text { Text = cText }));
+                }
                 else
                     cPara.Append(new Drawing.EndParagraphRunProperties { Language = "en-US" });
                 newCell.Append(new Drawing.TextBody(cBodyProps, cListStyle, cPara));

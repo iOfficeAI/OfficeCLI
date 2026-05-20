@@ -1005,6 +1005,23 @@ public partial class WordHandler
         if (vAlign?.Val != null)
             secNode.Format["vAlign"] = vAlign.Val.InnerText;
 
+        // CONSISTENCY(root-vs-section-readback): docGrid lives on the sectPr,
+        // so /section[N] readback must mirror the root reader in
+        // WordHandler.Navigation.DocSettings.cs. Set writes via /settings
+        // (which routes to the body sectPr) but get /section[N] omitted
+        // these keys entirely, so callers had no way to confirm the write
+        // landed on a per-section break.
+        var docGrid = sectPr.GetFirstChild<DocGrid>();
+        if (docGrid != null)
+        {
+            if (docGrid.Type?.Value != null)
+                secNode.Format["docGrid.type"] = docGrid.Type.InnerText;
+            if (docGrid.LinePitch?.Value != null)
+                secNode.Format["docGrid.linePitch"] = docGrid.LinePitch.Value;
+            if (docGrid.CharacterSpace?.Value != null)
+                secNode.Format["docGrid.charSpace"] = docGrid.CharacterSpace.Value;
+        }
+
         return secNode;
     }
 

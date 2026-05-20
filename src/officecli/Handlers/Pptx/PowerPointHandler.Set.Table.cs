@@ -61,10 +61,20 @@ public partial class PowerPointHandler
             switch (key.ToLowerInvariant())
             {
                 case "height":
-                    row.Height = ParseEmu(value);
+                {
+                    // CONSISTENCY(positive-size): table row height is ST_PositiveSize2D /
+                    // ST_TableCellSize — negatives produce invalid OOXML. Shape width/height
+                    // already rejects negatives; mirror that here.
+                    var hEmu = ParseEmu(value);
+                    if (hEmu < 0)
+                        throw new ArgumentException(
+                            $"Invalid height '{value}': table row height cannot be negative.");
+                    row.Height = hEmu;
                     break;
+                }
                 case "text":
                 {
+                    XmlTextValidator.ValidateOrThrow(value, "text");
                     // Two behaviors based on presence of tab:
                     //  - No tab: broadcast the same text to all cells in the row
                     //  - Tab-delimited: distribute tokens across cells by position
@@ -134,8 +144,16 @@ public partial class PowerPointHandler
             switch (key.ToLowerInvariant())
             {
                 case "width":
-                    gc.Width = ParseEmu(value);
+                {
+                    // CONSISTENCY(positive-size): table column width is ST_PositiveSize2D —
+                    // negatives produce invalid OOXML. Shape width already rejects negatives.
+                    var wEmu = ParseEmu(value);
+                    if (wEmu < 0)
+                        throw new ArgumentException(
+                            $"Invalid width '{value}': table column width cannot be negative.");
+                    gc.Width = wEmu;
                     break;
+                }
                 default:
                     unsupported.Add(key);
                     break;
@@ -178,7 +196,11 @@ public partial class PowerPointHandler
                 }
                 case "name":
                     var nvPr = gf.NonVisualGraphicFrameProperties?.NonVisualDrawingProperties;
-                    if (nvPr != null) nvPr.Name = value;
+                    if (nvPr != null)
+                    {
+                        XmlTextValidator.ValidateOrThrow(value, "name");
+                        nvPr.Name = value;
+                    }
                     break;
                 case "tablestyle" or "style":
                 {
@@ -228,7 +250,14 @@ public partial class PowerPointHandler
                         var gridCols = table.TableGrid?.Elements<Drawing.GridColumn>().ToList();
                         if (gridCols != null && gridCols.Count > 0)
                         {
-                            var widths = value.Split(',').Select(w => ParseEmu(w.Trim())).ToArray();
+                            var widths = value.Split(',').Select(w =>
+                            {
+                                var v = ParseEmu(w.Trim());
+                                if (v < 0)
+                                    throw new ArgumentException(
+                                        $"Invalid colWidths value '{w}': table column width cannot be negative.");
+                                return v;
+                            }).ToArray();
                             for (int ci = 0; ci < gridCols.Count; ci++)
                                 gridCols[ci].Width = ci < widths.Length ? widths[ci] : widths[^1];
                         }

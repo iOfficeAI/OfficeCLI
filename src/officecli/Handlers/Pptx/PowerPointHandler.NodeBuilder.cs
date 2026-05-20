@@ -13,6 +13,38 @@ namespace OfficeCli.Handlers;
 
 public partial class PowerPointHandler
 {
+    // CONSISTENCY(effect-color-8digit): shadow/glow readback contract is
+    // CSS-form 8-digit hex '#RRGGBBAA' (schema/help/pptx/shape.json
+    // shadow.readback / glow.readback). FormatHexWithAlpha falls back to
+    // 6-digit when the underlying srgbClr has no a:alpha child, which broke
+    // the round-trip promise for the opaque case. Coerce hex colors emitted
+    // into the composite shadow/glow strings to 8-digit; scheme color names
+    // (accent1, dark1, …) pass through unchanged.
+    private static string EnsureEightDigitHexForEffect(string color)
+    {
+        if (string.IsNullOrEmpty(color)) return color;
+        // Color may carry transforms ("000000+lumMod50"). Coerce only the
+        // base hex token (before the first '+'); scheme color names
+        // (accent1, dark1, …) pass through unchanged.
+        var plusIdx = color.IndexOf('+');
+        var head = plusIdx >= 0 ? color[..plusIdx] : color;
+        var tail = plusIdx >= 0 ? color[plusIdx..] : "";
+        var hadHash = head.StartsWith('#');
+        var hex = hadHash ? head[1..] : head;
+        if (hex.Length == 6 && hex.All(Uri.IsHexDigit))
+        {
+            // Schema readback contract: '#RRGGBBAA'. Ensure both '#' and the
+            // trailing 'FF' alpha byte are present.
+            return $"#{hex.ToUpperInvariant()}FF{tail}";
+        }
+        if (hex.Length == 8 && hex.All(Uri.IsHexDigit) && !hadHash)
+        {
+            // Already 8-digit but lacking '#' — add the leading hash.
+            return $"#{hex.ToUpperInvariant()}{tail}";
+        }
+        return color;
+    }
+
     private List<DocumentNode> GetSlideChildNodes(SlidePart slidePart, int slideNum, int depth)
     {
         var children = new List<DocumentNode>();
@@ -91,13 +123,20 @@ public partial class PowerPointHandler
             if (grpXfrm?.Extents?.Cx != null) grpNode.Format["width"] = FormatEmu(grpXfrm.Extents.Cx.Value);
             if (grpXfrm?.Extents?.Cy != null) grpNode.Format["height"] = FormatEmu(grpXfrm.Extents.Cy.Value);
             if (grpXfrm?.Rotation != null && grpXfrm.Rotation.Value != 0)
-                grpNode.Format["rotation"] = $"{grpXfrm.Rotation.Value / 60000.0:0.##}";
+                grpNode.Format["rotation"] = $"{grpXfrm.Rotation.Value / 60000.0:0.######}";
             var grpFillColor = ReadColorFromFill(grp.GroupShapeProperties?.GetFirstChild<Drawing.SolidFill>());
             if (grpFillColor != null) grpNode.Format["fill"] = grpFillColor;
             else if (grp.GroupShapeProperties?.GetFirstChild<Drawing.NoFill>() != null) grpNode.Format["fill"] = "none";
             else if (grp.GroupShapeProperties?.GetFirstChild<Drawing.GradientFill>() != null) grpNode.Format["fill"] = "gradient";
             var grpZIdx = contentElements.IndexOf(grp);
             if (grpZIdx >= 0) grpNode.Format["zorder"] = grpZIdx + 1;
+            // Hyperlink (nvGrpSpPr/cNvPr/a:hlinkClick) — same slot as shape/picture.
+            var grpHl = grp.NonVisualGroupShapeProperties?.NonVisualDrawingProperties?
+                .GetFirstChild<Drawing.HyperlinkOnClick>();
+            var grpLinkUrl = ReadHyperlinkOnClickUrl(grpHl, slidePart);
+            if (grpLinkUrl != null) grpNode.Format["link"] = grpLinkUrl;
+            var grpTip = grpHl?.Tooltip?.Value;
+            if (!string.IsNullOrEmpty(grpTip)) grpNode.Format["tooltip"] = grpTip!;
 
             // Recurse into the group's contents when depth allows, so callers
             // see the same iceberg-free view through Get that Query already
@@ -170,7 +209,7 @@ public partial class PowerPointHandler
         var tableStyleId = tblPr?.GetFirstChild<Drawing.TableStyleId>()?.InnerText;
         if (!string.IsNullOrEmpty(tableStyleId))
         {
-            var styleName = TableStyleGuidToName(tableStyleId);
+            var styleName = OfficeCli.Core.TableStyles.TableStyleRegistry.GuidToShortName(tableStyleId);
             // CONSISTENCY(canonical-key): emit only canonical 'style'; schema lists
             // 'tableStyle' and 'tableStyleId' as input aliases (Set side) — Get
             // normalizes to canonical (style = resolved name when known, else GUID).
@@ -205,6 +244,17 @@ public partial class PowerPointHandler
         {
             if (extents.Cx is not null) node.Format["width"] = FormatEmu(extents.Cx!);
             if (extents.Cy is not null) node.Format["height"] = FormatEmu(extents.Cy!);
+        }
+
+        // CONSISTENCY(zorder): mirror shape/picture/connector — emit when
+        // parented to a ShapeTree so dump/replay preserves stacking order.
+        if (gf.Parent is ShapeTree tblZTree)
+        {
+            var tblZContent = tblZTree.ChildElements
+                .Where(e => e is Shape or Picture or GraphicFrame or GroupShape or ConnectionShape)
+                .ToList();
+            var tblZIdx = tblZContent.IndexOf(gf);
+            if (tblZIdx >= 0) node.Format["zorder"] = tblZIdx + 1;
         }
 
         if (depth > 0)
@@ -288,6 +338,33 @@ public partial class PowerPointHandler
                         if (cell.VerticalMerge?.HasValue == true && cell.VerticalMerge.Value)
                             cellNode.Format["vmerge"] = true;
 
+                        // Cell text direction (a:tcPr @vert). Canonical readback
+                        // mirrors the Set vocabulary (horizontal / vertical270 /
+                        // vertical90 / stacked) so round-trip equality holds.
+                        if (tcPr?.Vertical?.HasValue == true)
+                        {
+                            cellNode.Format["textdirection"] = tcPr.Vertical.InnerText switch
+                            {
+                                "horz" => "horizontal",
+                                "vert" => "vertical90",
+                                "vert270" => "vertical270",
+                                "wordArtVert" => "stacked",
+                                "eaVert" => "eaVert",
+                                "mongolianVert" => "mongolianVert",
+                                "wordArtVertRtl" => "wordArtVertRtl",
+                                _ => tcPr.Vertical.InnerText
+                            };
+                        }
+
+                        // Cell text wrap (a:tcPr/a:txBody/a:bodyPr @wrap).
+                        // Set writes square|none on the cell's BodyProperties;
+                        // mirror back as bool (false == "none", true == "square").
+                        var cellBodyPr = cell.TextBody?.GetFirstChild<Drawing.BodyProperties>();
+                        if (cellBodyPr?.Wrap?.HasValue == true)
+                        {
+                            cellNode.Format["wrap"] = cellBodyPr.Wrap.Value != Drawing.TextWrappingValues.None;
+                        }
+
                         // Cell vertical alignment
                         if (tcPr?.Anchor?.HasValue == true)
                         {
@@ -310,8 +387,9 @@ public partial class PowerPointHandler
                             var cellLatin = rp.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value;
                             var cellEa = rp.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
                             var cellCs = rp.GetFirstChild<Drawing.ComplexScriptFont>()?.Typeface?.Value;
-                            var cellFont = cellLatin ?? cellEa;
-                            if (cellFont != null) cellNode.Format["font"] = cellFont;
+                            // Bare `font` is the Latin slot alias only — see
+                            // CONSISTENCY(font-bare-latin-only).
+                            if (cellLatin != null) cellNode.Format["font"] = cellLatin;
                             // CONSISTENCY(canonical-keys): always emit per-script
                             // slots when present (schema declares get:true).
                             if (cellLatin != null) cellNode.Format["font.latin"] = cellLatin;
@@ -333,9 +411,14 @@ public partial class PowerPointHandler
                                     _ => rp.Underline.InnerText
                                 };
                             }
-                            if (rp.Strike?.HasValue == true && rp.Strike.Value != Drawing.TextStrikeValues.NoStrike)
+                            if (rp.Strike?.HasValue == true)
                             {
-                                cellNode.Format["strike"] = rp.Strike.Value == Drawing.TextStrikeValues.DoubleStrike ? "double" : "single";
+                                cellNode.Format["strike"] = rp.Strike.Value switch
+                                {
+                                    var v when v == Drawing.TextStrikeValues.DoubleStrike => "double",
+                                    var v when v == Drawing.TextStrikeValues.NoStrike => "none",
+                                    _ => "single",
+                                };
                             }
 
                             var cellRunColor = ReadColorFromFill(rp.GetFirstChild<Drawing.SolidFill>());
@@ -465,18 +548,69 @@ public partial class PowerPointHandler
             && shape.TextBody.Descendants().Any(e => e.LocalName == "oMath" || e.LocalName == "oMathPara"
                 || (e.LocalName == "m" && e.NamespaceUri == "http://schemas.microsoft.com/office/drawing/2010/main"));
 
+        // Read <p:ph> once: schema declares phType/phIndex as get:true with
+        // readback. Previously only IsTitle peeked at it for Type discrimination,
+        // so phType=body/subTitle/date/footer/slidenum/header/picture/chart/
+        // table/diagram/media/obj/clipArt all collapsed to Type="textbox" with
+        // no Format["phType"]. Now: non-title placeholders surface as
+        // Type="placeholder", and every placeholder (incl. title) emits
+        // Format["phType"] in the human-readable form ParsePlaceholderType
+        // accepts on input — so it round-trips through Add.
+        var phElemForNode = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
+            ?.GetFirstChild<PlaceholderShape>();
+        var phTypeStr = phElemForNode != null ? FormatPlaceholderType(phElemForNode.Type?.Value) : null;
+        var isPlaceholder = phElemForNode != null;
+
         var shapePathSeg = BuildElementPathSegment("shape", shape, shapeIdx);
         var basePath = parentPathPrefix ?? $"/slide[{slideNum}]";
         var shapePath = $"{basePath}/{shapePathSeg}";
+        // `txBox="1"` on <p:cNvSpPr> is the on-disk marker for a dedicated text
+        // container (PowerPoint's "Insert Text Box"). Without it, a shape with a
+        // prstGeom — even with no authored text — is a geometry shape, not a
+        // textbox. Falling back to "textbox" for every non-title/equation/
+        // placeholder collapsed both flavors and broke `add --type shape`
+        // round-trip (Get reported Type="textbox").
+        var isTextBox = shape.NonVisualShapeProperties
+            ?.NonVisualShapeDrawingProperties?.TextBox?.Value == true;
         var node = new DocumentNode
         {
             Path = shapePath,
-            Type = isTitle ? "title" : isEquation ? "equation" : "textbox",
+            Type = isTitle ? "title"
+                : isEquation ? "equation"
+                : isPlaceholder ? "placeholder"
+                : isTextBox ? "textbox"
+                : "shape",
             Text = text,
             Preview = string.IsNullOrEmpty(text) ? name : (text.Length > 50 ? text[..50] + "..." : text)
         };
 
         node.Format["name"] = name;
+        if (phTypeStr != null) node.Format["phType"] = phTypeStr;
+        if (phElemForNode?.Index?.Value is uint phIdx) node.Format["phIndex"] = (int)phIdx;
+
+        // CONSISTENCY(equation-formula-readback): surface the OMath as a LaTeX
+        // string on Get so dump emitter can carry it as `formula=...` on
+        // `add equation` — AddEquation requires formula/text or it throws.
+        // Without this, equation shapes round-trip as `add equation` with no
+        // formula prop and replay fails.
+        if (isEquation)
+        {
+            var mathElements = FindShapeMathElements(shape);
+            if (mathElements.Count > 0)
+            {
+                try
+                {
+                    var latex = FormulaParser.ToLatex(mathElements[0]);
+                    if (!string.IsNullOrEmpty(latex))
+                        node.Format["formula"] = latex;
+                }
+                catch
+                {
+                    // ToLatex may fail on exotic OMath shapes; fall through —
+                    // emitter can still degrade gracefully.
+                }
+            }
+        }
 
         // Cross-handler `evaluated` protocol — surface unevaluated a:fld
         // descendants on the shape node so agents can find them via Get
@@ -567,9 +701,13 @@ public partial class PowerPointHandler
             var custGeom = shape.ShapeProperties?.GetFirstChild<Drawing.CustomGeometry>();
             if (custGeom != null)
             {
-                // Reconstruct SVG-like path string from the custom geometry path list
-                var pathData = ReconstructCustomGeometryPath(custGeom);
-                node.Format["geometry"] = !string.IsNullOrEmpty(pathData) ? pathData : "custom";
+                node.Format["geometry"] = "custom";
+                // Raw OOXML preserves the full path-list (commands + adjust handles)
+                // that ReconstructCustomGeometryPath's SVG-ish abstraction loses.
+                // dump→batch needs byte-faithful replay, so emit the raw <a:custGeom>
+                // XML alongside the SVG hint. Add side picks whichever it can parse.
+                node.Format["customPath"] = ReconstructCustomGeometryPath(custGeom);
+                node.Format["customGeometryXml"] = custGeom.OuterXml;
             }
         }
 
@@ -640,13 +778,46 @@ public partial class PowerPointHandler
 
         // Collect font info
         var firstRun = shape.TextBody?.Descendants<Drawing.Run>().FirstOrDefault();
+        // Heterogeneity probe: shape-level `size` and `color` summarize the
+        // textbox's run formatting. When runs disagree, surfacing the first
+        // run's value silently is a foot-gun — an agent reading
+        // Format["color"] can't tell the textbox actually has mixed colors.
+        // Drop the key in that case so `ContainsKey` is the contract.
+        var allRuns = shape.TextBody?.Descendants<Drawing.Run>().ToList()
+                      ?? new List<Drawing.Run>();
+        bool hasMixedSize = false;
+        bool hasMixedColor = false;
+        if (allRuns.Count > 1)
+        {
+            string? firstSizeKey = null;
+            string? firstColorKey = null;
+            bool sizeSeen = false, colorSeen = false;
+            foreach (var r in allRuns)
+            {
+                var rp = r.RunProperties;
+                var sz = rp?.FontSize?.Value;
+                var szKey = sz.HasValue ? sz.Value.ToString() : "(unset)";
+                if (!sizeSeen) { firstSizeKey = szKey; sizeSeen = true; }
+                else if (firstSizeKey != szKey) hasMixedSize = true;
+
+                var col = ReadColorFromFill(rp?.GetFirstChild<Drawing.SolidFill>());
+                var colKey = col ?? "(unset)";
+                if (!colorSeen) { firstColorKey = colKey; colorSeen = true; }
+                else if (firstColorKey != colKey) hasMixedColor = true;
+            }
+        }
         if (firstRun?.RunProperties != null)
         {
             var fontLatinTf = firstRun.RunProperties.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value;
             var fontEaTf = firstRun.RunProperties.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
             var fontCsTf = firstRun.RunProperties.GetFirstChild<Drawing.ComplexScriptFont>()?.Typeface?.Value;
-            var font = fontLatinTf ?? fontEaTf;
-            if (font != null) node.Format["font"] = font;
+            // Bare `font` is the Latin slot alias only. Do NOT fall back to
+            // <a:ea>/<a:cs> — those have their own canonical keys
+            // (`font.ea`, `font.cs`) and bare `font` implying EA misrepresents
+            // the OOXML. Suppressing bare `font` for ea/cs-only also keeps
+            // `effective.font` (theme Latin) visible — symmetric with the
+            // `font.cs`-only case.
+            if (fontLatinTf != null) node.Format["font"] = fontLatinTf;
             // Per-script slots — emit canonical `font.latin` / `font.ea`
             // whenever the slot is present so schema-declared `get:true`
             // round-trips (CONSISTENCY(canonical-keys)). The redundant
@@ -656,7 +827,7 @@ public partial class PowerPointHandler
             if (fontCsTf != null) node.Format["font.cs"] = fontCsTf;
 
             var fontSize = firstRun.RunProperties.FontSize?.Value;
-            if (fontSize.HasValue) node.Format["size"] = $"{fontSize.Value / 100.0:0.##}pt";
+            if (fontSize.HasValue && !hasMixedSize) node.Format["size"] = $"{fontSize.Value / 100.0:0.##}pt";
 
             if (firstRun.RunProperties.Bold?.HasValue == true) node.Format["bold"] = firstRun.RunProperties.Bold.Value;
             if (firstRun.RunProperties.Italic?.HasValue == true) node.Format["italic"] = firstRun.RunProperties.Italic.Value;
@@ -674,9 +845,17 @@ public partial class PowerPointHandler
                     _ => ulInner
                 };
             }
-            if (firstRun.RunProperties.Strike?.HasValue == true && firstRun.RunProperties.Strike.Value != Drawing.TextStrikeValues.NoStrike)
+            if (firstRun.RunProperties.Strike?.HasValue == true)
             {
-                node.Format["strike"] = firstRun.RunProperties.Strike.Value == Drawing.TextStrikeValues.DoubleStrike ? "double" : "single";
+                // Emit explicit "none" too, so a round-trip Add(strike=none) → Get
+                // returns the same key. PowerPoint writes <a:rPr strike="noStrike"/>
+                // verbatim; dropping it silently breaks batch (dump | apply) parity.
+                node.Format["strike"] = firstRun.RunProperties.Strike.Value switch
+                {
+                    var v when v == Drawing.TextStrikeValues.DoubleStrike => "double",
+                    var v when v == Drawing.TextStrikeValues.NoStrike => "none",
+                    _ => "single",
+                };
             }
 
             // Character spacing on first run
@@ -688,16 +867,20 @@ public partial class PowerPointHandler
 
             // Text color (from first run) — solid or gradient
             var runColor = ReadColorFromFill(firstRun.RunProperties.GetFirstChild<Drawing.SolidFill>());
-            if (runColor != null) node.Format["color"] = runColor;
+            if (runColor != null && !hasMixedColor) node.Format["color"] = runColor;
             var runGradFill = firstRun.RunProperties.GetFirstChild<Drawing.GradientFill>();
             if (runGradFill != null)
                 node.Format["textFill"] = ReadGradientString(runGradFill);
 
-            // Hyperlink on first run
+            // Hyperlink on first run (link + tooltip — tooltip mirrors how
+            // picture / group already round-trip, see below + line ~1262).
             if (part != null)
             {
-                var linkUrl = ReadRunHyperlinkUrl(firstRun, part);
+                var firstHl = firstRun.RunProperties.GetFirstChild<Drawing.HyperlinkOnClick>();
+                var linkUrl = ReadHyperlinkOnClickUrl(firstHl, part);
                 if (linkUrl != null) node.Format["link"] = linkUrl;
+                var firstTip = firstHl?.Tooltip?.Value;
+                if (!string.IsNullOrEmpty(firstTip)) node.Format["tooltip"] = firstTip!;
             }
 
             // CONSISTENCY(rpr-attr-fallback / R21-fuzzer-1+2): surface long-tail
@@ -708,21 +891,20 @@ public partial class PowerPointHandler
             FillUnknownRunProps(firstRun.RunProperties, node);
         }
 
-        // Shape-level hyperlink (on NonVisualDrawingProperties)
+        // Shape-level hyperlink (on NonVisualDrawingProperties). Route through
+        // the shared ReadHyperlinkOnClickUrl helper so named-action targets
+        // (firstslide/lastslide/nextslide/previousslide) and internal slide
+        // jumps (slide[N]) round-trip — the previous inline reader only saw
+        // external HyperlinkRelationship URIs.
         if (part != null && !node.Format.ContainsKey("link"))
         {
             var nvDp = shape.NonVisualShapeProperties?.NonVisualDrawingProperties;
             var hlClick = nvDp?.GetFirstChild<Drawing.HyperlinkOnClick>();
-            var hlId = hlClick?.Id?.Value;
-            if (hlId != null)
-            {
-                try
-                {
-                    var rel = part.HyperlinkRelationships.FirstOrDefault(r => r.Id == hlId);
-                    if (rel?.Uri != null) node.Format["link"] = rel.Uri.ToString();
-                }
-                catch { }
-            }
+            var shapeLinkUrl = ReadHyperlinkOnClickUrl(hlClick, part);
+            if (shapeLinkUrl != null) node.Format["link"] = shapeLinkUrl;
+            var shapeTip = hlClick?.Tooltip?.Value;
+            if (!string.IsNullOrEmpty(shapeTip) && !node.Format.ContainsKey("tooltip"))
+                node.Format["tooltip"] = shapeTip!;
         }
 
         // Line/border
@@ -734,28 +916,73 @@ public partial class PowerPointHandler
             if (lineColor != null) node.Format["line"] = lineColor;
             var lineIsNone = outline.GetFirstChild<Drawing.NoFill>() != null;
             if (lineIsNone) node.Format["line"] = "none";
+            // Gradient on the line — round-trippable spec form so dump→batch
+            // replay rebuilds the gradient instead of falling back to bare
+            // <a:ln/> (which inherits theme's default thin black stroke).
+            var lineGradFill = outline.GetFirstChild<Drawing.GradientFill>();
+            if (lineGradFill != null)
+            {
+                node.Format["line.gradient"] = ReadGradientString(lineGradFill);
+            }
             // When line=none, suppress the residual width readback so users don't
             // see a stale lineWidth from a prior color-set assignment.
             if (!lineIsNone && outline.Width?.HasValue == true) node.Format["lineWidth"] = FormatLineWidth(outline.Width.Value);
             var dash = outline.GetFirstChild<Drawing.PresetDash>();
             if (dash?.Val?.HasValue == true)
             {
+                // emit the canonical OOXML token (lgDash/lgDashDot/lgDashDotDot/
+                // sysDot/sysDash/sysDashDot/sysDashDotDot) so the readback survives a
+                // round-trip through the input parser. Previously emitted 'longdash[dot]'
+                // aliases that aren't accepted by the (case-strict) PresetLineDashValues
+                // constructor — a future round-trip would throw.
                 var dashValue = dash.Val.InnerText ?? "";
                 node.Format["lineDash"] = dashValue switch
                 {
                     "solid" => "solid",
                     "dot" => "dot",
                     "dash" => "dash",
-                    "dashDot" => "dashdot",
-                    "lgDash" => "longdash",
-                    "lgDashDot" => "longdashdot",
-                    "sysDot" => "sysdot",
-                    "sysDash" => "sysdash",
-                    "sysDashDot" => "sysdashdot",
-                    "sysDashDotDot" => "sysdashdotdot",
-                    _ => dashValue.ToLowerInvariant()
+                    "dashDot" => "dashDot",
+                    "lgDash" => "lgDash",
+                    "lgDashDot" => "lgDashDot",
+                    "lgDashDotDot" => "lgDashDotDot",
+                    "sysDot" => "sysDot",
+                    "sysDash" => "sysDash",
+                    "sysDashDot" => "sysDashDot",
+                    "sysDashDotDot" => "sysDashDotDot",
+                    _ => dashValue
                 };
             }
+            // lineCap / lineJoin / cmpd / lineAlign readback. Previously
+            // these attributes were accepted on input but silently dropped; the
+            // bidirectional gap meant users couldn't see whether the value stuck.
+            if (outline.CapType?.HasValue == true)
+            {
+                var capRaw = outline.CapType.InnerText ?? "";
+                node.Format["lineCap"] = capRaw switch
+                {
+                    "rnd" => "round",
+                    "sq" => "square",
+                    "flat" => "flat",
+                    _ => capRaw
+                };
+            }
+            if (outline.CompoundLineType?.HasValue == true)
+                node.Format["cmpd"] = outline.CompoundLineType.InnerText ?? "";
+            if (outline.Alignment?.HasValue == true)
+                node.Format["lineAlign"] = outline.Alignment.InnerText ?? "";
+            if (outline.GetFirstChild<Drawing.Round>() != null)
+                node.Format["lineJoin"] = "round";
+            else if (outline.GetFirstChild<Drawing.LineJoinBevel>() != null)
+                node.Format["lineJoin"] = "bevel";
+            else if (outline.GetFirstChild<Drawing.Miter>() != null)
+                node.Format["lineJoin"] = "miter";
+            // head/tail arrowheads on shape outlines.
+            var shapeHeadEnd = outline.GetFirstChild<Drawing.HeadEnd>();
+            if (shapeHeadEnd?.Type?.HasValue == true)
+                node.Format["headEnd"] = shapeHeadEnd.Type.InnerText ?? "";
+            var shapeTailEnd = outline.GetFirstChild<Drawing.TailEnd>();
+            if (shapeTailEnd?.Type?.HasValue == true)
+                node.Format["tailEnd"] = shapeTailEnd.Type.InnerText ?? "";
             var lineColorEl = lineSolidFill?.GetFirstChild<Drawing.RgbColorModelHex>() as OpenXmlElement
                 ?? lineSolidFill?.GetFirstChild<Drawing.SchemeColor>();
             var lineAlpha = lineColorEl?.GetFirstChild<Drawing.Alpha>()?.Val?.Value;
@@ -776,21 +1003,26 @@ public partial class PowerPointHandler
             var outerShadow = activeEffectList.GetFirstChild<Drawing.OuterShadow>();
             if (outerShadow != null)
             {
-                var shadowColor = ReadColorFromElement(outerShadow) ?? "000000";
+                var shadowColor = EnsureEightDigitHexForEffect(ReadColorFromElement(outerShadow) ?? "000000");
                 var blurPt = outerShadow.BlurRadius?.HasValue == true ? $"{outerShadow.BlurRadius.Value / 12700.0:0.##}" : "4";
                 var angleDeg = outerShadow.Direction?.HasValue == true ? $"{outerShadow.Direction.Value / 60000.0:0.##}" : "45";
                 var distPt = outerShadow.Distance?.HasValue == true ? $"{outerShadow.Distance.Value / 12700.0:0.##}" : "3";
                 var alphaEl = outerShadow.Descendants<Drawing.Alpha>().FirstOrDefault();
-                var opacity = alphaEl?.Val?.HasValue == true ? $"{alphaEl.Val.Value / 1000.0:0.##}" : "40";
+                // OOXML default: <a:outerShdw> without <a:alpha> is fully opaque
+                // (the shadow inherits the color element's alpha; an absent alpha
+                // means 100%). Defaulting to "40" used to mask explicit
+                // alpha=FF inputs as a 40% shadow on round-trip.
+                var opacity = alphaEl?.Val?.HasValue == true ? $"{alphaEl.Val.Value / 1000.0:0.##}" : "100";
                 node.Format["shadow"] = $"{shadowColor}-{blurPt}-{angleDeg}-{distPt}-{opacity}";
             }
             var glow = activeEffectList.GetFirstChild<Drawing.Glow>();
             if (glow != null)
             {
-                var glowColor = ReadColorFromElement(glow) ?? "000000";
+                var glowColor = EnsureEightDigitHexForEffect(ReadColorFromElement(glow) ?? "000000");
                 var radiusPt = glow.Radius?.HasValue == true ? $"{glow.Radius.Value / 12700.0:0.##}" : "8";
                 var glowAlpha = glow.Descendants<Drawing.Alpha>().FirstOrDefault();
-                var glowOpacity = glowAlpha?.Val?.HasValue == true ? $"{glowAlpha.Val.Value / 1000.0:0.##}" : "75";
+                // OOXML default: <a:glow> without <a:alpha> is fully opaque.
+                var glowOpacity = glowAlpha?.Val?.HasValue == true ? $"{glowAlpha.Val.Value / 1000.0:0.##}" : "100";
                 node.Format["glow"] = $"{glowColor}-{radiusPt}-{glowOpacity}";
             }
             var reflEl = activeEffectList.GetFirstChild<Drawing.Reflection>();
@@ -804,7 +1036,12 @@ public partial class PowerPointHandler
             }
             var softEdge = activeEffectList.GetFirstChild<Drawing.SoftEdge>();
             if (softEdge?.Radius?.HasValue == true)
-                node.Format["softEdge"] = $"{softEdge.Radius.Value / 12700.0:0.##}";
+                // Unit-qualified pt — matches the cross-format canonical from
+                // root CLAUDE.md (line.width "0.75pt", padding "12pt", glow
+                // "4pt"). The bare numeric form here was the lone outlier on
+                // the effects readback surface and broke dump round-trip
+                // when set softEdge=<value> re-parses the readback.
+                node.Format["softEdge"] = $"{softEdge.Radius.Value / 12700.0:0.##}pt";
         }
 
         // 3D rotation (scene3d)
@@ -855,7 +1092,7 @@ public partial class PowerPointHandler
 
         // Rotation (plain number in degrees, no suffix, so Set can consume the value directly)
         if (xfrm?.Rotation != null && xfrm.Rotation.Value != 0)
-            node.Format["rotation"] = $"{xfrm.Rotation.Value / 60000.0:0.##}";
+            node.Format["rotation"] = $"{xfrm.Rotation.Value / 60000.0:0.######}";
 
         // Text margin
         var bodyPr = shape.TextBody?.Elements<Drawing.BodyProperties>().FirstOrDefault();
@@ -913,7 +1150,12 @@ public partial class PowerPointHandler
             else node.Format["autoFit"] = "none";
         }
 
-        // Text alignment (from first paragraph)
+        // Text alignment (from first paragraph). Only surface when explicitly
+        // present in the source XML; the previous else-branch hard-coded
+        // align=left whenever pPr/algn was absent, which baked an explicit
+        // value into every round-trip and broke inheritance from the layout/
+        // master defRPr cascade. Callers that need the effective alignment
+        // can read Format["effective.align"] (cascade-resolved separately).
         var firstPara = shape.TextBody?.Elements<Drawing.Paragraph>().FirstOrDefault();
         if (firstPara?.ParagraphProperties?.Alignment?.HasValue == true)
         {
@@ -926,10 +1168,6 @@ public partial class PowerPointHandler
                 "just" => "justify",
                 _ => alInner
             };
-        }
-        else if (shape.TextBody != null)
-        {
-            node.Format["align"] = "left";
         }
 
         // Paragraph spacing and indent (from first paragraph)
@@ -1032,6 +1270,12 @@ public partial class PowerPointHandler
                         }
                     }
 
+                    // CONSISTENCY(effective-X-mirror): see WordHandler.StyleList.cs
+                    // ResolveEffectiveParagraphStyleProperties — para-level keys
+                    // (align / lineSpacing / spaceBefore / spaceAfter) resolved
+                    // through the same 8-layer cascade as runs.
+                    PopulateEffectiveParagraphPropertiesPpt(paraNode, shape, para, part);
+
                     node.Children.Add(paraNode);
                     paraIdx++;
                 }
@@ -1062,11 +1306,11 @@ public partial class PowerPointHandler
             var fLatin = run.RunProperties.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value;
             var fEa = run.RunProperties.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
             var fCs = run.RunProperties.GetFirstChild<Drawing.ComplexScriptFont>()?.Typeface?.Value;
-            var f = fLatin ?? fEa;
-            if (f != null) node.Format["font"] = f;
-            // Emit canonical `font.latin` / `font.ea` whenever the slot is
-            // present so schema-declared `get:true` round-trips
-            // (CONSISTENCY(canonical-keys)). `font` kept as backward-compat alias.
+            // Schema: run-level `font` is write-only (get:false). Get
+            // canonicalizes the readback to per-script keys
+            // (font.latin / font.ea / font.cs). Emitting both bare `font`
+            // and `font.latin` violates the no-duplicate-alias rule in the
+            // root CLAUDE.md "Canonical DocumentNode.Format Rules".
             if (fLatin != null) node.Format["font.latin"] = fLatin;
             if (fEa != null && fEa != fLatin) node.Format["font.ea"] = fEa;
             if (fCs != null) node.Format["font.cs"] = fCs;
@@ -1083,9 +1327,23 @@ public partial class PowerPointHandler
                     _ => run.RunProperties.Underline.InnerText
                 };
             }
-            if (run.RunProperties.Strike?.HasValue == true && run.RunProperties.Strike.Value != Drawing.TextStrikeValues.NoStrike)
+            // CONSISTENCY(underline-color): mirror docx Get vocabulary —
+            // 'underline.color' is the canonical dotted key.
+            var uFill = run.RunProperties.GetFirstChild<Drawing.UnderlineFill>();
+            if (uFill != null)
             {
-                node.Format["strike"] = run.RunProperties.Strike.Value == Drawing.TextStrikeValues.DoubleStrike ? "double" : "single";
+                var uFillColor = ReadColorFromFill(uFill.GetFirstChild<Drawing.SolidFill>());
+                if (uFillColor != null) node.Format["underline.color"] = uFillColor;
+            }
+            if (run.RunProperties.Strike?.HasValue == true)
+            {
+                // Emit explicit "none" too — mirrors first-run reader above.
+                node.Format["strike"] = run.RunProperties.Strike.Value switch
+                {
+                    var v when v == Drawing.TextStrikeValues.DoubleStrike => "double",
+                    var v when v == Drawing.TextStrikeValues.NoStrike => "none",
+                    _ => "single",
+                };
             }
             if (run.RunProperties.Spacing?.HasValue == true)
                 node.Format["spacing"] = $"{run.RunProperties.Spacing.Value / 100.0:0.##}";
@@ -1096,11 +1354,14 @@ public partial class PowerPointHandler
             if (runFillColor != null) node.Format["color"] = runFillColor;
             var runGrad = run.RunProperties.GetFirstChild<Drawing.GradientFill>();
             if (runGrad != null) node.Format["textFill"] = ReadGradientString(runGrad);
-            // Hyperlink
+            // Hyperlink (link + tooltip — round-trips Add/Set 'tooltip=…').
             if (part != null)
             {
-                var linkUrl = ReadRunHyperlinkUrl(run, part);
+                var runHl = run.RunProperties.GetFirstChild<Drawing.HyperlinkOnClick>();
+                var linkUrl = ReadHyperlinkOnClickUrl(runHl, part);
                 if (linkUrl != null) node.Format["link"] = linkUrl;
+                var runTip = runHl?.Tooltip?.Value;
+                if (!string.IsNullOrEmpty(runTip)) node.Format["tooltip"] = runTip!;
             }
 
             // Long-tail OOXML fallback. drawingML rPr carries most properties
@@ -1228,13 +1489,91 @@ public partial class PowerPointHandler
             if (picXfrm.Extents.Cy is not null) node.Format["height"] = FormatEmu(picXfrm.Extents.Cy!);
         }
         if (picXfrm?.Rotation != null && picXfrm.Rotation.Value != 0)
-            node.Format["rotation"] = $"{picXfrm.Rotation.Value / 60000.0:0.##}";
+            node.Format["rotation"] = $"{picXfrm.Rotation.Value / 60000.0:0.######}";
+
+        // CONSISTENCY(zorder): mirror shape/connector — emit for any
+        // ShapeTree-rooted picture so Add(picture, zorder=N) round-trips.
+        if (pic.Parent is ShapeTree picZTree)
+        {
+            var picZContent = picZTree.ChildElements
+                .Where(e => e is Shape or Picture or GraphicFrame or GroupShape or ConnectionShape)
+                .ToList();
+            var picZIdx = picZContent.IndexOf(pic);
+            if (picZIdx >= 0) node.Format["zorder"] = picZIdx + 1;
+        }
 
         // Opacity (via AlphaModulateFixedEffect on blip)
         var picBlip = pic.BlipFill?.GetFirstChild<Drawing.Blip>();
         var alphaModFix = picBlip?.GetFirstChild<Drawing.AlphaModulationFixed>();
         if (alphaModFix?.Amount?.HasValue == true)
             node.Format["opacity"] = $"{alphaModFix.Amount.Value / 100000.0:0.##}";
+
+        // Click-hyperlink on the picture (nvPicPr/cNvPr/a:hlinkClick).
+        // CONSISTENCY(shape-picture-parity): pictures share the cNvPr
+        // hyperlink slot with shapes; reuse the same reader.
+        if (slidePart != null)
+        {
+            var picHl = pic.NonVisualPictureProperties?.NonVisualDrawingProperties?
+                .GetFirstChild<Drawing.HyperlinkOnClick>();
+            var picLinkUrl = ReadHyperlinkOnClickUrl(picHl, slidePart);
+            if (picLinkUrl != null) node.Format["link"] = picLinkUrl;
+            var picTip = picHl?.Tooltip?.Value;
+            if (!string.IsNullOrEmpty(picTip)) node.Format["tooltip"] = picTip!;
+        }
+
+        // Brightness / contrast — stored on the same blip as
+        // a:lumOff (brightness) and a:lumMod (contrast). Mirrors the
+        // write side in Set.Media.cs (`case "brightness" or "contrast"`).
+        // Note: the SDK's Blip class doesn't strong-type lumMod/lumOff as
+        // direct children (they're effect children per the a:CT_Blip
+        // schema but live in a content-group the SDK marks "unknown" once
+        // round-tripped). Read via LocalName/attribute so we tolerate both
+        // the strongly-typed append we do in Set.Media and the unknown
+        // element form we see on re-parse.
+        if (picBlip != null)
+        {
+            int? lumModVal = null, lumOffVal = null;
+            foreach (var kid in picBlip.ChildElements)
+            {
+                if (kid.NamespaceUri != "http://schemas.openxmlformats.org/drawingml/2006/main") continue;
+                var valAttr = kid.GetAttribute("val", "").Value;
+                if (string.IsNullOrEmpty(valAttr) || !int.TryParse(valAttr, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var iv)) continue;
+                if (kid.LocalName == "lumMod") lumModVal = iv;
+                else if (kid.LocalName == "lumOff") lumOffVal = iv;
+            }
+            if (lumOffVal.HasValue && lumOffVal.Value != 0)
+                node.Format["brightness"] = $"{lumOffVal.Value / 1000.0:0.##}";
+            if (lumModVal.HasValue && lumModVal.Value != 100000)
+                node.Format["contrast"] = $"{(lumModVal.Value - 100000) / 1000.0:0.##}";
+        }
+
+        // Shadow / glow — Set.Media writes these into spPr/effectLst via
+        // shared ApplyShadow/ApplyGlow. Mirror the shape-level reader so
+        // picture round-trips match shapes.
+        var picEffectList = pic.ShapeProperties?.GetFirstChild<Drawing.EffectList>();
+        if (picEffectList != null)
+        {
+            var picOuterShadow = picEffectList.GetFirstChild<Drawing.OuterShadow>();
+            if (picOuterShadow != null)
+            {
+                var shadowColor = EnsureEightDigitHexForEffect(ReadColorFromElement(picOuterShadow) ?? "000000");
+                var blurPt = picOuterShadow.BlurRadius?.HasValue == true ? $"{picOuterShadow.BlurRadius.Value / 12700.0:0.##}" : "4";
+                var angleDeg = picOuterShadow.Direction?.HasValue == true ? $"{picOuterShadow.Direction.Value / 60000.0:0.##}" : "45";
+                var distPt = picOuterShadow.Distance?.HasValue == true ? $"{picOuterShadow.Distance.Value / 12700.0:0.##}" : "3";
+                var alphaEl = picOuterShadow.Descendants<Drawing.Alpha>().FirstOrDefault();
+                var opacity = alphaEl?.Val?.HasValue == true ? $"{alphaEl.Val.Value / 1000.0:0.##}" : "40";
+                node.Format["shadow"] = $"{shadowColor}-{blurPt}-{angleDeg}-{distPt}-{opacity}";
+            }
+            var picGlow = picEffectList.GetFirstChild<Drawing.Glow>();
+            if (picGlow != null)
+            {
+                var glowColor = EnsureEightDigitHexForEffect(ReadColorFromElement(picGlow) ?? "000000");
+                var radiusPt = picGlow.Radius?.HasValue == true ? $"{picGlow.Radius.Value / 12700.0:0.##}" : "8";
+                var glowAlpha = picGlow.Descendants<Drawing.Alpha>().FirstOrDefault();
+                var glowOpacity = glowAlpha?.Val?.HasValue == true ? $"{glowAlpha.Val.Value / 1000.0:0.##}" : "75";
+                node.Format["glow"] = $"{glowColor}-{radiusPt}-{glowOpacity}";
+            }
+        }
 
         // Crop
         var srcRect = pic.BlipFill?.GetFirstChild<Drawing.SourceRectangle>();
@@ -1269,6 +1608,12 @@ public partial class PowerPointHandler
 
             if (mediaNode.Volume?.HasValue == true)
                 node.Format["volume"] = (int)(mediaNode.Volume.Value / 1000.0);
+            // Loop-until-Stopped: cMediaNode's cTn has
+            // repeatCount="indefinite" when looped.
+            var loopCTn = mediaNode.CommonTimeNode;
+            if (loopCTn?.RepeatCount?.Value is string rc
+                && rc.Equals("indefinite", StringComparison.OrdinalIgnoreCase))
+                node.Format["loop"] = true;
             break;
         }
 
@@ -1289,15 +1634,31 @@ public partial class PowerPointHandler
         }
     }
 
-    private static Shape CreateTextShape(uint id, string name, string text, bool isTitle)
+    private static Shape CreateTextShape(uint id, string name, string text, bool isTitle, bool isTextBox = false,
+                                         PlaceholderValues? placeholderType = null, uint? placeholderIndex = null)
     {
         var shape = new Shape();
         var appNvPr = new ApplicationNonVisualDrawingProperties();
         if (isTitle)
+        {
             appNvPr.AppendChild(new PlaceholderShape { Type = PlaceholderValues.Title });
+        }
+        else if (placeholderType.HasValue)
+        {
+            var ph = new PlaceholderShape { Type = placeholderType.Value };
+            if (placeholderIndex.HasValue) ph.Index = placeholderIndex.Value;
+            appNvPr.AppendChild(ph);
+        }
+        // OOXML `<p:cNvSpPr txBox="1"/>` is the only on-disk marker that
+        // distinguishes a dedicated text container from a geometry shape that
+        // happens to carry text. Without it, every shape with a prstGeom and
+        // empty/short text is indistinguishable on readback.
+        var cNvSpPr = new NonVisualShapeDrawingProperties();
+        if (isTextBox)
+            cNvSpPr.TextBox = true;
         shape.NonVisualShapeProperties = new NonVisualShapeProperties(
             new NonVisualDrawingProperties { Id = id, Name = name },
-            new NonVisualShapeDrawingProperties(),
+            cNvSpPr,
             appNvPr
         );
         var spPr = new ShapeProperties();
@@ -1324,9 +1685,9 @@ public partial class PowerPointHandler
             new Drawing.BodyProperties(),
             new Drawing.ListStyle()
         );
-        // CONSISTENCY(escape-sequences): \n splits into paragraphs, \t becomes
-        // <a:tab/> elements as paragraph children between text runs.
-        var lines = text.Replace("\\n", "\n").Replace("\\t", "\t").Split('\n');
+        // CONSISTENCY(text-escape-boundary): \n / \t resolution at CLI --prop;
+        // text arrives here with real newlines and tabs already.
+        var lines = text.Split('\n');
         foreach (var line in lines)
         {
             var para = new Drawing.Paragraph();
@@ -1382,25 +1743,40 @@ public partial class PowerPointHandler
         var cxnDash = ln?.GetFirstChild<Drawing.PresetDash>();
         if (cxnDash?.Val?.HasValue == true)
         {
+            // emit canonical OOXML token (see shape readback).
             var dashValue = cxnDash.Val.InnerText ?? "";
             node.Format["lineDash"] = dashValue switch
             {
                 "solid" => "solid",
                 "dot" => "dot",
                 "dash" => "dash",
-                "dashDot" => "dashdot",
-                "lgDash" => "longdash",
-                "lgDashDot" => "longdashdot",
-                "sysDot" => "sysdot",
-                "sysDash" => "sysdash",
-                _ => dashValue.ToLowerInvariant()
+                "dashDot" => "dashDot",
+                "lgDash" => "lgDash",
+                "lgDashDot" => "lgDashDot",
+                "lgDashDotDot" => "lgDashDotDot",
+                "sysDot" => "sysDot",
+                "sysDash" => "sysDash",
+                "sysDashDot" => "sysDashDot",
+                "sysDashDotDot" => "sysDashDotDot",
+                _ => dashValue
             };
+        }
+        // Gradient on the connector line — emit round-trippable spec so dump→batch
+        // replay rebuilds the gradient instead of falling back to a bare <a:ln/>
+        // (which would inherit the theme's default thin stroke). Mirrors the shape
+        // outline gradient readback above.
+        var cxnLineGradFill = ln?.GetFirstChild<Drawing.GradientFill>();
+        if (cxnLineGradFill != null)
+        {
+            node.Format["line.gradient"] = ReadGradientString(cxnLineGradFill);
         }
         var solidFill = ln?.GetFirstChild<Drawing.SolidFill>();
         var rgb = solidFill?.GetFirstChild<Drawing.RgbColorModelHex>();
-        if (rgb?.Val?.HasValue == true)
-            // CONSISTENCY(canonical-key): canonical 'color'; 'lineColor' was legacy key.
-            node.Format["color"] = ParseHelpers.FormatHexColor(rgb.Val.Value!);
+        // CONSISTENCY(canonical-key): canonical 'color'; 'lineColor' was legacy.
+        // Use ReadColorFromFill so scheme-color line= (accent1, dark1, …) round-trips
+        // through Get; the prior rgb-only branch silently dropped a:schemeClr.
+        var cxnColor = ReadColorFromFill(solidFill);
+        if (cxnColor != null) node.Format["color"] = cxnColor;
 
         // Line opacity
         var cxnColorEl = rgb as OpenXmlElement ?? solidFill?.GetFirstChild<Drawing.SchemeColor>();
@@ -1417,7 +1793,20 @@ public partial class PowerPointHandler
 
         // Rotation
         if (xfrm?.Rotation?.HasValue == true && xfrm.Rotation.Value != 0)
-            node.Format["rotation"] = $"{xfrm.Rotation.Value / 60000.0:0.##}";
+            node.Format["rotation"] = $"{xfrm.Rotation.Value / 60000.0:0.######}";
+
+        // Z-order (1-based position among content elements: 1 = back, N = front).
+        // CONSISTENCY(zorder): shape/picture/group all emit zorder when parent is a
+        // ShapeTree; connector belongs to the same set and was previously omitted —
+        // round-trip of Add(connector, zorder=N) silently dropped the value.
+        if (cxn.Parent is ShapeTree cxnTree)
+        {
+            var contentEls = cxnTree.ChildElements
+                .Where(e => e is Shape or Picture or GraphicFrame or GroupShape or ConnectionShape)
+                .ToList();
+            var cxnZIdx = contentEls.IndexOf(cxn);
+            if (cxnZIdx >= 0) node.Format["zorder"] = cxnZIdx + 1;
+        }
 
         // Connection info (startShape/endShape)
         var cxnDrawProps = cxn.NonVisualConnectionShapeProperties?.NonVisualConnectorShapeDrawingProperties;
@@ -1487,24 +1876,8 @@ public partial class PowerPointHandler
         return sb.ToString().Trim();
     }
 
-    private static readonly Dictionary<string, string> _tableStyleGuidToName = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["{073A0DAA-6AF3-43AB-8588-CEC1D06C72B9}"] = "medium1",
-        ["{F5AB1C69-6EDB-4FF4-983F-18BD219EF322}"] = "medium2",
-        ["{3B4B98B0-60AC-42C2-AFA5-B58CD77FA1E5}"] = "medium3",
-        ["{D7AC3CCA-C797-4891-BE02-D94E43425B78}"] = "medium4",
-        ["{9D7B26C5-4107-4FEC-AEDC-1716B250A1EF}"] = "light1",
-        ["{ED083AE6-46FA-4A59-8FB0-9F97EB10719F}"] = "light2",
-        ["{C083E6E3-FA7D-4D7B-A595-EF9225AFEA82}"] = "light3",
-        ["{E8034E78-7F5D-4C2E-B375-FC64B27BC917}"] = "dark1",
-        ["{125E5076-3810-47DD-B79F-674D7AD40C01}"] = "dark2",
-        ["{2D5ABB26-0587-4C30-8999-92F81FD0307C}"] = "none",
-    };
-
-    private static string? TableStyleGuidToName(string guid)
-    {
-        return _tableStyleGuidToName.TryGetValue(guid, out var name) ? name : null;
-    }
+    // GUID → CLI short-name lookup moved to Core/TableStyles/TableStyleRegistry.
+    // Call OfficeCli.Core.TableStyles.TableStyleRegistry.GuidToShortName(guid).
 
     // Table-level border aggregation. PPT OOXML has no <a:tblBorders>; the
     // visual "table border" is the union of outer cell borders. We sample the
@@ -1572,337 +1945,12 @@ public partial class PowerPointHandler
     }
 
     // ==================== Effective Properties Resolution (PPT) ====================
+    // CONSISTENCY(effective-X-mirror): see PowerPointHandler.StyleList.cs.
+    // PopulateEffectiveShapeProperties / PopulateEffectiveRunProperties live
+    // there now alongside the unified cascade resolver. What remains here are
+    // direction-inheritance helpers (rtl is intentionally out-of-scope for the
+    // per-key cascade — see project_pptx_dump_design_decisions.md).
 
-    /// <summary>
-    /// Populates effective.* format keys on a shape node for font properties not explicitly set.
-    /// Resolves from: shape placeholder → layout → master text styles → presentation defaults → theme.
-    /// </summary>
-    private static void PopulateEffectiveShapeProperties(DocumentNode node, Shape shape, OpenXmlPart? part)
-    {
-        if (part is not SlidePart slidePart) return;
-
-        // Determine placeholder info for style resolution
-        var ph = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
-            ?.GetFirstChild<PlaceholderShape>();
-        var phType = ph?.Type?.HasValue == true ? ph.Type.Value : PlaceholderValues.Body;
-        bool isTitle = phType == PlaceholderValues.Title || phType == PlaceholderValues.CenteredTitle;
-        bool isSubTitle = phType == PlaceholderValues.SubTitle;
-
-        // Resolve effective font size
-        if (!node.Format.ContainsKey("size"))
-        {
-            var effSize = ResolveEffectiveFontSize(shape, slidePart, ph, isTitle, isSubTitle, phType);
-            if (effSize.HasValue)
-                node.Format["effective.size"] = $"{effSize.Value / 100.0:0.##}pt";
-        }
-
-        // Resolve effective font name from theme
-        if (!node.Format.ContainsKey("font"))
-        {
-            var effFont = ResolveEffectiveFont(shape, slidePart, ph, isTitle, isSubTitle, phType);
-            if (effFont != null)
-                node.Format["effective.font"] = effFont;
-        }
-
-        // Resolve effective color
-        if (!node.Format.ContainsKey("color"))
-        {
-            var effColor = ResolveEffectiveColor(shape, slidePart, ph, isTitle, isSubTitle, phType);
-            if (effColor != null)
-                node.Format["effective.color"] = effColor;
-        }
-
-        // Resolve effective bold
-        if (!node.Format.ContainsKey("bold"))
-        {
-            var effBold = ResolveEffectiveBold(shape, slidePart, ph, isTitle, isSubTitle, phType);
-            if (effBold == true)
-                node.Format["effective.bold"] = true;
-        }
-    }
-
-    /// <summary>
-    /// Populates effective.* format keys on a run node for properties not explicitly set.
-    /// </summary>
-    private static void PopulateEffectiveRunProperties(DocumentNode node, Drawing.Run run, OpenXmlPart? part)
-    {
-        if (part is not SlidePart slidePart) return;
-
-        // Walk up to find the containing shape
-        var shape = run.Ancestors<Shape>().FirstOrDefault();
-        if (shape == null) return;
-
-        var ph = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
-            ?.GetFirstChild<PlaceholderShape>();
-        var phType = ph?.Type?.HasValue == true ? ph.Type.Value : PlaceholderValues.Body;
-        bool isTitle = phType == PlaceholderValues.Title || phType == PlaceholderValues.CenteredTitle;
-        bool isSubTitle = phType == PlaceholderValues.SubTitle;
-
-        // Determine the paragraph level for this run
-        var para = run.Ancestors<Drawing.Paragraph>().FirstOrDefault();
-        int level = para?.ParagraphProperties?.Level?.Value ?? 0;
-
-        if (!node.Format.ContainsKey("size"))
-        {
-            var effSize = ResolveEffectiveFontSize(shape, slidePart, ph, isTitle, isSubTitle, phType, level);
-            if (effSize.HasValue)
-                node.Format["effective.size"] = $"{effSize.Value / 100.0:0.##}pt";
-        }
-
-        if (!node.Format.ContainsKey("font"))
-        {
-            var effFont = ResolveEffectiveFont(shape, slidePart, ph, isTitle, isSubTitle, phType, level);
-            if (effFont != null)
-                node.Format["effective.font"] = effFont;
-        }
-
-        if (!node.Format.ContainsKey("color"))
-        {
-            var effColor = ResolveEffectiveColor(shape, slidePart, ph, isTitle, isSubTitle, phType, level);
-            if (effColor != null)
-                node.Format["effective.color"] = effColor;
-        }
-
-        if (!node.Format.ContainsKey("bold"))
-        {
-            var effBold = ResolveEffectiveBold(shape, slidePart, ph, isTitle, isSubTitle, phType, level);
-            if (effBold == true)
-                node.Format["effective.bold"] = true;
-        }
-    }
-
-    /// <summary>
-    /// Resolves font size from: shape lstStyle → layout/master placeholder → master text styles → presentation defaults.
-    /// </summary>
-    private static int? ResolveEffectiveFontSize(Shape shape, SlidePart slidePart,
-        PlaceholderShape? ph, bool isTitle, bool isSubTitle, PlaceholderValues phType, int level = 0)
-    {
-        // 1. Shape's own list style
-        var lstStyle = shape.TextBody?.GetFirstChild<Drawing.ListStyle>();
-        var defRp = GetLevelDefRp(lstStyle, level);
-        if (defRp?.FontSize?.HasValue == true)
-            return defRp.FontSize.Value;
-
-        // 2. Layout/master placeholder matching
-        if (ph != null)
-        {
-            var layoutTree = slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.ShapeTree;
-            var masterTree = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.ShapeTree;
-            foreach (var tree in new[] { layoutTree, masterTree })
-            {
-                if (tree == null) continue;
-                foreach (var candidate in tree.Elements<Shape>())
-                {
-                    var cPh = candidate.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
-                        ?.GetFirstChild<PlaceholderShape>();
-                    if (cPh == null) continue;
-                    if (!PlaceholderMatches(ph, cPh)) continue;
-                    var cLstStyle = candidate.TextBody?.GetFirstChild<Drawing.ListStyle>();
-                    var cDefRp = GetLevelDefRp(cLstStyle, level);
-                    if (cDefRp?.FontSize?.HasValue == true)
-                        return cDefRp.FontSize.Value;
-                }
-            }
-        }
-
-        // 3. Master text styles
-        var masterTxStyles = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.TextStyles;
-        if (masterTxStyles != null)
-        {
-            OpenXmlCompositeElement? styleList = isTitle ? masterTxStyles.TitleStyle
-                : (isSubTitle || phType == PlaceholderValues.Body || phType == PlaceholderValues.Object)
-                    ? masterTxStyles.BodyStyle : masterTxStyles.OtherStyle;
-            if (styleList != null)
-            {
-                var sDefRp = GetLevelDefRp(styleList, level);
-                if (sDefRp?.FontSize?.HasValue == true) return sDefRp.FontSize.Value;
-            }
-        }
-
-        // 4. Presentation-level defaultTextStyle
-        var presStyle = GetPresentationDefaultTextStyle(slidePart);
-        if (presStyle != null)
-        {
-            var pDefRp = GetLevelDefRp(presStyle, level);
-            if (pDefRp?.FontSize?.HasValue == true) return pDefRp.FontSize.Value;
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Extracts a non-theme-token Latin/EastAsian typeface from a defRPr.
-    /// Returns null when the font is a "+mj-lt"/"+mn-lt" placeholder
-    /// (caller should fall through to theme resolution in that case).
-    /// </summary>
-    private static string? GetExplicitFontFromDefRp(Drawing.DefaultRunProperties? defRp)
-    {
-        if (defRp == null) return null;
-        var latin = defRp.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value;
-        if (latin != null && !latin.StartsWith("+", StringComparison.Ordinal))
-            return latin;
-        var ea = defRp.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
-        if (ea != null && !ea.StartsWith("+", StringComparison.Ordinal))
-            return ea;
-        return null;
-    }
-
-    /// <summary>
-    /// Resolves font name from: shape lstStyle defRPr → layout/master placeholder
-    /// (defRPr first, falling back to a literal Run.LatinFont) → master text styles
-    /// → presentation defaults → theme fonts (major for titles, minor for body).
-    /// BUG-FIX(B4): the prior implementation only inspected the first literal
-    /// Run inside layout/master placeholders and ignored the lstStyle defRPr,
-    /// silently dropping the placeholder's intended typeface.
-    /// </summary>
-    private static string? ResolveEffectiveFont(Shape shape, SlidePart slidePart,
-        PlaceholderShape? ph, bool isTitle, bool isSubTitle, PlaceholderValues phType, int level = 0)
-    {
-        // 1. Shape's own list style defRPr at this level
-        var lstStyle = shape.TextBody?.GetFirstChild<Drawing.ListStyle>();
-        var defRp = GetLevelDefRp(lstStyle, level);
-        var explicitFont = GetExplicitFontFromDefRp(defRp);
-        if (explicitFont != null) return explicitFont;
-
-        // 2. Layout/master placeholder matching — check defRPr first (this is
-        // where master placeholder fonts live), then any literal run as a
-        // last resort for hand-authored masters.
-        if (ph != null)
-        {
-            var layoutTree = slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.ShapeTree;
-            var masterTree = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.ShapeTree;
-            foreach (var tree in new[] { layoutTree, masterTree })
-            {
-                if (tree == null) continue;
-                foreach (var candidate in tree.Elements<Shape>())
-                {
-                    var cPh = candidate.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
-                        ?.GetFirstChild<PlaceholderShape>();
-                    if (cPh == null || !PlaceholderMatches(ph, cPh)) continue;
-                    var cLstStyle = candidate.TextBody?.GetFirstChild<Drawing.ListStyle>();
-                    var cDefRp = GetLevelDefRp(cLstStyle, level);
-                    var cFont = GetExplicitFontFromDefRp(cDefRp);
-                    if (cFont != null) return cFont;
-                    // Legacy fallback: literal Run.RunProperties.LatinFont.
-                    var cRun = candidate.TextBody?.Descendants<Drawing.Run>().FirstOrDefault();
-                    var rLatin = cRun?.RunProperties?.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value;
-                    if (rLatin != null && !rLatin.StartsWith("+", StringComparison.Ordinal))
-                        return rLatin;
-                    var rEa = cRun?.RunProperties?.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
-                    if (rEa != null && !rEa.StartsWith("+", StringComparison.Ordinal))
-                        return rEa;
-                }
-            }
-        }
-
-        // 3. Master text styles
-        var masterTxStyles = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.TextStyles;
-        if (masterTxStyles != null)
-        {
-            OpenXmlCompositeElement? styleList = isTitle ? masterTxStyles.TitleStyle
-                : (isSubTitle || phType == PlaceholderValues.Body || phType == PlaceholderValues.Object)
-                    ? masterTxStyles.BodyStyle : masterTxStyles.OtherStyle;
-            if (styleList != null)
-            {
-                var sDefRp = GetLevelDefRp(styleList, level);
-                var sFont = GetExplicitFontFromDefRp(sDefRp);
-                if (sFont != null) return sFont;
-            }
-        }
-
-        // 4. Presentation-level defaultTextStyle
-        var presStyle = GetPresentationDefaultTextStyle(slidePart);
-        if (presStyle != null)
-        {
-            var pDefRp = GetLevelDefRp(presStyle, level);
-            var pFont = GetExplicitFontFromDefRp(pDefRp);
-            if (pFont != null) return pFont;
-        }
-
-        // 5. Theme fonts (major for titles, minor for body)
-        var theme = slidePart.SlideLayoutPart?.SlideMasterPart?.ThemePart?.Theme;
-        var fontScheme = theme?.ThemeElements?.FontScheme;
-        if (fontScheme == null) return null;
-
-        if (isTitle)
-        {
-            return fontScheme.MajorFont?.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value
-                ?? fontScheme.MajorFont?.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
-        }
-        else
-        {
-            return fontScheme.MinorFont?.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value
-                ?? fontScheme.MinorFont?.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
-        }
-    }
-
-    /// <summary>
-    /// Resolves text color from master text styles and presentation defaults.
-    /// </summary>
-    private static string? ResolveEffectiveColor(Shape shape, SlidePart slidePart,
-        PlaceholderShape? ph, bool isTitle, bool isSubTitle, PlaceholderValues phType, int level = 0)
-    {
-        // 1. Layout/master placeholder
-        if (ph != null)
-        {
-            var layoutTree = slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.ShapeTree;
-            var masterTree = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.ShapeTree;
-            foreach (var tree in new[] { layoutTree, masterTree })
-            {
-                if (tree == null) continue;
-                foreach (var candidate in tree.Elements<Shape>())
-                {
-                    var cPh = candidate.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
-                        ?.GetFirstChild<PlaceholderShape>();
-                    if (cPh == null || !PlaceholderMatches(ph, cPh)) continue;
-                    var cLstStyle = candidate.TextBody?.GetFirstChild<Drawing.ListStyle>();
-                    var cDefRp = GetLevelDefRp(cLstStyle, level);
-                    var cColor = ReadColorFromFill(cDefRp?.GetFirstChild<Drawing.SolidFill>());
-                    if (cColor != null) return cColor;
-                }
-            }
-        }
-
-        // 2. Master text styles
-        var masterTxStyles = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.TextStyles;
-        if (masterTxStyles != null)
-        {
-            OpenXmlCompositeElement? styleList = isTitle ? masterTxStyles.TitleStyle
-                : (isSubTitle || phType == PlaceholderValues.Body || phType == PlaceholderValues.Object)
-                    ? masterTxStyles.BodyStyle : masterTxStyles.OtherStyle;
-            if (styleList != null)
-            {
-                var sDefRp = GetLevelDefRp(styleList, level);
-                var sColor = ReadColorFromFill(sDefRp?.GetFirstChild<Drawing.SolidFill>());
-                if (sColor != null) return sColor;
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Resolves bold from master text styles.
-    /// </summary>
-    private static bool? ResolveEffectiveBold(Shape shape, SlidePart slidePart,
-        PlaceholderShape? ph, bool isTitle, bool isSubTitle, PlaceholderValues phType, int level = 0)
-    {
-        // Master text styles
-        var masterTxStyles = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.TextStyles;
-        if (masterTxStyles != null)
-        {
-            OpenXmlCompositeElement? styleList = isTitle ? masterTxStyles.TitleStyle
-                : (isSubTitle || phType == PlaceholderValues.Body || phType == PlaceholderValues.Object)
-                    ? masterTxStyles.BodyStyle : masterTxStyles.OtherStyle;
-            if (styleList != null)
-            {
-                var sDefRp = GetLevelDefRp(styleList, level);
-                if (sDefRp?.Bold?.HasValue == true) return sDefRp.Bold.Value;
-            }
-        }
-
-        return null;
-    }
 
     /// <summary>
     /// Gets the presentation-level DefaultTextStyle by navigating from a SlidePart.

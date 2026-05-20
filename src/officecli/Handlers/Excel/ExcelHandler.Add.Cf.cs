@@ -125,7 +125,7 @@ public partial class ExcelHandler
         var cfWorksheet = FindWorksheet(cfSheetName)
             ?? throw new ArgumentException($"Sheet not found: {cfSheetName}");
 
-        var sqref = properties.GetValueOrDefault("sqref") ?? properties.GetValueOrDefault("range") ?? properties.GetValueOrDefault("ref", "A1:A10");
+        var sqref = ValidateSqref(properties.GetValueOrDefault("sqref") ?? properties.GetValueOrDefault("range") ?? properties.GetValueOrDefault("ref", "A1:A10"), "ref");
         var minVal = properties.ContainsKey("min") ? properties["min"] : (string?)null;
         var maxVal = properties.ContainsKey("max") ? properties["max"] : (string?)null;
         var cfColor = properties.GetValueOrDefault("color", "638EC6");
@@ -215,7 +215,7 @@ public partial class ExcelHandler
         };
         if (properties.TryGetValue("direction", out var dbDir))
         {
-            var dirNorm = dbDir.ToLowerInvariant().Replace("-", "").Replace("_", "");
+            var dirNorm = SchemaKeyNormalizer.Normalize(dbDir);
             x14DataBar.Direction = dirNorm switch
             {
                 "lefttoright" or "ltr" => X14.DataBarDirectionValues.LeftToRight,
@@ -272,7 +272,7 @@ public partial class ExcelHandler
             ?? throw new ArgumentException($"Sheet not found: {csSheetName}");
 
         // CONSISTENCY(cf-sqref): three-level fallback matches dataBar/formulacf branches
-        var csSqref = properties.GetValueOrDefault("sqref") ?? properties.GetValueOrDefault("range") ?? properties.GetValueOrDefault("ref", "A1:A10");
+        var csSqref = ValidateSqref(properties.GetValueOrDefault("sqref") ?? properties.GetValueOrDefault("range") ?? properties.GetValueOrDefault("ref", "A1:A10"), "ref");
         var minColor = properties.GetValueOrDefault("mincolor", "F8696B");
         var maxColor = properties.GetValueOrDefault("maxcolor", "63BE7B");
         var midColor = properties.GetValueOrDefault("midcolor");
@@ -328,7 +328,7 @@ public partial class ExcelHandler
             ?? throw new ArgumentException($"Sheet not found: {isSheetName}");
 
         // CONSISTENCY(cf-sqref): three-level fallback matches dataBar/formulacf branches
-        var isSqref = properties.GetValueOrDefault("sqref") ?? properties.GetValueOrDefault("range") ?? properties.GetValueOrDefault("ref", "A1:A10");
+        var isSqref = ValidateSqref(properties.GetValueOrDefault("sqref") ?? properties.GetValueOrDefault("range") ?? properties.GetValueOrDefault("ref", "A1:A10"), "ref");
         var iconSetName = properties.GetValueOrDefault("iconset") ?? properties.GetValueOrDefault("icons", "3TrafficLights1");
         var reverse = properties.TryGetValue("reverse", out var revVal) && IsTruthy(revVal);
         var showValue = !properties.TryGetValue("showvalue", out var svVal) || IsTruthy(svVal);
@@ -388,7 +388,7 @@ public partial class ExcelHandler
             ?? throw new ArgumentException($"Sheet not found: {fcfSheetName}");
 
         // CONSISTENCY(cf-sqref): three-level fallback matches dataBar/colorScale branches
-        var fcfSqref = properties.GetValueOrDefault("sqref") ?? properties.GetValueOrDefault("range") ?? properties.GetValueOrDefault("ref", "A1:A10");
+        var fcfSqref = ValidateSqref(properties.GetValueOrDefault("sqref") ?? properties.GetValueOrDefault("range") ?? properties.GetValueOrDefault("ref", "A1:A10"), "ref");
         var fcfFormula = properties.GetValueOrDefault("formula")
             ?? throw new ArgumentException("Formula-based conditional formatting requires 'formula' property (e.g. formula=$A1>100)");
 
@@ -461,9 +461,9 @@ public partial class ExcelHandler
             ?? throw new ArgumentException($"Sheet not found: {cisSheetName}");
 
         // CONSISTENCY(cf-sqref): three-level fallback matches dataBar/colorScale branches
-        var cisSqref = properties.GetValueOrDefault("sqref")
+        var cisSqref = ValidateSqref(properties.GetValueOrDefault("sqref")
             ?? properties.GetValueOrDefault("range")
-            ?? properties.GetValueOrDefault("ref", "A1:A10");
+            ?? properties.GetValueOrDefault("ref", "A1:A10"), "ref");
         var opStr = (properties.GetValueOrDefault("operator") ?? "greaterThan").Trim();
         var opVal = opStr.ToLowerInvariant() switch
         {
@@ -486,6 +486,14 @@ public partial class ExcelHandler
         var secondary = properties.GetValueOrDefault("value2")
             ?? properties.GetValueOrDefault("formula2")
             ?? properties.GetValueOrDefault("maxvalue");
+
+        if ((opVal == ConditionalFormattingOperatorValues.Between
+             || opVal == ConditionalFormattingOperatorValues.NotBetween)
+            && secondary == null)
+        {
+            throw new ArgumentException(
+                $"cellIs operator '{opStr}' requires 'value2' property (e.g. value=10 value2=50).");
+        }
 
         // Build DifferentialFormat (dxf)
         var cisDxf = new DifferentialFormat();
@@ -561,7 +569,7 @@ public partial class ExcelHandler
         var cfNewSheetName = cfNewSegments[0];
         var cfNewWorksheet = FindWorksheet(cfNewSheetName)
             ?? throw new ArgumentException($"Sheet not found: {cfNewSheetName}");
-        var cfNewSqref = properties.GetValueOrDefault("sqref") ?? properties.GetValueOrDefault("range") ?? properties.GetValueOrDefault("ref", "A1:A10");
+        var cfNewSqref = ValidateSqref(properties.GetValueOrDefault("sqref") ?? properties.GetValueOrDefault("range") ?? properties.GetValueOrDefault("ref", "A1:A10"), "ref");
         var cfNewPriority = NextCfPriority(GetSheet(cfNewWorksheet));
 
         ConditionalFormattingRule cfNewRule;

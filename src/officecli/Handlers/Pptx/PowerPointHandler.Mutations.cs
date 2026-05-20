@@ -31,12 +31,52 @@ public partial class PowerPointHandler
         path = ResolveIdPath(path);
         path = ResolveLastPredicates(path);
 
+        // /slide[*] — remove every slide. Used by `dump` to clear a non-empty
+        // target before replaying slide content, so round-trip replay onto an
+        // already-populated deck does not double the slide count. No-op when
+        // the deck is empty (clean replay case).
+        if (path == "/slide[*]")
+        {
+            var presentationPart0 = _doc.PresentationPart
+                ?? throw new InvalidOperationException("Presentation not found");
+            var presentation0 = presentationPart0.Presentation
+                ?? throw new InvalidOperationException("No presentation");
+            var slideIdList0 = presentation0.GetFirstChild<SlideIdList>();
+            if (slideIdList0 != null)
+            {
+                foreach (var sid in slideIdList0.Elements<SlideId>().ToList())
+                {
+                    var rid = sid.RelationshipId?.Value;
+                    sid.Remove();
+                    if (rid != null)
+                    {
+                        try { presentationPart0.DeletePart(presentationPart0.GetPartById(rid)); }
+                        catch { /* part already gone */ }
+                    }
+                }
+                presentation0.Save();
+            }
+            return null;
+        }
+
         // BUG-R36-B11: /slide[N]/comment[M] removal.
         var cmtRemoveMatch = Regex.Match(path, @"^/slide\[(\d+)\]/comment\[(\d+)\]$");
         if (cmtRemoveMatch.Success)
         {
             if (!RemoveSlideComment(path))
                 throw new ArgumentException($"Comment not found: {path}");
+            return null;
+        }
+
+        // Modern p188 threaded comment removal — top-level path removes the
+        // whole thread (mirror PowerPoint UI); reply path removes just one
+        // reply.
+        var mcRemoveMatch = Regex.Match(path,
+            @"^/slide\[(\d+)\]/moderncomment\[(\d+)\](?:/reply\[(\d+)\])?$");
+        if (mcRemoveMatch.Success)
+        {
+            if (!RemoveModernComment(path))
+                throw new ArgumentException($"Modern comment not found: {path}");
             return null;
         }
 
@@ -183,6 +223,35 @@ public partial class PowerPointHandler
             return null;
         }
 
+        // CONSISTENCY(master-layout-shape-edit): typed Remove on master/layout
+        // shape paths. Mirrors the Add/Set branches added in 237b7fb4; the
+        // parent path (everything before /shape[K]) is resolved via the shared
+        // TryResolveMasterOrLayoutShapeParent helper so all three forms work:
+        //   /slidemaster[N]/shape[K]
+        //   /slidelayout[N]/shape[K]
+        //   /slidemaster[N]/slidelayout[L]/shape[K]
+        // No referential cleanup needed — slides reference layouts, not the
+        // shapes inside them, so dropping a shape from a master/layout shape
+        // tree is a pure tree-edit. The container-remove guard above already
+        // rejects removing the master/layout part itself.
+        var masterLayoutShapeMatch = Regex.Match(path,
+            @"^(/slidemaster\[\d+\](?:/slidelayout\[\d+\])?|/slidelayout\[\d+\])/shape\[(\d+)\]$",
+            RegexOptions.IgnoreCase);
+        if (masterLayoutShapeMatch.Success)
+        {
+            var parentPath = masterLayoutShapeMatch.Groups[1].Value;
+            var shapeIdx1 = int.Parse(masterLayoutShapeMatch.Groups[2].Value);
+            var resolved = TryResolveMasterOrLayoutShapeParent(parentPath)
+                ?? throw new ArgumentException($"Invalid master/layout parent path: {parentPath}");
+            var (mlTree, _, mlRoot, _) = resolved;
+            var mlShapes = mlTree.Elements<Shape>().ToList();
+            if (shapeIdx1 < 1 || shapeIdx1 > mlShapes.Count)
+                throw new ArgumentException($"Shape {shapeIdx1} not found (total: {mlShapes.Count})");
+            mlShapes[shapeIdx1 - 1].Remove();
+            mlRoot.Save();
+            return null;
+        }
+
         // CONSISTENCY(pptx-group-flatten): optional /group[K] ancestors between
         // /slide[N] and the leaf element type, so Remove works on paths Query
         // emits (e.g. /slide[1]/group[2]/shape[3]) without requiring callers
@@ -190,7 +259,7 @@ public partial class PowerPointHandler
         // segment so /slide[1]/group[1] still parses as "remove the group at
         // root" (ancestor empty, leaf = group[1]) rather than "remove slide
         // with group ancestor 1".
-        var slideMatch = Regex.Match(path, @"^/slide\[(\d+)\](?:((?:/group\[\d+\])*)/(\w+)\[(\d+)\])?$");
+        var slideMatch = Regex.Match(path, @"^/slide\[(\d+)\](?:((?:/group\[\d+\])*)/(\w+)\[(\w+)\])?$");
         if (!slideMatch.Success)
             throw new ArgumentException($"Invalid path: {path}. Expected format: /slide[N] or /slide[N]/element[M] (e.g. /slide[1], /slide[1]/shape[2])");
 
@@ -249,7 +318,27 @@ public partial class PowerPointHandler
         }
 
         var elementType = slideMatch.Groups[3].Value;
-        var elementIdx = int.Parse(slideMatch.Groups[4].Value);
+        var elementIdxToken = slideMatch.Groups[4].Value;
+
+        // Placeholder remove: accept both numeric index (/slide[N]/placeholder[K])
+        // and type-name selectors (/slide[N]/placeholder[title]) that Query emits.
+        // ResolvePlaceholderShape materializes layout-inherited placeholders onto
+        // the slide; removing that materialized Shape is the canonical delete.
+        if (elementType == "placeholder")
+        {
+            if (!string.IsNullOrEmpty(groupAncestorChain))
+                throw new ArgumentException("placeholder remove does not support /group[K] ancestors");
+            var phShape = ResolvePlaceholderShape(slidePart, elementIdxToken);
+            var phShapeId = phShape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value ?? 0;
+            if (phShapeId != 0)
+                RemoveShapeAnimations(GetSlide(slidePart), (uint)phShapeId);
+            phShape.Remove();
+            GetSlide(slidePart).Save();
+            return null;
+        }
+
+        if (!int.TryParse(elementIdxToken, out var elementIdx))
+            throw new ArgumentException($"Invalid index '{elementIdxToken}' for element type '{elementType}'. Expected a positive integer.");
 
         if (elementType == "shape")
         {

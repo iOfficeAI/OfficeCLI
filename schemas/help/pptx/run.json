@@ -36,6 +36,55 @@
       "readback": "signed number (e.g. 30, -25, 0)",
       "enforcement": "strict"
     },
+    "kern": {
+      "type": "int",
+      "description": "minimum font size (in hundredths of a point) at which character kerning is applied. ECMA-376 §21.1.2.3.9 a:rPr/@kern. 0 disables; 1 enables for all sizes; e.g. 1200 = kern from 12pt up.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop kern=0",
+        "--prop kern=1200"
+      ],
+      "readback": "raw OOXML integer (hundredths of a point)",
+      "enforcement": "strict"
+    },
+    "spacing": {
+      "type": "number",
+      "description": "character spacing in points. Stored as 1/100 pt in OOXML (a:rPr/@spc); readback is the point value. Negative values tighten.",
+      "aliases": [
+        "charspacing",
+        "letterspacing",
+        "spc"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop spacing=2",
+        "--prop charspacing=-1",
+        "--prop spacing=0.5"
+      ],
+      "readback": "point value as decimal string (e.g. '2', '-1', '0.5')",
+      "enforcement": "strict"
+    },
+    "lang": {
+      "type": "string",
+      "description": "BCP-47 language tag for the run (ECMA-376 §21.1.2.3.9 a:rPr/@lang). DrawingML exposes a single primary-language slot — there is no per-script (latin/ea/cs) split like Word; 'lang.latin' is accepted as an alias on input, 'lang.ea'/'lang.cs' are rejected. Validated against a BCP-47 shape, max 35 chars.",
+      "aliases": [
+        "lang.latin"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop lang=en-US",
+        "--prop lang=zh-CN",
+        "--prop lang=ja-JP"
+      ],
+      "readback": "BCP-47 tag as written (e.g. 'en-US')",
+      "enforcement": "strict"
+    },
     "cap": {
       "type": "enum",
       "values": [

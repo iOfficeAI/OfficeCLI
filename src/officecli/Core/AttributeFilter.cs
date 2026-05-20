@@ -17,15 +17,19 @@ internal static class AttributeFilter
 
     public record Condition(string Key, FilterOp Op, string Value);
 
-    // Regex: [key op value] where op is ~=, >=, <=, !=, =, >, or <
+    // Regex: [key op value] where op is ~=, >=, <=, !=, =, >, or <.
+    // The leading '@' is an optional XPath-style attribute prefix accepted
+    // for round-trip parity with Get/Add output (e.g. `/slide[1]/shape[@id=10000]`
+    // pastes back into query unchanged). Stripped from the captured key
+    // group via the non-capturing prefix.
     // Order matters: multi-char operators before single-char to avoid partial match
     private static readonly Regex AttrRegex = new(
-        @"\[([\w.]+)\s*(~=|>=|<=|\\?!=|=|>|<)\s*([^\]]*)\]",
+        @"\[@?([\w.]+)\s*(~=|>=|<=|\\?!=|=|>|<)\s*([^\]]*)\]",
         RegexOptions.Compiled);
 
-    // Regex: [key] (has-attribute, no operator)
+    // Regex: [key] (has-attribute, no operator). Optional '@' prefix mirrors AttrRegex.
     private static readonly Regex HasAttrRegex = new(
-        @"\[([\w.]+)\]",
+        @"\[@?([\w.]+)\]",
         RegexOptions.Compiled);
 
     // Regex to find any [...] block (for validation)

@@ -76,13 +76,27 @@ public partial class PowerPointHandler
                     case "slidewidth" or "width":
                         var sldSz = presentation.GetFirstChild<SlideSize>()
                             ?? presentation.AppendChild(new SlideSize());
-                        sldSz.Cx = Core.EmuConverter.ParseEmuAsInt(value);
+                        var cxVal = Core.EmuConverter.ParseEmuAsInt(value);
+                        // ECMA-376 ST_SlideSizeCoordinate: MinInclusive=914400
+                        // (1 inch), MaxInclusive=51206400 (56 inches). Out-of-
+                        // range values produce a schema-invalid file that
+                        // PowerPoint either silently clamps or refuses to open;
+                        // surface the constraint up front. Negative is already
+                        // rejected by ParseEmuAsInt.
+                        if (cxVal < 914400 || cxVal > 51206400)
+                            throw new ArgumentException(
+                                $"Invalid '{key}' value: '{value}'. Slide width must be between 914400 and 51206400 EMU (1in–56in / 2.54cm–142.24cm) per OOXML ST_SlideSizeCoordinate.");
+                        sldSz.Cx = cxVal;
                         sldSz.Type = SlideSizeValues.Custom;
                         break;
                     case "slideheight" or "height":
                         var sldSz2 = presentation.GetFirstChild<SlideSize>()
                             ?? presentation.AppendChild(new SlideSize());
-                        sldSz2.Cy = Core.EmuConverter.ParseEmuAsInt(value);
+                        var cyVal = Core.EmuConverter.ParseEmuAsInt(value);
+                        if (cyVal < 914400 || cyVal > 51206400)
+                            throw new ArgumentException(
+                                $"Invalid '{key}' value: '{value}'. Slide height must be between 914400 and 51206400 EMU (1in–56in / 2.54cm–142.24cm) per OOXML ST_SlideSizeCoordinate.");
+                        sldSz2.Cy = cyVal;
                         sldSz2.Type = SlideSizeValues.Custom;
                         break;
                     case "slidesize":
@@ -99,29 +113,40 @@ public partial class PowerPointHandler
                             unsupported.Add(key);
                         }
                         break;
-                    // Core document properties
+                    // Core document properties. Validate at the write boundary —
+                    // these fan out to PackageProperties.Save() at Close, where
+                    // an unrejected XML-illegal codepoint surfaces as an opaque
+                    // shutdown failure that poisons the package (data loss).
                     case "title":
+                        XmlTextValidator.ValidateOrThrow(value, key);
                         _doc.PackageProperties.Title = value;
                         break;
                     case "author" or "creator":
+                        XmlTextValidator.ValidateOrThrow(value, key);
                         _doc.PackageProperties.Creator = value;
                         break;
                     case "subject":
+                        XmlTextValidator.ValidateOrThrow(value, key);
                         _doc.PackageProperties.Subject = value;
                         break;
                     case "description":
+                        XmlTextValidator.ValidateOrThrow(value, key);
                         _doc.PackageProperties.Description = value;
                         break;
                     case "category":
+                        XmlTextValidator.ValidateOrThrow(value, key);
                         _doc.PackageProperties.Category = value;
                         break;
                     case "keywords":
+                        XmlTextValidator.ValidateOrThrow(value, key);
                         _doc.PackageProperties.Keywords = value;
                         break;
                     case "lastmodifiedby":
+                        XmlTextValidator.ValidateOrThrow(value, key);
                         _doc.PackageProperties.LastModifiedBy = value;
                         break;
                     case "revision":
+                        XmlTextValidator.ValidateOrThrow(value, key);
                         _doc.PackageProperties.Revision = value;
                         break;
                     case "defaultfont" or "font":
@@ -155,6 +180,14 @@ public partial class PowerPointHandler
                         break;
                 }
             }
+            // Bump dcterms:modified on any successful Set to /. Real PowerPoint
+            // (and Word/Excel) always rewrite the last-modified timestamp on
+            // save; without this, downstream tools that diff core.xml after an
+            // edit see no change and assume the file is untouched. Skipped when
+            // every requested property was unsupported (applied.Count == 0) so
+            // a typo-only call doesn't masquerade as a successful mutation.
+            if (properties.Count > unsupported.Count)
+                _doc.PackageProperties.Modified = DateTime.UtcNow;
             presentation.Save();
             return unsupported;
         }
@@ -163,15 +196,36 @@ public partial class PowerPointHandler
         // /slidemaster[N], /slidemaster[N]/slidelayout[M], /slidelayout[N]
         // Handles background and name props. Falls through for shape-nested paths.
         {
-            var masterBgMatch = Regex.Match(path, @"^/slidemaster\[(\d+)\](?:/slidelayout\[(\d+)\])?$", RegexOptions.IgnoreCase);
-            var layoutBgMatch = Regex.Match(path, @"^/slidelayout\[(\d+)\]$", RegexOptions.IgnoreCase);
+            // CONSISTENCY(master-layout-path-aliases): accept the short forms
+            // `/master[N]` and `/layout[N]` documented in Handlers/Pptx/CLAUDE.md
+            // alongside the long forms `/slidemaster[N]` and `/slidelayout[N]`.
+            // Long form is what Get/Add emit; short form is accepted-only on input.
+            var masterBgMatch = Regex.Match(path, @"^/(?:slidemaster|master)\[(\d+)\](?:/(?:slidelayout|layout)\[(\d+)\])?$", RegexOptions.IgnoreCase);
+            var layoutBgMatch = Regex.Match(path, @"^/(?:slidelayout|layout)\[(\d+)\]$", RegexOptions.IgnoreCase);
             if (masterBgMatch.Success || layoutBgMatch.Success)
                 return SetMasterOrLayoutBackgroundByPath(masterBgMatch, layoutBgMatch, properties);
         }
 
-        // Try slideMaster/slideLayout shape editing: /slideMaster[N]/shape[M] or /slideLayout[N]/shape[M]
-        var masterShapeMatch = Regex.Match(path, @"^/(slideMaster|slideLayout)\[(\d+)\](?:/(\w+)\[(\d+)\])?$");
+        // CONSISTENCY(master-layout-shape-edit): slideMaster/slideLayout shape editing.
+        // Accepts three parent forms (case-insensitive — NormalizePptxPathSegmentCasing
+        // already lowercased the LocalName, so the previous case-sensitive regex
+        // dropped every call and surfaced the misleading "Path must start with /slide[N]"
+        // generic-fallback error):
+        //   /slidemaster[N]/shape[K]
+        //   /slidelayout[N]/shape[K]                        — flat top-level layout numbering
+        //   /slidemaster[N]/slidelayout[L]/shape[K]         — nested form
+        // CONSISTENCY(master-layout-path-aliases): accept short forms /master[N]
+        // and /layout[N] alongside the long /slidemaster[N] and /slidelayout[N].
+        // Group[1] captures kind (normalized to long form below by SetMasterShapeByPath
+        // via case-insensitive comparison on "slidemaster" prefix).
+        var masterShapeMatch = Regex.Match(path,
+            @"^/(slidemaster|master|slidelayout|layout)\[(\d+)\](?:/(\w+)\[(\d+)\])?$",
+            RegexOptions.IgnoreCase);
         if (masterShapeMatch.Success) return SetMasterShapeByPath(masterShapeMatch, properties);
+        var nestedMasterShapeMatch = Regex.Match(path,
+            @"^/(?:slidemaster|master)\[(\d+)\]/(?:slidelayout|layout)\[(\d+)\](?:/(\w+)\[(\d+)\])?$",
+            RegexOptions.IgnoreCase);
+        if (nestedMasterShapeMatch.Success) return SetNestedMasterLayoutShapeByPath(nestedMasterShapeMatch, properties);
 
         // Try notes path: /slide[N]/notes
         var notesSetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/notes$");
@@ -225,6 +279,14 @@ public partial class PowerPointHandler
         var tblColMatch = Regex.Match(path, @"^/slide\[(\d+)\]/table\[(\d+)\]/col\[(\d+)\]$");
         if (tblColMatch.Success) return SetTableColByPath(tblColMatch, properties);
 
+        // Try placeholder paragraph/run path: /slide[N]/placeholder[X]/paragraph[P]/run[K]
+        var phParaRunMatch = Regex.Match(path, @"^/slide\[(\d+)\]/placeholder\[(\w+)\]/(?:paragraph|p)\[(\d+)\]/(?:run|r)\[(\d+)\]$");
+        if (phParaRunMatch.Success) return SetPlaceholderParagraphRunByPath(phParaRunMatch, properties);
+
+        // Try placeholder paragraph path: /slide[N]/placeholder[X]/paragraph[P]
+        var phParaMatch = Regex.Match(path, @"^/slide\[(\d+)\]/placeholder\[(\w+)\]/(?:paragraph|p)\[(\d+)\]$");
+        if (phParaMatch.Success) return SetPlaceholderParagraphByPath(phParaMatch, properties);
+
         // Try placeholder path: /slide[N]/placeholder[M] or /slide[N]/placeholder[type]
         var phMatch = Regex.Match(path, @"^/slide\[(\d+)\]/placeholder\[(\w+)\]$");
         if (phMatch.Success) return SetPlaceholderByPath(phMatch, properties);
@@ -264,6 +326,19 @@ public partial class PowerPointHandler
         var cxnMatch = Regex.Match(path, @"^/slide\[(\d+)\]/(?:connector|connection)\[(\d+)\]$");
         if (cxnMatch.Success) return SetConnectorByPath(cxnMatch, properties);
 
+        // Try group inner paragraph/run path: /slide[N]/group[M]/shape[K]/paragraph[P]/run[R]
+        // CONSISTENCY(group-inner-shape): Get supports the nested paragraph/run
+        // path on shapes inside a group; Set used to fall through to the
+        // generic XML fallback which navigates by LocalName and cannot find
+        // "group" (real element is p:grpSp). Route explicitly to the same
+        // helpers used by /slide[N]/shape[K]/paragraph[P][/run[R]].
+        var grpParaRunMatch = Regex.Match(path, @"^/slide\[(\d+)\]/group\[(\d+)\]/shape\[(\d+)\]/(?:paragraph|p)\[(\d+)\]/(?:run|r)\[(\d+)\]$");
+        if (grpParaRunMatch.Success) return SetGroupParagraphRunByPath(grpParaRunMatch, properties);
+
+        // Try group inner paragraph path: /slide[N]/group[M]/shape[K]/paragraph[P]
+        var grpParaMatch = Regex.Match(path, @"^/slide\[(\d+)\]/group\[(\d+)\]/shape\[(\d+)\]/(?:paragraph|p)\[(\d+)\]$");
+        if (grpParaMatch.Success) return SetGroupParagraphByPath(grpParaMatch, properties);
+
         // Try group inner shape path: /slide[N]/group[M]/shape[K]
         // CONSISTENCY(group-inner-shape): Get supports this; Set must too.
         var grpInnerShapeMatch = Regex.Match(path, @"^/slide\[(\d+)\]/group\[(\d+)\]/shape\[(\d+)\]$");
@@ -284,6 +359,28 @@ public partial class PowerPointHandler
             return unsupported;
         }
 
+        // Modern p188 threaded comments: /slide[N]/moderncomment[K] or
+        // /slide[N]/moderncomment[K]/reply[R]. Path was lowercased by
+        // NormalizePptxPathSegmentCasing, so match the folded form.
+        var mcReplyMatch = Regex.Match(path, @"^/slide\[(\d+)\]/moderncomment\[(\d+)\]/reply\[(\d+)\]$");
+        if (mcReplyMatch.Success)
+        {
+            var rResolved = ResolveModernCommentReply(path)
+                ?? throw new ArgumentException($"Modern comment reply not found: {path}");
+            var u = SetModernCommentProperties(rResolved.part, rResolved.reply, properties);
+            rResolved.part.CommentList!.Save();
+            return u;
+        }
+        var mcMatch = Regex.Match(path, @"^/slide\[(\d+)\]/moderncomment\[(\d+)\]$");
+        if (mcMatch.Success)
+        {
+            var resolved = ResolveModernComment(path)
+                ?? throw new ArgumentException($"Modern comment not found: {path}");
+            var u = SetModernCommentProperties(resolved.part, resolved.comment, properties);
+            resolved.part.CommentList!.Save();
+            return u;
+        }
+
         // Generic XML fallback: navigate to element and set attributes
         {
             SlidePart fbSlidePart;
@@ -300,7 +397,7 @@ public partial class PowerPointHandler
             {
                 var allSegments = GenericXmlQuery.ParsePathSegments(path);
                 if (allSegments.Count == 0 || !allSegments[0].Name.Equals("slide", StringComparison.OrdinalIgnoreCase) || !allSegments[0].Index.HasValue)
-                    throw new ArgumentException($"Path must start with /slide[N]: {path}");
+                    throw new ArgumentException($"Path must start with /slide[N], /slidemaster[N], or /slidelayout[N]: {path}");
 
                 var fbSlideIdx = allSegments[0].Index!.Value;
                 var fbSlideParts = GetSlideParts().ToList();

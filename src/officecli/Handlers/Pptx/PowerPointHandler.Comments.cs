@@ -80,6 +80,7 @@ public partial class PowerPointHandler
         var slidePart = slideParts[slideIdx - 1];
 
         var text = properties.GetValueOrDefault("text") ?? properties.GetValueOrDefault("comment") ?? "";
+        XmlTextValidator.ValidateOrThrow(text, "text");
         var author = properties.GetValueOrDefault("author", "OfficeCli");
         var initials = properties.GetValueOrDefault("initials", DeriveInitials(author));
 
@@ -106,8 +107,13 @@ public partial class PowerPointHandler
         // Default to top-left if omitted.
         var x = properties.TryGetValue("x", out var xv) ? EmuConverter.ParseEmu(xv) : 0L;
         var y = properties.TryGetValue("y", out var yv) ? EmuConverter.ParseEmu(yv) : 0L;
+        // CONSISTENCY(comment-date-utc): pin OOXML p:cm/@dt to UTC `Z` form so
+        // round-trip readback is timezone-agnostic. DateTime.TryParse with a
+        // local-TZ or `Z` input produces Kind=Local/Utc; OpenXml then serializes
+        // local-kind values with the host offset (e.g. +08:00), and re-read
+        // gives a different readback string on differently-tz'd machines.
         var dt = properties.TryGetValue("date", out var dv) && DateTime.TryParse(dv, out var parsedDt)
-            ? parsedDt
+            ? NormalizeToUtc(parsedDt)
             : DateTime.UtcNow;
 
         var commentsPart = GetOrCreateSlideCommentsPart(slidePart);
@@ -149,13 +155,50 @@ public partial class PowerPointHandler
         return $"/slide[{slideIdx}]/comment[{addedIdx}]";
     }
 
+    // CONSISTENCY(comment-date-utc): normalize any DateTime to Kind=Utc so
+    // OOXML serialization writes the `Z` form (not the host-local offset) and
+    // readback is identical on every machine. Unspecified-kind values are
+    // treated as already-UTC rather than local — the caller's input is almost
+    // always an ISO string and a missing offset is more often "no info" than
+    // "machine local".
+    private static DateTime NormalizeToUtc(DateTime dt) => dt.Kind switch
+    {
+        DateTimeKind.Utc => dt,
+        DateTimeKind.Local => dt.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(dt, DateTimeKind.Utc),
+    };
+
     private static string DeriveInitials(string name)
     {
+        // Pull the first letter/digit from each whitespace-separated token,
+        // skipping leading punctuation. Authors commonly embed email or
+        // handle suffixes ("Author 1 <test@example.com>", "Jane (Acme)"),
+        // and the prior implementation picked up the opening '<' / '(' as
+        // an initial — producing "A1<" or "J(" instead of a useful tag.
         if (string.IsNullOrWhiteSpace(name)) return "?";
         var parts = name.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0) return "?";
-        if (parts.Length == 1) return parts[0].Substring(0, Math.Min(2, parts[0].Length)).ToUpperInvariant();
-        return string.Concat(parts.Take(3).Select(p => char.ToUpperInvariant(p[0])));
+
+        static char? FirstWordChar(string token)
+        {
+            foreach (var ch in token)
+                if (char.IsLetterOrDigit(ch)) return char.ToUpperInvariant(ch);
+            return null;
+        }
+
+        if (parts.Length == 1)
+        {
+            var letters = parts[0].Where(char.IsLetterOrDigit)
+                .Select(char.ToUpperInvariant).Take(2).ToArray();
+            return letters.Length == 0 ? "?" : new string(letters);
+        }
+
+        var picks = parts.Select(FirstWordChar)
+            .Where(c => c.HasValue)
+            .Select(c => c!.Value)
+            .Take(3)
+            .ToArray();
+        return picks.Length == 0 ? "?" : new string(picks);
     }
 
     /// <summary>Resolve a /slide[N]/comment[M] path to (slidePart, comment).</summary>
@@ -186,6 +229,7 @@ public partial class PowerPointHandler
             Type = "comment",
             Text = comment.GetFirstChild<DocumentFormat.OpenXml.Presentation.Text>()?.Text ?? "",
         };
+        node.Format["text"] = node.Text;
         var authId = comment.AuthorId?.Value;
         var authors = _doc.PresentationPart?.CommentAuthorsPart?.CommentAuthorList?
             .Elements<CommentAuthor>().ToList();
@@ -199,8 +243,11 @@ public partial class PowerPointHandler
             }
         }
         node.Format["index"] = (int)(comment.Index?.Value ?? 0);
+        // CONSISTENCY(comment-date-utc): always emit UTC `Z` regardless of the
+        // on-disk @dt's stored offset, so Get and query give identical readback
+        // across machines with different local time zones.
         if (comment.DateTime?.Value != null)
-            node.Format["date"] = comment.DateTime.Value.ToString("o");
+            node.Format["date"] = NormalizeToUtc(comment.DateTime.Value).ToString("o");
         var pos = comment.GetFirstChild<Position>();
         if (pos != null)
         {
@@ -237,6 +284,7 @@ public partial class PowerPointHandler
                 case "text":
                 case "comment":
                 {
+                    XmlTextValidator.ValidateOrThrow(value, key);
                     var t = comment.GetFirstChild<DocumentFormat.OpenXml.Presentation.Text>();
                     if (t == null)
                     {
@@ -254,10 +302,34 @@ public partial class PowerPointHandler
                     var auth = authorsPart?.CommentAuthorList?.Elements<CommentAuthor>()
                         .FirstOrDefault(a => a.Id?.Value == authId);
                     if (auth == null) { unsupported.Add(key); break; }
-                    if (key.Equals("author", StringComparison.OrdinalIgnoreCase))
-                        auth.Name = value;
+                    XmlTextValidator.ValidateOrThrow(value, key);
+
+                    // CommentAuthor is a shared record keyed by id. Mutating
+                    // Name/Initials in place rewrites attribution for every
+                    // comment that references the same authorId — silently
+                    // poisoning siblings. If any other comment (on any slide)
+                    // still references this author, fork: route this comment
+                    // to a new CommentAuthor with the requested name+initials
+                    // (reusing an existing match if one happens to exist).
+                    // If this is the sole reference, mutate in place.
+                    var newName = key.Equals("author", StringComparison.OrdinalIgnoreCase)
+                        ? value : (auth.Name?.Value ?? "");
+                    var newInitials = key.Equals("initials", StringComparison.OrdinalIgnoreCase)
+                        ? value : (auth.Initials?.Value ?? DeriveInitials(newName));
+
+                    var otherRefs = CountAuthorReferences(authId, comment);
+                    if (otherRefs == 0)
+                    {
+                        // Sole user — safe to mutate the shared record.
+                        auth.Name = newName;
+                        auth.Initials = newInitials;
+                    }
                     else
-                        auth.Initials = value;
+                    {
+                        // Fork: assign this comment to a (possibly new) author.
+                        var forked = GetOrCreateCommentAuthor(newName, newInitials);
+                        comment.AuthorId = forked.Id?.Value ?? 0;
+                    }
                     break;
                 }
                 case "x":
@@ -272,7 +344,7 @@ public partial class PowerPointHandler
                 case "date":
                 {
                     if (DateTime.TryParse(value, out var dt))
-                        comment.DateTime = dt;
+                        comment.DateTime = NormalizeToUtc(dt);
                     else
                         throw new ArgumentException($"Invalid date '{value}' (expected ISO 8601).");
                     break;
@@ -283,6 +355,28 @@ public partial class PowerPointHandler
             }
         }
         return unsupported;
+    }
+
+    /// <summary>
+    /// Count how many comments across the whole deck reference the given
+    /// authorId, excluding the supplied comment. Used by author/initials
+    /// Set to decide whether mutating the shared CommentAuthor record is
+    /// safe or whether we must fork into a new author record.
+    /// </summary>
+    private int CountAuthorReferences(uint authId, Comment exclude)
+    {
+        int count = 0;
+        foreach (var sp in GetSlideParts())
+        {
+            var cp = sp.SlideCommentsPart;
+            if (cp?.CommentList == null) continue;
+            foreach (var c in cp.CommentList.Elements<Comment>())
+            {
+                if (ReferenceEquals(c, exclude)) continue;
+                if ((c.AuthorId?.Value ?? 0) == authId) count++;
+            }
+        }
+        return count;
     }
 
     internal bool RemoveSlideComment(string path)

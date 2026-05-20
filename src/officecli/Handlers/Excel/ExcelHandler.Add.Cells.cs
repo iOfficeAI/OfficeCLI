@@ -46,7 +46,15 @@ public partial class ExcelHandler
             var caseExact = string.Equals(caseMatch.Name, name, StringComparison.Ordinal);
             var isPlaceholder = sheets.Elements<Sheet>().Count() == 1
                 && IsPristineWorksheet(workbookPart, caseMatch);
-            if (!caseExact || !isPlaceholder)
+            // Placeholder claim is only meaningful when the caller actually
+            // supplies a sheet-level prop that would mutate the placeholder
+            // (autoFilter / tabColor / hidden). Without any such prop the
+            // "claim" is a true no-op and indistinguishable from a duplicate-
+            // name collision — reject so callers don't see fake success.
+            var hasClaimableProp = properties.ContainsKey("autoFilter")
+                || properties.ContainsKey("tabColor")
+                || properties.ContainsKey("hidden");
+            if (!caseExact || !isPlaceholder || !hasClaimableProp)
             {
                 throw new ArgumentException(
                     $"A sheet named '{caseMatch.Name}' already exists. Sheet names must be unique.");
@@ -172,6 +180,15 @@ public partial class ExcelHandler
         }
 
         var rowIdx = index ?? ((int)(sheetData.Elements<Row>().LastOrDefault()?.RowIndex?.Value ?? 0) + 1);
+
+        // Excel's row space tops out at 1048576 (2^20). The append branch
+        // above silently produced row[1048577+] when row[1048576] already
+        // existed, writing a file Excel rejects on open. Mirror the Set
+        // path's bound check (ExcelHandler.Set.cs row index guard) so the
+        // overflow surfaces as a clean invalid_value at Add time.
+        if (rowIdx < 1 || rowIdx > 1048576)
+            throw new ArgumentException(
+                $"Invalid row index {rowIdx}. Valid row range is 1-1048576.");
 
         // If inserting at an existing position, shift rows down first
         bool needsShift = index.HasValue && sheetData.Elements<Row>().Any(r => r.RowIndex?.Value >= (uint)rowIdx);
@@ -393,6 +410,7 @@ public partial class ExcelHandler
             if (value.StartsWith('=') && value.Length > 1)
             {
                 RejectCrossWorkbookFormula(value);
+                ValidateFormulaCellRefs(value);
                 cell.CellFormula = new CellFormula(Core.PivotTableHelper.SanitizeXmlText(Core.ModernFunctionQualifier.Qualify(Core.ModernFunctionQualifier.AutoQuoteSheetRefs(value.TrimStart('=')))));
                 cell.CellValue = null;
             }
@@ -429,6 +447,7 @@ public partial class ExcelHandler
             if (fTrim.StartsWith("{") && fTrim.EndsWith("}"))
                 throw new ArgumentException("Literal braces '{...}' around a formula create an Excel-rejected file. Use --prop arrayformula=... (without braces) to declare a CSE array formula.");
             RejectCrossWorkbookFormula(fTrim);
+            ValidateFormulaCellRefs(fTrim);
             cell.CellFormula = new CellFormula(Core.PivotTableHelper.SanitizeXmlText(Core.ModernFunctionQualifier.Qualify(Core.ModernFunctionQualifier.AutoQuoteSheetRefs(fTrim))));
             cell.CellValue = null;
         }
@@ -482,6 +501,13 @@ public partial class ExcelHandler
                     if (!string.IsNullOrEmpty(dateText)
                         && TryParseIsoDateFlexible(dateText, out var dt))
                     {
+                        // Mirrors Set's pre-1900 guard: Excel's serial epoch is
+                        // 1899-12-30; earlier dates round-trip as the epoch and
+                        // mislead the user. Reject instead of silently clamping.
+                        if (dt < new System.DateTime(1900, 1, 1))
+                            throw new ArgumentException(
+                                $"Cannot store '{dateText}' as date; Excel does not support dates before 1900-01-01 " +
+                                $"(serial epoch is 1899-12-30). Use type=string to keep the literal text.");
                         cell.CellValue = new CellValue(
                             dt.ToOADate().ToString(System.Globalization.CultureInfo.InvariantCulture));
                     }
@@ -530,6 +556,7 @@ public partial class ExcelHandler
         if (properties.TryGetValue("arrayformula", out var arrFormula))
         {
             RejectCrossWorkbookFormula(arrFormula);
+            ValidateFormulaCellRefs(arrFormula);
             // BUG-R36-B1: if ref was a range (A1:C3), use the full range as
             // arrRef so the array formula spills correctly; otherwise default
             // to the single cellRef.
@@ -581,6 +608,8 @@ public partial class ExcelHandler
             }
             else
             {
+                // CONSISTENCY(hyperlink-scheme-allowlist): see Set.cs cell link.
+                Core.HyperlinkUriValidator.RequireSafeScheme(linkUrl, "link");
                 var hlUri = new Uri(linkUrl, UriKind.RelativeOrAbsolute);
                 var hlRel = cellWorksheet.AddHyperlinkRelationship(hlUri, isExternal: true);
                 var hl = new Hyperlink { Reference = cellRef.ToUpperInvariant(), Id = hlRel.Id };

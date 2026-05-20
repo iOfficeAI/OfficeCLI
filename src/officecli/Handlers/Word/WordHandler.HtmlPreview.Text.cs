@@ -19,6 +19,7 @@ public partial class WordHandler
     partial void OnHtmlParagraphBegin(Paragraph para);
     partial void OnHtmlParagraphEnd(StringBuilder sb);
     partial void OnHtmlRenderText(StringBuilder sb, string text, RunProperties? rProps, string? runStyle, ref bool handled);
+    partial void OnHtmlRenderBreak(string? runStyle, ref bool handled);
     // Notify overlay that a <w:tab/> was just emitted as a visible `widthPt`
     // wide spacer. Overlay must account for this width in its per-line budget
     // since the browser lays it out inline and pushes subsequent text right.
@@ -253,7 +254,7 @@ public partial class WordHandler
             }
             var fnLabel = FormatNoteNumber(displayNum, GetFootnoteNumFmt());
             _ctx.FnLabels[fnId] = fnLabel;
-            sb.Append($"<sup class=\"fn-ref\"><a href=\"#fn{fnId}\" id=\"fnref{fnId}\">{fnLabel}</a></sup>");
+            sb.Append($"<sup class=\"fn-ref\" style=\"{ResolveNoteRefSupStyle(run, para)}\"><a href=\"#fn{fnId}\" id=\"fnref{fnId}\">{fnLabel}</a></sup>");
         }
         var enRef = run.GetFirstChild<EndnoteReference>();
         if (enRef?.Id?.HasValue == true && enRef.Id.Value > 0)
@@ -262,7 +263,7 @@ public partial class WordHandler
             _ctx.EndnoteRefs.Add(enId);
             var enNum = _ctx.EndnoteRefs.Count;
             var enLabel = FormatNoteNumber(enNum, GetEndnoteNumFmt());
-            sb.Append($"<sup class=\"en-ref\"><a href=\"#en{enId}\" id=\"enref{enId}\">{enLabel}</a></sup>");
+            sb.Append($"<sup class=\"en-ref\" style=\"{ResolveNoteRefSupStyle(run, para)}\"><a href=\"#en{enId}\" id=\"enref{enId}\">{enLabel}</a></sup>");
         }
         // FootnoteReferenceMark / EndnoteReferenceMark: don't skip the run, just ignore the mark element
         // (the run may also contain text that should be rendered)
@@ -302,7 +303,7 @@ public partial class WordHandler
             return;
         if (rProps.SpecVanish != null && (rProps.SpecVanish.Val == null || rProps.SpecVanish.Val.Value))
             return;
-        var style = GetRunInlineCss(rProps);
+        var style = GetRunInlineCss(rProps, para);
         var needsSpan = !string.IsNullOrEmpty(style);
 
         // When line-break tracking is active, text is buffered and flushed later
@@ -324,7 +325,17 @@ public partial class WordHandler
                     if (needsSpan) sb.Append($"<span style=\"{style}\">");
                 }
                 else
-                    sb.Append("<br>");
+                {
+                    // When CJK line-break tracking is active, text from <w:t>
+                    // is buffered (via OnHtmlRenderText) for post-measurement
+                    // flush; emitting <br> directly to sb here would land it
+                    // BEFORE the buffered text in the output. Route through
+                    // OnHtmlRenderBreak so the overlay can buffer the break
+                    // in document order alongside text.
+                    bool brkHandled = false;
+                    OnHtmlRenderBreak(style, ref brkHandled);
+                    if (!brkHandled) sb.Append("<br>");
+                }
             }
             else if (child is TabChar)
             {
@@ -584,7 +595,8 @@ public partial class WordHandler
             var fnLabel = _ctx.FnLabels.TryGetValue(fnId, out var cached)
                 ? cached
                 : FormatNoteNumber(num, fnFmt);
-            sb.Append($"<div id=\"fn{fnId}\" style=\"margin:0.3em 0\"><sup>{fnLabel}</sup> ");
+            var fnSupStyle = ResolveNoteListSupStyle("FootnoteText");
+            sb.Append($"<div id=\"fn{fnId}\" style=\"margin:0.3em 0\"><sup style=\"{fnSupStyle}\">{fnLabel}</sup> ");
             RenderFootnoteChildren(sb, fn);
             sb.AppendLine($" <a href=\"#fnref{fnId}\" style=\"text-decoration:none\">\u21A9</a></div>");
         }
@@ -679,7 +691,8 @@ public partial class WordHandler
             var enLabel = FormatNoteNumber(num, enFmt);
             var enIndent = ResolveStyleIndent("EndnoteText");
             var enIndentCss = enIndent != null ? $"text-indent:{enIndent}" : "";
-            sb.Append($"<div id=\"en{enId}\" style=\"margin:0.3em 0;{enIndentCss}\"><sup>{enLabel}</sup> ");
+            var enSupStyle = ResolveNoteListSupStyle("EndnoteText");
+            sb.Append($"<div id=\"en{enId}\" style=\"margin:0.3em 0;{enIndentCss}\"><sup style=\"{enSupStyle}\">{enLabel}</sup> ");
             RenderFootnoteChildren(sb, en);
             sb.AppendLine("</div>");
         }

@@ -44,6 +44,18 @@ public partial class WordHandler
 
         // 2. Walk paragraph style basedOn chain (collect in order, apply from base to derived)
         var styleId = para.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
+        // OOXML §17.7.4.17: a paragraph without an explicit <w:pStyle>
+        // implicitly inherits the document's default paragraph style
+        // (the one carrying w:default="1" on w:type="paragraph"). Resolve
+        // it here so the run properties from that style still cascade.
+        if (styleId == null)
+        {
+            var defaultStyle = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
+                ?.Elements<Style>().FirstOrDefault(s =>
+                    s.Type?.Value == StyleValues.Paragraph
+                    && s.Default?.Value == true);
+            styleId = defaultStyle?.StyleId?.Value;
+        }
         if (styleId != null)
         {
             var chain = new List<Style>();

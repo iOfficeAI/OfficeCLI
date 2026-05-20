@@ -489,7 +489,7 @@ internal static class FontMetricsReader
         var result = new CmapSubtable { offset = -1, format = 0 };
         r.BaseStream.Position = cmapOffset + 2;
         var numTables = ReadUInt16BE(r);
-        long bestF4 = -1, bestF12 = -1;
+        long bestF4 = -1, bestF12 = -1, fallbackF4 = -1;
         for (int i = 0; i < numTables; i++)
         {
             r.BaseStream.Position = cmapOffset + 4 + i * 8;
@@ -506,9 +506,17 @@ internal static class FontMetricsReader
                 bestF4 = cmapOffset + subOff;
             else if (format == 4 && bestF4 < 0 && platformId == 0)
                 bestF4 = cmapOffset + subOff;
+            // Symbol-encoded fonts (Symbol/Wingdings family) ship only a
+            // platform=3, encoding=0 cmap whose segments live in the PUA range
+            // U+F000-U+F0FF. OpenType cmap spec admits this as a legitimate
+            // subtable; without it, lvlText codepoints declared in numbering
+            // rPr can't be resolved against the font's own coverage.
+            else if (format == 4 && platformId == 3 && encodingId == 0)
+                fallbackF4 = cmapOffset + subOff;
         }
         if (bestF12 >= 0) { result.offset = bestF12; result.format = 12; }
         else if (bestF4 >= 0) { result.offset = bestF4; result.format = 4; }
+        else if (fallbackF4 >= 0) { result.offset = fallbackF4; result.format = 4; }
         return result;
     }
 
@@ -582,6 +590,121 @@ internal static class FontMetricsReader
             return false;
         }
         return false;
+    }
+
+    /// <summary>
+    /// Return the font's cap-height as a fraction of em. Returns 0 when the
+    /// font's OS/2 table version is below 2 (the field isn't published) or
+    /// the font isn't locatable.
+    /// </summary>
+    public static double GetCapHeightRatio(string fontFamily)
+    {
+        var hit = FindFont(fontFamily);
+        if (!hit.HasValue) return 0;
+
+        try
+        {
+            using var fs = File.OpenRead(hit.Value.path);
+            using var reader = new BinaryReader(fs);
+            var offset = GetFontOffset(reader, hit.Value.idx);
+            if (offset < 0) return 0;
+
+            var tables = FindTables(reader, offset);
+            if (tables.head < 0 || tables.os2 < 0) return 0;
+
+            fs.Position = tables.head + 18;
+            var upm = ReadUInt16BE(reader);
+            if (upm == 0) return 0;
+
+            fs.Position = tables.os2;
+            var version = ReadUInt16BE(reader);
+            if (version < 2) return 0;
+
+            fs.Position = tables.os2 + 88;
+            var capHeight = ReadInt16BE(reader);
+            if (capHeight <= 0) return 0;
+
+            return (double)capHeight / upm;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Per-font default sub/super metrics from OS/2 (all values are
+    /// fractions of em). OOXML §17.3.2.42 vertAlign:superscript/subscript
+    /// reduces the run's font and shifts the baseline; both the reduced
+    /// size and the offset come from the font's OS/2 ySub/SuperscriptYSize
+    /// and ySub/SuperscriptYOffset fields. Returns all-zero when the font
+    /// can't be located.
+    /// </summary>
+    public readonly record struct SuperSubMetrics(
+        double SuperSizeEm,
+        double SuperOffsetEm,
+        double SubSizeEm,
+        double SubOffsetEm)
+    {
+        public bool IsEmpty => SuperSizeEm == 0 && SubSizeEm == 0;
+    }
+
+    private static readonly Dictionary<string, SuperSubMetrics> s_superSubCache
+        = new(StringComparer.OrdinalIgnoreCase);
+
+    public static SuperSubMetrics GetSuperSubMetrics(string fontFamily)
+    {
+        if (string.IsNullOrEmpty(fontFamily)) return default;
+        if (s_superSubCache.TryGetValue(fontFamily, out var cached)) return cached;
+
+        var m = ReadSuperSubMetrics(fontFamily);
+        s_superSubCache[fontFamily] = m;
+        return m;
+    }
+
+    private static SuperSubMetrics ReadSuperSubMetrics(string fontFamily)
+    {
+        var hit = FindFont(fontFamily);
+        if (!hit.HasValue) return default;
+
+        try
+        {
+            using var fs = File.OpenRead(hit.Value.path);
+            using var reader = new BinaryReader(fs);
+            var offset = GetFontOffset(reader, hit.Value.idx);
+            if (offset < 0) return default;
+            var tables = FindTables(reader, offset);
+            if (tables.head < 0 || tables.os2 < 0) return default;
+
+            fs.Position = tables.head + 18;
+            var upm = ReadUInt16BE(reader);
+            if (upm == 0) return default;
+
+            // OS/2 layout (v0+): all 8 sub/super fields live in the first
+            // record block, no version gate needed.
+            //   +10 ySubscriptXSize     +12 ySubscriptYSize
+            //   +14 ySubscriptXOffset   +16 ySubscriptYOffset
+            //   +18 ySuperscriptXSize   +20 ySuperscriptYSize
+            //   +22 ySuperscriptXOffset +24 ySuperscriptYOffset
+            fs.Position = tables.os2 + 12;
+            var subYSize = ReadInt16BE(reader);
+            fs.Position = tables.os2 + 16;
+            var subYOffset = ReadInt16BE(reader);
+            fs.Position = tables.os2 + 20;
+            var supYSize = ReadInt16BE(reader);
+            fs.Position = tables.os2 + 24;
+            var supYOffset = ReadInt16BE(reader);
+
+            return new SuperSubMetrics(
+                SuperSizeEm: supYSize > 0 ? (double)supYSize / upm : 0,
+                SuperOffsetEm: supYOffset > 0 ? (double)supYOffset / upm : 0,
+                SubSizeEm: subYSize > 0 ? (double)subYSize / upm : 0,
+                SubOffsetEm: subYOffset > 0 ? (double)subYOffset / upm : 0);
+        }
+        catch
+        {
+            return default;
+        }
     }
 
     /// <summary>

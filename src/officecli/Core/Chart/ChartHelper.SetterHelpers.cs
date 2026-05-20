@@ -29,7 +29,7 @@ internal static partial class ChartHelper
         // as separators (`top-right`, `top_right`, `TOP_RIGHT`) by stripping
         // both before comparison. Without this, `TOP_RIGHT` threw while
         // `top-right` succeeded — punctuation variants should be uniform.
-        var norm = (value ?? string.Empty).ToLowerInvariant().Replace("-", "").Replace("_", "");
+        var norm = SchemaKeyNormalizer.Normalize(value);
         return norm switch
         {
             "top" or "t" => C.LegendPositionValues.Top,
@@ -72,12 +72,18 @@ internal static partial class ChartHelper
 
         var trendType = typeStr switch
         {
+            "linear" => C.TrendlineValues.Linear,
             "exp" or "exponential" => C.TrendlineValues.Exponential,
             "log" or "logarithmic" => C.TrendlineValues.Logarithmic,
             "poly" or "polynomial" => C.TrendlineValues.Polynomial,
             "power" => C.TrendlineValues.Power,
             "movingavg" or "moving" or "movingaverage" => C.TrendlineValues.MovingAverage,
-            _ => C.TrendlineValues.Linear
+            _ => throw new CliException(
+                $"Invalid trendline type '{parts[0]}'. " +
+                "Valid: linear, exp, log, poly, power, movingAvg. " +
+                "For per-series different trendlines use seriesN.trendline keys, " +
+                "not pipe-separated lists.")
+                { Code = "invalid_value" }
         };
         trendline.AppendChild(new C.TrendlineType { Val = trendType });
 
@@ -169,14 +175,16 @@ internal static partial class ChartHelper
 
     /// <summary>
     /// Check if the parent chart type supports errBars on its series (CT_*Ser).
-    /// OOXML allows errBars in: barChart, bar3DChart, scatterChart, areaChart,
-    /// area3DChart, bubbleChart.  Not allowed in: lineChart, line3DChart,
-    /// pieChart, pie3DChart, doughnutChart, radarChart, stockChart.
+    /// ECMA-376: errBars is a child of CT_LineSer, CT_ScatterSer, CT_BarSer,
+    /// CT_AreaSer, CT_BubbleSer (and their 3D variants where applicable).
+    /// Not allowed in: pieChart, pie3DChart, doughnutChart, radarChart, stockChart,
+    /// surfaceChart, surface3DChart.
     /// </summary>
     internal static bool SeriesSupportsErrorBars(OpenXmlElement ser)
     {
         var parentName = ser.Parent?.LocalName ?? "";
         return parentName is "barChart" or "bar3DChart"
+            or "lineChart" or "line3DChart"
             or "scatterChart"
             or "areaChart" or "area3DChart"
             or "bubbleChart";
@@ -195,7 +203,7 @@ internal static partial class ChartHelper
         var errValType = typeStr switch
         {
             "fixed" or "fixedvalue" => C.ErrorValues.FixedValue,
-            "percent" or "pct" => C.ErrorValues.Percentage,
+            "percent" or "pct" or "percentage" => C.ErrorValues.Percentage,
             "stddev" or "standarddeviation" => C.ErrorValues.StandardDeviation,
             "stderr" or "standarderror" => C.ErrorValues.StandardError,
             _ => C.ErrorValues.FixedValue
@@ -266,6 +274,12 @@ internal static partial class ChartHelper
         var spPr = dPt.GetFirstChild<C.ChartShapeProperties>();
         if (spPr == null) { spPr = new C.ChartShapeProperties(); dPt.AppendChild(spPr); }
         spPr.RemoveAllChildren<Drawing.SolidFill>();
+        spPr.RemoveAllChildren<Drawing.NoFill>();
+        if (color.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            spPr.PrependChild(new Drawing.NoFill());
+            return;
+        }
         var fill = new Drawing.SolidFill();
         fill.AppendChild(BuildChartColorElement(color));
         spPr.PrependChild(fill);
@@ -368,24 +382,36 @@ internal static partial class ChartHelper
                 // If the requested trendline type already exists on the
                 // series, replace it in place so repeated identical sets
                 // stay idempotent; otherwise append a new one.
+                //
+                // R28-B2: Reader emits semicolon-joined spec list when a
+                // series carries multiple trendlines (e.g. "linear;poly:3").
+                // Split here so dump→replay re-applies each; single-spec
+                // input (no ';') still hits the legacy append-or-replace
+                // path unchanged.
                 if (value.Equals("none", StringComparison.OrdinalIgnoreCase))
                 {
                     ser.RemoveAllChildren<C.Trendline>();
                 }
                 else
                 {
-                    var newTl = BuildTrendline(value);
-                    var newType = newTl.GetFirstChild<C.TrendlineType>()?.Val?.Value;
-                    var dupeTl = ser.Elements<C.Trendline>()
-                        .FirstOrDefault(t => t.GetFirstChild<C.TrendlineType>()?.Val?.Value == newType);
-                    if (dupeTl != null)
+                    var specs = value.Contains(';')
+                        ? value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        : new[] { value };
+                    foreach (var spec in specs)
                     {
-                        dupeTl.InsertAfterSelf(newTl);
-                        dupeTl.Remove();
-                    }
-                    else
-                    {
-                        InsertSeriesChildInOrder(ser, newTl);
+                        var newTl = BuildTrendline(spec);
+                        var newType = newTl.GetFirstChild<C.TrendlineType>()?.Val?.Value;
+                        var dupeTl = ser.Elements<C.Trendline>()
+                            .FirstOrDefault(t => t.GetFirstChild<C.TrendlineType>()?.Val?.Value == newType);
+                        if (dupeTl != null)
+                        {
+                            dupeTl.InsertAfterSelf(newTl);
+                            dupeTl.Remove();
+                        }
+                        else
+                        {
+                            InsertSeriesChildInOrder(ser, newTl);
+                        }
                     }
                 }
                 return true;
@@ -410,6 +436,35 @@ internal static partial class ChartHelper
                 }
                 marker.RemoveAllChildren<C.Size>();
                 marker.AppendChild(new C.Size { Val = ParseHelpers.SafeParseByte(value, "series.markerSize") });
+                return true;
+            }
+
+            case "markercolor":
+            case "marker.color":
+            {
+                // CONSISTENCY(marker-dotted): mirror markersize — write fill on
+                // the existing marker's spPr, preserving symbol/size so the
+                // dumped marker= / markerSize= / markerColor= triplet round-trips
+                // without one key clobbering another.
+                var existing = ser.GetFirstChild<C.Marker>();
+                var existingSym = existing?.GetFirstChild<C.Symbol>()?.CloneNode(true) as C.Symbol;
+                var existingSize = existing?.GetFirstChild<C.Size>()?.CloneNode(true) as C.Size;
+                if (existing != null) existing.Remove();
+                var marker = new C.Marker();
+                if (existingSym != null) marker.AppendChild(existingSym);
+                else marker.AppendChild(new C.Symbol { Val = C.MarkerStyleValues.Circle });
+                if (existingSize != null) marker.AppendChild(existingSize);
+                var mSpPr = new C.ChartShapeProperties();
+                var fill = new Drawing.SolidFill();
+                fill.AppendChild(BuildChartColorElement(value));
+                mSpPr.AppendChild(fill);
+                marker.AppendChild(mSpPr);
+                var insertBefore = (OpenXmlElement?)ser.Elements().FirstOrDefault(e =>
+                    e.LocalName is "xVal" or "yVal" or "cat" or "val" or "bubbleSize"
+                        or "smooth" or "extLst")
+                    ?? ser.Elements().FirstOrDefault(e => e.LocalName == "trendline");
+                if (insertBefore != null) ser.InsertBefore(marker, insertBefore);
+                else ser.AppendChild(marker);
                 return true;
             }
 
@@ -475,9 +530,30 @@ internal static partial class ChartHelper
                     }
                     else
                     {
-                        var nums = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                            .Select(s => double.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0.0)
-                            .ToArray();
+                        // Mirror the Add path's ParseSeriesValues guard. The
+                        // old TryParse ? d : 0.0 fallback silently coerced
+                        // NaN / Infinity / unparsable tokens into 0.0, and
+                        // worse, NaN / Infinity that *did* parse went straight
+                        // into <c:v> as text — OOXML <c:v> requires a finite
+                        // double. Reject non-finite values and empty tokens
+                        // with invalid_value so set chart values=NaN behaves
+                        // the same as add chart values=NaN.
+                        var tokens = value.Split(',');
+                        var nums = new double[tokens.Length];
+                        for (int ti = 0; ti < tokens.Length; ti++)
+                        {
+                            var trimmed = tokens[ti].Trim();
+                            if (string.IsNullOrEmpty(trimmed))
+                                throw new CliException(
+                                    $"values: empty token at position {ti + 1}. Expected comma-separated finite numbers (e.g. '1,2,3').")
+                                    { Code = "invalid_value" };
+                            if (!double.TryParse(trimmed, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d)
+                                || double.IsNaN(d) || double.IsInfinity(d))
+                                throw new CliException(
+                                    $"values: invalid number '{trimmed}'. Expected comma-separated finite numbers (e.g. '1,2,3').")
+                                    { Code = "invalid_value" };
+                            nums[ti] = d;
+                        }
                         var builtVals = BuildValues(nums);
                         foreach (var child in builtVals.ChildElements.ToList())
                             valEl.AppendChild(child.CloneNode(true));
@@ -488,7 +564,10 @@ internal static partial class ChartHelper
 
             case "invertifneg" or "invertifnegative":
                 ser.RemoveAllChildren<C.InvertIfNegative>();
-                ser.AppendChild(new C.InvertIfNegative { Val = ParseHelpers.IsTruthy(value) });
+                // CT_BarSer/CT_AreaSer/CT_PieSer all require invertIfNegative
+                // immediately after spPr — append would drop it past dPt/dLbls
+                // and render as no-op (see InsertSeriesChildInOrder doc).
+                InsertSeriesChildInOrder(ser, new C.InvertIfNegative { Val = ParseHelpers.IsTruthy(value) });
                 return true;
 
             case "errbars" or "errorbars":
@@ -501,21 +580,62 @@ internal static partial class ChartHelper
             case "explosion" or "explode":
                 ser.RemoveAllChildren<C.Explosion>();
                 if (uint.TryParse(value, out var expVal) && expVal > 0)
-                    ser.AppendChild(new C.Explosion { Val = expVal });
+                    InsertSeriesChildInOrder(ser, new C.Explosion { Val = expVal });
                 return true;
 
             case "linewidth":
+            case "outlinewidth":
                 ApplySeriesLineWidth(ser, (int)(ParseHelpers.SafeParseDouble(value, "series.lineWidth") * 12700));
                 return true;
 
             case "linedash" or "dash":
+            case "outlinedash":
                 ApplySeriesLineDash(ser, value);
                 return true;
 
+            case "outlinecolor":
+            case "linecolor":
+            {
+                // Reader emits per-series outline as separate keys
+                // (outlineColor, lineWidth, lineDash). The existing `outline`
+                // setter takes a compound `color:width:dash` spec and would
+                // require callers to round-trip via the compound form. Accept
+                // the read-side names directly so dump→batch replays one prop
+                // per emit. Update only the SolidFill child; preserve any
+                // existing width / dash on the outline element.
+                // Route through the schema-aware helper — appending spPr at
+                // the end of CT_ScatterSer / CT_LineSer breaks the required
+                // child-element order (idx, order, tx, spPr, marker, …) and
+                // PowerPoint rejects the file (Error 0x80070570 / "needs
+                // repair"). CONSISTENCY(chart-schema-order).
+                var spPr = GetOrCreateSeriesShapeProperties(ser);
+                var ln = spPr.GetFirstChild<Drawing.Outline>();
+                if (ln == null)
+                {
+                    ln = new Drawing.Outline();
+                    var effLst = spPr.GetFirstChild<Drawing.EffectList>();
+                    if (effLst != null) spPr.InsertBefore(ln, effLst);
+                    else spPr.AppendChild(ln);
+                }
+                // BuildScatterChart seeds marker-only series with <a:ln><a:noFill/></a:ln>
+                // to suppress connecting lines. A subsequent outlineColor / lineWidth
+                // / lineDash write must drop NoFill — otherwise <a:ln> ends up with
+                // both NoFill AND SolidFill, which is schema-invalid and trips
+                // PowerPoint "repair" (Error 422 on open).
+                ln.RemoveAllChildren<Drawing.NoFill>();
+                ln.RemoveAllChildren<Drawing.SolidFill>();
+                var newFill = new Drawing.SolidFill();
+                newFill.AppendChild(BuildChartColorElement(value));
+                // SolidFill must precede PrstDash inside a:ln per schema.
+                var prstDashEl = ln.GetFirstChild<Drawing.PresetDash>();
+                if (prstDashEl != null) ln.InsertBefore(newFill, prstDashEl);
+                else ln.PrependChild(newFill);
+                return true;
+            }
+
             case "shadow":
             {
-                var spPr = ser.GetFirstChild<C.ChartShapeProperties>();
-                if (spPr == null) { spPr = new C.ChartShapeProperties(); ser.AppendChild(spPr); }
+                var spPr = GetOrCreateSeriesShapeProperties(ser);
                 var effectList = spPr.GetFirstChild<Drawing.EffectList>() ?? new Drawing.EffectList();
                 if (effectList.Parent == null)
                     InsertEffectListInChartSpPr(spPr, effectList);
@@ -527,8 +647,7 @@ internal static partial class ChartHelper
 
             case "outline":
             {
-                var spPr = ser.GetFirstChild<C.ChartShapeProperties>();
-                if (spPr == null) { spPr = new C.ChartShapeProperties(); ser.AppendChild(spPr); }
+                var spPr = GetOrCreateSeriesShapeProperties(ser);
                 spPr.RemoveAllChildren<Drawing.Outline>();
                 if (!value.Equals("none", StringComparison.OrdinalIgnoreCase))
                 {
@@ -815,12 +934,19 @@ internal static partial class ChartHelper
         string[] afterTickElements = ["spPr", "txPr", "crossAx", "crosses", "crossesAt",
             "crossBetween", "auto", "lblAlgn", "lblOffset", "tickLblSkip", "tickMarkSkip",
             "noMultiLvlLbl", "majorUnit", "minorUnit", "dispUnits", "extLst"];
+        // Elements that come AFTER axPos in the shared axis prefix
+        // (axId, scaling, delete, axPos, majorGridlines, minorGridlines, title,
+        // numFmt, majorTickMark, minorTickMark, tickLblPos, ...afterTickElements).
+        string[] afterAxPos = ["majorGridlines", "minorGridlines", "title", "numFmt",
+            "majorTickMark", "minorTickMark", "tickLblPos", ..afterTickElements];
 
+        // For axPos: insert before majorGridlines and everything after.
         // For majorTickMark: insert before minorTickMark, tickLblPos, or any afterTickElements
         // For minorTickMark: insert before tickLblPos or any afterTickElements
         // For tickLblPos: insert before spPr, txPr, crossAx, etc.
         string[] insertBeforeNames = child.LocalName switch
         {
+            "axPos" => afterAxPos,
             "majorTickMark" => ["minorTickMark", "tickLblPos", ..afterTickElements],
             "minorTickMark" => ["tickLblPos", ..afterTickElements],
             "tickLblPos" => afterTickElements,
@@ -868,12 +994,26 @@ internal static partial class ChartHelper
 
     /// <summary>
     /// Insert a child into a chart series (CT_*Ser) at the correct schema position.
-    /// Common suffix order: ..., dLbls, trendline, errBars, cat/xVal, val/yVal, smooth, extLst
+    /// Schema order (CT_BarSer is the strictest; other Ser types are subsequences):
+    ///   idx, order, tx, spPr, invertIfNegative, pictureOptions, dPt, dLbls,
+    ///   trendline, errBars, cat, val, xVal, yVal, bubbleSize, bubble3D, shape,
+    ///   smooth, extLst
+    /// PowerPoint silently drops out-of-order children (e.g. invertIfNegative
+    /// appended after dLbls renders as if absent — negative bars stay un-inverted
+    /// and a stray frame leaks; validator emits "unexpected child element
+    /// 'invertIfNegative'").
     /// </summary>
     internal static void InsertSeriesChildInOrder(OpenXmlCompositeElement ser, OpenXmlElement child)
     {
         string[] insertBeforeNames = child.LocalName switch
         {
+            "invertIfNegative" => ["pictureOptions", "dPt", "dLbls", "trendline", "errBars", "cat", "val", "xVal", "yVal", "bubbleSize", "bubble3D", "shape", "smooth", "extLst"],
+            // CT_PieSer / CT_DoughnutSer: idx, order, tx?, spPr?, explosion?, dPt*, dLbls?, cat?, val?
+            "explosion" => ["dPt", "dLbls", "cat", "val", "extLst"],
+            // CT_LineSer / CT_ScatterSer / CT_RadarSer: ..., spPr?, marker?, dPt*,
+            // dLbls?, trendline?, errBars?, cat/xVal?, val/yVal?, smooth?, extLst?.
+            // marker must precede every data-bearing tail element.
+            "marker" => ["dPt", "dLbls", "trendline", "errBars", "cat", "val", "xVal", "yVal", "bubbleSize", "smooth", "extLst"],
             "dLbls" => ["trendline", "errBars", "cat", "val", "xVal", "yVal", "bubbleSize", "bubble3D", "smooth", "extLst"],
             "trendline" => ["errBars", "cat", "val", "xVal", "yVal", "bubbleSize", "bubble3D", "smooth", "extLst"],
             "errBars" => ["cat", "val", "xVal", "yVal", "bubbleSize", "bubble3D", "smooth", "extLst"],
@@ -890,6 +1030,118 @@ internal static partial class ChartHelper
             }
         }
         ser.AppendChild(child);
+    }
+
+    /// <summary>
+    /// Insert a child into a 3D chart (CT_Bar3DChart / CT_Line3DChart / CT_Area3DChart)
+    /// at the correct schema position. All three share the trailing sequence
+    /// ..., gapDepth?, [shape? — bar3D only], axId+, extLst?. PowerPoint silently
+    /// renders out-of-order children (e.g. shape appended after axId still shows
+    /// the cone/cylinder visually) but the validator emits "unexpected child
+    /// element 'shape'/'gapDepth' in bar3DChart".
+    /// </summary>
+    internal static void InsertBar3DChartChildInOrder(OpenXmlCompositeElement chart3d, OpenXmlElement child)
+    {
+        // bar3D: barDir, grouping, varyColors?, ser*, dLbls?, gapWidth?, gapDepth?, shape?, axId+, extLst?
+        // line3D / area3D: grouping?, varyColors?, ser*, dLbls?, dropLines?, gapDepth?, axId+, extLst?
+        string[] insertBeforeNames = child.LocalName switch
+        {
+            "gapDepth" => ["shape", "axId", "extLst"],
+            "shape" => ["axId", "extLst"],
+            _ => ["axId", "extLst"]
+        };
+        foreach (var sibling in chart3d.ChildElements)
+        {
+            if (insertBeforeNames.Contains(sibling.LocalName))
+            {
+                chart3d.InsertBefore(child, sibling);
+                return;
+            }
+        }
+        chart3d.AppendChild(child);
+    }
+
+    /// <summary>
+    /// Insert a child into a CT_BubbleChart at the correct schema position.
+    /// Schema: varyColors?, ser*, dLbls?, bubble3D?, bubbleScale?, showNegBubbles?, sizeRepresents?, axId+, extLst?.
+    /// PowerPoint silently renders out-of-order children, but the validator emits
+    /// "unexpected child element 'sizeRepresents'/'showNegBubbles'" when they trail axId.
+    /// </summary>
+    internal static void InsertBubbleChartChildInOrder(OpenXmlCompositeElement bubble, OpenXmlElement child)
+    {
+        string[] insertBeforeNames = child.LocalName switch
+        {
+            "bubble3D" => ["bubbleScale", "showNegBubbles", "sizeRepresents", "axId", "extLst"],
+            "bubbleScale" => ["showNegBubbles", "sizeRepresents", "axId", "extLst"],
+            "showNegBubbles" => ["sizeRepresents", "axId", "extLst"],
+            "sizeRepresents" => ["axId", "extLst"],
+            _ => ["axId", "extLst"]
+        };
+        foreach (var sibling in bubble.ChildElements)
+        {
+            if (insertBeforeNames.Contains(sibling.LocalName))
+            {
+                bubble.InsertBefore(child, sibling);
+                return;
+            }
+        }
+        bubble.AppendChild(child);
+    }
+
+    /// <summary>
+    /// Insert a child into a CT_ValAx at the correct schema position.
+    /// Tail of CT_ValAx: ..., crossAx, crosses?, crossesAt?, crossBetween?,
+    /// majorUnit?, minorUnit?, dispUnits?, extLst?. AppendChild is unsafe when
+    /// later siblings already exist (e.g. setting majorUnit after minorUnit
+    /// already landed flips the schema order and the OpenXmlValidator rejects
+    /// the file with "unexpected child element 'majorUnit'").
+    /// </summary>
+    internal static void InsertValAxChildInOrder(OpenXmlCompositeElement valAx, OpenXmlElement child)
+    {
+        string[] insertBeforeNames = child.LocalName switch
+        {
+            "majorUnit" => ["minorUnit", "dispUnits", "extLst"],
+            "minorUnit" => ["dispUnits", "extLst"],
+            "dispUnits" => ["extLst"],
+            _ => ["extLst"]
+        };
+        foreach (var sibling in valAx.ChildElements)
+        {
+            if (insertBeforeNames.Contains(sibling.LocalName))
+            {
+                valAx.InsertBefore(child, sibling);
+                return;
+            }
+        }
+        valAx.AppendChild(child);
+    }
+
+    /// <summary>
+    /// Insert a child into the CT_Chart element at the correct schema position.
+    /// Schema: title?, autoTitleDeleted?, pivotFmts?, view3D?, floor?, sideWall?,
+    /// backWall?, plotArea, legend?, plotVisOnly?, dispBlanksAs?, showDLblsOverMax?, extLst?.
+    /// AppendChild leaves trailing elements (plotVisOnly, dispBlanksAs) in the wrong
+    /// order when applied after siblings already exist; PowerPoint silently honors
+    /// the value, but OpenXmlValidator rejects with 'unexpected child element'.
+    /// </summary>
+    internal static void InsertChartChildInOrder(OpenXmlCompositeElement chart, OpenXmlElement child)
+    {
+        string[] insertBeforeNames = child.LocalName switch
+        {
+            "plotVisOnly" => ["dispBlanksAs", "showDLblsOverMax", "extLst"],
+            "dispBlanksAs" => ["showDLblsOverMax", "extLst"],
+            "showDLblsOverMax" => ["extLst"],
+            _ => ["extLst"]
+        };
+        foreach (var sibling in chart.ChildElements)
+        {
+            if (insertBeforeNames.Contains(sibling.LocalName))
+            {
+                chart.InsertBefore(child, sibling);
+                return;
+            }
+        }
+        chart.AppendChild(child);
     }
 
     /// <summary>

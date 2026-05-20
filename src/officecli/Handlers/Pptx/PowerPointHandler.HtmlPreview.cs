@@ -92,49 +92,21 @@ public partial class PowerPointHandler
         sb.AppendLine("<!DOCTYPE html>");
         // i18n: emit lang from the first run's <a:rPr lang=...> when present
         // (PPT carries no presentation-level language tag analogous to Word's
-        // themeFontLang; per-run lang is the closest signal). Emit dir="rtl"
-        // when any shape carries <a:bodyPr rtlCol="1"/> or any paragraph
-        // <a:pPr rtl="1"/>, so browsers activate BiDi layout document-wide.
+        // themeFontLang; per-run lang is the closest signal). RTL containers are
+        // emitted PER-SHAPE / PER-PARAGRAPH (direction:rtl on shape-text and
+        // unicode-bidi:embed on the para); document-wide dir="rtl" is NOT set
+        // because it forces every LTR shape's default text-align to right.
         string presLang = "en";
-        bool presHasRtl = false;
         foreach (var sp in slideParts)
         {
             var slide = sp.Slide;
             if (slide == null) continue;
-            if (presLang == "en")
-            {
-                var firstRunLang = slide.Descendants<DocumentFormat.OpenXml.Drawing.RunProperties>()
-                    .Select(rp => rp.Language?.Value)
-                    .FirstOrDefault(l => !string.IsNullOrEmpty(l));
-                if (!string.IsNullOrEmpty(firstRunLang)) presLang = firstRunLang!;
-            }
-            if (!presHasRtl)
-            {
-                if (slide.Descendants<DocumentFormat.OpenXml.Drawing.Paragraph>()
-                        .Any(p => p.ParagraphProperties?.RightToLeft?.Value == true))
-                {
-                    presHasRtl = true;
-                }
-                else
-                {
-                    foreach (var bp in slide.Descendants<DocumentFormat.OpenXml.Drawing.BodyProperties>())
-                    {
-                        foreach (var attr in bp.GetAttributes())
-                        {
-                            if (attr.LocalName == "rtlCol"
-                                && (attr.Value == "1" || string.Equals(attr.Value, "true", StringComparison.OrdinalIgnoreCase)))
-                            {
-                                presHasRtl = true; break;
-                            }
-                        }
-                        if (presHasRtl) break;
-                    }
-                }
-            }
-            if (presLang != "en" && presHasRtl) break;
+            var firstRunLang = slide.Descendants<DocumentFormat.OpenXml.Drawing.RunProperties>()
+                .Select(rp => rp.Language?.Value)
+                .FirstOrDefault(l => !string.IsNullOrEmpty(l));
+            if (!string.IsNullOrEmpty(firstRunLang)) { presLang = firstRunLang!; break; }
         }
-        var presDirAttr = presHasRtl ? " dir=\"rtl\"" : "";
-        sb.AppendLine($"<html lang=\"{HtmlEncode(presLang)}\"{presDirAttr}>");
+        sb.AppendLine($"<html lang=\"{HtmlEncode(presLang)}\">");
         sb.AppendLine("<head>");
         sb.AppendLine("<meta charset=\"UTF-8\">");
         sb.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
@@ -467,7 +439,24 @@ public partial class PowerPointHandler
         {
             var dataUri = BlipToDataUri(blipFill, part);
             if (dataUri != null)
-                return $"background:url('{dataUri}') center/cover no-repeat;";
+            {
+                var css = $"background:url('{dataUri}') center/cover no-repeat;";
+                // R59-5: surface <a:alphaModFix amt="..."/> as CSS opacity so
+                // the HTML preview matches PowerPoint's faded image bg render.
+                // amt is 0..100000 (100000 = opaque). Skip when opaque/default
+                // to keep the emitted CSS minimal.
+                var alphaMod = blipFill.GetFirstChild<Drawing.Blip>()?.GetFirstChild<Drawing.AlphaModulationFixed>();
+                if (alphaMod?.Amount?.HasValue == true)
+                {
+                    var amt = alphaMod.Amount.Value;
+                    if (amt < 100000)
+                    {
+                        var opacity = amt / 100000.0;
+                        css += $"opacity:{opacity:0.##};";
+                    }
+                }
+                return css;
+            }
         }
 
         return "";
@@ -566,7 +555,7 @@ public partial class PowerPointHandler
         // Per-element-type positional counters used to build the data-path of each
         // top-level element. We prefer @id= when the element has a cNvPr id (stable
         // across edits), and fall back to positional [N] otherwise.
-        int shapeIdx = 0, picIdx = 0, tableIdx = 0, chartIdx = 0, cxnIdx = 0, groupIdx = 0;
+        int shapeIdx = 0, picIdx = 0, tableIdx = 0, chartIdx = 0, cxnIdx = 0, groupIdx = 0, oleIdx = 0, model3dIdx = 0;
         string PathFor(string typeName, OpenXmlElement el, int positional)
             => $"/slide[{slideNum}]/{BuildElementPathSegment(typeName, el, positional)}";
 
@@ -594,6 +583,11 @@ public partial class PowerPointHandler
                         chartIdx++;
                         RenderChart(sb, gf, slidePart, themeColors, dataPath: PathFor("chart", gf, chartIdx));
                     }
+                    else if (gf.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>().Any())
+                    {
+                        oleIdx++;
+                        RenderOlePlaceholder(sb, gf, dataPath: PathFor("ole", gf, oleIdx));
+                    }
                     break;
                 case ConnectionShape cxn:
                     cxnIdx++;
@@ -606,7 +600,15 @@ public partial class PowerPointHandler
                 default:
                     // mc:AlternateContent — render 3D models, zoom, etc.
                     if (element.LocalName == "AlternateContent")
-                        RenderAlternateContent(sb, element, slidePart, themeColors);
+                    {
+                        string? acDataPath = null;
+                        if (element.Descendants().Any(d => d.LocalName == "model3d"))
+                        {
+                            model3dIdx++;
+                            acDataPath = $"/slide[{slideNum}]/model3d[{model3dIdx}]";
+                        }
+                        RenderAlternateContent(sb, element, slidePart, themeColors, acDataPath);
+                    }
                     break;
             }
         }

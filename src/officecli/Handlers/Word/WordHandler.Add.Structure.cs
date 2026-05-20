@@ -106,7 +106,12 @@ public partial class WordHandler
         {
             var parts = colsVal.Split(',');
             var count = (short)int.Parse(parts[0].Trim());
-            var cols = new Columns { ColumnCount = count, EqualWidth = true };
+            // CONSISTENCY(columns-no-equalWidth-default): Set.SectionLayout
+            // dropped the EqualWidth auto-stamp (round-trip preservation —
+            // sources whose <w:cols> omits w:equalWidth must replay without
+            // it). Mirror that on Add so `add section --prop columns=N`
+            // doesn't phantom-stamp columns.equalWidth=true.
+            var cols = new Columns { ColumnCount = count };
             if (parts.Length > 1)
                 cols.Space = ParseTwips(parts[1].Trim()).ToString();
             InsertSectPrChildInOrder(sectPr, cols);
@@ -725,6 +730,11 @@ public partial class WordHandler
                 }
             }
         }
+        if (properties.TryGetValue("tabs", out var sTabsVal) || properties.TryGetValue("tabstops", out sTabsVal))
+        {
+            ApplyTabsShorthand(stylePPr, sTabsVal);
+            hasPPr = true;
+        }
         if (hasPPr) newStyle.AppendChild(stylePPr);
 
         // Style run properties
@@ -870,6 +880,7 @@ public partial class WordHandler
             "direction", "dir", "bidi",
             "font.ascii", "font.hAnsi", "font.eastAsia", "font.cs",
             "numId", "numid", "ilvl", "numLevel", "numlevel",
+            "tabs", "tabstops",
         };
         foreach (var (key, value) in properties)
         {
@@ -887,6 +898,22 @@ public partial class WordHandler
             // below, which the CLI layer reports independently of Tracking.
             properties.ContainsKey(key);
 
+            // CONSISTENCY(style-shading-pPr): paragraph/table styles can carry
+            // <w:shd> on either pPr (split into val/fill/color sub-keys by
+            // Navigation, folded back into "VAL;FILL[;COLOR]" compound form
+            // by WordBatchEmitter) or rPr (Query.cs:683 emits compact `shading=<fill>`
+            // only). Use the compound form as the signal — values that contain
+            // `;` came from pPr in the source and must round-trip to pPr.
+            // Compact values stay with the ApplyRunFormatting (rPr) probe below.
+            if ((string.Equals(key, "shading", StringComparison.OrdinalIgnoreCase)
+                 || string.Equals(key, "shd", StringComparison.OrdinalIgnoreCase))
+                && value.Contains(';')
+                && (styleType == StyleValues.Paragraph || styleType == StyleValues.Table))
+            {
+                var pPrShd = newStyle.StyleParagraphProperties ?? EnsureStyleParagraphProperties(newStyle);
+                pPrShd.Shading = ParseShadingValue(value);
+                continue;
+            }
             // 1) Run-formatting helper (covers underline/strike/highlight/caps/
             //    smallCaps/dstrike/vanish/shadow/emboss/imprint/noProof/rtl/
             //    superscript/subscript/charSpacing/shading/...).

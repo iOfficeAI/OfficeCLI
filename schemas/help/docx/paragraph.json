@@ -241,6 +241,22 @@
       ],
       "enforcement": "strict"
     },
+    "underline.color": {
+      "type": "color",
+      "description": "underline stroke color, written to w:u/@w:color. Preserved when 'underline' style is toggled.",
+      "aliases": [
+        "underlineColor",
+        "underlinecolor",
+        "font.underline.color"
+      ],
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop underline=single --prop underline.color=#FF0000"
+      ],
+      "enforcement": "strict"
+    },
     "strike": {
       "type": "bool",
       "description": "run-level single strikethrough.",

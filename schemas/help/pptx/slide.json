@@ -13,11 +13,11 @@
   "paths": {
     "positional": ["/slide[N]"]
   },
-  "note": "Slide layouts are resolved by name via ResolveSlideLayout. 'title' / 'text' shorthand inserts title / content text shapes at Add time. Background accepts hex color, 'transparent', or 'image:/path'. Transition 'morph...' auto-prefixes shape names. Newly added slides contain no placeholders by default — use --prop title=... / text=... shorthand, `add /slide[N] --type placeholder --prop phType=title`, or `add /slide[N] --type shape|textbox` to add content.",
+  "note": "Slide layouts are resolved by name via ResolveSlideLayout. 'title' / 'text' shorthand inserts title / content text shapes at Add time. See `background` property for the full list of accepted forms (solid hex/scheme, gradients, radial/path, image). Transition 'morph...' auto-prefixes shape names. Newly added slides contain no placeholders by default — use --prop title=... / text=... shorthand, `add /slide[N] --type placeholder --prop phType=title`, or `add /slide[N] --type shape|textbox` to add content.",
   "properties": {
     "layout": {
       "type": "string",
-      "description": "slide layout name (e.g. 'Title Slide', 'Title and Content'). Resolved against the presentation's slide masters.",
+      "description": "slide layout name (e.g. 'Title Slide', 'Title and Content'). Resolved against the presentation's slide masters. The `layout` property is metadata only — placeholder slots defined in the layout are NOT auto-materialized on the slide. To populate slots: pass `--prop title=…` to auto-emit a title placeholder shape (phType=title); pass `--prop text=…` to auto-emit a body placeholder shape (phType=body); or add placeholders explicitly with `--type placeholder --prop phType=<role>`.",
       "add": true, "set": true, "get": true,
       "examples": ["--prop layout=\"Title Slide\""],
       "readback": "layout name string",
@@ -25,15 +25,15 @@
     },
     "title": {
       "type": "string",
-      "description": "title text. Creates a Title shape at Add time.",
-      "add": true, "set": true, "get": true,
+      "description": "title text. Creates a Title shape at Add time, carrying <p:ph type=\"title\"/>. To modify or read the title text after creation, target the title shape directly (e.g. /slide[N]/shape[@phType=title]).",
+      "add": true, "set": false, "get": false,
       "examples": ["--prop title=\"Introduction\""],
-      "readback": "Preview surfaces the title text (not in Format)",
+      "readback": "not surfaced at slide level; descend into the title shape",
       "enforcement": "report"
     },
     "text": {
       "type": "string",
-      "description": "content body text. Creates a Content text shape at Add time.",
+      "description": "content body text. Creates a Content text shape at Add time, carrying <p:ph type=\"body\" idx=\"1\"/> so it binds to the layout's body slot.",
       "add": true, "set": false, "get": false,
       "examples": ["--prop text=\"Body text\""],
       "readback": "not surfaced at slide level",
@@ -41,7 +41,7 @@
     },
     "background": {
       "type": "color",
-      "description": "slide background. Accepts hex color, 'transparent', or 'image:/path'.",
+      "description": "slide background. Accepts: hex color (`#RGB`, `#RRGGBB`, `#RRGGBBAA` for solid+alpha), scheme color (`accent1`..`accent6`, `dark1`, `dark2`, `light1`, `light2`, `hyperlink`, `followedHyperlink`), `transparent` (or `none`/`clear`), linear gradient `C1-C2[-C3][-angle]` (angle in degrees, also accepts `LINEAR;C1;C2[;angle]`), radial gradient `radial:C1-C2[-focus]` (focus: `tl`/`tr`/`bl`/`br`/`center`), path gradient `path:C1-C2[-focus]`, and image fill `image:/path/to/file` (local path; pair with `background.mode`/`background.alpha`/`background.scale`).",
       "add": true, "set": true, "get": true,
       "examples": ["--prop background=#FFFFFF"],
       "readback": "resolved background descriptor",
@@ -95,11 +95,11 @@
       "readback": "layout type token from SlideLayout/@type",
       "enforcement": "report"
     },
-    "background.alpha":  { "type":"number", "add":false, "set":false, "get":true, "description":"slide background fill alpha as percent (0..100). Surfaces when the resolved fill carries an alpha channel.", "readback":"integer percent 0..100", "enforcement":"report" },
+    "background.alpha":  { "type":"number", "add":false, "set":true,  "get":true, "description":"slide background fill alpha as percent (0..100). Settable on existing solid or image backgrounds: on solid, rewrites the color with the given alpha (equivalent to `background=RRGGBBAA`); on image, emits `<a:alphaModFix/>`. Surfaces on get when the resolved fill carries an alpha channel.", "readback":"integer percent 0..100", "enforcement":"report" },
     "background.crop":   { "type":"string", "add":false, "set":false, "get":true, "description":"slide background image crop quad in `l,t,r,b` percent units (CT_RelativeRect).", "readback":"comma-separated `l,t,r,b` quad", "enforcement":"report" },
-    "background.mode":   { "type":"string", "add":false, "set":false, "get":true, "description":"slide background image fill mode — `tile` or `center`. Absent for stretch (default).", "readback":"`tile` | `center`", "enforcement":"report" },
+    "background.mode":   { "type":"string", "add":false, "set":true,  "get":true, "description":"slide background image fill mode — `stretch` (default), `tile`, or `center`. Settable on an existing image background; emitted on get only when non-default.", "readback":"`tile` | `center`", "enforcement":"report" },
     "background.ref":    { "type":"number", "add":false, "set":false, "get":true, "description":"theme background reference index — bgRef/@idx (1001/1002/1003 etc.) when the slide inherits from the theme.", "readback":"integer theme bg ref id", "enforcement":"report" },
-    "background.scale":  { "type":"number", "add":false, "set":false, "get":true, "description":"tile-fill scale percent (sx, both axes). Surfaces with background.mode=tile.", "readback":"integer percent", "enforcement":"report" },
+    "background.scale":  { "type":"number", "add":false, "set":true,  "get":true, "description":"tile-fill scale percent (sx, both axes), 1..500. Settable on an existing image background with background.mode=tile; surfaces on get with background.mode=tile.", "readback":"integer percent", "enforcement":"report" },
     "matchedShapes":     { "type":"number", "add":false, "set":false, "get":true, "description":"morph transition: number of shapes from the previous slide that matched on the current slide.", "readback":"integer match count", "enforcement":"report" },
     "morphMode":         { "type":"string", "add":false, "set":false, "get":true, "description":"morph transition mode (byObject default, or other p:morph @option token).", "readback":"morph mode token", "enforcement":"report" },
     "morphShapes":       { "type":"number", "add":false, "set":false, "get":true, "description":"morph transition: number of candidate shapes considered for matching on this slide.", "readback":"integer candidate count", "enforcement":"report" }

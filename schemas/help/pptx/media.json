@@ -70,28 +70,36 @@
     },
     "autoPlay": {
       "type": "bool",
-      "aliases": ["autoplay"],
+      "aliases": ["autoplay", "autoStart", "autostart"],
       "add": true, "set": true, "get": true,
       "examples": ["--prop autoPlay=true"],
       "readback": "true/false",
       "enforcement": "report"
     },
+    "loop": {
+      "type": "bool",
+      "description": "loop until stopped (repeats the clip indefinitely during playback).",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop loop=true"],
+      "readback": "true/false",
+      "enforcement": "report"
+    },
     "trimStart": {
       "type": "string",
-      "description": "trim from media start (e.g. '00:00:01.500' or millisecond count). Alias: trimstart.",
+      "description": "trim from media start. Accepts ms ('200'), seconds ('1.5s'), or 'hh:mm:ss.fff' ('00:00:01.500'); stored as ms-int. Alias: trimstart.",
       "aliases": ["trimstart"],
       "add": true, "set": true, "get": true,
-      "examples": ["--prop trimStart=00:00:01.500"],
-      "readback": "OOXML trim Start string",
+      "examples": ["--prop trimStart=1500", "--prop trimStart=1.5s", "--prop trimStart=00:00:01.500"],
+      "readback": "milliseconds (string)",
       "enforcement": "report"
     },
     "trimEnd": {
       "type": "string",
-      "description": "trim from media end. Alias: trimend.",
+      "description": "trim from media end. Same input forms as trimStart; stored as ms-int. Alias: trimend.",
       "aliases": ["trimend"],
       "add": true, "set": true, "get": true,
-      "examples": ["--prop trimEnd=00:00:10.000"],
-      "readback": "OOXML trim End string",
+      "examples": ["--prop trimEnd=10000", "--prop trimEnd=10s", "--prop trimEnd=00:00:10.000"],
+      "readback": "milliseconds (string)",
       "enforcement": "report"
     }
   }

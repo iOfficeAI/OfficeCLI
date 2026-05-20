@@ -821,8 +821,8 @@ public partial class WordHandler
                     // Equal-width columns: "3" or "3,720" (count,space in twips)
                     var eqCols = EnsureColumns(sectPr);
                     var colParts = value.Split(',');
-                    if (!short.TryParse(colParts[0], out var colCount))
-                        throw new ArgumentException($"Invalid 'columns' value: '{value}'. Expected an integer or integer,space (e.g. '3' or '3,720').");
+                    if (!short.TryParse(colParts[0], out var colCount) || colCount < 1)
+                        throw new ArgumentException($"Invalid 'columns' value: '{value}'. Expected a positive integer (>= 1), optionally followed by ',space' (e.g. '3' or '3,720').");
                     eqCols.ColumnCount = (Int16Value)colCount;
                     eqCols.EqualWidth = true;
                     if (colParts.Length > 1)
@@ -1555,7 +1555,7 @@ public partial class WordHandler
                         : new DocumentFormat.OpenXml.EnumValue<LineSpacingRuleValues>(LineSpacingRuleValues.Exact);
                     break;
                 }
-                case "linerule" or "lineRule":
+                case "linerule" or "lineRule" or "linespacingrule" or "lineSpacingRule":
                 {
                     // BUG-019: explicit override needed — lineSpacing alone
                     // cannot distinguish AtLeast from Exact.
@@ -1570,6 +1570,8 @@ public partial class WordHandler
                     // Replace, don't ??= — see BUG-LT3 in WordHandler.Set.cs.
                     if (IsTruthy(value))
                         pPrCs.ContextualSpacing = new ContextualSpacing();
+                    else if (IsExplicitFalseAddOverride(value))
+                        pPrCs.ContextualSpacing = new ContextualSpacing { Val = OnOffValue.FromBoolean(false) };
                     else
                         pPrCs.ContextualSpacing = null;
                     break;
@@ -1584,6 +1586,8 @@ public partial class WordHandler
                 {
                     var pPrKn = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
                     if (IsTruthy(value)) pPrKn.KeepNext = new KeepNext();
+                    else if (IsExplicitFalseAddOverride(value))
+                        pPrKn.KeepNext = new KeepNext { Val = OnOffValue.FromBoolean(false) };
                     else pPrKn.KeepNext = null;
                     break;
                 }
@@ -1591,6 +1595,8 @@ public partial class WordHandler
                 {
                     var pPrKl = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
                     if (IsTruthy(value)) pPrKl.KeepLines = new KeepLines();
+                    else if (IsExplicitFalseAddOverride(value))
+                        pPrKl.KeepLines = new KeepLines { Val = OnOffValue.FromBoolean(false) };
                     else pPrKl.KeepLines = null;
                     break;
                 }
@@ -1598,6 +1604,8 @@ public partial class WordHandler
                 {
                     var pPrPbb = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
                     if (IsTruthy(value)) pPrPbb.PageBreakBefore = new PageBreakBefore();
+                    else if (IsExplicitFalseAddOverride(value))
+                        pPrPbb.PageBreakBefore = new PageBreakBefore { Val = OnOffValue.FromBoolean(false) };
                     else pPrPbb.PageBreakBefore = null;
                     break;
                 }
@@ -1613,6 +1621,16 @@ public partial class WordHandler
                 // AddStyle's numPr support — paragraphs inheriting this style
                 // (via pStyle) will pick up numbering through ResolveNumPrFromStyle
                 // without needing their own numPr.
+                case "tabs" or "tabstops":
+                {
+                    // `tabs=POS:ALIGN[:LEADER],...` shorthand on style pPr.
+                    // Mirrors paragraph Set and AddStyle behaviour. See
+                    // ApplyTabsShorthand in Helpers.cs for syntax.
+                    // CONSISTENCY(add-set-symmetry).
+                    var pPrTabs = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                    ApplyTabsShorthand(pPrTabs, value);
+                    break;
+                }
                 case "numId" or "numid":
                 {
                     var pPrN = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
@@ -1656,7 +1674,7 @@ public partial class WordHandler
                 }
                 // CONSISTENCY(style-indent): list-family styles (List, List Paragraph,
                 // List 2/3, List Continue 1/2/3, Intense Quote) carry their indent on
-                // the style definition. Without these cases the BatchEmitter dump emits
+                // the style definition. Without these cases the WordBatchEmitter dump emits
                 // leftIndent / hangingIndent / firstLineIndent / rightIndent on /styles
                 // and Set rejects them as UNSUPPORTED — list styles round-trip with
                 // their indent erased (BUG BT-5). StyleUnsupportedHints' "set indent at
@@ -1688,6 +1706,58 @@ public partial class WordHandler
                     var pPrHi = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
                     var indHi = pPrHi.Indentation ?? (pPrHi.Indentation = new Indentation());
                     indHi.Hanging = SpacingConverter.ParseWordSpacing(value).ToString();
+                    break;
+                }
+                // P1-6: chars-based indents on /styles (CJK convention — Word
+                // recomputes the actual offset from font size). Mirror the
+                // twips-unit indent group above; the dump→batch round-trip
+                // needs these slots independently writable on the style.
+                case "firstlinechars" or "firstLineChars":
+                {
+                    var pPrFlc = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                    var indFlc = pPrFlc.Indentation ?? (pPrFlc.Indentation = new Indentation());
+                    indFlc.FirstLineChars = ParseHelpers.SafeParseInt(value, "firstLineChars");
+                    break;
+                }
+                case "leftchars" or "leftChars" or "startchars" or "startCharacters":
+                {
+                    var pPrLc = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                    var indLc = pPrLc.Indentation ?? (pPrLc.Indentation = new Indentation());
+                    indLc.LeftChars = ParseHelpers.SafeParseInt(value, "leftChars");
+                    break;
+                }
+                case "rightchars" or "rightChars" or "endchars" or "endCharacters":
+                {
+                    var pPrRc = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                    var indRc = pPrRc.Indentation ?? (pPrRc.Indentation = new Indentation());
+                    indRc.RightChars = ParseHelpers.SafeParseInt(value, "rightChars");
+                    break;
+                }
+                case "hangingchars" or "hangingChars":
+                {
+                    var pPrHc = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                    var indHc = pPrHc.Indentation ?? (pPrHc.Indentation = new Indentation());
+                    indHc.HangingChars = ParseHelpers.SafeParseInt(value, "hangingChars");
+                    break;
+                }
+                // P1-7: line-based space-before/after on /styles. Symmetric with
+                // the chars indents above — the OOXML attr is unitless
+                // (hundredths of a line), Word picks lines over twips at
+                // render time when both are present.
+                case "spacebeforelines" or "spaceBeforeLines":
+                {
+                    var pPrSbl = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                    var spSbl = pPrSbl.SpacingBetweenLines ?? (pPrSbl.SpacingBetweenLines = new SpacingBetweenLines());
+                    spSbl.BeforeLines = ParseHelpers.SafeParseInt(value, "spaceBeforeLines");
+                    spSbl.Before = null;
+                    break;
+                }
+                case "spaceafterlines" or "spaceAfterLines":
+                {
+                    var pPrSal = style.StyleParagraphProperties ?? EnsureStyleParagraphProperties(style);
+                    var spSal = pPrSal.SpacingBetweenLines ?? (pPrSal.SpacingBetweenLines = new SpacingBetweenLines());
+                    spSal.AfterLines = ParseHelpers.SafeParseInt(value, "spaceAfterLines");
+                    spSal.After = null;
                     break;
                 }
                 // Per-script font split. Each w:rFonts attr is independent and

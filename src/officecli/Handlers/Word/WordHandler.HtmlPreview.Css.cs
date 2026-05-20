@@ -24,7 +24,7 @@ public partial class WordHandler
     // normalization to one of these enum strings) to the resolved typeface
     // declared in theme1.xml's <a:fontScheme>. asciiTheme and hAnsiTheme
     // both point at the latin face — Word treats them as one slot.
-    // Modeled after LibreOffice ThemeHandler::resolveMajorMinorTypeFace.
+    // Modeled after ThemeHandler::resolveMajorMinorTypeFace.
     private Dictionary<string, string> GetThemeFonts()
     {
         if (_themeFonts != null) return _themeFonts;
@@ -416,7 +416,7 @@ public partial class WordHandler
             // Before/after spacing: w:before is in twips; w:beforeLines is in
             // hundredths of a line. Per ECMA-376 §17.3.1.33 beforeLines
             // OVERRIDES before when both are present. The "1 line" base unit
-            // is implementation-defined; LibreOffice (and Word) anchor it to
+            // is implementation-defined; (and Word) anchor it to
             // 240 twips = 12pt FIXED, not the paragraph's font line.
             const double LineUnitPt = 12.0;
 
@@ -522,26 +522,27 @@ public partial class WordHandler
                            ?? styleSpacing?.LineRule?.InnerText;
                 if (rule == "auto" || rule == null)
                 {
-                    if (int.TryParse(lv, out var lvNum))
+                    if (int.TryParse(lv, out var lvNum) && lvNum > 0)
                     {
-                        // OOXML §17.3.1.33 "auto" rule: line-height is the
-                        // larger of the font's natural single-line height
-                        // and the per-paragraph multiplier `lvNum/240 ×
-                        // font_size`. The multiplier is anchored to
-                        // font_size, not to the natural-line-height — so
-                        // `lvNum/240 × ratio` double-counts the ratio.
-                        // In CSS unitless line-height (browser multiplies
-                        // by font-size): line-height = max(ratio, lvNum/240).
+                        // OOXML §17.3.1.33 "auto" rule: line value is in
+                        // 240ths of a line. Final line-height multiplies
+                        // the font's natural single-line ratio by the
+                        // per-paragraph (lvNum/240) factor.
+                        // CSS unitless: line-height = (lvNum/240) × natural_ratio
                         var paraFont = ResolveParaFontForLineHeight(para);
                         var ratio = FontMetricsReader.GetRatio(paraFont);
-                        var lh = Math.Max(ratio, lvNum / 240.0);
+                        var lh = ratio * (lvNum / 240.0);
                         parts.Add($"line-height:{lh:0.####}");
                     }
                 }
                 else if (rule == "exact" || rule == "atLeast")
                 {
                     var linePt = Units.TwipsToPt(lv);
-                    parts.Add($"line-height:{linePt:0.##}pt");
+                    // OOXML §17.3.1.33 atLeast: floor only. When the
+                    // paragraph's natural single-line height exceeds the
+                    // floor, the natural value applies.
+                    var emitPt = rule == "atLeast" ? ResolveAtLeastPt(linePt, para) : linePt;
+                    parts.Add($"line-height:{emitPt:0.##}pt");
                     // #7b0001: when lineRule=exact pins the line box below
                     // ~120% of the paragraph's font size, Word clips
                     // over-tall glyphs. Emit overflow:hidden so tall glyphs
@@ -722,30 +723,27 @@ public partial class WordHandler
             var dropCap = framePr.GetAttributes().FirstOrDefault(a => a.LocalName == "dropCap").Value;
             if (dropCap == "drop" || dropCap == "margin")
             {
-                var lines = framePr.GetAttributes().FirstOrDefault(a => a.LocalName == "lines").Value;
-                var lineCount = lines != null && int.TryParse(lines, out var lc) ? lc : 3;
-                // Don't override font-size — let the run's actual size (e.g. 58.5pt) apply
-                // Set line-height to match lineCount lines of body text
-                // Estimate body line height from document defaults
-                var defSz = para.Ancestors<Body>().FirstOrDefault()
-                    ?.GetFirstChild<SectionProperties>() != null ? 11.0 : 11.0; // fallback
-                var rPr = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles?.DocDefaults
-                    ?.RunPropertiesDefault?.RunPropertiesBaseStyle;
-                if (rPr?.FontSize?.Val?.Value is string dsz && double.TryParse(dsz, out var dhp))
-                    defSz = dhp / 2.0;
-                var defSpacing = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles?.DocDefaults
-                    ?.ParagraphPropertiesDefault?.ParagraphPropertiesBaseStyle?.SpacingBetweenLines;
-                var lineHMult = 1.15;
-                if (defSpacing?.Line?.Value is string dlv && double.TryParse(dlv, out var dlvi)
-                    && defSpacing.LineRule?.InnerText is "auto" or null)
-                    lineHMult = dlvi / 240.0;
-                var bodyLineH = defSz * lineHMult;
-                var dropCapHeight = lineCount * bodyLineH;
-                // Read hSpace from framePr (OOXML spec default: 0)
+                // OOXML §17.3.1.36 framePr/dropCap: the cap glyph renders at the
+                // run's effective font size from the rPr cascade (run → style →
+                // docDefaults). The framed paragraph hosts a float whose box
+                // bounds the cap glyph's visible vertical extent so wrap text
+                // flows alongside. Container height = font_size × full-ascent
+                // ratio (top of the inline strut; reaches above cap-height for
+                // accented capitals) so the ink isn't clipped and no trailing
+                // whitespace runs past the visible glyph.
+                var dropCapSizePt = ResolveParaPrincipalSizePt(para) ?? 11.0;
+                var dropCapFont = ResolveParaFontForLineHeight(para);
+                var (dropCapAscPct, _) = Core.FontMetricsReader.GetSplitAscDscOverride(dropCapFont);
+                var ascRatio = dropCapAscPct > 0 ? dropCapAscPct / 100.0 : 0.95;
+                var dropCapHeight = dropCapSizePt * ascRatio;
                 var hSpaceAttr = framePr.GetAttributes().FirstOrDefault(a => a.LocalName == "hSpace").Value;
                 var hSpacePt = hSpaceAttr != null && int.TryParse(hSpaceAttr, out var hsTwips) ? hsTwips / 20.0 : 0;
                 parts.Add("float:left");
                 parts.Add($"line-height:{dropCapHeight:0.#}pt");
+                // Clip the float so the cap glyph's natural strut can't push
+                // the box taller than the visible cap.
+                parts.Add($"height:{dropCapHeight:0.#}pt");
+                parts.Add("overflow:hidden");
                 parts.Add($"padding-right:{hSpacePt:0.#}pt");
                 parts.Add($"margin:0");
             }
@@ -1116,7 +1114,7 @@ public partial class WordHandler
                 {
                     // beforeLines/afterLines override before/after per
                     // ECMA-376 §17.3.1.33; "1 line" = 240 twips = 12pt fixed
-                    // (matches Word and LibreOffice's nSingleLineSpacing).
+                    // (matches Word's single-line spacing).
                     const double LineUnitPt = 12.0;
                     if (!parts.Any(p => p.StartsWith("margin-top")))
                     {
@@ -1135,18 +1133,23 @@ public partial class WordHandler
                     if (spacing.Line?.Value is string lv && !parts.Any(p => p.StartsWith("line-height")))
                     {
                         var rule = spacing.LineRule?.InnerText;
-                        if ((rule == "auto" || rule == null) && int.TryParse(lv, out var val))
+                        if ((rule == "auto" || rule == null) && int.TryParse(lv, out var val) && val > 0)
                         {
-                            // OOXML §17.3.1.33 "auto" rule: max of natural
-                            // line-height (font_size × ratio) and the
-                            // multiplier (val/240 × font_size). In CSS
-                            // unitless line-height: max(ratio, val/240).
+                            // OOXML §17.3.1.33 "auto" rule: see paragraph
+                            // path above. line-height = (val/240) × natural_ratio.
                             var paraFont = ResolveParaFontForLineHeight(para);
                             var ratio = FontMetricsReader.GetRatio(paraFont);
-                            parts.Add($"line-height:{Math.Max(ratio, val / 240.0):0.####}");
+                            parts.Add($"line-height:{ratio * (val / 240.0):0.####}");
                         }
                         else if (rule == "exact" || rule == "atLeast")
-                            parts.Add($"line-height:{Units.TwipsToPt(lv):0.##}pt");
+                        {
+                            // §17.3.1.33 atLeast acts as a floor; use the
+                            // paragraph natural single-line height when it
+                            // exceeds the floor.
+                            var linePt = Units.TwipsToPt(lv);
+                            var emitPt = rule == "atLeast" ? ResolveAtLeastPt(linePt, para) : linePt;
+                            parts.Add($"line-height:{emitPt:0.##}pt");
+                        }
                     }
                 }
 
@@ -1203,16 +1206,22 @@ public partial class WordHandler
                 if (spacing.Line?.Value is string lv && !parts.Any(p => p.StartsWith("line-height")))
                 {
                     var rule = spacing.LineRule?.InnerText;
-                    if ((rule == "auto" || rule == null) && int.TryParse(lv, out var val))
+                    if ((rule == "auto" || rule == null) && int.TryParse(lv, out var val) && val > 0)
                     {
-                        // OOXML §17.3.1.33 "auto" rule (see ResolveSpacing
-                        // path above for derivation).
+                        // OOXML §17.3.1.33 "auto" rule (see paragraph path
+                        // above). line-height = (val/240) × natural_ratio.
                         var paraFont = ResolveParaFontForLineHeight(para);
                         var ratio = FontMetricsReader.GetRatio(paraFont);
-                        parts.Add($"line-height:{Math.Max(ratio, val / 240.0):0.####}");
+                        parts.Add($"line-height:{ratio * (val / 240.0):0.####}");
                     }
                     else if (rule == "exact" || rule == "atLeast")
-                        parts.Add($"line-height:{Units.TwipsToPt(lv):0.##}pt");
+                    {
+                        // §17.3.1.33 atLeast: floor only; substitute natural
+                        // line-height when the paragraph's content exceeds it.
+                        var linePt = Units.TwipsToPt(lv);
+                        var emitPt = rule == "atLeast" ? ResolveAtLeastPt(linePt, para) : linePt;
+                        parts.Add($"line-height:{emitPt:0.##}pt");
+                    }
                 }
             }
             var ind = defPPr.Indentation;
@@ -1232,7 +1241,123 @@ public partial class WordHandler
         return string.Join(";", parts);
     }
 
-    private string GetRunInlineCss(RunProperties? rProps)
+    /// <summary>Apply OOXML §17.3.1.33 atLeast semantics: the value is a
+    /// floor, not a fixed line-height. When the paragraph's natural
+    /// single-line height (font ratio × principal size) exceeds the
+    /// floor, the natural value is used instead.</summary>
+    private double ResolveAtLeastPt(double floorPt, Paragraph para)
+    {
+        var paraFont = ResolveParaFontForLineHeight(para);
+        var ratio = FontMetricsReader.GetRatio(paraFont);
+        var paraSizePt = ResolveParaPrincipalSizePt(para) ?? 11.0;
+        return Math.Max(floorPt, ratio * paraSizePt);
+    }
+
+    /// <summary>Effective spacing-after for a paragraph in pt, cascading
+    /// through direct pPr → pStyle chain → docDefaults pPrDefault. Returns
+    /// 0 when nothing in the cascade sets it.</summary>
+    private double ResolveParaAfterSpacingPt(Paragraph para)
+    {
+        var pProps = para.ParagraphProperties;
+        var styleId = pProps?.ParagraphStyleId?.Val?.Value;
+        var styleSpacing = ResolveSpacingFromStyle(styleId);
+        var afterTwips = pProps?.SpacingBetweenLines?.After?.Value
+                         ?? styleSpacing?.After?.Value;
+        if (afterTwips == null)
+        {
+            afterTwips = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles?.DocDefaults
+                ?.ParagraphPropertiesDefault?.ParagraphPropertiesBaseStyle
+                ?.SpacingBetweenLines?.After?.Value;
+        }
+        if (afterTwips != null && int.TryParse(afterTwips, out var tw))
+            return tw / 20.0;
+        return 0;
+    }
+
+    /// <summary>Read the paragraph's principal font size (in pt), the same
+    /// value GetParagraphInlineCss emits on the &lt;p&gt; element.</summary>
+    private double? ResolveParaPrincipalSizePt(Paragraph para)
+    {
+        Run? probeRun = para.Elements<Run>().FirstOrDefault(r =>
+            r.ChildElements.Any(c => c is Text t && !string.IsNullOrEmpty(t.Text)));
+        if (probeRun == null)
+        {
+            var markProps = para.ParagraphProperties?.ParagraphMarkRunProperties;
+            if (markProps != null)
+            {
+                var synthRPr = new RunProperties();
+                foreach (var child in markProps.ChildElements)
+                    synthRPr.AppendChild(child.CloneNode(true));
+                probeRun = new Run(synthRPr);
+            }
+        }
+        if (probeRun == null) return null;
+        var rProps = ResolveEffectiveRunProperties(probeRun, para);
+        var sz = rProps.FontSize?.Val?.Value;
+        if (sz != null && int.TryParse(sz, out var hp))
+            return hp / 2.0;
+        return null;
+    }
+
+    /// <summary>Compute a line-height CSS value for a single run-level span.
+    /// CSS 2.1 §10.8.1: line-box height = max over each inline of its own
+    /// line-height. When the run's font-size matches the paragraph's
+    /// principal size, the run emits the unitless multiplier 1 so the
+    /// paragraph's own line-height dominates the line-box; this also caps
+    /// the inline box at the run's font-size, preventing a font variant
+    /// whose intrinsic inline metrics exceed the paragraph's line-height
+    /// from extending the line-box. When the run's size differs from the
+    /// paragraph's principal size, the run mirrors the paragraph's
+    /// line-height rule using its own font's natural ratio so mixed-size
+    /// paragraphs render at the correct max-line-height per OOXML
+    /// §17.3.1.33.</summary>
+    private string ResolveRunLineHeightCss(string? runFontName, double? runSizePt, Paragraph para)
+    {
+        var paraSizePt = ResolveParaPrincipalSizePt(para);
+        bool sizeMatches = runSizePt == null
+            || (paraSizePt != null && Math.Abs(runSizePt.Value - paraSizePt.Value) < 0.01);
+        if (sizeMatches) return "line-height:1";
+
+        var pProps = para.ParagraphProperties;
+        var styleId = pProps?.ParagraphStyleId?.Val?.Value;
+        var styleSpacing = ResolveSpacingFromStyle(styleId);
+        var hasSpacing = pProps?.SpacingBetweenLines != null || styleSpacing != null;
+        var lineVal = pProps?.SpacingBetweenLines?.Line?.Value ?? styleSpacing?.Line?.Value;
+        var rule = pProps?.SpacingBetweenLines?.LineRule?.InnerText ?? styleSpacing?.LineRule?.InnerText;
+
+        var font = runFontName ?? ResolveParaFontForLineHeight(para);
+        var ratio = FontMetricsReader.GetRatio(font);
+
+        if (hasSpacing)
+        {
+            if (lineVal != null)
+            {
+                if ((rule == "auto" || rule == null)
+                    && int.TryParse(lineVal, out var lvNum) && lvNum > 0)
+                    return $"line-height:{ratio * (lvNum / 240.0):0.####}";
+                if (rule == "exact")
+                    return $"line-height:{Units.TwipsToPt(lineVal):0.##}pt";
+                if (rule == "atLeast")
+                {
+                    // §17.3.1.33 atLeast: floor; this run's natural single
+                    // line height (ratio × runSize) substitutes when greater.
+                    var floorPt = Units.TwipsToPt(lineVal);
+                    var runNaturalPt = ratio * runSizePt!.Value;
+                    return $"line-height:{Math.Max(floorPt, runNaturalPt):0.##}pt";
+                }
+            }
+            return $"line-height:{ratio:0.####}";
+        }
+
+        var builtIn = ResolveBuiltInStyleDefaults(styleId);
+        if (builtIn == null && DocCarriesNormalDefaults())
+            builtIn = BuiltInStyleDefaults["Normal"];
+        if (builtIn != null)
+            return $"line-height:{Math.Max(builtIn.Line, ratio):0.####}";
+        return $"line-height:{ratio:0.####}";
+    }
+
+    private string GetRunInlineCss(RunProperties? rProps, Paragraph? para = null)
     {
         if (rProps == null) return "";
         var parts = new List<string>();
@@ -1379,18 +1504,36 @@ public partial class WordHandler
             if (hlColor != null) parts.Add($"background-color:{hlColor}");
         }
 
-        // Superscript / Subscript — always shrink to match Word's behavior.
-        // Word auto-sizes sub/sup relative to the surrounding run, even when
-        // the run has an explicit size. Use font-size:smaller (browser spec
-        // default for <sub>/<sup>) so the shrinkage compounds with any
-        // explicit size we already emitted for this run.
+        // Superscript / Subscript per OOXML §17.3.2.42: the surrounding
+        // line-box keeps the base-font height; only the affected run's glyph
+        // is repositioned. Browser default vertical-align:super/sub raises
+        // the inline box which participates in line-height aggregation and
+        // expands the parent line; position:relative shifts the visual glyph
+        // without affecting line geometry. Reduced font size and baseline
+        // offset come from the run's own font (OS/2 ySub/SuperscriptYSize
+        // and ySub/SuperscriptYOffset); a font-agnostic fallback applies
+        // when those fields are unreadable.
         var vertAlign = rProps.VerticalTextAlignment?.Val;
         if (vertAlign != null)
         {
+            var ssFont = font ?? (para != null ? ResolveParaFontForLineHeight(para) : null);
+            var ss = ssFont != null
+                ? FontMetricsReader.GetSuperSubMetrics(ssFont)
+                : default;
             if (vertAlign.InnerText == "superscript")
-                parts.Add("vertical-align:super;font-size:smaller");
+            {
+                if (!ss.IsEmpty && ss.SuperSizeEm > 0 && ss.SuperOffsetEm > 0)
+                    parts.Add($"vertical-align:baseline;position:relative;top:-{ss.SuperOffsetEm:0.###}em;font-size:{ss.SuperSizeEm * 100:0.#}%");
+                else
+                    parts.Add("vertical-align:baseline;position:relative;top:-0.35em;font-size:smaller");
+            }
             else if (vertAlign.InnerText == "subscript")
-                parts.Add("vertical-align:sub;font-size:smaller");
+            {
+                if (!ss.IsEmpty && ss.SubSizeEm > 0 && ss.SubOffsetEm > 0)
+                    parts.Add($"vertical-align:baseline;position:relative;top:{ss.SubOffsetEm:0.###}em;font-size:{ss.SubSizeEm * 100:0.#}%");
+                else
+                    parts.Add("vertical-align:baseline;position:relative;top:0.15em;font-size:smaller");
+            }
         }
 
         // SmallCaps / AllCaps
@@ -1448,6 +1591,20 @@ public partial class WordHandler
 
         // w14 text effects (textFill, textOutline, glow, shadow, reflection)
         AppendW14CssEffects(rProps, parts);
+
+        // CSS 2.1 §10.8.1 — line-box height = max over each inline of
+        // its own line-height. ResolveRunLineHeightCss picks "1" when the
+        // run's font-size matches the paragraph's principal size (the
+        // paragraph's own line-height dominates the line-box, and the
+        // run's inline box is capped to its font-size so a heavier font
+        // variant can't extend it); when the run's size differs, the
+        // run's line-height mirrors the paragraph's rule using its own
+        // font's natural ratio so the bigger inline box drives the
+        // line-box to max-of-fonts × max-size × multi.
+        double? runSizePt = (size != null && int.TryParse(size, out var hp))
+            ? hp / 2.0 : (double?)null;
+        if (parts.Count > 0 && para != null)
+            parts.Add(ResolveRunLineHeightCss(font, runSizePt, para));
 
         return string.Join(";", parts);
     }
@@ -1996,6 +2153,49 @@ public partial class WordHandler
     /// with the highest ratio. CSS unitless line-height inheritance then
     /// scales it per-span by each run's own font-size.
     /// </remarks>
+    /// <summary>
+    /// Inline style for a footnote/endnote-reference &lt;sup&gt;. Resolves the
+    /// run's own font first (when its rFonts pin one) and falls back to the
+    /// paragraph's principal font; reads the font's OS/2 sub/superscript
+    /// fields to size and position the reference glyph the way the run's
+    /// own font would. See [Css.cs vertAlign emit](WordHandler.HtmlPreview.Css.cs)
+    /// for the symmetrical inline-run path; the font-agnostic fallback is
+    /// the same CSS browsers use for &lt;sup&gt; when OS/2 data isn't queried.
+    /// </summary>
+    private string ResolveNoteRefSupStyle(Run run, Paragraph para)
+    {
+        var rProps = run.RunProperties;
+        var fonts = rProps?.RunFonts;
+        string? font = fonts?.Ascii?.Value
+            ?? ResolveThemeFont(fonts?.AsciiTheme?.InnerText)
+            ?? fonts?.HighAnsi?.Value
+            ?? ResolveThemeFont(fonts?.HighAnsiTheme?.InnerText)
+            ?? ResolveParaFontForLineHeight(para);
+        return BuildSupStyleFromFont(font);
+    }
+
+    /// <summary>
+    /// Inline style for the footnote / endnote list-marker &lt;sup&gt; emitted
+    /// inside the page-bottom notes area. The note text typically renders in
+    /// the FootnoteText / EndnoteText style font; falls back to the document
+    /// default when that style omits an explicit typeface.
+    /// </summary>
+    private string ResolveNoteListSupStyle(string styleId)
+    {
+        var font = ResolveStyleFontName(styleId) ?? ReadDocDefaults().Font;
+        return BuildSupStyleFromFont(font);
+    }
+
+    private static string BuildSupStyleFromFont(string? font)
+    {
+        var ss = !string.IsNullOrEmpty(font)
+            ? FontMetricsReader.GetSuperSubMetrics(font)
+            : default;
+        if (!ss.IsEmpty && ss.SuperSizeEm > 0 && ss.SuperOffsetEm > 0)
+            return $"vertical-align:baseline;position:relative;top:-{ss.SuperOffsetEm:0.###}em;font-size:{ss.SuperSizeEm * 100:0.#}%;text-decoration:none";
+        return "vertical-align:baseline;position:relative;top:-0.35em;font-size:smaller;text-decoration:none";
+    }
+
     private string ResolveParaFontForLineHeight(Paragraph para)
     {
         bool paraHasCjk = para.Elements<Run>()
@@ -2010,8 +2210,18 @@ public partial class WordHandler
         {
             var fonts = rProps.RunFonts;
             if (fonts == null) return;
-            var slots = new List<string?> { fonts.Ascii?.Value, fonts.HighAnsi?.Value };
-            if (includeEastAsia) slots.Add(fonts.EastAsia?.Value);
+            // OOXML §17.3.2.27: each rFonts slot may carry either a literal
+            // typeface OR a *Theme reference (asciiTheme/hAnsiTheme/...).
+            // When only the theme attribute is set, resolve it via theme1.xml
+            // so the line-height calculation sees the same effective font
+            // the renderer uses.
+            var slots = new List<string?>
+            {
+                fonts.Ascii?.Value ?? ResolveThemeFont(fonts.AsciiTheme?.InnerText),
+                fonts.HighAnsi?.Value ?? ResolveThemeFont(fonts.HighAnsiTheme?.InnerText),
+            };
+            if (includeEastAsia)
+                slots.Add(fonts.EastAsia?.Value ?? ResolveThemeFont(fonts.EastAsiaTheme?.InnerText));
             foreach (var f in slots)
             {
                 if (string.IsNullOrEmpty(f)) continue;
@@ -2030,19 +2240,30 @@ public partial class WordHandler
         if (best == null)
         {
             var markProps = para.ParagraphProperties?.ParagraphMarkRunProperties;
+            var synthRPr = new RunProperties();
             if (markProps != null)
             {
-                var synthRPr = new RunProperties();
                 foreach (var child in markProps.ChildElements)
                     synthRPr.AppendChild(child.CloneNode(true));
-                var synthRun = new Run(synthRPr);
-                Consider(ResolveEffectiveRunProperties(synthRun, para), includeEastAsia: true);
             }
+            // Even when the paragraph mark carries no rPr (truly bare empty
+            // paragraph), still run the synthetic run through the style
+            // cascade so the default paragraph style's rFonts apply. Per
+            // OOXML §17.7.5.2 rPrDefault and §17.3.1 paragraph-mark rPr,
+            // the empty-paragraph mark inherits through the same docDefaults
+            // → default style → direct chain that content runs traverse, so
+            // the empty paragraph resolves to the same effective font.
+            var synthRun = new Run(synthRPr);
+            Consider(ResolveEffectiveRunProperties(synthRun, para), includeEastAsia: true);
         }
         if (best != null) return best;
 
-        var defFont = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
-            ?.DocDefaults?.RunPropertiesDefault?.RunPropertiesBaseStyle?.RunFonts?.Ascii?.Value;
+        var defRFonts = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
+            ?.DocDefaults?.RunPropertiesDefault?.RunPropertiesBaseStyle?.RunFonts;
+        var defFont = defRFonts?.Ascii?.Value
+            ?? ResolveThemeFont(defRFonts?.AsciiTheme?.InnerText)
+            ?? defRFonts?.HighAnsi?.Value
+            ?? ResolveThemeFont(defRFonts?.HighAnsiTheme?.InnerText);
         return defFont ?? GetThemeMinorLatinFont() ?? OfficeDefaultFonts.MinorLatin;
     }
 
@@ -2080,6 +2301,26 @@ public partial class WordHandler
             var sz = style.StyleRunProperties?.FontSize?.Val?.Value;
             if (sz != null && int.TryParse(sz, out var halfPts))
                 return $"{halfPts / 2.0:0.##}pt";
+            current = style.BasedOn?.Val?.Value;
+        }
+        return null;
+    }
+
+    private string? ResolveStyleFontName(string styleId)
+    {
+        var visited = new HashSet<string>();
+        var current = styleId;
+        while (current != null && visited.Add(current))
+        {
+            var style = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
+                ?.Elements<Style>().FirstOrDefault(s => s.StyleId?.Value == current);
+            if (style == null) break;
+            var rf = style.StyleRunProperties?.RunFonts;
+            var name = rf?.Ascii?.Value
+                ?? ResolveThemeFont(rf?.AsciiTheme?.InnerText)
+                ?? rf?.HighAnsi?.Value
+                ?? ResolveThemeFont(rf?.HighAnsiTheme?.InnerText);
+            if (!string.IsNullOrEmpty(name)) return name;
             current = style.BasedOn?.Val?.Value;
         }
         return null;
@@ -2285,7 +2526,7 @@ public partial class WordHandler
            zeroed when it becomes :first-child of a new page-body. The
            ORIGINAL page-body (which holds the document's first paragraph)
            is intentionally not matched here, so its first-paragraph
-           spaceBefore renders the way Word/LibreOffice/POI emit it. */
+           spaceBefore renders the way Word / POI emit it. */
         .page-body-cont > :first-child {{ margin-top: 0 !important; }}
         .page-body > img + h1, .page-body > img + img + h1 {{ margin-top: 0 !important; }}
         .doc-header, .doc-footer {{ font-size: {dd.SizePt:0.##}pt; }}
@@ -2293,8 +2534,8 @@ public partial class WordHandler
             padding-bottom: 0.3em; }}
         .doc-footer {{ position: absolute; bottom: {pg.FooterDistancePt:0.#}pt; left: {mL}; right: {mR};
             padding-top: 0.3em; }}
-        h1, h2, h3, h4, h5, h6 {{ line-height: {Math.Max(FontMetricsReader.GetRatio(dd.Font), dd.LineHeight):0.####}; }}
-        p {{ margin: 0; margin-bottom: {(dd.SpaceAfterPt > 0 ? $"{dd.SpaceAfterPt:0.##}pt" : "0")}; line-height: {Math.Max(FontMetricsReader.GetRatio(dd.Font), dd.LineHeight):0.####}; text-align: {dd.DefaultAlign};{(dd.DefaultAlign == "justify" ? " text-justify: inter-character;" : "")} text-autospace: ideograph-alpha ideograph-numeric; }}
+        h1, h2, h3, h4, h5, h6 {{ line-height: {FontMetricsReader.GetRatio(dd.Font) * dd.LineHeight:0.####}; }}
+        p {{ margin: 0; margin-bottom: {(dd.SpaceAfterPt > 0 ? $"{dd.SpaceAfterPt:0.##}pt" : "0")}; line-height: {FontMetricsReader.GetRatio(dd.Font) * dd.LineHeight:0.####}; text-align: {dd.DefaultAlign};{(dd.DefaultAlign == "justify" ? " text-justify: inter-character;" : "")} text-autospace: ideograph-alpha ideograph-numeric; }}
         a {{ color: #2B579A; }} a:hover {{ color: #1a3c6e; }}
         .toc {{ display: flex; text-indent: 0 !important; }}
         .toc a {{ color: inherit; text-decoration: none; display: flex; flex: 1; }}
@@ -2312,6 +2553,11 @@ public partial class WordHandler
         ul, ol {{ padding-left: 2em; margin: 0; }}
         ul {{ list-style-type: disc; }}
         li {{ margin: 0; }}
+        /* OOXML §17.3.1.36 dropCap: the framed <p> hosts a float clipped
+           to the visible cap-glyph height; the inner run <span>'s own
+           line-height must defer so its natural strut doesn't expand
+           the float past that clip. */
+        .dropcap-wrap > p:first-child > span {{ line-height: inherit !important; }}
         .equation {{ text-align: center; padding: 0.5em 0; overflow-x: auto; }}
         img {{ max-width: 100%; height: auto; }}
         .img-error {{ color: #999; font-style: italic; }}

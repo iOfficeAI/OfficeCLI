@@ -45,7 +45,10 @@ public partial class PowerPointHandler
         foreach (var (key, value) in properties)
         {
             if (key.Equals("text", StringComparison.OrdinalIgnoreCase))
+            {
+                XmlTextValidator.ValidateOrThrow(value, "text");
                 SetNotesText(notesPart, value);
+            }
             else if (key.Equals("direction", StringComparison.OrdinalIgnoreCase)
                   || key.Equals("dir", StringComparison.OrdinalIgnoreCase)
                   || key.Equals("rtl", StringComparison.OrdinalIgnoreCase))
@@ -71,16 +74,24 @@ public partial class PowerPointHandler
 
     private List<string> SetMasterShapeByPath(Match masterShapeMatch, Dictionary<string, string> properties)
     {
+        // CONSISTENCY(master-layout-shape-edit): partType is lowercased by
+        // NormalizePptxPathSegmentCasing — compare case-insensitively.
         var partType = masterShapeMatch.Groups[1].Value;
         var partIdx = int.Parse(masterShapeMatch.Groups[2].Value);
         var presentationPart = _doc.PresentationPart!;
 
+        OpenXmlPart ownerPart;
         OpenXmlPartRootElement rootEl;
-        if (partType == "slideMaster")
+        // CONSISTENCY(master-layout-path-aliases): accept both `slidemaster` and
+        // short `master`; same for `slidelayout` / `layout`.
+        var isMaster = partType.Equals("slidemaster", StringComparison.OrdinalIgnoreCase)
+                    || partType.Equals("master", StringComparison.OrdinalIgnoreCase);
+        if (isMaster)
         {
             var masters = presentationPart.SlideMasterParts.ToList();
             if (partIdx < 1 || partIdx > masters.Count)
                 throw new ArgumentException($"SlideMaster {partIdx} not found (total: {masters.Count})");
+            ownerPart = masters[partIdx - 1];
             rootEl = masters[partIdx - 1].SlideMaster
                 ?? throw new InvalidOperationException("Corrupt slide master");
         }
@@ -90,11 +101,47 @@ public partial class PowerPointHandler
                 .SelectMany(m => m.SlideLayoutParts).ToList();
             if (partIdx < 1 || partIdx > layouts.Count)
                 throw new ArgumentException($"SlideLayout {partIdx} not found (total: {layouts.Count})");
+            ownerPart = layouts[partIdx - 1];
             rootEl = layouts[partIdx - 1].SlideLayout
                 ?? throw new InvalidOperationException("Corrupt slide layout");
         }
 
-        if (!masterShapeMatch.Groups[3].Success)
+        return ApplyMasterLayoutShapeOrSelfProperties(masterShapeMatch, properties, ownerPart, rootEl);
+    }
+
+    // CONSISTENCY(master-layout-shape-edit): nested form
+    // /slidemaster[N]/slidelayout[L]/shape[K] gets its own dispatcher so the
+    // top-level flat regex (which captures part-type at group[1]) stays
+    // unambiguous. Shared body via ApplyMasterLayoutShapeOrSelfProperties.
+    private List<string> SetNestedMasterLayoutShapeByPath(Match nestedMatch, Dictionary<string, string> properties)
+    {
+        var mIdx = int.Parse(nestedMatch.Groups[1].Value);
+        var lIdx = int.Parse(nestedMatch.Groups[2].Value);
+        var presentationPart = _doc.PresentationPart!;
+        var masters = presentationPart.SlideMasterParts.ToList();
+        if (mIdx < 1 || mIdx > masters.Count)
+            throw new ArgumentException($"SlideMaster {mIdx} not found (total: {masters.Count})");
+        var layouts = masters[mIdx - 1].SlideLayoutParts.ToList();
+        if (lIdx < 1 || lIdx > layouts.Count)
+            throw new ArgumentException($"SlideLayout {lIdx} not found under master {mIdx} (total: {layouts.Count})");
+        var lp = layouts[lIdx - 1];
+        var rootEl = lp.SlideLayout
+            ?? throw new InvalidOperationException("Corrupt slide layout");
+
+        // Reuse the shape/self body by synthesising a match with groups[3]/[4]
+        // shifted from the nested capture (groups[3]/[4] in nestedMatch).
+        return ApplyMasterLayoutShapeOrSelfProperties(nestedMatch, properties, lp, rootEl, shapeTypeGroup: 3, shapeIdxGroup: 4);
+    }
+
+    private List<string> ApplyMasterLayoutShapeOrSelfProperties(
+        Match m,
+        Dictionary<string, string> properties,
+        OpenXmlPart ownerPart,
+        OpenXmlPartRootElement rootEl,
+        int shapeTypeGroup = 3,
+        int shapeIdxGroup = 4)
+    {
+        if (!m.Groups[shapeTypeGroup].Success)
         {
             // Set properties on the master/layout itself
             var unsupported = new List<string>();
@@ -117,20 +164,21 @@ public partial class PowerPointHandler
             return unsupported;
         }
 
-        // Set on a specific shape within master/layout
-        var elType = masterShapeMatch.Groups[3].Value;
-        var elIdx = int.Parse(masterShapeMatch.Groups[4].Value);
+        var elType = m.Groups[shapeTypeGroup].Value;
+        var elIdx = int.Parse(m.Groups[shapeIdxGroup].Value);
         var shapeTree = rootEl.Descendants<ShapeTree>().FirstOrDefault()
             ?? throw new ArgumentException("No shape tree found");
 
-        if (elType == "shape")
+        if (elType.Equals("shape", StringComparison.OrdinalIgnoreCase))
         {
             var shapes = shapeTree.Elements<Shape>().ToList();
             if (elIdx < 1 || elIdx > shapes.Count)
                 throw new ArgumentException($"Shape {elIdx} not found");
             var shape = shapes[elIdx - 1];
             var allRuns = shape.Descendants<Drawing.Run>().ToList();
-            var unsupp = SetRunOrShapeProperties(properties, allRuns, shape);
+            // Pass the owning part so fill/image/effect helpers that need a
+            // relationship anchor (e.g. picture fills) write to the correct part.
+            var unsupp = SetRunOrShapeProperties(properties, allRuns, shape, ownerPart);
             rootEl.Save();
             return unsupp;
         }
@@ -193,7 +241,11 @@ public partial class PowerPointHandler
                 case "name":
                 {
                     var csd = targetRoot.GetFirstChild<CommonSlideData>();
-                    if (csd != null) csd.Name = value;
+                    if (csd != null)
+                    {
+                        XmlTextValidator.ValidateOrThrow(value, "name");
+                        csd.Name = value;
+                    }
                     break;
                 }
                 case "direction" or "dir" or "rtl":
@@ -298,6 +350,7 @@ public partial class PowerPointHandler
                     break;
                 case "notes":
                 {
+                    XmlTextValidator.ValidateOrThrow(value, "notes");
                     var notesPart = EnsureNotesSlidePart(slidePart2);
                     SetNotesText(notesPart, value);
                     break;
@@ -369,21 +422,16 @@ public partial class PowerPointHandler
                 }
                 case "layout":
                 {
-                    // Change slide layout
+                    // Change slide layout. Route through the single resolver so
+                    // Set accepts the same grammar Add accepts: display name,
+                    // OOXML type token (e.g. "objTx", "blank") or friendly
+                    // alias, and 1-based numeric index. Available-list format
+                    // is shared too — see ResolveSlideLayout / FormatAvailableLayouts.
                     var presentationPart = _doc.PresentationPart
                         ?? throw new InvalidOperationException("No presentation part");
-                    var allLayouts = presentationPart.SlideMasterParts
-                        .SelectMany(m => m.SlideLayoutParts).ToList();
-                    var targetLayout = allLayouts.FirstOrDefault(lp =>
-                        lp.SlideLayout?.CommonSlideData?.Name?.Value?.Equals(value, StringComparison.OrdinalIgnoreCase) == true);
+                    var targetLayout = ResolveSlideLayout(presentationPart, value);
                     if (targetLayout == null)
-                    {
-                        var availableNames = allLayouts
-                            .Select(lp => lp.SlideLayout?.CommonSlideData?.Name?.Value)
-                            .Where(n => n != null)
-                            .ToList();
-                        throw new ArgumentException($"Layout '{value}' not found. Available layouts: {string.Join(", ", availableNames)}");
-                    }
+                        throw new ArgumentException($"Layout '{value}' not found (no layouts defined).");
                     // Point the slide's layout relationship to the new layout
                     if (slidePart2.SlideLayoutPart != null)
                         slidePart2.DeletePart(slidePart2.SlideLayoutPart);

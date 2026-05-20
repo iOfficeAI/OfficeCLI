@@ -536,7 +536,7 @@ internal static partial class PivotTableHelper
 
     /// <summary>
     /// Aggregate a bag of numeric values using the given subtotal function.
-    /// Matches LibreOffice's ScDPAggData semantics (sc/source/core/data/dptabres.cxx):
+    /// Matches the ScDPAggData semantics:
     ///   sum / product / min / max / count : trivial
     ///   countNums : count of numeric entries (identical to count here because
     ///     the caller only places parsed numerics into the bag)

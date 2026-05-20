@@ -23,6 +23,7 @@ public static class IssueSubtypes
     public const string ChartCacheStale = "chart_cache_stale";
     public const string DefinedNameBroken = "definedname_broken";
     public const string DefinedNameTargetMissing = "definedname_target_missing";
+    public const string BrokenPartRef = "broken_part_ref";
 
     /// <summary>Broad IssueType bucket names — the canonical surface shown
     /// in error messages and help. Single-letter aliases (<see cref="BucketAliases"/>)
@@ -49,6 +50,7 @@ public static class IssueSubtypes
         SlideFieldNotEvaluated,
         ChartSeriesRefMissingSheet, ChartCacheStale,
         DefinedNameBroken, DefinedNameTargetMissing,
+        BrokenPartRef,
     };
 
     /// <summary>Subtypes that are scanned by default and surface under
@@ -70,7 +72,7 @@ public static class IssueSubtypes
             + "Opt-in only (request by exact name; not included in --type content): "
             + string.Join(", ", OptInSubtypes) + ". "
             + "Subtypes are format-specific — formula_* / chart_* / definedname_* apply to xlsx, "
-            + "field_* to docx, slide_field_* to pptx; requesting a subtype that does not apply to "
+            + "field_* to docx, slide_field_* / broken_part_ref to pptx; requesting a subtype that does not apply to "
             + "the queried file returns count=0 (not an error). "
             + "All values are case-insensitive and surrounding whitespace is trimmed.";
     }

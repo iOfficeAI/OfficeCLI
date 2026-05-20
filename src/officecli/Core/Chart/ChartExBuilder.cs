@@ -32,7 +32,7 @@ internal static partial class ChartExBuilder
 
     internal static bool IsExtendedChartType(string chartType)
     {
-        var normalized = chartType.ToLowerInvariant().Replace(" ", "").Replace("_", "").Replace("-", "");
+        var normalized = SchemaKeyNormalizer.Normalize(chartType);
         return ExtendedChartTypes.Contains(normalized);
     }
 
@@ -46,7 +46,7 @@ internal static partial class ChartExBuilder
         List<(string name, double[] values)> seriesData,
         Dictionary<string, string> properties)
     {
-        var normalized = chartType.ToLowerInvariant().Replace(" ", "").Replace("_", "").Replace("-", "");
+        var normalized = SchemaKeyNormalizer.Normalize(chartType);
 
         // Pareto pre-sorts descending and keeps a single series. The
         // paretoLine series is appended after the main loop with ownerIdx=0
@@ -207,10 +207,14 @@ internal static partial class ChartExBuilder
                 // the primary value axis (id=1), matching MSO's structure.
                 if (normalized == "pareto")
                 {
-                    const string cxAxNs = "http://schemas.microsoft.com/office/drawing/2014/chartex";
-                    var barAxisId = new OpenXmlUnknownElement("cx", "axisId", cxAxNs);
-                    barAxisId.SetAttribute(new OpenXmlAttribute("val", "", "1"));
-                    series.AppendChild(barAxisId);
+                    // CT_Series/cx:axisId is xs:unsignedInt simple content (text body),
+                    // NOT an attribute. The SDK exposes a typed CX.AxisId whose
+                    // string ctor sets the inner text. Previously this was emitted
+                    // via OpenXmlUnknownElement + SetAttribute("val", ...) which
+                    // serialized as `<cx:axisId val="1"/>` — OpenXmlValidator
+                    // rejected it (undeclared attribute + empty text); real
+                    // PowerPoint auto-repaired but the file was non-portable.
+                    series.AppendChild(new CX.AxisId("1"));
                 }
 
                 plotAreaRegion.AppendChild(series);
@@ -221,15 +225,12 @@ internal static partial class ChartExBuilder
         // percentage axis id=2). Matches MSO's on-the-wire structure.
         if (normalized == "pareto")
         {
-            const string cxParetoNs = "http://schemas.microsoft.com/office/drawing/2014/chartex";
             var paretoLine = new CX.Series
             {
                 LayoutId = new EnumValue<CX.SeriesLayout>(CX.SeriesLayout.ParetoLine),
                 OwnerIdx = 0,
             };
-            var axisIdEl = new OpenXmlUnknownElement("cx", "axisId", cxParetoNs);
-            axisIdEl.SetAttribute(new OpenXmlAttribute("val", "", "2"));
-            paretoLine.AppendChild(axisIdEl);
+            paretoLine.AppendChild(new CX.AxisId("2"));
             plotAreaRegion.AppendChild(paretoLine);
         }
 
@@ -407,7 +408,7 @@ internal static partial class ChartExBuilder
         // value for the regular cChart variant and users may pass it through.
         // CONSISTENCY(legend-separator-normalize): mirror SetterHelpers — dash
         // and underscore separators are equivalent (top-right == top_right).
-        var posSpecNorm = (posSpec ?? string.Empty).ToLowerInvariant().Replace("-", "").Replace("_", "");
+        var posSpecNorm = SchemaKeyNormalizer.Normalize(posSpec);
         legend.Pos = posSpecNorm switch
         {
             "top" or "t" or "topright" or "tr" => CX.SidePos.T,

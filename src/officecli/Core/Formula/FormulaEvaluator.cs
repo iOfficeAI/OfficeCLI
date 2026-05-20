@@ -71,6 +71,13 @@ internal record FormulaResult
         if (NumericValue.HasValue)
         {
             var v = NumericValue.Value;
+            // IEEE-754 ±Infinity / NaN have no OOXML representation; emitting
+            // "Infinity" / "-Infinity" / "NaN" into <x:v> produces a file Excel
+            // refuses to open. Surface them as the Excel error string so the
+            // calling cell switches to t="e" (#NUM!) — matches what Excel does
+            // for LOG(0), SQRT(-1), 0/0, etc.
+            if (double.IsNaN(v) || double.IsInfinity(v))
+                return "#NUM!";
             // Round to 15 significant digits to avoid floating point artifacts (e.g. 25300000.000000004)
             if (v != 0)
             {
@@ -214,7 +221,7 @@ internal partial class FormulaEvaluator
     /// (formula_not_evaluated), and `get` (Format["evaluated"]). Routes all
     /// three signals through one decision so they cannot drift apart as the
     /// evaluator's coverage grows. Inspired by POI BaseFormulaEvaluator and
-    /// LibreOffice ScFormulaCell.MaybeInterpret single-entry pattern.
+    /// ScFormulaCell.MaybeInterpret single-entry pattern.
     /// </summary>
     internal EvalReport EvaluateForReport(string formula)
     {

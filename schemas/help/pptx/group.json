@@ -33,8 +33,10 @@
     },
     "zorder": {
       "type": "number",
-      "description": "1-based z-order in slide shape tree.",
-      "add": false, "set": false, "get": false,
+      "description": "1-based z-order in slide shape tree. On add/set, repositions the group within the shape tree (1 = back).",
+      "aliases": ["z-order", "order"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop zorder=1"],
       "readback": "1-based integer (1 = back)",
       "enforcement": "report"
     },

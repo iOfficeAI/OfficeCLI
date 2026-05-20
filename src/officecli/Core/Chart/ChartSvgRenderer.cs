@@ -1722,15 +1722,48 @@ internal partial class ChartSvgRenderer
             var chartSmoothVal = chartSmooth?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
             var chartIsSmooth = chartSmoothVal == "1" || chartSmoothVal == "true";
 
+            // PowerPoint's <c:lineChart>/<c:scatterChart> emit a chart-level
+            // <c:marker val="1"/> after all <c:ser> to opt every series into
+            // the default marker cycle. Series without their own <c:marker>
+            // get a shape chosen by series index (PowerPoint's built-in
+            // sequence). Without the chart-level flag, unmarked series stay
+            // marker-free. Matches real PowerPoint rendering of
+            // /tmp/r14_v2.pptx chart3 (series A circle = explicit,
+            // series B square = default cycle index 1).
+            var chartLevelMarker = chartTypeEl.Elements()
+                .Where(e => e.LocalName == "marker")
+                .LastOrDefault(); // chart-level <c:marker val="1"/> appears after series
+            var chartMarkerVal = chartLevelMarker?.GetAttributes()
+                .FirstOrDefault(a => a.LocalName == "val").Value;
+            var chartMarkersOn = chartMarkerVal == "1" || chartMarkerVal == "true";
+            // <c:scatterChart> uses <c:scatterStyle val="..."/> instead of a
+            // chart-level <c:marker>. Values containing "marker" (lineMarker /
+            // marker / smoothMarker) mean every series gets the default cycle.
+            var scatterStyleEl = chartTypeEl.Elements().FirstOrDefault(e => e.LocalName == "scatterStyle");
+            var scatterStyleVal = scatterStyleEl?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+            if (scatterStyleVal != null && scatterStyleVal.Contains("arker", StringComparison.OrdinalIgnoreCase))
+                chartMarkersOn = true;
+            // Default cycle observed in PowerPoint line/scatter charts.
+            var defaultMarkerCycle = new[] { "circle", "square", "diamond", "triangle", "x", "star", "plus", "dash", "dot" };
+
+            int serIdx = 0;
             foreach (var ser in serElements)
             {
                 var marker = ser.Elements().FirstOrDefault(e => e.LocalName == "marker");
                 var symbol = marker?.Elements().FirstOrDefault(e => e.LocalName == "symbol");
-                var symbolVal = symbol?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value ?? "circle";
-                info.MarkerShapes.Add(symbolVal);
+                var symbolVal = symbol?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+                string resolvedShape;
+                if (symbolVal != null)
+                    resolvedShape = symbolVal;
+                else if (chartMarkersOn)
+                    resolvedShape = defaultMarkerCycle[serIdx % defaultMarkerCycle.Length];
+                else
+                    resolvedShape = "none";
+                info.MarkerShapes.Add(resolvedShape);
                 var sizeEl = marker?.Elements().FirstOrDefault(e => e.LocalName == "size");
                 var sizeVal = sizeEl?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
                 info.MarkerSizes.Add(sizeVal != null && int.TryParse(sizeVal, out var ms) ? ms : 5);
+                serIdx++;
 
                 // Per-series smooth (overrides chart-level)
                 var serSmooth = ser.Elements().FirstOrDefault(e => e.LocalName == "smooth");

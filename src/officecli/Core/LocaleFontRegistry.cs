@@ -5,7 +5,7 @@ namespace OfficeCli.Core;
 
 /// <summary>
 /// Locale → default font mapping for fresh blank documents. Mirrors the
-/// data-driven approach LibreOffice uses (VCL.xcu): given a locale tag, pick
+/// data-driven approach used by mature producers (VCL.xcu): given a locale tag, pick
 /// reasonable defaults for the Latin / EastAsian / ComplexScript font slots.
 ///
 /// We deliberately keep this small (one line per locale family) rather than

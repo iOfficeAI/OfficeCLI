@@ -282,9 +282,23 @@
     },
     "cachedValue": {
       "type": "string",
-      "description": "cached display value computed by the formula evaluator. Surfaces only on Get/Query for formula cells; absent on plain-value cells.",
+      "description": "raw <x:v> cached display value as stored in the file. Surfaces only on Get/Query for formula cells; absent on plain-value cells. Mirrors what the last writer (Excel/LibreOffice) computed — may be stale.",
       "add": false, "set": false, "get": true,
-      "readback": "cached display value for formula cells; absent on plain-value cells",
+      "readback": "raw cached display value for formula cells; absent on plain-value cells",
+      "enforcement": "report"
+    },
+    "computedValue": {
+      "type": "string",
+      "description": "OfficeCli evaluator's prediction of the formula result. Surfaces only on Get/Query for formula cells when the evaluator could compute a value. Compare against cachedValue to detect stale caches (see view issues subtype formula_cache_stale).",
+      "add": false, "set": false, "get": true,
+      "readback": "evaluator-predicted value for formula cells; absent when the evaluator could not compute",
+      "enforcement": "report"
+    },
+    "evaluated": {
+      "type": "bool",
+      "description": "cross-handler protocol flag — true when cachedValue is present OR the evaluator produced computedValue; false when the formula has neither (view text substitutes #OCLI_NOTEVAL!). Read this via get --json instead of pattern-matching the sentinel, since literal user content may collide. Subtype: formula_not_evaluated.",
+      "add": false, "set": false, "get": true,
+      "readback": "true|false (true ⇒ either cachedValue or computedValue is available)",
       "enforcement": "report"
     },
     "alignment.indent":         { "type":"number", "add":false, "set":false, "get":true, "description":"cell alignment indent units (CT_CellAlignment @indent). Use the flat `indent` key on Add/Set.", "readback":"integer indent units", "enforcement":"report" },

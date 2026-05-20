@@ -231,8 +231,8 @@ public partial class WordHandler
             {
                 var eqCols = EnsureColumns();
                 var colParts = value.Split(',');
-                if (!short.TryParse(colParts[0], out var colCount))
-                    throw new ArgumentException($"Invalid 'columns' value: '{value}'. Expected an integer or integer,space (e.g. '3' or '3,720').");
+                if (!short.TryParse(colParts[0], out var colCount) || colCount < 1)
+                    throw new ArgumentException($"Invalid 'columns' value: '{value}'. Expected a positive integer (>= 1), optionally followed by ',space' (e.g. '3' or '3,720').");
                 eqCols.ColumnCount = (DocumentFormat.OpenXml.Int16Value)colCount;
                 // Don't auto-stamp equalWidth. Per OOXML spec, equalWidth is
                 // implicitly true when no <w:col> children carry explicit

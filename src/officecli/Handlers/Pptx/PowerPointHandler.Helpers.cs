@@ -74,7 +74,98 @@ public partial class PowerPointHandler
             throw new ArgumentException($"Invalid path '{path}': leading '//' is not allowed.");
         if (path.Contains("//"))
             throw new ArgumentException($"Invalid path '{path}': empty path segment ('//') is not allowed.");
-        return Regex.Replace(path, @"cell\[(\d+),\s*(\d+)\]", m => $"tr[{m.Groups[1].Value}]/tc[{m.Groups[2].Value}]");
+        // CONSISTENCY(table-path-long-form): pptx CLAUDE.md documents long form
+        // /slide[N]/table[K]/row[R]/cell[C] as canonical. Query/Add already alias
+        // row→tr and cell→tc at their dispatch layer; mirror that here so Get/Set
+        // /Remove parse paths also accept long form. Short OOXML form (tr/tc)
+        // continues to work unchanged.
+        path = Regex.Replace(path, @"cell\[(\d+),\s*(\d+)\]", m => $"tr[{m.Groups[1].Value}]/tc[{m.Groups[2].Value}]");
+        // Alias only inside /table[K]/... — never globally, to avoid colliding
+        // with hypothetical future top-level "row"/"cell" segments.
+        path = Regex.Replace(path, @"(/table\[\d+\](?:/[^/]+)*?)/row\[(\d+)\]", m => $"{m.Groups[1].Value}/tr[{m.Groups[2].Value}]");
+        path = Regex.Replace(path, @"(/tr\[\d+\])/cell\[(\d+)\]", m => $"{m.Groups[1].Value}/tc[{m.Groups[2].Value}]");
+        // CONSISTENCY(table-path-long-form): same parity for the column axis.
+        // schemas/help/pptx/table-column.json declares element=column with
+        // alias col, and Add accepts --type column. Get/Set/Remove must also
+        // accept the long form so all five ops share one path vocabulary.
+        path = Regex.Replace(path, @"(/table\[\d+\])/column\[(\d+)\]", m => $"{m.Groups[1].Value}/col[{m.Groups[2].Value}]");
+        return path;
+    }
+
+    /// <summary>
+    /// CONSISTENCY(master-layout-shape-edit): resolve a master/layout parent path
+    /// to its <see cref="ShapeTree"/> + owning part + root element. Accepts all
+    /// three canonical forms:
+    ///   /slidemaster[N]
+    ///   /slidelayout[N]                      — top-level (flat) layout numbering
+    ///   /slidemaster[N]/slidelayout[L]       — nested form
+    /// Returns null when the path is not a master/layout parent — callers fall
+    /// back to slide-scoped logic. Path matching is case-insensitive, matching
+    /// the rest of the pptx handler.
+    /// </summary>
+    internal (ShapeTree shapeTree, OpenXmlPart part, OpenXmlPartRootElement root, string canonicalPrefix)?
+        TryResolveMasterOrLayoutShapeParent(string parentPath)
+    {
+        var presentationPart = _doc.PresentationPart;
+        if (presentationPart == null) return null;
+
+        // Form 1: /slidemaster[N]/slidelayout[L]
+        var nested = Regex.Match(parentPath,
+            @"^/slidemaster\[(\d+)\]/slidelayout\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (nested.Success)
+        {
+            var mIdx = int.Parse(nested.Groups[1].Value);
+            var lIdx = int.Parse(nested.Groups[2].Value);
+            var masters = presentationPart.SlideMasterParts.ToList();
+            if (mIdx < 1 || mIdx > masters.Count)
+                throw new ArgumentException($"Slide master {mIdx} not found (total: {masters.Count})");
+            var layouts = masters[mIdx - 1].SlideLayoutParts.ToList();
+            if (lIdx < 1 || lIdx > layouts.Count)
+                throw new ArgumentException($"Slide layout {lIdx} not found under master {mIdx} (total: {layouts.Count})");
+            var lp = layouts[lIdx - 1];
+            var root = lp.SlideLayout
+                ?? throw new InvalidOperationException("Corrupt slide layout");
+            var tree = root.CommonSlideData?.ShapeTree
+                ?? throw new InvalidOperationException("Slide layout has no shape tree");
+            return (tree, lp, root, $"/slidemaster[{mIdx}]/slidelayout[{lIdx}]");
+        }
+
+        // Form 2: /slidemaster[N]
+        var masterOnly = Regex.Match(parentPath,
+            @"^/slidemaster\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (masterOnly.Success)
+        {
+            var mIdx = int.Parse(masterOnly.Groups[1].Value);
+            var masters = presentationPart.SlideMasterParts.ToList();
+            if (mIdx < 1 || mIdx > masters.Count)
+                throw new ArgumentException($"Slide master {mIdx} not found (total: {masters.Count})");
+            var mp = masters[mIdx - 1];
+            var root = mp.SlideMaster
+                ?? throw new InvalidOperationException("Corrupt slide master");
+            var tree = root.CommonSlideData?.ShapeTree
+                ?? throw new InvalidOperationException("Slide master has no shape tree");
+            return (tree, mp, root, $"/slidemaster[{mIdx}]");
+        }
+
+        // Form 3: /slidelayout[N] — flat top-level layout numbering
+        var layoutOnly = Regex.Match(parentPath,
+            @"^/slidelayout\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (layoutOnly.Success)
+        {
+            var lIdx = int.Parse(layoutOnly.Groups[1].Value);
+            var allLayouts = presentationPart.SlideMasterParts
+                .SelectMany(m => m.SlideLayoutParts).ToList();
+            if (lIdx < 1 || lIdx > allLayouts.Count)
+                throw new ArgumentException($"Slide layout {lIdx} not found (total: {allLayouts.Count})");
+            var lp = allLayouts[lIdx - 1];
+            var root = lp.SlideLayout
+                ?? throw new InvalidOperationException("Corrupt slide layout");
+            var tree = root.CommonSlideData?.ShapeTree
+                ?? throw new InvalidOperationException("Slide layout has no shape tree");
+            return (tree, lp, root, $"/slidelayout[{lIdx}]");
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -197,7 +288,10 @@ public partial class PowerPointHandler
         var sb = new System.Text.StringBuilder();
         var cursor = 0;
         var rewritten = path;
-        var matches = Regex.Matches(path, @"(\w+)\[@(id|name)=([^\]]+)\]");
+        // Support quoted attr values so a name containing ']' (e.g. PowerPoint's
+        // auto-generated "Shape [1] copy") survives the predicate parse: the
+        // unquoted fallback stops at the first ']' as before.
+        var matches = Regex.Matches(path, @"(\w+)\[@(id|name)=(?:'([^']*)'|""([^""]*)""|([^\]]+))\]");
         foreach (Match m in matches)
         {
             sb.Append(path, cursor, m.Index - cursor);
@@ -205,20 +299,73 @@ public partial class PowerPointHandler
 
             var elementType = m.Groups[1].Value.ToLowerInvariant();
             var attrName = m.Groups[2].Value.ToLowerInvariant();
-            var attrValue = m.Groups[3].Value.Trim('"', '\'', ' ');
+            // Three alternation captures: single-quoted (3), double-quoted (4),
+            // unquoted (5). Pick the one that matched. Trim is still useful for
+            // the unquoted form because the schema documents @name=Foo Bar (no
+            // quotes) for legacy callers.
+            string attrValue;
+            if (m.Groups[3].Success) attrValue = m.Groups[3].Value;
+            else if (m.Groups[4].Success) attrValue = m.Groups[4].Value;
+            else attrValue = m.Groups[5].Value.Trim('"', '\'', ' ');
 
-            var slideMatch = Regex.Match(prefix, @"/slide\[(\d+)\]");
-            if (!slideMatch.Success)
-                throw new ArgumentException($"Cannot resolve @{attrName}= outside of a slide context: {path}");
-            var slideIdx = int.Parse(slideMatch.Groups[1].Value);
+            // CONSISTENCY(master-layout-shape-edit): @id=/@name= resolution must
+            // also work when the prefix is a slidemaster or slidelayout shape
+            // container — Add returns `/slidemaster[N]/shape[@id=K]` so the
+            // same path must round-trip through Get/Set/Remove.
+            ShapeTree? shapeTree;
+            var nestedMlMatch = Regex.Match(prefix, @"^/slidemaster\[(\d+)\]/slidelayout\[(\d+)\]", RegexOptions.IgnoreCase);
+            var masterMlMatch = Regex.Match(prefix, @"^/slidemaster\[(\d+)\]", RegexOptions.IgnoreCase);
+            var layoutMlMatch = Regex.Match(prefix, @"^/slidelayout\[(\d+)\]", RegexOptions.IgnoreCase);
+            if (nestedMlMatch.Success)
+            {
+                var mIdx = int.Parse(nestedMlMatch.Groups[1].Value);
+                var lIdx = int.Parse(nestedMlMatch.Groups[2].Value);
+                var masters = _doc.PresentationPart?.SlideMasterParts?.ToList() ?? [];
+                if (mIdx < 1 || mIdx > masters.Count)
+                    throw new ArgumentException($"Slide master {mIdx} not found (total: {masters.Count})");
+                var layouts = masters[mIdx - 1].SlideLayoutParts?.ToList() ?? [];
+                if (lIdx < 1 || lIdx > layouts.Count)
+                    throw new ArgumentException($"Slide layout {lIdx} not found under master {mIdx} (total: {layouts.Count})");
+                shapeTree = layouts[lIdx - 1].SlideLayout?.CommonSlideData?.ShapeTree;
+                if (shapeTree == null)
+                    throw new ArgumentException($"Slide layout {lIdx} has no shape tree");
+            }
+            else if (masterMlMatch.Success && !prefix.Contains("/slidelayout[", StringComparison.OrdinalIgnoreCase))
+            {
+                var mIdx = int.Parse(masterMlMatch.Groups[1].Value);
+                var masters = _doc.PresentationPart?.SlideMasterParts?.ToList() ?? [];
+                if (mIdx < 1 || mIdx > masters.Count)
+                    throw new ArgumentException($"Slide master {mIdx} not found (total: {masters.Count})");
+                shapeTree = masters[mIdx - 1].SlideMaster?.CommonSlideData?.ShapeTree;
+                if (shapeTree == null)
+                    throw new ArgumentException($"Slide master {mIdx} has no shape tree");
+            }
+            else if (layoutMlMatch.Success)
+            {
+                var lIdx = int.Parse(layoutMlMatch.Groups[1].Value);
+                var allLayouts = (_doc.PresentationPart?.SlideMasterParts ?? Enumerable.Empty<SlideMasterPart>())
+                    .SelectMany(m => m.SlideLayoutParts ?? Enumerable.Empty<SlideLayoutPart>()).ToList();
+                if (lIdx < 1 || lIdx > allLayouts.Count)
+                    throw new ArgumentException($"Slide layout {lIdx} not found (total: {allLayouts.Count})");
+                shapeTree = allLayouts[lIdx - 1].SlideLayout?.CommonSlideData?.ShapeTree;
+                if (shapeTree == null)
+                    throw new ArgumentException($"Slide layout {lIdx} has no shape tree");
+            }
+            else
+            {
+                var slideMatch = Regex.Match(prefix, @"/slide\[(\d+)\]");
+                if (!slideMatch.Success)
+                    throw new ArgumentException($"Cannot resolve @{attrName}= outside of a slide context: {path}");
+                var slideIdx = int.Parse(slideMatch.Groups[1].Value);
 
-            var slideParts = GetSlideParts().ToList();
-            if (slideIdx < 1 || slideIdx > slideParts.Count)
-                throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
-            var slidePart = slideParts[slideIdx - 1];
-            var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree;
-            if (shapeTree == null)
-                throw new ArgumentException($"Slide {slideIdx} has no shape tree");
+                var slideParts = GetSlideParts().ToList();
+                if (slideIdx < 1 || slideIdx > slideParts.Count)
+                    throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
+                var slidePart = slideParts[slideIdx - 1];
+                shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree;
+                if (shapeTree == null)
+                    throw new ArgumentException($"Slide {slideIdx} has no shape tree");
+            }
 
             // CONSISTENCY(group-id-scope): if the prefix has /group[N] segments
             // after /slide[N], scope the @id=/@name= search inside that nested
@@ -468,6 +615,51 @@ public partial class PowerPointHandler
     }
 
     /// <summary>
+    /// Return true if <paramref name="id"/> is already claimed by any cNvPr in
+    /// the given shapeTree, or globally in <see cref="_usedShapeIds"/>.
+    /// </summary>
+    private bool ShapeIdInUse(ShapeTree shapeTree, uint id)
+    {
+        if (_usedShapeIds != null && _usedShapeIds.Contains(id))
+            return true;
+        if (shapeTree != null)
+        {
+            foreach (var nvPr in shapeTree.Descendants<NonVisualDrawingProperties>())
+            {
+                if (nvPr.Id?.HasValue == true && nvPr.Id.Value == id)
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// CONSISTENCY(dump-replay-id): honor a caller-supplied "id" property so
+    /// that dump→batch round-trip preserves @id=N references; mirrors docx
+    /// Add.Structure.cs:1118 for numbering ids. id=0 / non-numeric / missing
+    /// → auto-assign via <see cref="GenerateUniqueShapeId"/>. Collisions with
+    /// an in-use id throw rather than silently renumber.
+    /// </summary>
+    private uint AcquireShapeId(ShapeTree shapeTree, Dictionary<string, string> properties)
+    {
+        if (properties != null
+            && properties.TryGetValue("id", out var idStr)
+            && uint.TryParse(idStr, out var requestedId)
+            && requestedId > 0)
+        {
+            if (ShapeIdInUse(shapeTree, requestedId))
+                throw new ArgumentException(
+                    $"id {requestedId} already in use in this shapeTree. " +
+                    "Use a different id or omit to auto-assign.");
+            _usedShapeIds?.Add(requestedId);
+            if (requestedId >= _nextShapeId)
+                _nextShapeId = requestedId + 1;
+            return requestedId;
+        }
+        return GenerateUniqueShapeId(shapeTree);
+    }
+
+    /// <summary>
     /// Generate a unique deterministic cNvPr.Id across all slides.
     /// Uses global instance counter for reproducible, non-repeating IDs.
     /// </summary>
@@ -546,6 +738,21 @@ public partial class PowerPointHandler
     /// </summary>
     internal static void SetAdvanceTime(Slide slide, string value)
     {
+        // OOXML @advTm is ST_PositiveUniversalMeasure (>= 0). Bare integer
+        // milliseconds is the schema form; reject leading-minus or any
+        // negative-prefixed numeric so advanceTime=-1 no longer silently
+        // writes a malformed transition that PowerPoint either ignores or
+        // mis-renders. Mirrors the >= 0 guard on border.width / padding.
+        var trimmed = (value ?? "").Trim();
+        if (trimmed.StartsWith('-'))
+            throw new ArgumentException($"Invalid advanceTime: '{value}' (must be >= 0).");
+        // ST_PositiveUniversalMeasure is bare milliseconds (integer). Reject
+        // non-numeric garbage like "later" or "5s" up front; PowerPoint
+        // silently drops the attribute on open when it fails to parse, so a
+        // malformed value used to land on disk with no error to the caller.
+        if (!int.TryParse(trimmed, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out _))
+            throw new ArgumentException($"Invalid advanceTime: '{value}' (expected a non-negative integer in milliseconds).");
         var acMorph = slide.ChildElements.FirstOrDefault(c =>
             c.LocalName == "AlternateContent" && c.InnerXml.Contains("morph"));
         if (acMorph != null)
@@ -570,11 +777,22 @@ public partial class PowerPointHandler
         if (acMorph != null)
         {
             foreach (var trans in acMorph.Descendants().Where(d => d.LocalName == "transition"))
-                trans.SetAttribute(new OpenXmlAttribute("", "advClick", null!, value ? "1" : "0"));
+            {
+                // Schema default for CT_SlideTransition @advClick is true. Strip the attribute
+                // when value matches default to avoid writing redundant XML on round-trip.
+                if (value)
+                    trans.RemoveAttribute("advClick", "");
+                else
+                    trans.SetAttribute(new OpenXmlAttribute("", "advClick", null!, "0"));
+            }
         }
         else
         {
-            FindOrCreateTransition(slide).AdvanceOnClick = value;
+            var trans = FindOrCreateTransition(slide);
+            if (value)
+                trans.AdvanceOnClick = null; // schema default = true; strip attribute
+            else
+                trans.AdvanceOnClick = false;
         }
     }
 
@@ -606,39 +824,66 @@ public partial class PowerPointHandler
     }
 
     /// <summary>
-    /// Read a single border line's properties (color, width, dash) following POI's pattern:
-    /// - Returns nothing if line is null, has NoFill, or lacks SolidFill
-    /// - Reads width from w attribute, color from SolidFill, dash from PresetDash
+    /// Read a single border line's properties (color, width, dash, compound).
+    /// Width / dash / compound are emitted independently — a border with only
+    /// `w="25400"` (and no SolidFill) still surfaces a `border.width` readback
+    /// so callers can see what they wrote. Returns silently only when the
+    /// element itself is null, NoFill is set, or none of the child sub-props
+    /// (color, width, dash, compound) are present.
     /// </summary>
     private static void ReadBorderLine(OpenXmlCompositeElement? lineProps, string prefix, DocumentNode node)
     {
         if (lineProps == null) return;
         // POI: if NoFill is set, the border is invisible — skip
         if (lineProps.GetFirstChild<Drawing.NoFill>() != null) return;
-        var solidFill = lineProps.GetFirstChild<Drawing.SolidFill>();
-        if (solidFill == null) return; // POI: !isSetSolidFill → null
 
-        var color = ReadColorFromFill(solidFill);
-        if (color != null) node.Format[$"{prefix}.color"] = color;
+        // Color (only when a SolidFill is present; gradient/picture borders
+        // would need separate handling and aren't surfaced via the simple
+        // border.color key).
+        string? color = null;
+        var solidFill = lineProps.GetFirstChild<Drawing.SolidFill>();
+        if (solidFill != null)
+        {
+            color = ReadColorFromFill(solidFill);
+            if (color != null) node.Format[$"{prefix}.color"] = color;
+        }
 
         // Width from "w" attribute (EMU) — POI: Units.toPoints(ln.getW())
         var wAttr = lineProps.GetAttributes().FirstOrDefault(a => a.LocalName == "w");
-        if (!string.IsNullOrEmpty(wAttr.Value) && long.TryParse(wAttr.Value, out var wEmu) && wEmu > 0)
-            node.Format[$"{prefix}.width"] = FormatEmu(wEmu);
+        bool hasWidth = !string.IsNullOrEmpty(wAttr.Value) && long.TryParse(wAttr.Value, out var wEmu) && wEmu > 0;
+        if (hasWidth)
+        {
+            long.TryParse(wAttr.Value, out var wEmuOut);
+            node.Format[$"{prefix}.width"] = FormatEmu(wEmuOut);
+        }
 
         // Dash style from PresetDash — POI: ln.getPrstDash().getVal()
         var dash = lineProps.GetFirstChild<Drawing.PresetDash>();
-        if (dash?.Val?.HasValue == true)
-            node.Format[$"{prefix}.dash"] = dash.Val.InnerText;
+        bool hasDash = dash?.Val?.HasValue == true;
+        if (hasDash)
+            node.Format[$"{prefix}.dash"] = dash!.Val!.InnerText;
+
+        // Compound line style (cmpd attribute on the line element).
+        var cmpdAttr = lineProps.GetAttributes().FirstOrDefault(a => a.LocalName == "cmpd");
+        bool hasCompound = !string.IsNullOrEmpty(cmpdAttr.Value);
+        if (hasCompound)
+            node.Format[$"{prefix}.compound"] = cmpdAttr.Value!;
+
+        // If none of color / width / dash / compound surfaced, don't emit a
+        // summary key — there's nothing meaningful to report.
+        if (color is null && !hasWidth && !hasDash && !hasCompound) return;
 
         // Summary key: "1pt solid FF0000" format for convenience
         var parts = new List<string>();
-        if (!string.IsNullOrEmpty(wAttr.Value) && long.TryParse(wAttr.Value, out var wEmu2) && wEmu2 > 0)
+        if (hasWidth)
+        {
+            long.TryParse(wAttr.Value, out var wEmu2);
             parts.Add(FormatEmu(wEmu2));
-        if (dash?.Val?.HasValue == true) parts.Add(dash.Val.InnerText!);
+        }
+        if (hasDash) parts.Add(dash!.Val!.InnerText!);
         else parts.Add("solid");
         if (color is not null) parts.Add(color);
-        if (parts.Count > 0) node.Format[prefix] = string.Join(" ", parts);
+        node.Format[prefix] = string.Join(" ", parts);
     }
 
     private static string GetShapeText(Shape shape)
@@ -656,6 +901,16 @@ public partial class PowerPointHandler
             {
                 if (child is Drawing.Run run)
                     sb.Append(run.Text?.Text ?? "");
+                else if (child is OpenXmlUnknownElement unk
+                         && unk.LocalName == "tab"
+                         && unk.NamespaceUri == "http://schemas.openxmlformats.org/drawingml/2006/main")
+                {
+                    // CONSISTENCY(escape-sequences): <a:tab/> is the OOXML wire
+                    // form for a literal TAB between text runs (see
+                    // AppendLineWithTabs in Add.Text.cs). Round-trip back to '\t'
+                    // so Get text mirrors what the user wrote on Add/Set.
+                    sb.Append('\t');
+                }
                 else if (child is Drawing.Field fld)
                 {
                     // a:fld renders its cached <a:t> when present; otherwise
@@ -796,6 +1051,32 @@ public partial class PowerPointHandler
                         if (innerStart > 0 && innerEnd > innerStart)
                             wrapper.InnerXml = oMathParaXml[innerStart..innerEnd];
                         return wrapper;
+                    }
+                }
+            }
+            // Inline math without an oMathPara wrapper — author tools emit just
+            // <m:oMath>...</m:oMath> directly inside the a14:m container, and
+            // the View / equation readback path used to silently drop those.
+            // Mirror the oMathPara branch above so bare oMath round-trips.
+            if (xml.Contains("oMath"))
+            {
+                var bareStart = xml.IndexOf("<m:oMath", StringComparison.Ordinal);
+                if (bareStart < 0) bareStart = xml.IndexOf("<oMath", StringComparison.Ordinal);
+                if (bareStart >= 0)
+                {
+                    var bareEndTag = xml.Contains("</m:oMath>") ? "</m:oMath>" : "</oMath>";
+                    var bareEnd = xml.IndexOf(bareEndTag, StringComparison.Ordinal);
+                    if (bareEnd >= 0)
+                    {
+                        var oMathXml = xml[bareStart..(bareEnd + bareEndTag.Length)];
+                        if (!oMathXml.Contains("xmlns:m="))
+                            oMathXml = oMathXml.Replace("<m:oMath", "<m:oMath xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\"");
+                        var bareWrapper = new OpenXmlUnknownElement("m", "oMath", "http://schemas.openxmlformats.org/officeDocument/2006/math");
+                        var bareInnerStart = oMathXml.IndexOf('>') + 1;
+                        var bareInnerEnd = oMathXml.LastIndexOf('<');
+                        if (bareInnerStart > 0 && bareInnerEnd > bareInnerStart)
+                            bareWrapper.InnerXml = oMathXml[bareInnerStart..bareInnerEnd];
+                        return bareWrapper;
                     }
                 }
             }
@@ -1198,11 +1479,20 @@ public partial class PowerPointHandler
         var rgb = gs.GetFirstChild<Drawing.RgbColorModelHex>();
         if (rgb?.Val?.Value != null) return ParseHelpers.FormatHexColor(rgb.Val.Value);
         var scheme = gs.GetFirstChild<Drawing.SchemeColor>();
-        if (scheme?.Val?.Value != null) return scheme.Val.Value.ToString();
+        // .Val.Value is an EnumValue<SchemeColorValues> — its ToString() returns the
+        // enum object's CLR name ("SchemeColorValues { }"), not the semantic OOXML
+        // name. Use InnerText to get "accent1"/"dark1"/... so the emitted gradient
+        // string round-trips through BuildGradientFill's color parser.
+        // CONSISTENCY(scheme-color-roundtrip): emit canonical long name
+        // (dark1/light1/hyperlink/…) so OOXML internal short forms
+        // (dk1/lt1/hlink/…) round-trip through Get the same way
+        // ReadColorFromFill normalises them.
+        if (scheme?.Val?.InnerText != null)
+            return ParseHelpers.NormalizeSchemeColorName(scheme.Val.InnerText) ?? scheme.Val.InnerText;
         var sys = gs.GetFirstChild<Drawing.SystemColor>();
-        if (sys?.Val?.Value != null) return sys.Val.Value.ToString();
+        if (sys?.Val?.InnerText != null) return sys.Val.InnerText;
         var preset = gs.GetFirstChild<Drawing.PresetColor>();
-        if (preset?.Val?.Value != null) return preset.Val.Value.ToString();
+        if (preset?.Val?.InnerText != null) return preset.Val.InnerText;
         return "?";
     }
 
@@ -1250,7 +1540,12 @@ public partial class PowerPointHandler
                     _ => "center"
                 };
             }
-            return $"radial:{string.Join("-", stopStrs)}-{focus}";
+            // R24 — OOXML distinguishes "path" (shape-following) from "radial"
+            // via the @path attribute. Background.cs reader already
+            // distinguishes; this helper used to flatten everything to
+            // "radial:" so dump→replay of a path gradient became a radial.
+            var prefix = pathGrad.Path?.Value == Drawing.PathShadeValues.Shape ? "path" : "radial";
+            return $"{prefix}:{string.Join("-", stopStrs)}-{focus}";
         }
 
         var linear = gradFill.GetFirstChild<Drawing.LinearGradientFill>();
@@ -1374,13 +1669,24 @@ public partial class PowerPointHandler
     ///         or an integer for absolute position (1-based, 1 = back, N = front).
     /// </summary>
     private static void ApplyZOrder(DocumentFormat.OpenXml.Packaging.SlidePart slidePart, Shape shape, string value)
+        => ApplyZOrder(slidePart, (OpenXmlElement)shape, value);
+
+    // Generalized overload — picture/chart/table/group/connector all participate
+    // in the slide shape-tree z-order. AddShape/AddPicture/AddChart/AddTable/
+    // AddGroup/AddConnector all reach this so dump-emit `zorder=N` round-trips
+    // for every content element type, not just typed Shape.
+    private static void ApplyZOrder(DocumentFormat.OpenXml.Packaging.SlidePart slidePart, OpenXmlElement shape, string value)
     {
-        var shapeTree = shape.Parent as ShapeTree
-            ?? throw new InvalidOperationException("Shape is not in a ShapeTree");
+        // CONSISTENCY(nested-group): a shape nested inside a GroupShape has the
+        // group as its DOM parent. ZOrder still applies within that local sibling
+        // scope — accept ShapeTree or any GroupShape container.
+        var container = shape.Parent as OpenXmlCompositeElement;
+        if (container is not ShapeTree && container is not GroupShape)
+            throw new InvalidOperationException("Shape is not in a ShapeTree or GroupShape");
 
         // Get all content elements (Shape, Picture, GraphicFrame, GroupShape, ConnectionShape)
         // that participate in z-order (skip structural elements like nvGrpSpPr, grpSpPr)
-        var contentElements = shapeTree.ChildElements
+        var contentElements = container.ChildElements
             .Where(e => e is Shape or Picture or GraphicFrame or GroupShape or ConnectionShape)
             .ToList();
         var currentIndex = contentElements.IndexOf(shape);
@@ -1419,28 +1725,28 @@ public partial class PowerPointHandler
         if (targetIndex >= contentElements.Count - 1)
         {
             // Front: append after last content element (or at end of tree)
-            shapeTree.AppendChild(shape);
+            container.AppendChild(shape);
         }
         else if (targetIndex <= 0)
         {
             // Back: insert before the first content element
-            var firstContent = shapeTree.ChildElements
+            var firstContent = container.ChildElements
                 .FirstOrDefault(e => e is Shape or Picture or GraphicFrame or GroupShape or ConnectionShape);
             if (firstContent != null)
                 firstContent.InsertBeforeSelf(shape);
             else
-                shapeTree.AppendChild(shape);
+                container.AppendChild(shape);
         }
         else
         {
             // Refresh content list after removal
-            var updatedContent = shapeTree.ChildElements
+            var updatedContent = container.ChildElements
                 .Where(e => e is Shape or Picture or GraphicFrame or GroupShape or ConnectionShape)
                 .ToList();
             if (targetIndex < updatedContent.Count)
                 updatedContent[targetIndex].InsertBeforeSelf(shape);
             else
-                shapeTree.AppendChild(shape);
+                container.AppendChild(shape);
         }
     }
 
@@ -1451,47 +1757,35 @@ public partial class PowerPointHandler
     private static bool TryApplyPositionSize(string key, string value, Drawing.Offset offset, Drawing.Extents extents)
     {
         var emu = ParseEmu(value);
+        // Unified bounds check for every EMU-valued geometry field.
+        // ECMA-376 a:off uses ST_Coordinate (signed long) and a:ext uses
+        // ST_PositiveCoordinate, but PowerPoint's drawing pipeline truncates
+        // everything past INT32_MAX EMU (~5688 km worth of slide) — a larger
+        // value silently corrupts the layout instead of round-tripping. Error
+        // messages start with "Invalid" so OutputFormatter routes the
+        // ArgumentException to invalid_value, not internal_error.
+        if (emu > int.MaxValue)
+            throw new ArgumentException($"Invalid {key} '{value}': exceeds the maximum supported shape coordinate (INT32_MAX EMU).");
         switch (key)
         {
-            case "x": offset.X = emu; return true;
-            case "y": offset.Y = emu; return true;
+            case "x":
+                if (emu < int.MinValue)
+                    throw new ArgumentException($"Invalid x '{value}': below the minimum supported shape coordinate (INT32_MIN EMU).");
+                offset.X = emu; return true;
+            case "y":
+                if (emu < int.MinValue)
+                    throw new ArgumentException($"Invalid y '{value}': below the minimum supported shape coordinate (INT32_MIN EMU).");
+                offset.Y = emu; return true;
             case "width":
-                if (emu < 0) throw new ArgumentException($"Negative width is not allowed: '{value}'.");
+                if (emu < 0) throw new ArgumentException($"Invalid width '{value}': negative values are not allowed.");
                 extents.Cx = emu; return true;
             case "height":
-                if (emu < 0) throw new ArgumentException($"Negative height is not allowed: '{value}'.");
+                if (emu < 0) throw new ArgumentException($"Invalid height '{value}': negative values are not allowed.");
                 extents.Cy = emu; return true;
             default: return false;
         }
     }
 
-    private static readonly Dictionary<string, string> _tableStyleNameToGuid = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["medium1"] = "{073A0DAA-6AF3-43AB-8588-CEC1D06C72B9}",
-        ["mediumstyle1"] = "{073A0DAA-6AF3-43AB-8588-CEC1D06C72B9}",
-        ["medium2"] = "{F5AB1C69-6EDB-4FF4-983F-18BD219EF322}",
-        ["mediumstyle2"] = "{F5AB1C69-6EDB-4FF4-983F-18BD219EF322}",
-        ["medium3"] = "{3B4B98B0-60AC-42C2-AFA5-B58CD77FA1E5}",
-        ["mediumstyle3"] = "{3B4B98B0-60AC-42C2-AFA5-B58CD77FA1E5}",
-        ["medium4"] = "{D7AC3CCA-C797-4891-BE02-D94E43425B78}",
-        ["mediumstyle4"] = "{D7AC3CCA-C797-4891-BE02-D94E43425B78}",
-        ["light1"] = "{9D7B26C5-4107-4FEC-AEDC-1716B250A1EF}",
-        ["lightstyle1"] = "{9D7B26C5-4107-4FEC-AEDC-1716B250A1EF}",
-        ["light2"] = "{ED083AE6-46FA-4A59-8FB0-9F97EB10719F}",
-        ["lightstyle2"] = "{ED083AE6-46FA-4A59-8FB0-9F97EB10719F}",
-        ["light3"] = "{C083E6E3-FA7D-4D7B-A595-EF9225AFEA82}",
-        ["lightstyle3"] = "{C083E6E3-FA7D-4D7B-A595-EF9225AFEA82}",
-        ["dark1"] = "{E8034E78-7F5D-4C2E-B375-FC64B27BC917}",
-        ["darkstyle1"] = "{E8034E78-7F5D-4C2E-B375-FC64B27BC917}",
-        ["dark2"] = "{125E5076-3810-47DD-B79F-674D7AD40C01}",
-        ["darkstyle2"] = "{125E5076-3810-47DD-B79F-674D7AD40C01}",
-        ["none"] = "{2D5ABB26-0587-4C30-8999-92F81FD0307C}",
-    };
-
-    /// <summary>
-    /// Resolve a table style name or GUID to a valid OOXML GUID.
-    /// Throws ArgumentException for unrecognized style names.
-    /// </summary>
     // BUG-R6-C: strict GUID format check for direct passthrough.
     // Pattern: {8HEX-4HEX-4HEX-4HEX-12HEX}, ASCII case-insensitive hex only.
     private static readonly System.Text.RegularExpressions.Regex _guidPattern =
@@ -1500,17 +1794,23 @@ public partial class PowerPointHandler
 
     private static string ResolveTableStyleId(string value)
     {
-        if (_tableStyleNameToGuid.TryGetValue(value, out var guid))
-            return guid;
-        if (value.StartsWith("{"))
+        var trimmed = value?.Trim() ?? "";
+        // Long-form aliases: mediumstyle1 → medium1
+        var alias = System.Text.RegularExpressions.Regex.Replace(
+            trimmed, @"^(medium|light|dark)style(\d)", "$1$2",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var guid = OfficeCli.Core.TableStyles.TableStyleRegistry.ShortNameToGuid(alias);
+        if (guid != null) return guid;
+        if (trimmed.StartsWith("{"))
         {
-            if (!_guidPattern.IsMatch(value))
+            if (!_guidPattern.IsMatch(trimmed))
                 throw new ArgumentException(
                     $"Invalid table style GUID: '{value}'. Expected pattern {{8HEX-4HEX-4HEX-4HEX-12HEX}}.");
-            return value; // Direct GUID passthrough (validated)
+            return trimmed; // Direct GUID passthrough (validated)
         }
         throw new ArgumentException(
-            $"Invalid table style: '{value}'. Valid values: medium1, medium2, medium3, medium4, light1, light2, light3, dark1, dark2, none, or a direct GUID like {{073A0DAA-...}}.");
+            $"Invalid table style: '{value}'. Valid values: medium1..4, light1..3, dark1..2, none, "
+            + "compound form like 'dark2-accent1' / 'medium3-accent4', or a direct GUID like {{073A0DAA-...}}.");
     }
 
     /// <summary>
@@ -2284,7 +2584,8 @@ public partial class PowerPointHandler
 
         newRun.RunProperties = rProps;
         var runText = properties.GetValueOrDefault("text", "");
-        newRun.Text = new Drawing.Text { Text = runText.Replace("\\n", "\n") };
+        XmlTextValidator.ValidateOrThrow(runText, "text");
+        newRun.Text = new Drawing.Text { Text = runText };
         return newRun;
     }
 
@@ -2421,5 +2722,56 @@ public partial class PowerPointHandler
         // address. See ExcelHandler.Helpers.cs for the mirror comment.
 
         return nodes;
+    }
+
+    // CT_TextParagraphProperties child schema rank (OOXML DrawingML):
+    //   lnSpc, spcBef, spcAft, buClr*, buSzPct/Pts/Tx, buFontTx/buFont,
+    //   buNone/buAutoNum/buChar/buBlip, tabLst, defRPr, extLst
+    // PowerPoint silently drops out-of-order children. Any code that injects
+    // a child into <a:pPr> after the element may already contain higher-rank
+    // siblings (typical when the user calls Set repeatedly in reverse order)
+    // must route through InsertPPrChild so the schema position is honoured.
+    // CONSISTENCY(schema-order-pptx): mirrors the spPr fix pattern proven by
+    // PptxSpPrSchemaOrderTests / PptxSchemaOrderR51Tests.
+    private static readonly string[] PPrChildSchemaOrder =
+    {
+        "lnSpc", "spcBef", "spcAft",
+        "buClr", "buClrTx",
+        "buSzPct", "buSzPts", "buSzTx",
+        "buFont", "buFontTx",
+        "buNone", "buAutoNum", "buChar", "buBlip",
+        "tabLst", "defRPr", "extLst",
+    };
+
+    private static int PPrChildRank(OpenXmlElement el)
+    {
+        var idx = Array.IndexOf(PPrChildSchemaOrder, el.LocalName);
+        return idx < 0 ? int.MaxValue : idx;
+    }
+
+    /// <summary>
+    /// Insert <paramref name="child"/> into a <c>&lt;a:pPr&gt;</c> at the
+    /// schema-required position so the resulting XML validates regardless of
+    /// the order in which properties were set. Caller is responsible for
+    /// removing any pre-existing same-typed child first.
+    /// </summary>
+    internal static void InsertPPrChild(Drawing.ParagraphProperties pProps, OpenXmlElement child)
+    {
+        var newRank = PPrChildRank(child);
+        // Find the first existing child whose rank is strictly greater — the
+        // new element must precede it. Same idiom as spPr/PresetGeometry fix.
+        OpenXmlElement? insertBefore = null;
+        foreach (var existing in pProps.ChildElements)
+        {
+            if (PPrChildRank(existing) > newRank)
+            {
+                insertBefore = existing;
+                break;
+            }
+        }
+        if (insertBefore != null)
+            pProps.InsertBefore(child, insertBefore);
+        else
+            pProps.AppendChild(child);
     }
 }

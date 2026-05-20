@@ -35,13 +35,28 @@ public partial class WordHandler
             case "docgrid.linepitch":
             {
                 var grid = EnsureDocGridInSection();
-                grid.LinePitch = ParseHelpers.SafeParseInt(value, "docGrid.linePitch");
+                var lp = ParseHelpers.SafeParseInt(value, "docGrid.linePitch");
+                // OOXML ST_DecimalNumber here describes a positive line height
+                // (twips). 0/negative values disable the grid silently — Word
+                // ignores the docGrid in that case, so reject up front rather
+                // than letting a no-op land on disk.
+                if (lp < 1)
+                    throw new ArgumentException(
+                        $"Invalid docGrid.linePitch '{value}': must be a positive integer in twips (>= 1).");
+                grid.LinePitch = lp;
                 return true;
             }
             case "docgrid.charspace" or "docgrid.characterspace":
             {
                 var grid = EnsureDocGridInSection();
-                grid.CharacterSpace = ParseHelpers.SafeParseInt(value, "docGrid.charSpace");
+                var cs = ParseHelpers.SafeParseInt(value, "docGrid.charSpace");
+                // OOXML ST_DecimalNumber range for w:charSpace is [0, 32767]
+                // (Word's internal short-int storage). Out-of-range values are
+                // silently clamped by Word on open, so reject up front.
+                if (cs < 0 || cs > 32767)
+                    throw new ArgumentException(
+                        $"Invalid docGrid.charSpace '{value}': OOXML range is [0, 32767].");
+                grid.CharacterSpace = cs;
                 return true;
             }
 

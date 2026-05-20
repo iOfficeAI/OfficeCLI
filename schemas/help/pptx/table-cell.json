@@ -19,6 +19,230 @@
   "note": "Appending a cell to a row is unusual — normally cells are seeded at row-Add time. This op exists for completeness.",
   "extends": "_shared/table-cell",
   "properties": {
+    "colspan": {
+      "type": "number",
+      "description": "horizontal cell span (a:tc @gridSpan). Surfaces only when the cell spans more than one column. Read-only — set spans by structuring the table at Add time.",
+      "add": false, "set": false, "get": true,
+      "readback": "integer ≥ 2",
+      "enforcement": "report"
+    },
+    "rowspan": {
+      "type": "number",
+      "description": "vertical cell span (a:tc @rowSpan). Surfaces only when the cell spans more than one row. Read-only — set spans by structuring the table at Add time.",
+      "add": false, "set": false, "get": true,
+      "readback": "integer ≥ 2",
+      "enforcement": "report"
+    },
+    "padding.left": {
+      "type": "string",
+      "description": "left cell padding (a:tcPr @marL). Read-only readback; emitted as a unit-qualified length (cm/in/pt).",
+      "add": false, "set": false, "get": true,
+      "readback": "unit-qualified length, e.g. '0.25cm'",
+      "enforcement": "report"
+    },
+    "padding.right": {
+      "type": "string",
+      "description": "right cell padding (a:tcPr @marR). Read-only readback; emitted as a unit-qualified length.",
+      "add": false, "set": false, "get": true,
+      "readback": "unit-qualified length, e.g. '0.25cm'",
+      "enforcement": "report"
+    },
+    "padding.top": {
+      "type": "string",
+      "description": "top cell padding (a:tcPr @marT). Read-only readback; emitted as a unit-qualified length.",
+      "add": false, "set": false, "get": true,
+      "readback": "unit-qualified length, e.g. '0.13cm'",
+      "enforcement": "report"
+    },
+    "padding.bottom": {
+      "type": "string",
+      "description": "bottom cell padding (a:tcPr @marB). Read-only readback; emitted as a unit-qualified length.",
+      "add": false, "set": true, "get": true,
+      "aliases": ["margin.bottom"],
+      "examples": ["--prop padding.bottom=0.25cm"],
+      "readback": "unit-qualified length, e.g. '0.13cm'",
+      "enforcement": "report"
+    },
+    "padding": {
+      "type": "string",
+      "description": "shorthand to set all four cell paddings at once (a:tcPr @marL/@marR/@marT/@marB). Accepts a unit-qualified length applied to every edge.",
+      "aliases": ["margin"],
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop padding=0.2cm"],
+      "enforcement": "report"
+    },
+    "valign": {
+      "type": "string",
+      "description": "vertical text anchor (a:tcPr @anchor). top|center|bottom.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop valign=center"],
+      "readback": "top|center|bottom",
+      "enforcement": "report"
+    },
+    "wrap": {
+      "type": "bool",
+      "description": "cell text wrap (a:txBody/a:bodyPr @wrap). true=square (wrap), false=none (clip to cell). Set on the cell's body properties.",
+      "aliases": ["wordwrap"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop wrap=false"],
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "textdirection": {
+      "type": "string",
+      "description": "cell text rotation (a:tcPr @vert). horizontal|vertical90|vertical270|stacked. Round-trips through the same canonical vocabulary.",
+      "aliases": ["textdir", "vert"],
+      "add": false, "set": true, "get": true,
+      "examples": [
+        "--prop textdirection=vertical270",
+        "--prop textdirection=stacked"
+      ],
+      "readback": "horizontal|vertical90|vertical270|stacked",
+      "enforcement": "report"
+    },
+    "direction": {
+      "type": "string",
+      "description": "first-paragraph reading direction (a:pPr @rtl). ltr|rtl. Fans out to every paragraph in the cell's text body; readback reflects the first paragraph only.",
+      "aliases": ["dir", "rtl"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop direction=rtl"],
+      "readback": "ltr|rtl",
+      "enforcement": "report"
+    },
+    "merge.right": {
+      "type": "number",
+      "description": "convenience for horizontal merge — stamps gridSpan=N on this cell and hMerge=true on the next N-1 cells in the same row.",
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop merge.right=2"],
+      "enforcement": "report"
+    },
+    "merge.down": {
+      "type": "number",
+      "description": "convenience for vertical merge — stamps rowSpan=N on this cell and vMerge=true on the same column in the next N-1 rows.",
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop merge.down=2"],
+      "enforcement": "report"
+    },
+    "bevel": {
+      "type": "string",
+      "description": "3-D cell bevel (a:tcPr/a:cell3D). 'none' to clear, or a preset name (circle, slope, cross, angle, softRound, convex, coolSlant, divot, riblet, hardEdge, artDeco, …). Optional 'NAME;Wpt;Hpt' to set width/height.",
+      "aliases": ["cell3d"],
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop bevel=circle", "--prop bevel=\"circle;6pt;6pt\""],
+      "enforcement": "report"
+    },
+    "opacity": {
+      "type": "number",
+      "description": "fill alpha as a 0–1 fraction or 0–100 percent (post-applied to the cell's solid/gradient fill).",
+      "aliases": ["fill.opacity", "alpha", "fill.alpha"],
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop opacity=0.5", "--prop opacity=50%"],
+      "enforcement": "report"
+    },
+    "image": {
+      "type": "string",
+      "description": "embed an image file as the cell's blip fill (a:tcPr/a:blipFill). Path to a local image; relationship is added to the slide. Replaces any prior fill.",
+      "aliases": ["imagefill"],
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop image=logo.png"],
+      "enforcement": "report"
+    },
+    "linespacing": {
+      "type": "string",
+      "description": "line spacing applied to every paragraph in the cell. Accepts multiplier ('1.5x', '150%') or fixed points ('18pt').",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop linespacing=1.5x", "--prop linespacing=18pt"],
+      "readback": "multiplier (e.g. '1.5x') or unit-qualified length (e.g. '18pt')",
+      "enforcement": "report"
+    },
+    "spacebefore": {
+      "type": "string",
+      "description": "space before every paragraph in the cell. Unit-qualified length ('12pt', '0.5cm').",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop spacebefore=6pt"],
+      "readback": "unit-qualified length",
+      "enforcement": "report"
+    },
+    "spaceafter": {
+      "type": "string",
+      "description": "space after every paragraph in the cell. Unit-qualified length ('12pt', '0.5cm').",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop spaceafter=6pt"],
+      "readback": "unit-qualified length",
+      "enforcement": "report"
+    },
+    "align": {
+      "type": "string",
+      "description": "first-paragraph horizontal alignment applied to every paragraph in the cell (a:pPr @algn). left|center|right|justify. Readback reflects the first paragraph only.",
+      "aliases": ["alignment", "halign"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop align=center"],
+      "readback": "left|center|right|justify",
+      "enforcement": "report"
+    },
+    "font": {
+      "type": "string",
+      "description": "Latin (and East Asian fallback) font typeface for every run in the cell. Fans out to a:rPr/a:latin + a:ea on every existing run.",
+      "aliases": ["font.name", "font.latin"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop font=Calibri"],
+      "readback": "typeface name",
+      "enforcement": "report"
+    },
+    "size": {
+      "type": "string",
+      "description": "font size for every run in the cell (a:rPr @sz). Unit-qualified ('14pt') or bare number (points).",
+      "aliases": ["font.size", "fontsize"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop size=14pt", "--prop size=10.5"],
+      "readback": "unit-qualified length, e.g. '14pt'",
+      "enforcement": "report"
+    },
+    "bold": {
+      "type": "bool",
+      "description": "bold for every run in the cell (a:rPr @b).",
+      "aliases": ["font.bold"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop bold=true"],
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "italic": {
+      "type": "bool",
+      "description": "italic for every run in the cell (a:rPr @i).",
+      "aliases": ["font.italic"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop italic=true"],
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "underline": {
+      "type": "string",
+      "description": "underline style for every run in the cell (a:rPr @u). single|double|none or any OOXML underline value.",
+      "aliases": ["font.underline"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop underline=single", "--prop underline=double"],
+      "readback": "single|double|… (OOXML token)",
+      "enforcement": "report"
+    },
+    "strike": {
+      "type": "string",
+      "description": "strikethrough for every run in the cell (a:rPr @strike). single|double|none.",
+      "aliases": ["strikethrough", "font.strike", "font.strikethrough"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop strike=single"],
+      "readback": "single|double|none",
+      "enforcement": "report"
+    },
+    "color": {
+      "type": "color",
+      "description": "font color for every run in the cell (a:rPr/a:solidFill).",
+      "aliases": ["font.color"],
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop color=FF0000", "--prop color=red"],
+      "readback": "#RRGGBB uppercase or scheme color name",
+      "enforcement": "report"
+    },
     "fill": {
       "type": "color",
       "description": "cell background fill. Accepts a solid color (hex, named, rgb(...)), scheme color name (accent1–accent6, dk1, dk2, lt1, lt2, hyperlink), 'none' for explicit no-fill, or a gradient string 'COLOR1-COLOR2[-ANGLE]' (e.g. 'FF0000-0000FF-90'). Stored as a:solidFill/a:noFill/a:gradFill on a:tcPr.",

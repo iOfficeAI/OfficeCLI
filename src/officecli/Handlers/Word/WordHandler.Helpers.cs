@@ -22,14 +22,11 @@ public partial class WordHandler
     // Tolerant BCP-47 shape used to validate run lang.{val,ea,cs} values.
     // RFC 5646 §2.1: language tag is primary (2-3 ALPHA, or 4-8 ALPHA "reserved"
     // for future / "registered"), followed by hyphen-separated subtags each
-    // 1..8 alphanumerics. Total tag length <= 35 chars (the RFC's practical
-    // ceiling for non-private tags). Also accepts the `x-…` private-use form.
-    // R18-fuzz-3: tightened — old shape `^[A-Za-z][A-Za-z0-9-]*$` accepted
-    // hyphen-less garbage like "INVALID" and 1000-char strings.
-    private const int LangBcp47MaxLength = 35;
-    private static readonly System.Text.RegularExpressions.Regex LangBcp47Shape =
-        new(@"^(?:[A-Za-z]{2,3}(?:-[A-Za-z0-9]{1,8})*|[A-Za-z]{4,8}(?:-[A-Za-z0-9]{1,8})+|x(?:-[A-Za-z0-9]{1,8})+)$",
-            System.Text.RegularExpressions.RegexOptions.Compiled);
+    // CONSISTENCY(bcp47-validation): shape regex moved to Core/Bcp47LanguageTag.cs
+    // so docx and pptx use the same validator. Wrappers kept for readability
+    // of the call sites below.
+    private const int LangBcp47MaxLength = OfficeCli.Core.Bcp47LanguageTag.MaxLength;
+    private static bool LangBcp47IsValid(string value) => OfficeCli.Core.Bcp47LanguageTag.IsValid(value);
 
     /// <summary>
     /// Resolve the OpenXmlPart that owns a given element. Returns the
@@ -127,6 +124,26 @@ public partial class WordHandler
     }
 
     /// <summary>
+    /// P1-7: detect the "Nlines" suffix on a spacing value and convert it to
+    /// hundredths of a line (the unit of `<w:spacing w:beforeLines/afterLines>`).
+    /// Returns false when the value lacks the "lines" suffix so the caller can
+    /// fall through to the points/twips path.
+    /// </summary>
+    internal static bool TryParseLinesSuffix(string value, out string hundredthsOfLine)
+    {
+        hundredthsOfLine = "";
+        var trimmed = (value ?? "").Trim();
+        if (!trimmed.EndsWith("lines", StringComparison.OrdinalIgnoreCase) &&
+            !trimmed.EndsWith("line", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var num = trimmed.EndsWith("lines", StringComparison.OrdinalIgnoreCase) ? trimmed[..^5] : trimmed[..^4];
+        if (!double.TryParse(num.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var n) || double.IsNaN(n) || double.IsInfinity(n) || n < 0)
+            throw new ArgumentException($"Invalid lines value '{value}'. Expected a non-negative number with 'lines' suffix (e.g. '0.5lines', '1lines').");
+        hundredthsOfLine = ((int)Math.Round(n * 100)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return true;
+    }
+
+    /// <summary>
     /// Parse a lineRule prop value (auto / exact / atLeast) into the OOXML
     /// enum. BUG-019 — needed to distinguish AtLeast from Exact since
     /// SpacingConverter.FormatWordLineSpacing serializes both as "Npt".
@@ -208,6 +225,102 @@ public partial class WordHandler
         "dotDash", "dashDotHeavy", "dotDotDash", "dashDotDotHeavy",
         "wave", "wavyHeavy", "wavyDouble", "words", "none"
     };
+
+    /// <summary>
+    /// Apply a <c>tabs=POS:ALIGN[:LEADER],POS:ALIGN[:LEADER]...</c>
+    /// shorthand to a paragraph properties container (paragraph
+    /// <c>w:pPr</c> or style <c>w:pPr</c> alike). Each segment becomes a
+    /// <c>w:tab</c> child of the container's <c>w:tabs</c> element. Existing
+    /// <c>w:tabs</c> is replaced wholesale so a new shorthand defines the
+    /// definitive tab strip — partial-merge would surprise callers who
+    /// expect "set tabs=…" to mean "this is the tab strip now".
+    ///
+    /// <para>Supported forms (case-insensitive):</para>
+    /// <list type="bullet">
+    ///   <item><c>9360:right</c></item>
+    ///   <item><c>9360:right:dot</c></item>
+    ///   <item><c>2880:center,5760:decimal,9360:right:dot</c></item>
+    ///   <item><c>5cm:left</c> / <c>2in:right</c> (unit suffix on pos)</item>
+    /// </list>
+    ///
+    /// <para>
+    /// <c>ALIGN</c>: left, center, right, decimal, bar, clear, num,
+    /// start, end. <c>LEADER</c>: none, dot, heavy, hyphen, middleDot,
+    /// underscore.
+    /// </para>
+    /// </summary>
+    internal static void ApplyTabsShorthand(OpenXmlCompositeElement pPr, string tabsStr)
+    {
+        if (string.IsNullOrWhiteSpace(tabsStr))
+        {
+            // Empty value clears any existing tab strip — useful for
+            // overriding inherited tabs from basedOn.
+            pPr.RemoveAllChildren<Tabs>();
+            return;
+        }
+
+        var newTabs = new Tabs();
+        foreach (var rawSeg in tabsStr.Split(','))
+        {
+            var seg = rawSeg.Trim();
+            if (seg.Length == 0) continue;
+            var parts = seg.Split(':');
+            if (parts.Length < 1 || string.IsNullOrWhiteSpace(parts[0]))
+                throw new ArgumentException(
+                    $"Invalid tabs segment '{seg}'. Expected POS[:ALIGN[:LEADER]] (e.g. 9360:right or 5cm:right:dot).");
+
+            // pos: allow negative twips for hanging-tab positions, accept
+            // bare twips OR unit suffix (pt/cm/in). Same parser as `add
+            // /body/p[N] --type tab --prop pos=…`.
+            int posTwips;
+            try { posTwips = ParseSignedTwips(parts[0]); }
+            catch (Exception ex)
+            {
+                throw new ArgumentException(
+                    $"Invalid tab pos '{parts[0]}' in tabs segment '{seg}': {ex.Message}");
+            }
+
+            var tabStop = new TabStop { Position = posTwips };
+
+            if (parts.Length >= 2 && !string.IsNullOrWhiteSpace(parts[1]))
+            {
+                var alignNorm = parts[1].Trim().ToLowerInvariant();
+                var knownTabVals = new[] { "left", "center", "right", "decimal", "bar", "clear", "num", "start", "end" };
+                if (!knownTabVals.Contains(alignNorm))
+                    throw new ArgumentException(
+                        $"Invalid tab align '{parts[1]}' in tabs segment '{seg}'. Valid: {string.Join(", ", knownTabVals)}.");
+                tabStop.Val = new EnumValue<TabStopValues>(new TabStopValues(alignNorm));
+            }
+            else
+            {
+                tabStop.Val = TabStopValues.Left;
+            }
+
+            if (parts.Length >= 3 && !string.IsNullOrWhiteSpace(parts[2]))
+            {
+                var leaderNorm = parts[2].Trim().ToLowerInvariant();
+                tabStop.Leader = leaderNorm switch
+                {
+                    "none"       => TabStopLeaderCharValues.None,
+                    "dot"        => TabStopLeaderCharValues.Dot,
+                    "heavy"      => TabStopLeaderCharValues.Heavy,
+                    "hyphen"     => TabStopLeaderCharValues.Hyphen,
+                    "middledot"  => TabStopLeaderCharValues.MiddleDot,
+                    "underscore" => TabStopLeaderCharValues.Underscore,
+                    _ => throw new ArgumentException(
+                        $"Invalid tab leader '{parts[2]}' in tabs segment '{seg}'. Valid: none, dot, heavy, hyphen, middleDot, underscore."),
+                };
+            }
+
+            newTabs.Append(tabStop);
+        }
+
+        // Replace any existing tabs strip with the new one. Schema places
+        // <w:tabs> early in pPr; PrependChild keeps schema order without
+        // having to compute the exact slot.
+        pPr.RemoveAllChildren<Tabs>();
+        pPr.PrependChild(newTabs);
+    }
 
     private static JustificationValues ParseJustification(string value) =>
         value.ToLowerInvariant() switch
@@ -569,7 +682,7 @@ public partial class WordHandler
     /// number of runs before the range marker plus 1. Returns 0 when the
     /// range marker is not found, or sits before any Run (anchor at paragraph
     /// start).
-    /// BUG-DUMP4-03: callers (BatchEmitter) need this so dump can preserve
+    /// BUG-DUMP4-03: callers (WordBatchEmitter) need this so dump can preserve
     /// intra-paragraph anchor position; without it replay widens every
     /// comment to the whole paragraph.
     /// </summary>
@@ -637,7 +750,7 @@ public partial class WordHandler
                     sb.Append('\n'); break;
                 // BUG-DUMP7-01: <w:sym w:font="Wingdings" w:char="F0E0"/> is a
                 // glyph substitution — the run carries no <w:t>. Without a case
-                // here, GetRunText returned empty and BatchEmitter's run-emit
+                // here, GetRunText returned empty and WordBatchEmitter's run-emit
                 // dropped the whole run, silently losing the symbol on dump
                 // round-trip. Surface the resolved Unicode code point as Text
                 // so the run looks non-empty; the canonical `sym` Format key
@@ -1276,6 +1389,36 @@ public partial class WordHandler
                     else InsertRunPropInSchemaOrder(props, new RunFonts { Ascii = fv, HighAnsi = fv });
                 }
                 return true;
+            // CONSISTENCY(font-slot-asymmetric): Navigation surfaces ascii and
+            // hAnsi separately when their values disagree (font.ascii vs
+            // font.hAnsi); the bare `font.latin` shorthand only handles the
+            // symmetric case. Without these, sources with asymmetric Latin
+            // fonts (e.g. ascii=黑体 hAnsi=宋体, common in CJK docs to fork
+            // ASCII vs extended-Latin glyphs) round-trip with the keys lost.
+            case "font.ascii":
+                {
+                    var fv = SanitizeFontTokenInput(value);
+                    var rfA = props.GetFirstChild<RunFonts>();
+                    if (string.IsNullOrEmpty(fv))
+                    {
+                        if (rfA != null) { rfA.Ascii = null; if (RunFontsIsEmpty(rfA)) rfA.Remove(); }
+                    }
+                    else if (rfA != null) rfA.Ascii = fv;
+                    else InsertRunPropInSchemaOrder(props, new RunFonts { Ascii = fv });
+                }
+                return true;
+            case "font.hansi" or "font.hAnsi":
+                {
+                    var fv = SanitizeFontTokenInput(value);
+                    var rfHA = props.GetFirstChild<RunFonts>();
+                    if (string.IsNullOrEmpty(fv))
+                    {
+                        if (rfHA != null) { rfHA.HighAnsi = null; if (RunFontsIsEmpty(rfHA)) rfHA.Remove(); }
+                    }
+                    else if (rfHA != null) rfHA.HighAnsi = fv;
+                    else InsertRunPropInSchemaOrder(props, new RunFonts { HighAnsi = fv });
+                }
+                return true;
             case "font.ea" or "font.eastasia" or "font.eastasian":
                 {
                     var fv = SanitizeFontTokenInput(value);
@@ -1379,25 +1522,28 @@ public partial class WordHandler
             case "bold":
             case "font.bold":
                 props.RemoveAllChildren<Bold>();
-                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Bold());
+                if (IsExplicitFalseAddOverride(value))
+                    InsertRunPropInSchemaOrder(props, new Bold { Val = OnOffValue.FromBoolean(false) });
+                else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Bold());
                 return true;
             case "bold.cs" or "font.bold.cs" or "boldcs":
-                // Complex-script bold (<w:bCs/>). Word renders Arabic / Hebrew
-                // bold via this flag, NOT <w:b/>. Required for Arabic bold to
-                // actually render as bold.
                 props.RemoveAllChildren<BoldComplexScript>();
-                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new BoldComplexScript());
+                if (IsExplicitFalseAddOverride(value))
+                    InsertRunPropInSchemaOrder(props, new BoldComplexScript { Val = OnOffValue.FromBoolean(false) });
+                else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new BoldComplexScript());
                 return true;
             case "italic":
             case "font.italic":
                 props.RemoveAllChildren<Italic>();
-                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Italic());
+                if (IsExplicitFalseAddOverride(value))
+                    InsertRunPropInSchemaOrder(props, new Italic { Val = OnOffValue.FromBoolean(false) });
+                else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Italic());
                 return true;
             case "italic.cs" or "font.italic.cs" or "italiccs":
-                // Complex-script italic (<w:iCs/>). Same rationale as bold.cs —
-                // Arabic / Hebrew italic ignores <w:i/>.
                 props.RemoveAllChildren<ItalicComplexScript>();
-                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new ItalicComplexScript());
+                if (IsExplicitFalseAddOverride(value))
+                    InsertRunPropInSchemaOrder(props, new ItalicComplexScript { Val = OnOffValue.FromBoolean(false) });
+                else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new ItalicComplexScript());
                 return true;
             case "size.cs" or "font.size.cs" or "sizecs":
                 // Complex-script font size (<w:szCs/>, half-points). When set,
@@ -1446,37 +1592,89 @@ public partial class WordHandler
                 return true;
             case "underline":
             case "font.underline":
+            {
+                // CONSISTENCY(underline-color-preserve): snapshot any existing
+                // <w:u w:color="…"/> attribute before rebuilding the element,
+                // so toggling the style ("single" → "double") does not silently
+                // drop a previously-set underline colour. The dedicated
+                // "underline.color" case rebuilds the Underline element from
+                // scratch and would otherwise be the only path that keeps
+                // colour through a style change.
+                var existingUl = props.GetFirstChild<Underline>();
+                var preservedColor = existingUl?.Color?.Value;
+                var preservedThemeColor = existingUl?.ThemeColor?.Value;
+                var preservedThemeTint = existingUl?.ThemeTint?.Value;
+                var preservedThemeShade = existingUl?.ThemeShade?.Value;
                 props.RemoveAllChildren<Underline>();
                 var ulMapped = NormalizeUnderlineValue(value);
-                InsertRunPropInSchemaOrder(props, new Underline { Val = new UnderlineValues(ulMapped) });
+                var newUl = new Underline { Val = new UnderlineValues(ulMapped) };
+                if (preservedColor != null) newUl.Color = preservedColor;
+                if (preservedThemeColor != null) newUl.ThemeColor = preservedThemeColor;
+                if (preservedThemeTint != null) newUl.ThemeTint = preservedThemeTint;
+                if (preservedThemeShade != null) newUl.ThemeShade = preservedThemeShade;
+                InsertRunPropInSchemaOrder(props, newUl);
                 return true;
+            }
+            case "underline.color":
+            case "underlinecolor":
+            case "underlineColor":
+            case "font.underline.color":
+            {
+                // CONSISTENCY(underline-color): Get emits canonical
+                // 'underline.color' (see Navigation.cs L1815 etc.). Set
+                // accepts dotted form plus camelCase aliases. The OOXML
+                // shape is <w:u w:val="…" w:color="RRGGBB"/> — color is an
+                // attribute on the existing Underline element, not a child
+                // element. Preserve any existing val (default single when
+                // user is setting color without prior underline).
+                var existingUl = props.GetFirstChild<Underline>();
+                var ulVal = existingUl?.Val?.Value ?? UnderlineValues.Single;
+                props.RemoveAllChildren<Underline>();
+                var hex = OfficeCli.Core.ParseHelpers.SanitizeColorForOoxml(value).Rgb;
+                InsertRunPropInSchemaOrder(props, new Underline { Val = ulVal, Color = hex });
+                return true;
+            }
             case "strike" or "strikethrough" or "font.strike" or "font.strikethrough":
                 props.RemoveAllChildren<Strike>();
-                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Strike());
+                if (IsExplicitFalseAddOverride(value))
+                    InsertRunPropInSchemaOrder(props, new Strike { Val = OnOffValue.FromBoolean(false) });
+                else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Strike());
                 return true;
             case "dstrike":
                 props.RemoveAllChildren<DoubleStrike>();
-                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new DoubleStrike());
+                if (IsExplicitFalseAddOverride(value))
+                    InsertRunPropInSchemaOrder(props, new DoubleStrike { Val = OnOffValue.FromBoolean(false) });
+                else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new DoubleStrike());
                 return true;
             case "outline":
                 props.RemoveAllChildren<Outline>();
-                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Outline());
+                if (IsExplicitFalseAddOverride(value))
+                    InsertRunPropInSchemaOrder(props, new Outline { Val = OnOffValue.FromBoolean(false) });
+                else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Outline());
                 return true;
             case "shadow":
                 props.RemoveAllChildren<Shadow>();
-                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Shadow());
+                if (IsExplicitFalseAddOverride(value))
+                    InsertRunPropInSchemaOrder(props, new Shadow { Val = OnOffValue.FromBoolean(false) });
+                else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Shadow());
                 return true;
             case "emboss":
                 props.RemoveAllChildren<Emboss>();
-                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Emboss());
+                if (IsExplicitFalseAddOverride(value))
+                    InsertRunPropInSchemaOrder(props, new Emboss { Val = OnOffValue.FromBoolean(false) });
+                else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Emboss());
                 return true;
             case "imprint":
                 props.RemoveAllChildren<Imprint>();
-                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Imprint());
+                if (IsExplicitFalseAddOverride(value))
+                    InsertRunPropInSchemaOrder(props, new Imprint { Val = OnOffValue.FromBoolean(false) });
+                else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Imprint());
                 return true;
             case "noproof":
                 props.RemoveAllChildren<NoProof>();
-                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new NoProof());
+                if (IsExplicitFalseAddOverride(value))
+                    InsertRunPropInSchemaOrder(props, new NoProof { Val = OnOffValue.FromBoolean(false) });
+                else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new NoProof());
                 return true;
             case "rtl":
             case "direction" or "dir":
@@ -1531,15 +1729,21 @@ public partial class WordHandler
             case "caps":
             case "allcaps":
                 props.RemoveAllChildren<Caps>();
-                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Caps());
+                if (IsExplicitFalseAddOverride(value))
+                    InsertRunPropInSchemaOrder(props, new Caps { Val = OnOffValue.FromBoolean(false) });
+                else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Caps());
                 return true;
             case "smallcaps":
                 props.RemoveAllChildren<SmallCaps>();
-                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new SmallCaps());
+                if (IsExplicitFalseAddOverride(value))
+                    InsertRunPropInSchemaOrder(props, new SmallCaps { Val = OnOffValue.FromBoolean(false) });
+                else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new SmallCaps());
                 return true;
             case "vanish":
                 props.RemoveAllChildren<Vanish>();
-                if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Vanish());
+                if (IsExplicitFalseAddOverride(value))
+                    InsertRunPropInSchemaOrder(props, new Vanish { Val = OnOffValue.FromBoolean(false) });
+                else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Vanish());
                 return true;
             case "bdr":
                 // BUG-R7-06: character border <w:bdr/> — round-trip captured
@@ -1561,10 +1765,34 @@ public partial class WordHandler
             case "kern":
                 // BUG-R7-06: <w:kern w:val="N"/> (kerning threshold in
                 // half-points). Get exposes it; Add/Set silently dropped.
+                // Docx kern unit is half-points (raw uint per ST_HpsMeasure);
+                // unlike pptx kern (100ths of pt) we deliberately do NOT
+                // accept a "pt" suffix here — pass an integer half-points
+                // value. An empty value clears the element; an invalid
+                // value (e.g. "14pt", "abc") returns false so the dispatch
+                // surfaces invalid_value rather than silently no-op'ing.
                 props.RemoveAllChildren<Kern>();
+                if (string.IsNullOrEmpty(value))
+                    return true;
+                if (!uint.TryParse(value, out var kernVal))
+                    throw new ArgumentException(
+                        $"Invalid kern value '{value}'. Pass an integer in half-points (e.g. 28 = 14pt threshold); 'pt' suffix is not accepted on docx kern.");
+                InsertRunPropInSchemaOrder(props, new Kern { Val = kernVal });
+                return true;
+            case "position":
+                // <w:position w:val="N"/> — vertical raise/lower in
+                // half-points (ST_SignedHpsMeasure). Positive = raise,
+                // negative = lower, 0 = baseline. Distinct from
+                // vertAlign=super|sub which is the typographic toggle
+                // (renders at ~58% size); position keeps full size and
+                // shifts by exact half-points. Doc/x .doc carries this
+                // as sprmCHpsPos (0x4845). Get exposes "position" already
+                // (see WordHandler.Navigation.cs); Add/Set previously
+                // routed to tab-stop SetElementTabStop only.
+                props.RemoveAllChildren<Position>();
                 if (!string.IsNullOrEmpty(value)
-                    && uint.TryParse(value, out var kernVal))
-                    InsertRunPropInSchemaOrder(props, new Kern { Val = kernVal });
+                    && int.TryParse(value, out var posVal))
+                    InsertRunPropInSchemaOrder(props, new Position { Val = posVal.ToString(System.Globalization.CultureInfo.InvariantCulture) });
                 return true;
             case "lang" or "lang.latin" or "lang.val":
             case "lang.ea" or "lang.eastasia" or "lang.eastasian":
@@ -1584,7 +1812,7 @@ public partial class WordHandler
                 {
                     if (string.Equals(value, "null", StringComparison.OrdinalIgnoreCase))
                         throw new ArgumentException($"Invalid BCP-47 language tag for {key}: '{value}'. Expected a tag like 'en-US', 'ja-JP', or 'ar-SA'.");
-                    if (value.Length > LangBcp47MaxLength || !LangBcp47Shape.IsMatch(value))
+                    if (!LangBcp47IsValid(value))
                         throw new ArgumentException($"Invalid BCP-47 language tag for {key}: '{value}'. Expected a tag like 'en-US', 'ja-JP', or 'ar-SA' (RFC 5646: <= {LangBcp47MaxLength} chars, primary subtag 2-3 letters, then hyphen-separated subtags).");
                 }
                 var lang = props.GetFirstChild<Languages>();

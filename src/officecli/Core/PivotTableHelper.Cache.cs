@@ -374,7 +374,7 @@ internal static partial class PivotTableHelper
         // fails (e.g. complex N≥3 rowItems structure, security policy blocking
         // refresh, or WPS Office's limited pivot support), the user sees an
         // empty pivot skeleton instead of the correct data. Real Excel/
-        // LibreOffice files likewise ship rendered cells without refreshOnLoad.
+        // files likewise ship rendered cells without refreshOnLoad.
         var cacheDef = new PivotCacheDefinition
         {
             CreatedVersion = 3,

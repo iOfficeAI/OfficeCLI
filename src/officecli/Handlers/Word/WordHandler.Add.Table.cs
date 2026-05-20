@@ -310,7 +310,7 @@ public partial class WordHandler
                     cm.TableCellRightMargin = new TableCellRightMargin { Width = (short)Math.Min(paddingVal, short.MaxValue), Type = TableWidthValues.Dxa };
                     break;
                 }
-                // BUG-DUMP13-04: per-side default cell margins. BatchEmitter
+                // BUG-DUMP13-04: per-side default cell margins. WordBatchEmitter
                 // passes asymmetric padding.* keys through unfolded when sides
                 // differ; without these cases AddTable warned UNSUPPORTED and
                 // the values became zero on round-trip. Mirrors the per-cell
@@ -869,6 +869,92 @@ public partial class WordHandler
                     tcPr.AppendChild(new HideMark());
             }
         }
+        // CONSISTENCY(add-set-symmetry): bare vMerge / gridSpan / colspan
+        // were Set-only; Add forced callers through the dotted form
+        // (vMerge.val=restart, gridSpan.val=N) which works but is
+        // surprising. Mirror Set's vocabulary so doc2 (and humans) can
+        // write the natural form on Add too. v5.3 paragraph property.
+        if (properties.TryGetValue("vMerge", out var vMergeAddVal)
+            || properties.TryGetValue("vmerge", out vMergeAddVal))
+        {
+            if (!string.IsNullOrEmpty(vMergeAddVal))
+            {
+                var tcPr = newCell.GetFirstChild<TableCellProperties>()
+                    ?? newCell.PrependChild(new TableCellProperties());
+                tcPr.VerticalMerge = vMergeAddVal.ToLowerInvariant() == "restart"
+                    ? new VerticalMerge { Val = MergedCellValues.Restart }
+                    : new VerticalMerge();
+            }
+        }
+        if (properties.TryGetValue("gridSpan", out var gridSpanAddVal)
+            || properties.TryGetValue("gridspan", out gridSpanAddVal)
+            || properties.TryGetValue("colspan", out gridSpanAddVal))
+        {
+            var span = OfficeCli.Core.ParseHelpers.SafeParseInt(gridSpanAddVal, "gridSpan");
+            if (span > 0)
+            {
+                var tcPr = newCell.GetFirstChild<TableCellProperties>()
+                    ?? newCell.PrependChild(new TableCellProperties());
+                tcPr.GridSpan = new GridSpan { Val = span };
+            }
+        }
+        // v6.4: horizontal merge on Add (CONSISTENCY(add-set-symmetry)).
+        // Mirrors WordHandler.Set.Element.cs "hmerge" case but writes the
+        // raw <w:hMerge/> attribute rather than gridSpan: dump replay from
+        // doc2 already emits per-cell `hMerge=continue` for every
+        // continuation cell, so we must preserve them as their own
+        // <w:tc> nodes (gridSpan-collapsed continuations are unrepresented
+        // in the source .doc and would corrupt subsequent vMerge anchors).
+        // Set's gridSpan redirect is a UX optimisation for human callers;
+        // for round-trip fidelity we want the legacy hMerge form.
+        if (properties.TryGetValue("hMerge", out var hMergeAddVal)
+            || properties.TryGetValue("hmerge", out hMergeAddVal))
+        {
+            if (!string.IsNullOrEmpty(hMergeAddVal))
+            {
+                var tcPr = newCell.GetFirstChild<TableCellProperties>()
+                    ?? newCell.PrependChild(new TableCellProperties());
+                tcPr.HorizontalMerge = hMergeAddVal.ToLowerInvariant() == "restart"
+                    ? new HorizontalMerge { Val = MergedCellValues.Restart }
+                    : new HorizontalMerge();
+            }
+        }
+        // CONSISTENCY(add-set-symmetry): cell-level w:tcMar (padding) was
+        // Set-only; Add silently rejected it via UnusedKeys. Mirror Set's
+        // padding / padding.{top,bottom,left,right} cases so doc2 round-
+        // trips per-cell margins (sprmTCellPadding 0xD632/0xD634 -> tcMar).
+        foreach (var (cmKey, cmVal) in properties)
+        {
+            var cmKl = cmKey.ToLowerInvariant();
+            if (cmKl is not ("padding" or "padding.top" or "padding.bottom" or "padding.left" or "padding.right"))
+                continue;
+            properties.ContainsKey(cmKey);
+            var tcPrCm = newCell.GetFirstChild<TableCellProperties>()
+                ?? newCell.PrependChild(new TableCellProperties());
+            var mar = tcPrCm.TableCellMargin ?? (tcPrCm.TableCellMargin = new TableCellMargin());
+            if (cmKl == "padding")
+            {
+                var dxa = OfficeCli.Core.ParseHelpers.SafeParseUint(cmVal, "padding").ToString();
+                mar.TopMargin    = new TopMargin    { Width = dxa, Type = TableWidthUnitValues.Dxa };
+                mar.BottomMargin = new BottomMargin { Width = dxa, Type = TableWidthUnitValues.Dxa };
+                mar.LeftMargin   = new LeftMargin   { Width = dxa, Type = TableWidthUnitValues.Dxa };
+                mar.RightMargin  = new RightMargin  { Width = dxa, Type = TableWidthUnitValues.Dxa };
+            }
+            else
+            {
+                var v = OfficeCli.Core.ParseHelpers.SafeParseInt(cmVal, cmKl);
+                if (v < 0)
+                    throw new ArgumentException($"Invalid '{cmKl}' value: '{cmVal}'. Cell margins must be non-negative (OOXML w:tcMar).");
+                var w = v.ToString();
+                switch (cmKl)
+                {
+                    case "padding.top":    mar.TopMargin    = new TopMargin    { Width = w, Type = TableWidthUnitValues.Dxa }; break;
+                    case "padding.bottom": mar.BottomMargin = new BottomMargin { Width = w, Type = TableWidthUnitValues.Dxa }; break;
+                    case "padding.left":   mar.LeftMargin   = new LeftMargin   { Width = w, Type = TableWidthUnitValues.Dxa }; break;
+                    case "padding.right":  mar.RightMargin  = new RightMargin  { Width = w, Type = TableWidthUnitValues.Dxa }; break;
+                }
+            }
+        }
 
         // Dotted-key fallback for tcPr-level attrs (shd.fill, etc.) not
         // modeled by hand-rolled blocks. Lazy-create tcPr if any dotted
@@ -876,6 +962,11 @@ public partial class WordHandler
         foreach (var (key, value) in properties)
         {
             if (!key.Contains('.')) continue;
+            // v5.3: padding.* already consumed by the cell-margin block
+            // above; skip so the unsupported tracker doesn't double-flag.
+            var kLower = key.ToLowerInvariant();
+            if (kLower is "padding.top" or "padding.bottom" or "padding.left" or "padding.right")
+                continue;
             // ACCOUNTING(handler-as-truth): see AddStyle for rationale.
             properties.ContainsKey(key);
             var tcPr = newCell.GetFirstChild<TableCellProperties>();

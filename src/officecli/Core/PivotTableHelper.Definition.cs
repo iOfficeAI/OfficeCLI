@@ -188,7 +188,7 @@ internal static partial class PivotTableHelper
         }
 
         // Grand totals toggles. Both attributes default to true in ECMA-376 —
-        // only emit when the user opted out, matching real Excel + LibreOffice
+        // only emit when the user opted out, matching real Excel
         // serialization behavior.
         // OOXML attribute mapping (ECMA-376, empirically verified):
         //   RowGrandTotals    = BOTTOM grand total ROW  (→ internal _colGrandTotals)
@@ -366,7 +366,7 @@ internal static partial class PivotTableHelper
 
         // RowItems — describes the row-label layout. Without this, Excel renders only the
         // pivot's drop-down chrome but no actual data cells (the layout we observed earlier).
-        // Pattern verified against LibreOffice's pivot_dark1.xlsx test fixture:
+        // Pattern verified against the pivot_dark1.xlsx reference fixture:
         //   <rowItems count="K+1">
         //     <i><x/></i>            <-- index 0 (shorthand: omit v attribute)
         //     <i><x v="1"/></i>      <-- index 1
@@ -400,7 +400,7 @@ internal static partial class PivotTableHelper
 
         // ColumnItems — same shape as RowItems but for the column-label layout.
         // Even when there are NO column fields, ECMA-376 requires a <colItems> with one
-        // empty <i/> placeholder; LibreOffice's writeRowColumnItems empty-case branch
+        // empty <i/> placeholder; common writers' empty-case branch
         // (xepivotxml.cxx:1008-1014) writes exactly that.
         pivotDef.ColumnItems = (ColumnItems)BuildAxisItems(
             colFieldIndices, columnData, isRow: false, dataFieldCount: valueFields.Count);
@@ -421,7 +421,7 @@ internal static partial class PivotTableHelper
             foreach (var (idx, func, showAs, displayName) in valueFields)
             {
                 // BaseField/BaseItem: Excel ignores these when ShowDataAs is normal,
-                // but LibreOffice and Excel both emit them unconditionally on every
+                // but Excel both emit them unconditionally on every
                 // dataField (verified against pivot_dark1.xlsx and other LO fixtures).
                 // Following the verified pattern rather than my earlier "omit them"
                 // theory — being closer to what real producers write reduces the risk
@@ -499,7 +499,7 @@ internal static partial class PivotTableHelper
     ///   </colItems>
     /// Verified against multi_data_authored.xlsx (a 1×1×2 pivot from real Excel).
     ///
-    /// Empty axis: single &lt;i/&gt; placeholder (LibreOffice writeRowColumnItems
+    /// Empty axis: single &lt;i/&gt; placeholder (writeRowColumnItems
     /// empty-case branch in xepivotxml.cxx:1008-1014).
     ///
     /// Limitation: still only single-axis-field cases are correct. Multi-row-field
@@ -512,7 +512,7 @@ internal static partial class PivotTableHelper
             ? new RowItems()
             : new ColumnItems();
 
-        // Empty axis: write a single empty <i/>. LibreOffice does this unconditionally
+        // Empty axis: write a single empty <i/>. common writers do this unconditionally
         // when there's nothing to render — Excel needs the placeholder. When there are
         // multiple data fields on the column axis but no col field, we still need
         // K entries (one per data field) instead of just one — handled below.

@@ -463,6 +463,9 @@ public partial class WordHandler
                 hlUri = new Uri(hlUrl!, UriKind.Relative);
             else if (!Uri.TryCreate(hlUrl, UriKind.Absolute, out hlUri))
                 throw new ArgumentException($"Invalid hyperlink URL '{hlUrl}'. Expected a valid absolute URI (e.g. 'https://example.com') or a fragment-only anchor (e.g. '#bookmark').");
+            // CONSISTENCY(hyperlink-scheme-allowlist): gate absolute URIs only.
+            if (!hlIsFragment)
+                Core.HyperlinkUriValidator.RequireSafeScheme(hlUrl!, "url");
             hlRelId = hostPart.AddHyperlinkRelationship(hlUri!, isExternal: !hlIsFragment).Id;
         }
 
@@ -660,7 +663,7 @@ public partial class WordHandler
             "styleref" => $" STYLEREF \"{styleRefName}\" ",
             "docproperty" => $" DOCPROPERTY \"{docPropertyName}\" ",
             "if" => BuildIfFieldInstruction(properties),
-            // CONSISTENCY(field-add-symmetry): BatchEmitter.BuildFieldAddProps
+            // CONSISTENCY(field-add-symmetry): WordBatchEmitter.BuildFieldAddProps
             // emits legacy form fields with fieldType=FORMTEXT / FORMCHECKBOX
             // / FORMDROPDOWN. Without these arms the default arm threw
             // `Unknown field type 'formtext'`, breaking dump→batch round-trips
@@ -670,7 +673,7 @@ public partial class WordHandler
             "formtext" => "__FORMFIELD_DELEGATE__",
             "formcheckbox" => "__FORMFIELD_DELEGATE__",
             "formdropdown" => "__FORMFIELD_DELEGATE__",
-            // CONSISTENCY(field-add-symmetry): BatchEmitter.BuildFieldAddProps
+            // CONSISTENCY(field-add-symmetry): WordBatchEmitter.BuildFieldAddProps
             // emits HYPERLINK fields as fieldType=HYPERLINK + url/anchor (+ text),
             // never as a raw `instr`. Without a hyperlink case the default arm
             // throws `Unknown field type 'hyperlink'` and (under the new
@@ -1459,7 +1462,7 @@ public partial class WordHandler
     // BUG-DUMP9-09: MERGEFIELD field names with whitespace must be quoted in
     // the instruction so Word parses them as one token. Already-quoted input
     // is left as-is so the instruction is idempotent under dump round-trip.
-    // Append the trailing-switches blob produced by BatchEmitter for SEQ /
+    // Append the trailing-switches blob produced by WordBatchEmitter for SEQ /
     // MERGEFIELD round-trips (e.g. `\* ARABIC \r 1`, `\* MERGEFORMAT`).
     // Returns either an empty string or a single space + verbatim switches,
     // so the caller can splice it directly between the identifier and the
@@ -1504,5 +1507,280 @@ public partial class WordHandler
             }
             yield return new ListItem { DisplayText = display, Value = value };
         }
+    }
+
+    // =====================================================================
+    // v5.7-cont: add type=textbox / add type=shape
+    // =====================================================================
+
+    private string AddTextbox(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
+    {
+        // Resolve target container: body is the canonical anchor; cell/header/
+        // footer are also legal (they all hold block-flow paragraphs).
+        var (host, hostRoot) = ResolveDrawingHost(parent, parentPath);
+        long cxEmu = ParseDrawingSize(properties.GetValueOrDefault("width"), defaultEmu: 2_286_000);  // ~6cm
+        long cyEmu = ParseDrawingSize(properties.GetValueOrDefault("height"), defaultEmu: 914_400);   // ~2.4cm
+        string wrap = properties.GetValueOrDefault("wrap", "square").ToLowerInvariant();
+        long hPos = ParseDrawingPos(properties, "anchor.x", "hposition", defaultEmu: 0);
+        long vPos = ParseDrawingPos(properties, "anchor.y", "vposition", defaultEmu: 0);
+        string? fillColor = properties.GetValueOrDefault("fill") ?? properties.GetValueOrDefault("fillcolor");
+        string? lineColor = properties.GetValueOrDefault("line.color") ?? properties.GetValueOrDefault("linecolor");
+        string? lineStyle = properties.GetValueOrDefault("line.style") ?? properties.GetValueOrDefault("linestyle");
+        string? lineWidth = properties.GetValueOrDefault("line.width") ?? properties.GetValueOrDefault("linewidth");
+        string? altText   = properties.GetValueOrDefault("alt") ?? properties.GetValueOrDefault("name") ?? "Text Box";
+        string? initialText = properties.GetValueOrDefault("text");
+
+        var siblingShapes = host.Elements<Paragraph>()
+            .SelectMany(p => p.Descendants<Drawing>())
+            .Count();
+        uint docPropId = NextDocPropId();
+        // Build the textbox via InnerXml. wps:wsp ships in OOXML 2010+; the
+        // namespace declarations are the canonical Word ones.
+        string fillXml = !string.IsNullOrEmpty(fillColor)
+            ? $"<a:solidFill><a:srgbClr val=\"{SanitizeHex(fillColor)}\"/></a:solidFill>"
+            : "<a:noFill/>";
+        string lnXml = BuildLineXml(lineStyle, lineWidth, lineColor);
+        string txbxBodyXml = !string.IsNullOrEmpty(initialText)
+            ? $"<w:p xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:r><w:t xml:space=\"preserve\">{System.Security.SecurityElement.Escape(initialText)}</w:t></w:r></w:p>"
+            : "<w:p xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"/>";
+
+        string wrapInnerXml = WrapXmlFragment(wrap);
+
+        // Drawing scaffolding. EffectExtent + DocProperties + a:graphic with
+        // a:graphicData uri = wordprocessingShape; inner wps:wsp carries
+        // spPr (preset rect geometry + fill + line) + txbx (body paragraphs) + bodyPr.
+        string drawingXml = $@"<w:drawing xmlns:w=""http://schemas.openxmlformats.org/wordprocessingml/2006/main"" xmlns:wp=""http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"" xmlns:a=""http://schemas.openxmlformats.org/drawingml/2006/main"" xmlns:wps=""http://schemas.microsoft.com/office/word/2010/wordprocessingShape""><wp:anchor distT=""0"" distB=""0"" distL=""114300"" distR=""114300"" simplePos=""0"" relativeHeight=""251{siblingShapes:D3}"" behindDoc=""0"" locked=""0"" layoutInCell=""1"" allowOverlap=""1""><wp:simplePos x=""0"" y=""0""/><wp:positionH relativeFrom=""column""><wp:posOffset>{hPos}</wp:posOffset></wp:positionH><wp:positionV relativeFrom=""paragraph""><wp:posOffset>{vPos}</wp:posOffset></wp:positionV><wp:extent cx=""{cxEmu}"" cy=""{cyEmu}""/><wp:effectExtent l=""0"" t=""0"" r=""0"" b=""0""/>{wrapInnerXml}<wp:docPr id=""{docPropId}"" name=""{System.Security.SecurityElement.Escape(altText)}""/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri=""http://schemas.microsoft.com/office/word/2010/wordprocessingShape""><wps:wsp><wps:cNvSpPr txBox=""1""/><wps:spPr><a:xfrm><a:off x=""0"" y=""0""/><a:ext cx=""{cxEmu}"" cy=""{cyEmu}""/></a:xfrm><a:prstGeom prst=""rect""><a:avLst/></a:prstGeom>{fillXml}{lnXml}</wps:spPr><wps:txbx><w:txbxContent>{txbxBodyXml}</w:txbxContent></wps:txbx><wps:bodyPr rot=""0"" wrap=""square"" lIns=""91440"" tIns=""45720"" rIns=""91440"" bIns=""45720"" anchor=""t"" anchorCtr=""0""/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing>";
+
+        var drawing = ParseDrawingFromXml(drawingXml);
+        var run = new Run(drawing);
+        var newPara = new Paragraph(run);
+        AssignParaId(newPara);
+        InsertAtIndexOrAppend(host, newPara, index);
+
+        // Compute the 1-based textbox index across the host. Walk all
+        // paragraphs in the host and count those that carry at least one
+        // wp:anchor with wsp content — same selector as Get.
+        int txbxIdx = CountTextboxesInHost(host, newPara);
+        return $"{hostRoot}/textbox[{txbxIdx}]";
+    }
+
+    private string AddShape(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
+    {
+        var (host, hostRoot) = ResolveDrawingHost(parent, parentPath);
+        string preset = properties.GetValueOrDefault("geometry")
+                     ?? properties.GetValueOrDefault("preset")
+                     ?? "rect";
+        long cxEmu = ParseDrawingSize(properties.GetValueOrDefault("width"), defaultEmu: 914_400);
+        long cyEmu = ParseDrawingSize(properties.GetValueOrDefault("height"), defaultEmu: 914_400);
+        string wrap = properties.GetValueOrDefault("wrap", "none").ToLowerInvariant();
+        long hPos = ParseDrawingPos(properties, "anchor.x", "hposition", defaultEmu: 0);
+        long vPos = ParseDrawingPos(properties, "anchor.y", "vposition", defaultEmu: 0);
+        // fill: bare color, or "none"; "line=STYLE;SIZE;COLOR" composite.
+        string? fillRaw = properties.GetValueOrDefault("fill");
+        string fillXml;
+        if (string.IsNullOrEmpty(fillRaw) || string.Equals(fillRaw, "none", StringComparison.OrdinalIgnoreCase))
+            fillXml = "<a:noFill/>";
+        else
+            fillXml = $"<a:solidFill><a:srgbClr val=\"{SanitizeHex(fillRaw)}\"/></a:solidFill>";
+        // line: either "line=STYLE;SIZE;COLOR" or split keys.
+        string? lineCompact = properties.GetValueOrDefault("line");
+        string? lineStyle = null, lineWidth = null, lineColor = null;
+        if (!string.IsNullOrEmpty(lineCompact)
+            && !string.Equals(lineCompact, "none", StringComparison.OrdinalIgnoreCase))
+        {
+            var parts = lineCompact.Split(';');
+            if (parts.Length >= 1 && !string.IsNullOrEmpty(parts[0])) lineStyle = parts[0];
+            if (parts.Length >= 2 && !string.IsNullOrEmpty(parts[1])) lineWidth = parts[1];
+            if (parts.Length >= 3 && !string.IsNullOrEmpty(parts[2])) lineColor = parts[2];
+        }
+        lineStyle ??= properties.GetValueOrDefault("line.style") ?? properties.GetValueOrDefault("linestyle");
+        lineWidth ??= properties.GetValueOrDefault("line.width") ?? properties.GetValueOrDefault("linewidth");
+        lineColor ??= properties.GetValueOrDefault("line.color") ?? properties.GetValueOrDefault("linecolor");
+        string lnXml = BuildLineXml(lineStyle, lineWidth, lineColor);
+        string altText = properties.GetValueOrDefault("alt") ?? properties.GetValueOrDefault("name") ?? "Shape";
+
+        var siblingShapes = host.Elements<Paragraph>()
+            .SelectMany(p => p.Descendants<Drawing>())
+            .Count();
+        uint docPropId = NextDocPropId();
+        string wrapInnerXml = WrapXmlFragment(wrap);
+
+        string drawingXml = $@"<w:drawing xmlns:w=""http://schemas.openxmlformats.org/wordprocessingml/2006/main"" xmlns:wp=""http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"" xmlns:a=""http://schemas.openxmlformats.org/drawingml/2006/main"" xmlns:wps=""http://schemas.microsoft.com/office/word/2010/wordprocessingShape""><wp:anchor distT=""0"" distB=""0"" distL=""114300"" distR=""114300"" simplePos=""0"" relativeHeight=""251{siblingShapes:D3}"" behindDoc=""0"" locked=""0"" layoutInCell=""1"" allowOverlap=""1""><wp:simplePos x=""0"" y=""0""/><wp:positionH relativeFrom=""column""><wp:posOffset>{hPos}</wp:posOffset></wp:positionH><wp:positionV relativeFrom=""paragraph""><wp:posOffset>{vPos}</wp:posOffset></wp:positionV><wp:extent cx=""{cxEmu}"" cy=""{cyEmu}""/><wp:effectExtent l=""0"" t=""0"" r=""0"" b=""0""/>{wrapInnerXml}<wp:docPr id=""{docPropId}"" name=""{System.Security.SecurityElement.Escape(altText)}""/><wp:cNvGraphicFramePr/><a:graphic><a:graphicData uri=""http://schemas.microsoft.com/office/word/2010/wordprocessingShape""><wps:wsp><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x=""0"" y=""0""/><a:ext cx=""{cxEmu}"" cy=""{cyEmu}""/></a:xfrm><a:prstGeom prst=""{SanitizeGeometry(preset)}""><a:avLst/></a:prstGeom>{fillXml}{lnXml}</wps:spPr><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing>";
+
+        var drawing = ParseDrawingFromXml(drawingXml);
+        var run = new Run(drawing);
+        var newPara = new Paragraph(run);
+        AssignParaId(newPara);
+        InsertAtIndexOrAppend(host, newPara, index);
+
+        int shapeIdx = CountShapesInHost(host, newPara);
+        return $"{hostRoot}/shape[{shapeIdx}]";
+    }
+
+    // ----- helpers shared by AddTextbox / AddShape -----------------------
+
+    private static (OpenXmlElement host, string hostRoot) ResolveDrawingHost(OpenXmlElement parent, string parentPath)
+    {
+        // Accept body / cell / header / footer roots. Path's first segment
+        // ("/body", "/header[N]", "/footer[N]", or "/body/.../tc[N]") is what
+        // we re-use for the returned /<root>/textbox[N] path.
+        if (parent is Body) return (parent, parentPath.TrimEnd('/'));
+        if (parent is TableCell) return (parent, parentPath);
+        // OpenXmlPartRootElement (Header/Footer): use itself.
+        if (parent is Header || parent is Footer) return (parent, parentPath);
+        throw new ArgumentException($"Cannot add textbox/shape under {parentPath}: only /body, /body/tbl/tr/tc[N], /header[N], /footer[N] are supported.");
+    }
+
+    private static long ParseDrawingSize(string? raw, long defaultEmu)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return defaultEmu;
+        try { return ParseEmu(raw); }
+        catch { return defaultEmu; }
+    }
+
+    private static long ParseDrawingPos(Dictionary<string,string> props, string camelKey, string altKey, long defaultEmu)
+    {
+        if (props.TryGetValue(camelKey, out var v) && !string.IsNullOrWhiteSpace(v))
+        { try { return ParseEmu(v); } catch { } }
+        if (props.TryGetValue(altKey, out var v2) && !string.IsNullOrWhiteSpace(v2))
+        { try { return ParseEmu(v2); } catch { } }
+        return defaultEmu;
+    }
+
+    /// <summary>v5.7-cont: convert wrap token to its wp:wrap* fragment.</summary>
+    private static string WrapXmlFragment(string wrap) => wrap.ToLowerInvariant() switch
+    {
+        "square"      => "<wp:wrapSquare wrapText=\"bothSides\"/>",
+        "tight"       => "<wp:wrapTight wrapText=\"bothSides\"><wp:wrapPolygon edited=\"0\"><wp:start x=\"0\" y=\"0\"/><wp:lineTo x=\"21600\" y=\"0\"/><wp:lineTo x=\"21600\" y=\"21600\"/><wp:lineTo x=\"0\" y=\"21600\"/><wp:lineTo x=\"0\" y=\"0\"/></wp:wrapPolygon></wp:wrapTight>",
+        "topbottom" or "topandbottom" => "<wp:wrapTopAndBottom/>",
+        "behind"      => "<wp:wrapNone/>",
+        "infront"     => "<wp:wrapNone/>",
+        "none" or ""  => "<wp:wrapNone/>",
+        _             => "<wp:wrapSquare wrapText=\"bothSides\"/>",
+    };
+
+    /// <summary>Build the <c>a:ln</c> child for spPr. Returns the empty
+    /// string when none of style/width/color was specified — Word then
+    /// uses the theme default.</summary>
+    private static string BuildLineXml(string? style, string? width, string? color)
+    {
+        if (string.IsNullOrEmpty(style) && string.IsNullOrEmpty(width) && string.IsNullOrEmpty(color))
+            return "";
+        // a:ln@w is in EMU (1pt = 12700 EMU). Accept bare integer pt or "Npt"/"Ncm".
+        long lnWidthEmu = 0;
+        if (!string.IsNullOrEmpty(width))
+        {
+            try { lnWidthEmu = ParseEmu(width); } catch { lnWidthEmu = 0; }
+            if (lnWidthEmu == 0 && double.TryParse(width, out var pts)) lnWidthEmu = (long)Math.Round(pts * 12700);
+        }
+        string widthAttr = lnWidthEmu > 0 ? $" w=\"{lnWidthEmu}\"" : "";
+        // Style: "none" emits a:noFill, anything else emits a:solidFill +
+        // optional a:prstDash for non-solid line types.
+        bool isNone = string.Equals(style, "none", StringComparison.OrdinalIgnoreCase);
+        if (isNone) return $"<a:ln{widthAttr}><a:noFill/></a:ln>";
+        string fill = !string.IsNullOrEmpty(color)
+            ? $"<a:solidFill><a:srgbClr val=\"{SanitizeHex(color)}\"/></a:solidFill>"
+            : "<a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill>";
+        string dash = "";
+        if (!string.IsNullOrEmpty(style)
+            && !string.Equals(style, "solid", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(style, "single", StringComparison.OrdinalIgnoreCase))
+        {
+            dash = $"<a:prstDash val=\"{MapDashStyle(style)}\"/>";
+        }
+        return $"<a:ln{widthAttr}>{fill}{dash}</a:ln>";
+    }
+
+    private static string MapDashStyle(string style) => style.ToLowerInvariant() switch
+    {
+        "dot" or "dotted"             => "dot",
+        "dash" or "dashed"            => "dash",
+        "dashdot" or "dotdash"        => "dashDot",
+        "lgdash" or "longdash"        => "lgDash",
+        "sysdash"                     => "sysDash",
+        "sysdot"                      => "sysDot",
+        _                             => "solid",
+    };
+
+    /// <summary>Whitelist of common preset geometry names. Anything else
+    /// falls back to rect rather than emitting schema-invalid XML.</summary>
+    private static string SanitizeGeometry(string preset) => preset.ToLowerInvariant() switch
+    {
+        "rect" or "rectangle"   => "rect",
+        "ellipse" or "circle"    => "ellipse",
+        "line" or "straightline" => "line",
+        "roundrect"              => "roundRect",
+        "triangle"               => "triangle",
+        "diamond"                => "diamond",
+        "pentagon"               => "pentagon",
+        "hexagon"                => "hexagon",
+        "octagon"                => "octagon",
+        "rightarrow"             => "rightArrow",
+        "leftarrow"              => "leftArrow",
+        "uparrow"                => "upArrow",
+        "downarrow"              => "downArrow",
+        "star5"                  => "star5",
+        "wedgerectcallout"       => "wedgeRectCallout",
+        _                        => "rect",
+    };
+
+    /// <summary>Parse a w:drawing element from XML with full namespace
+    /// declarations and return the typed <see cref="Drawing"/>. The naive
+    /// <c>new Drawing { InnerXml = ... }</c> path drops the outer
+    /// namespace context the inner elements need (wp:, a:, wps: prefixes
+    /// land as undeclared), so we route through an XmlReader to keep the
+    /// nsmgr alive for the parse.</summary>
+    private static Drawing ParseDrawingFromXml(string xml)
+    {
+        // Wrap inside w:p > w:r > drawing so the outer namespace context
+        // (declared on the root) is visible to inner wp:/a:/wps: prefixes.
+        // <w:drawing> belongs inside <w:r>, so the Run wrapper is the
+        // minimal schema-legal host.
+        var wrapXml = $@"<w:p xmlns:w=""http://schemas.openxmlformats.org/wordprocessingml/2006/main""><w:r>{xml}</w:r></w:p>";
+        var p = new Paragraph(wrapXml);
+        var d = p.Descendants<Drawing>().FirstOrDefault();
+        if (d == null)
+            throw new InvalidOperationException("Drawing parse failed");
+        d.Remove();
+        return d;
+    }
+
+    private static int CountTextboxesInHost(OpenXmlElement host, Paragraph anchor)
+    {
+        int count = 0;
+        foreach (var p in host.Elements<Paragraph>())
+        {
+            // A textbox is recognized by a wp:anchor containing a wps:wsp
+            // that has a txBox=1 cNvSpPr OR a wps:txbx child.
+            bool isTextbox = p.Descendants<Drawing>().Any(d =>
+                d.InnerXml.Contains("txBox=\"1\"")
+                || d.InnerXml.Contains("<wps:txbx"));
+            if (isTextbox) count++;
+            if (ReferenceEquals(p, anchor)) return count;
+        }
+        return count;
+    }
+
+    private static int CountShapesInHost(OpenXmlElement host, Paragraph anchor)
+    {
+        // Stay in lockstep with the Navigation "shape" resolver, which
+        // excludes textbox-bearing Drawings (a textbox is a <wps:wsp>
+        // wrapping a <wps:txbx>, so the unfiltered `<wps:wsp` test counts
+        // textboxes as shapes and the Add-side index drifts ahead of the
+        // Get-side index by one per textbox.
+        int count = 0;
+        foreach (var p in host.Elements<Paragraph>())
+        {
+            bool isShape = p.Descendants<Drawing>().Any(d =>
+            {
+                var xml = d.InnerXml;
+                if (!xml.Contains("<wps:wsp")) return false;
+                if (xml.Contains("<wps:txbx") || xml.Contains("txBox=\"1\"")) return false;
+                return true;
+            });
+            if (isShape) count++;
+            if (ReferenceEquals(p, anchor)) return count;
+        }
+        return count;
     }
 }

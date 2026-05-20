@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/ppt-process.gif" alt="AionUi에서 OfficeCLI로 PPT 제작 과정" width="100%">
+  <img src="assets/ppt-process.webp" alt="AionUi에서 OfficeCLI로 PPT 제작 과정" width="100%">
 </p>
 
 <p align="center"><em><a href="https://github.com/iOfficeAI/AionUi">AionUi</a>에서 OfficeCLI로 PPT 제작 과정</em></p>

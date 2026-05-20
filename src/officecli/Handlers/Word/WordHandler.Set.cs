@@ -553,7 +553,7 @@ public partial class WordHandler
         uint size;
         bool sizeProvided = parts.Length > 1 && !string.IsNullOrEmpty(parts[1].Trim());
         // CONSISTENCY(border-empty-segment): mirror the empty-color tolerance
-        // below — BatchEmitter's border fold emits "STYLE;;COLOR" whenever a
+        // below — WordBatchEmitter's border fold emits "STYLE;;COLOR" whenever a
         // side has color but no explicit sz attribute (very common in real
         // .docx files where w:sz is inherited via the style chain). Treat an
         // empty SIZE segment as "use default" instead of throwing.
@@ -679,6 +679,35 @@ public partial class WordHandler
                 indentH.Hanging = SpacingConverter.ParseWordSpacing(value).ToString();
                 indentH.FirstLine = null;
                 return true;
+            // CONSISTENCY(ind-char-units): CJK-convention character-unit
+            // indents (recomputed by Word when font size changes). Mirror
+            // AddStyle's char-unit handlers so dump→batch on Set paragraph
+            // preserves the source's firstLineChars / leftChars / rightChars
+            // / hangingChars attrs.
+            case "firstlinechars":
+            {
+                var indFlc = pProps.Indentation ?? (pProps.Indentation = new Indentation());
+                indFlc.FirstLineChars = ParseHelpers.SafeParseInt(value, "firstLineChars");
+                return true;
+            }
+            case "leftchars" or "startchars":
+            {
+                var indLc = pProps.Indentation ?? (pProps.Indentation = new Indentation());
+                indLc.LeftChars = ParseHelpers.SafeParseInt(value, "leftChars");
+                return true;
+            }
+            case "rightchars" or "endchars":
+            {
+                var indRc = pProps.Indentation ?? (pProps.Indentation = new Indentation());
+                indRc.RightChars = ParseHelpers.SafeParseInt(value, "rightChars");
+                return true;
+            }
+            case "hangingchars":
+            {
+                var indHc = pProps.Indentation ?? (pProps.Indentation = new Indentation());
+                indHc.HangingChars = ParseHelpers.SafeParseInt(value, "hangingChars");
+                return true;
+            }
             // Toggle props: always replace the element (don't `??=`) so an
             // existing `<w:foo w:val="false"/>` written by a previous Set or
             // by external tooling is correctly overridden when the new value
@@ -686,14 +715,20 @@ public partial class WordHandler
             // flips back to true (BUG-LT3).
             case "keepnext" or "keepwithnext":
                 if (IsTruthy(value)) pProps.KeepNext = new KeepNext();
+                else if (IsExplicitFalseAddOverride(value))
+                    pProps.KeepNext = new KeepNext { Val = OnOffValue.FromBoolean(false) };
                 else pProps.KeepNext = null;
                 return true;
             case "keeplines" or "keeptogether":
                 if (IsTruthy(value)) pProps.KeepLines = new KeepLines();
+                else if (IsExplicitFalseAddOverride(value))
+                    pProps.KeepLines = new KeepLines { Val = OnOffValue.FromBoolean(false) };
                 else pProps.KeepLines = null;
                 return true;
             case "pagebreakbefore":
                 if (IsTruthy(value)) pProps.PageBreakBefore = new PageBreakBefore();
+                else if (IsExplicitFalseAddOverride(value))
+                    pProps.PageBreakBefore = new PageBreakBefore { Val = OnOffValue.FromBoolean(false) };
                 else pProps.PageBreakBefore = null;
                 return true;
             // fuzz-2: 'break=newPage' is the natural paragraph-context spelling
@@ -716,6 +751,8 @@ public partial class WordHandler
                 return true;
             case "contextualspacing" or "contextualSpacing":
                 if (IsTruthy(value)) pProps.ContextualSpacing = new ContextualSpacing();
+                else if (IsExplicitFalseAddOverride(value))
+                    pProps.ContextualSpacing = new ContextualSpacing { Val = OnOffValue.FromBoolean(false) };
                 else pProps.ContextualSpacing = null;
                 return true;
             case "shading" or "shd":
@@ -723,11 +760,46 @@ public partial class WordHandler
                 return true;
             case "spacebefore":
                 var spacingBefore = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
-                spacingBefore.Before = SpacingConverter.ParseWordSpacing(value).ToString();
+                // CONSISTENCY(ind-chars): "Nlines" suffix routes through the
+                // hundredths-of-line attr (w:beforeLines), mirroring the
+                // dedicated `spaceBeforeLines=` key. P1-7.
+                // Always clear the other unit's attr — `<w:spacing>` lets
+                // before/beforeLines coexist with `lines` winning at render
+                // time, so a user-issued `spaceBefore=12pt` would silently
+                // lose to an inherited `beforeLines` if we kept it.
+                if (TryParseLinesSuffix(value, out var sblHundredths))
+                {
+                    spacingBefore.BeforeLines = int.Parse(sblHundredths, System.Globalization.CultureInfo.InvariantCulture);
+                    spacingBefore.Before = null;
+                }
+                else
+                {
+                    spacingBefore.Before = SpacingConverter.ParseWordSpacing(value).ToString();
+                    spacingBefore.BeforeLines = null;
+                }
                 return true;
             case "spaceafter":
                 var spacingAfter = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
-                spacingAfter.After = SpacingConverter.ParseWordSpacing(value).ToString();
+                if (TryParseLinesSuffix(value, out var salHundredths))
+                {
+                    spacingAfter.AfterLines = int.Parse(salHundredths, System.Globalization.CultureInfo.InvariantCulture);
+                    spacingAfter.After = null;
+                }
+                else
+                {
+                    spacingAfter.After = SpacingConverter.ParseWordSpacing(value).ToString();
+                    spacingAfter.AfterLines = null;
+                }
+                return true;
+            case "spacebeforelines":
+                var spacingBL = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
+                spacingBL.BeforeLines = ParseHelpers.SafeParseInt(value, "spaceBeforeLines");
+                spacingBL.Before = null;
+                return true;
+            case "spaceafterlines":
+                var spacingAL = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
+                spacingAL.AfterLines = ParseHelpers.SafeParseInt(value, "spaceAfterLines");
+                spacingAL.After = null;
                 return true;
             case "linespacing":
                 var spacingLine = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
@@ -735,7 +807,7 @@ public partial class WordHandler
                 spacingLine.Line = lsTwips.ToString();
                 spacingLine.LineRule = lsIsMultiplier ? LineSpacingRuleValues.Auto : LineSpacingRuleValues.Exact;
                 return true;
-            case "linerule":
+            case "linerule" or "linespacingrule":
                 // BUG-019: explicit override needed to distinguish AtLeast
                 // from Exact — both serialize as "Npt" via SpacingConverter.
                 var spacingRule = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());

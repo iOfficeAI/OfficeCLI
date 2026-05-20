@@ -5,22 +5,43 @@
   "parent": "presentation",
   "container": true,
   "operations": {
-    "add": false,
-    "set": false,
+    "add": true,
+    "set": true,
     "get": true,
     "query": true,
-    "remove": false
+    "remove": true
   },
   "paths": {
-    "positional": ["/slidemaster[N]"]
+    "positional": ["/slidemaster[N]", "/slidemaster[N]/shape[K]"]
   },
-  "note": "Slide master definition. Children: slideLayout references. Currently read-only — masters are created by templates, not user Add. Access via path /slidemaster[N]; 'help pptx slidemaster' is the canonical lookup — 'master' is not accepted as an element alias.",
+  "note": "Slide master definition. Children: slideLayout references + master-level shapes (logo, watermark, default text frames) that appear on every slide. The master part itself is read-only (created by templates), but its shape tree accepts add/set/remove via /slidemaster[N]/shape[K] — same property surface as slide shapes (text, fill, line, geometry, position, font). Access via path /slidemaster[N]; 'help pptx slidemaster' is the canonical lookup — 'master' is not accepted as an element alias.",
   "properties": {
     "name": {
       "type": "string",
-      "description": "master part name from NonVisualDrawingProperties.",
-      "add": false, "set": false, "get": true,
+      "description": "master part name from CommonSlideData/@name.",
+      "add": false, "set": true, "get": true,
       "readback": "master name string",
+      "enforcement": "report"
+    },
+    "background": {
+      "type": "color",
+      "description": "master background — propagates to every slide bound (directly or via a layout) to this master unless the slide or layout overrides. Accepts hex color (#FF6600), bare hex (FF6600), theme color (accent1/dark1/...), gradient (`C1-C2[-angle]`), image (`image:/path`), or `none` to clear.",
+      "add": false, "set": true, "get": true,
+      "examples": ["--prop background=FF6600", "--prop background=accent1", "--prop background=FF0000-0000FF-90", "--prop background=image:/path/to/bg.png", "--prop background=none"],
+      "readback": "resolved background descriptor (hex, scheme name, gradient form, or `image`)",
+      "enforcement": "report"
+    },
+    "background.alpha":  { "type": "number", "add": false, "set": true,  "get": true, "description": "master background fill alpha as percent (0..100). Settable on an existing image background; surfaces on get when the resolved fill carries an alpha channel.", "readback": "integer percent 0..100", "enforcement": "report" },
+    "background.crop":   { "type": "string", "add": false, "set": false, "get": true, "description": "master background image crop quad in `l,t,r,b` percent units.", "readback": "comma-separated `l,t,r,b` quad", "enforcement": "report" },
+    "background.mode":   { "type": "string", "add": false, "set": true,  "get": true, "description": "master background image fill mode — `stretch` (default), `tile`, or `center`. Settable on an existing image background; emitted on get only when non-default.", "readback": "`tile` | `center`", "enforcement": "report" },
+    "background.ref":    { "type": "number", "add": false, "set": false, "get": true, "description": "theme background reference index — bgRef/@idx when the master inherits from the theme.", "readback": "integer theme bg ref id", "enforcement": "report" },
+    "background.scale":  { "type": "number", "add": false, "set": true,  "get": true, "description": "tile-fill scale percent (sx, both axes), 1..500. Settable on an existing image background with background.mode=tile; surfaces on get with background.mode=tile.", "readback": "integer percent", "enforcement": "report" },
+    "direction": {
+      "type": "string",
+      "description": "default reading direction propagated into the master's txStyles (Level1ParagraphProperties of body/title/other) and cascaded onto existing placeholder paragraphs. Accepts `ltr`/`rtl` or boolean for the `rtl` alias.",
+      "add": false, "set": true, "get": false,
+      "aliases": ["dir", "rtl"],
+      "examples": ["--prop direction=rtl"],
       "enforcement": "report"
     },
     "layoutCount": {
@@ -46,6 +67,7 @@
     }
   },
   "children": [
-    { "element": "slidelayout", "pathSegment": "slidelayout", "cardinality": "1..n" }
+    { "element": "slidelayout", "pathSegment": "slidelayout", "cardinality": "1..n" },
+    { "element": "shape", "pathSegment": "shape", "cardinality": "0..n" }
   ]
 }

@@ -61,8 +61,8 @@
     },
     "marginLeft": {
       "type": "length",
-      "add": false,
-      "set": false,
+      "add": true,
+      "set": true,
       "get": true,
       "description": "left text margin (CT_TextParagraphProperties @marL).",
       "readback": "unit-qualified EMU length",
@@ -70,8 +70,8 @@
     },
     "marginRight": {
       "type": "length",
-      "add": false,
-      "set": false,
+      "add": true,
+      "set": true,
       "get": true,
       "description": "right text margin (CT_TextParagraphProperties @marR).",
       "readback": "unit-qualified EMU length",
@@ -84,6 +84,57 @@
       "get": false,
       "description": "Not applicable to pptx. PowerPoint has no independent line-spacing rule — the rule is inferred from the lineSpacing value's format (e.g. '1.5x' / '150%' → percent rule, '18pt' → fixed-points rule). Override of _shared/paragraph which inherits the docx-style lineRule.",
       "enforcement": "report"
+    },
+    "bold": {
+      "type": "bool",
+      "description": "paragraph default run weight. Stored on the paragraph's defRPr (CT_TextCharacterProperties) and inherited by every run in the paragraph that does not override `bold`. Folded onto the paragraph by dump when every run shares the same value.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop bold=true"],
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "italic": {
+      "type": "bool",
+      "description": "paragraph default run italic. Stored on the paragraph's defRPr and inherited by every run that does not override `italic`. Folded onto the paragraph by dump when every run shares the same value.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop italic=true"],
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "color": {
+      "type": "color",
+      "description": "paragraph default run color. Stored on the paragraph's defRPr solidFill and inherited by every run that does not override `color`. Folded onto the paragraph by dump when every run shares the same value.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop color=FF0000"],
+      "readback": "canonical hex color",
+      "enforcement": "report"
+    },
+    "size": {
+      "type": "length",
+      "description": "paragraph default run font size (points). Stored on the paragraph's defRPr (@sz, units of 1/100 pt) and inherited by every run that does not override `size`. Folded onto the paragraph by dump when every run shares the same value.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop size=14pt"],
+      "readback": "unit-qualified points (e.g. \"14pt\")",
+      "enforcement": "report"
+    },
+    "lang": {
+      "type": "string",
+      "description": "BCP-47 language tag stamped on the paragraph's defRPr (@lang). Folded onto the paragraph by dump when every run shares the same lang value (single-run collapse). See pptx/run.json for full semantics.",
+      "aliases": ["lang.latin"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop lang=en-US"],
+      "readback": "BCP-47 tag as written",
+      "enforcement": "strict"
     }
   }
 }

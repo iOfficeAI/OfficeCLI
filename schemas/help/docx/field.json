@@ -15,6 +15,13 @@
   },
   "note": "Complex field (fldChar: begin/instr/separate/result/end). Path is document-level /field[N] — the field is addressed as a whole, not via its inner runs. /body/p[N]/r[M] returns the inner fieldChar run node (type=fieldChar), not the field. Field instruction selected by 'fieldType' or the element-type alias (pagenum, numpages, date, author, title, time, filename, section, sectionpages, mergefield, ref, if, seq, styleref, docproperty). Per-type required parameters: mergefield/ref need 'name' (aka fieldName, bookmarkName); seq needs 'identifier'; styleref needs 'styleName'; docproperty needs 'propertyName'; if needs 'expression' (+ optional 'trueText' / 'falseText'); date/time accept optional 'format'.",
   "properties": {
+    "evaluated": {
+      "type": "bool",
+      "description": "cross-handler protocol flag — true when the field has a cached result run that the opening application can display, false when the field was written without a cached value (view text substitutes #OCLI_NOTEVAL!{instr}; view issues emits subtype field_not_evaluated). For dirty cached fields the cache is still trusted by evaluated; staleness surfaces separately via subtype field_cache_stale. Read this via get --json instead of pattern-matching the sentinel, since multiple fields per paragraph and literal user content may collide.",
+      "add": false, "set": false, "get": true,
+      "readback": "true|false (true ⇒ cached result run present)",
+      "enforcement": "report"
+    },
     "fieldType": {
       "type": "enum",
       "values": ["page", "pagenum", "pagenumber", "numpages", "date", "author", "title", "time", "filename", "section", "sectionpages", "mergefield", "ref", "pageref", "noteref", "seq", "styleref", "docproperty", "if", "createdate", "savedate", "printdate", "edittime", "lastsavedby", "subject", "numwords", "numchars", "revnum", "template", "comments", "doccomments", "keywords"],

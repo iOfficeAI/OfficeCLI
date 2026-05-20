@@ -96,6 +96,23 @@ public partial class PowerPointHandler
     ///   true           — alias for half
     ///   none / false   — remove reflection
     /// </summary>
+    private static bool TryParseReflectionEndPos(string value, out int endPos)
+    {
+        switch (value.ToLowerInvariant())
+        {
+            case "tight": case "small": endPos = 55000; return true;
+            case "true":  case "half":  endPos = 90000; return true;
+            case "full":               endPos = 100000; return true;
+        }
+        if (int.TryParse(value, out var pct) && pct >= 0 && pct <= 100)
+        {
+            endPos = (int)Math.Min((long)pct * 1000, 100000);
+            return true;
+        }
+        endPos = 0;
+        return false;
+    }
+
     private static void ApplyReflection(ShapeProperties spPr, string value)
     {
         var effectList = EnsureEffectList(spPr);
@@ -107,14 +124,13 @@ public partial class PowerPointHandler
             return;
         }
 
-        // endPos controls how much of the shape is reflected
-        int endPos = value.ToLowerInvariant() switch
-        {
-            "tight" or "small" => 55000,
-            "true" or "half"   => 90000,
-            "full"             => 100000,
-            _ => int.TryParse(value, out var pct) ? (int)Math.Min((long)pct * 1000, 100000) : 90000
-        };
+        // endPos controls how much of the shape is reflected. Unknown preset
+        // names (and out-of-range numerics) used to silently degrade to "half"
+        // (90000); flag them with TryApplyReflection's bool return so the
+        // caller can surface the value as unsupported_property instead.
+        if (!TryParseReflectionEndPos(value, out var endPos))
+            throw new ArgumentException(
+                $"Invalid reflection '{value}'. Valid presets: none, tight, small, half, true, full; or a numeric percentage 0-100.");
 
         var reflection = new Drawing.Reflection
         {
@@ -331,9 +347,21 @@ public partial class PowerPointHandler
         }
 
         var sp3dEl = EnsureShape3D(spPr);
-        if (!double.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var depthPt) || double.IsNaN(depthPt) || double.IsInfinity(depthPt))
-            throw new ArgumentException($"Invalid '3ddepth' value '{value}'. Expected a finite numeric depth in points.");
-        sp3dEl.ExtrusionHeight = (long)(depthPt * 12700);
+        // Canonical length input contract (CLAUDE.md): bare number = points,
+        // and pt/cm/in/px/emu suffixes are all accepted. Mirror lineWidth's
+        // bare-int-as-points behaviour via EmuConverter.ParseLineWidth, which
+        // returns EMU.
+        long depthEmu;
+        try
+        {
+            depthEmu = OfficeCli.Core.EmuConverter.ParseLineWidth(value);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new ArgumentException(
+                $"Invalid 'depth' value '{value}'. Expected a finite numeric depth in points (e.g. '10', '10pt', '0.5cm'). {ex.Message}");
+        }
+        sp3dEl.ExtrusionHeight = depthEmu;
     }
 
     /// <summary>
@@ -490,6 +518,13 @@ public partial class PowerPointHandler
         var sp3d = spPr.GetFirstChild<Drawing.Shape3DType>();
         if (sp3d != null) return sp3d;
 
+        // PowerPoint silently renders sp3d as flat 2D unless a scene3d
+        // sibling supplies camera + light rig. Auto-inject default scene3d
+        // (orthographicFront camera + threePt light rig) on first sp3d emit
+        // so users get visible 3D from bare bevel=/depth=/material= props
+        // without having to know about lighting=.
+        EnsureScene3D(spPr);
+
         sp3d = new Drawing.Shape3DType();
         // Schema order: scene3d → sp3d → extLst
         // Insert before extLst if it exists, otherwise append
@@ -575,9 +610,19 @@ public partial class PowerPointHandler
     /// </summary>
     internal static string FormatBevel(Drawing.BevelType bevel)
     {
+        // OOXML default for both w and h is 76200 EMU = 6 pt. When the stored
+        // values match those defaults, emit the preset alone so round-trips of
+        // unsized bevel input (e.g. "circle") don't gain a "-6-6" tail. Schema
+        // documents this contract: "'preset' alone, or 'preset-widthPt-heightPt'
+        // when non-default sizing was written."
         var preset = bevel.Preset?.HasValue == true ? bevel.Preset.InnerText : "circle";
-        var w = bevel.Width?.HasValue == true ? $"{bevel.Width.Value / 12700.0:0.##}" : "6";
-        var h = bevel.Height?.HasValue == true ? $"{bevel.Height.Value / 12700.0:0.##}" : "6";
+        var hasW = bevel.Width?.HasValue == true;
+        var hasH = bevel.Height?.HasValue == true;
+        var wEmu = hasW ? bevel.Width!.Value : 76200L;
+        var hEmu = hasH ? bevel.Height!.Value : 76200L;
+        if (wEmu == 76200L && hEmu == 76200L) return preset;
+        var w = $"{wEmu / 12700.0:0.##}";
+        var h = $"{hEmu / 12700.0:0.##}";
         return $"{preset}-{w}-{h}";
     }
 }

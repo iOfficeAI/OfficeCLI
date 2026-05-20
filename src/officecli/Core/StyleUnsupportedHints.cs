@@ -19,25 +19,16 @@ internal static class StyleUnsupportedHints
 {
     private static readonly Dictionary<string, string> Hints = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["firstLineChars"] = "char-based indent is not supported on styles",
-        ["leftChars"]      = "char-based indent is not supported on styles",
-        ["rightChars"]     = "char-based indent is not supported on styles",
-        ["hangingChars"]   = "char-based indent is not supported on styles",
-        // firstLineIndent / leftIndent / rightIndent / hangingIndent are now
-        // wired in WordHandler.Set.Dispatch.cs SetStylePath (Round 3 BT-5).
-
-        ["spaceBeforeLines"] = "line-based spacing is not supported; use 'spaceBefore=<twips|pt|cm>' instead",
-        ["spaceAfterLines"]  = "line-based spacing is not supported; use 'spaceAfter=<twips|pt|cm>' instead",
-        ["lineRule"]         = "use 'lineSpacing=<N>pt' (fixed) or 'lineSpacing=<N>x' (multiplier); lineRule is inferred",
-
-        ["shading"]       = "style-level shading is not supported; set fill at paragraph or run level",
-        ["shading.fill"]  = "style-level shading is not supported; set fill at paragraph or run level",
-        ["shading.color"] = "style-level shading is not supported; set fill at paragraph or run level",
-        ["shading.val"]   = "style-level shading is not supported; set fill at paragraph or run level",
-
-        ["underline.color"] = "underline color is not supported; only 'underline=<single|double|...>' is",
-
-        ["tabs"] = "tabs on styles are not supported",
+        // firstLineChars / leftChars / rightChars / hangingChars are now wired
+        // on /styles (P1-6) — symmetric with firstLineIndent / leftIndent /
+        // rightIndent / hangingIndent (BT-5).
+        // spaceBeforeLines / spaceAfterLines are now wired on /styles (P1-7) —
+        // also on paragraphs alongside the `spaceBefore=Nlines` suffix.
+        // shading.* / underline.color now flow through TypedAttributeFallback
+        // (via the shading→shd and underline→u aliases) on /styles, paragraph,
+        // run, and cell paths — entries removed once verified to write
+        // schema-valid <w:shd>/<w:u> XML. `tabs` removed once the curated
+        // POS:ALIGN[:LEADER] parser landed.
     };
 
     /// <summary>

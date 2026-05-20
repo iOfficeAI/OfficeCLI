@@ -107,6 +107,17 @@ internal static class WarningContext
 [JsonSerializable(typeof(long))]
 [JsonSerializable(typeof(short))]
 [JsonSerializable(typeof(uint))]
+// OOXML UInt16Value/ByteValue/UInt32Value/SByteValue/UInt64Value frequently
+// land in DocumentNode.Format[] as boxed primitives (e.g. chart hole/skip/
+// rotateX/style/firstSliceAngle). Without these JsonSerializable hooks the
+// source-gen polymorphic writer throws JsonTypeInfo missing-metadata when
+// `get --json` hits a node carrying any of them. See R43-6.
+[JsonSerializable(typeof(ushort))]
+[JsonSerializable(typeof(byte))]
+[JsonSerializable(typeof(sbyte))]
+[JsonSerializable(typeof(ulong))]
+[JsonSerializable(typeof(float))]
+[JsonSerializable(typeof(decimal))]
 [JsonSerializable(typeof(double))]
 [JsonSerializable(typeof(string))]
 internal partial class AppJsonContext : JsonSerializerContext;
@@ -273,6 +284,37 @@ internal static class OutputFormatter
             return;
         }
 
+        // Pattern: "<ElementType> <N> not found" without the (total: …) tail —
+        // e.g. "Paragraph 99 not found" raised by Add when the parent index
+        // overshoots without the handler also reporting the total. Before
+        // this the message fell through to the internal_error catch-all even
+        // though semantically the same as the (total:…) variant.
+        var notFoundShortMatch = System.Text.RegularExpressions.Regex.Match(msg, @"^(\w+)\s+(\d+)\s+not found$");
+        if (notFoundShortMatch.Success)
+        {
+            result.Code = "not_found";
+            return;
+        }
+
+        // Pattern: "Path not found: …" — generic path-resolve failure raised
+        // by handlers when an absolute DOM path can't be walked. Surfacing
+        // this as not_found instead of internal_error mirrors how every
+        // other missing-element error is coded.
+        if (msg.StartsWith("Path not found:", StringComparison.Ordinal))
+        {
+            result.Code = "not_found";
+            return;
+        }
+
+        // Pattern: "Sheet not found: <name>" — xlsx-specific not_found surface.
+        // Handlers throw this when a worksheet name doesn't resolve; classify
+        // alongside other missing-element errors instead of internal_error.
+        if (msg.StartsWith("Sheet not found:", StringComparison.Ordinal))
+        {
+            result.Code = "not_found";
+            return;
+        }
+
         // Pattern: "Unknown part: X. Available: ..."
         var unknownPartMatch = System.Text.RegularExpressions.Regex.Match(msg, @"Unknown part: (.+?)\. Available: (.+)");
         if (unknownPartMatch.Success)
@@ -289,6 +331,42 @@ internal static class OutputFormatter
             return;
         }
 
+        // Pattern: "Row <N> in cell reference '...' is out of valid range. …" /
+        // "Column '<X>' in cell reference '...' is out of range. …" —
+        // raised by ParseCellReference (ExcelHandler.Selector.cs) when a
+        // cell address overshoots Excel's XFD1048576 ceiling. The Set
+        // path already coerces row overflow into invalid_value via its
+        // "Invalid row index N." text; the Add path runs through
+        // ParseCellReference and previously fell through to
+        // internal_error. Map both shapes to invalid_value so add/set
+        // produce the same business code for the same overflow class.
+        if (msg.StartsWith("Row ", StringComparison.Ordinal)
+            && msg.Contains(" in cell reference ", StringComparison.Ordinal)
+            && msg.Contains(" out of ", StringComparison.Ordinal))
+        {
+            result.Code = "invalid_value";
+            return;
+        }
+        if (msg.StartsWith("Column '", StringComparison.Ordinal)
+            && msg.Contains(" in cell reference ", StringComparison.Ordinal)
+            && msg.Contains(" out of range", StringComparison.Ordinal))
+        {
+            result.Code = "invalid_value";
+            return;
+        }
+
+        // Pattern: "Cell <ref> not found" — raised by RemoveCell when the
+        // caller targets an empty/missing cell. Symmetric with the
+        // existing "Path not found:" / "Sheet not found:" rules; without
+        // it the message fell through to internal_error and agents had
+        // no stable code to distinguish a missing-cell remove from a
+        // genuine handler crash.
+        if (System.Text.RegularExpressions.Regex.IsMatch(msg, @"^Cell\s+[A-Z]+\d+\s+not found"))
+        {
+            result.Code = "not_found";
+            return;
+        }
+
         // Pattern: "Invalid font size: ..." / "Invalid color value: ..." / "Invalid ... value"
         if (msg.StartsWith("Invalid "))
         {
@@ -297,6 +375,37 @@ internal static class OutputFormatter
             var validMatch = System.Text.RegularExpressions.Regex.Match(msg, @"Valid values?:\s*(.+?)\.?$");
             if (validMatch.Success)
                 result.ValidValues = validMatch.Groups[1].Value.Split(", ");
+            return;
+        }
+
+        // Pattern: "Unknown <thing>: ..." — handlers throw this when a token
+        // (chart type, geometry, anchor, …) doesn't match any known value.
+        // Same semantic class as "Invalid <…>" — surface invalid_value.
+        if (msg.StartsWith("Unknown ", StringComparison.Ordinal))
+        {
+            result.Code = "invalid_value";
+            var validMatch = System.Text.RegularExpressions.Regex.Match(msg, @"Valid values?:\s*(.+?)\.?$");
+            if (validMatch.Success)
+                result.ValidValues = validMatch.Groups[1].Value.Split(", ");
+            return;
+        }
+
+        // Pattern: "<Type> requires a '<prop>' property" — handler-side
+        // pre-condition check that a creation/Set call is missing a required
+        // property. Maps to missing_property like "X property is required".
+        if (System.Text.RegularExpressions.Regex.IsMatch(msg, @"requires a '\w+' property"))
+        {
+            result.Code = "missing_property";
+            return;
+        }
+
+        // Pattern: "<thing> already exists: <name>" — uniqueness violation
+        // (duplicate sheet name, defined name, etc). Distinct from
+        // invalid_value: the value is well-formed but collides with an
+        // existing entity.
+        if (msg.Contains("already exists", StringComparison.Ordinal))
+        {
+            result.Code = "duplicate_name";
             return;
         }
 
@@ -321,6 +430,61 @@ internal static class OutputFormatter
             result.Code = "file_not_found";
             return;
         }
+
+        // Pattern: "Batch input must be a JSON array..."
+        if (msg.StartsWith("Batch input must be"))
+        {
+            result.Code = "invalid_input";
+            return;
+        }
+
+        // Pattern: System.Text.Json error like "'I' is an invalid start of a value..."
+        if (ex is System.Text.Json.JsonException)
+        {
+            result.Code = "invalid_json";
+            return;
+        }
+
+        // Pattern: "No shape found with @id=NNN" / "No <element> found with ..."
+        if (System.Text.RegularExpressions.Regex.IsMatch(msg, @"^No \w+ found with "))
+        {
+            result.Code = "not_found";
+            return;
+        }
+
+        // Pattern: System.Xml.XPath invalid expression — surfaces as
+        // XPathException with message "Expression must evaluate to a node-set."
+        // or similar parser-side text.
+        if (ex is System.Xml.XPath.XPathException
+            || msg.Contains("Expression must evaluate")
+            || msg.Contains("invalid token")
+            || msg.Contains("invalid XPath"))
+        {
+            result.Code = "invalid_xpath";
+            return;
+        }
+
+        // Pattern: file-system IO denial / disk errors (UnauthorizedAccess,
+        // DirectoryNotFound, generic IOException for path-level failures).
+        if (ex is UnauthorizedAccessException || ex is DirectoryNotFoundException
+            || ex is PathTooLongException)
+        {
+            result.Code = "io_error";
+            return;
+        }
+        if (ex is IOException && !(ex is FileNotFoundException))
+        {
+            result.Code = "io_error";
+            return;
+        }
+
+        // Final catch-all: every WrapEnvelopeError consumer expects a 'code'
+        // field for stable error routing. Unhandled exceptions previously
+        // produced { error: "..." } with no code, leaving agent callers to
+        // string-match free-form messages. internal_error mirrors the
+        // 'unknown business failure' bucket used by other envelope code paths.
+        if (string.IsNullOrEmpty(result.Code))
+            result.Code = "internal_error";
     }
 
     public static string FormatView(string view, string content, OutputFormat format)

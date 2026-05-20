@@ -584,6 +584,11 @@ public partial class WordHandler
                         // BUG-DUMP27: fragment-only URIs (e.g. "#_ftn1") are internal-anchor
                         // hyperlinks; mark isExternal=false so .rels TargetMode is omitted.
                         var isAbs = Uri.TryCreate(value, UriKind.Absolute, out var absUri);
+                        // CONSISTENCY(hyperlink-scheme-allowlist): only gate
+                        // absolute URIs; fragment-only (#_ftn1) and other
+                        // relative refs are intra-document and stay open.
+                        if (isAbs)
+                            Core.HyperlinkUriValidator.RequireSafeScheme(value, key);
                         var uri = isAbs ? absUri! : new Uri(value, UriKind.Relative);
                         var isFragment = !string.IsNullOrEmpty(value) && value.StartsWith('#');
                         var newRelId = hostPart3.AddHyperlinkRelationship(uri, isExternal: !isFragment).Id;
@@ -832,6 +837,10 @@ public partial class WordHandler
                     // BUG-DUMP27: fragment-only URIs (e.g. "#_ftn1") are internal-anchor
                     // hyperlinks; mark isExternal=false so .rels TargetMode is omitted.
                     var isAbs = Uri.TryCreate(value, UriKind.Absolute, out var absUri);
+                    // CONSISTENCY(hyperlink-scheme-allowlist): only absolute
+                    // URIs are scheme-gated; fragment/relative stay open.
+                    if (isAbs)
+                        Core.HyperlinkUriValidator.RequireSafeScheme(value, k);
                     var uri = isAbs ? absUri! : new Uri(value, UriKind.Relative);
                     var isFragment = !string.IsNullOrEmpty(value) && value.StartsWith('#');
                     var newRelId = hostPartHl.AddHyperlinkRelationship(uri, isExternal: !isFragment).Id;
@@ -939,6 +948,14 @@ public partial class WordHandler
     {
         var unsupported = new List<string>();
         var pProps = para.ParagraphProperties ?? para.PrependChild(new ParagraphProperties());
+        // CONSISTENCY(markRPr-pre-existed-snapshot): captured ONCE before
+        // the property iteration starts. The per-iteration pmrpExisting
+        // check inside the bare-key case below otherwise flipped to non-
+        // null as soon as the *same* Set call processed an explicit
+        // `markRPr.<key>=…` — making every subsequent bare-key iteration
+        // mirror to markRPr too, fabricating mark keys the source never
+        // had (BUG-DUMP-MARKRPR-LEAK regression form).
+        bool markRPrPreExisted = pProps.ParagraphMarkRunProperties != null;
         foreach (var (key, value) in properties)
         {
             var k = key.ToLowerInvariant();
@@ -952,6 +969,15 @@ public partial class WordHandler
             }
             else switch (k)
             {
+                case "tabs" or "tabstops":
+                {
+                    // `tabs=POS:ALIGN[:LEADER],...` shorthand. Replaces the
+                    // entire <w:tabs> strip — see ApplyTabsShorthand in
+                    // Helpers.cs for the syntax. CONSISTENCY(add-set-symmetry).
+                    var paraPpr = para.ParagraphProperties ?? para.PrependChild(new ParagraphProperties());
+                    ApplyTabsShorthand(paraPpr, value);
+                    break;
+                }
                 case "formula":
                 {
                     // Replace paragraph content with OMML equation in-place
@@ -1004,18 +1030,61 @@ public partial class WordHandler
                     var sub = key.Substring("markRPr.".Length);
                     var markOnlyRPr = pProps.ParagraphMarkRunProperties
                         ?? pProps.AppendChild(new ParagraphMarkRunProperties());
-                    ApplyRunFormatting(markOnlyRPr, sub, value);
+                    // CONSISTENCY(markRPr-explicit-false): the dotted markRPr.*
+                    // form is dump-specific (Navigation emits markRPr.bold=false
+                    // only when source <w:rPr><w:b w:val="false"/></w:rPr> sits
+                    // on the paragraph mark — explicit style override). Preserve
+                    // val=false here so round-trip survives. The bare-key path
+                    // keeps ApplyRunFormatting's "remove on falsy" contract
+                    // intact for interactive `set bold=false`.
+                    var subLower = sub.ToLowerInvariant();
+                    if (IsExplicitFalseAddOverride(value))
+                    {
+                        switch (subLower)
+                        {
+                            case "bold" or "font.bold":
+                                markOnlyRPr.RemoveAllChildren<Bold>();
+                                InsertRunPropInSchemaOrder(markOnlyRPr, new Bold { Val = DocumentFormat.OpenXml.OnOffValue.FromBoolean(false) });
+                                break;
+                            case "italic" or "font.italic":
+                                markOnlyRPr.RemoveAllChildren<Italic>();
+                                InsertRunPropInSchemaOrder(markOnlyRPr, new Italic { Val = DocumentFormat.OpenXml.OnOffValue.FromBoolean(false) });
+                                break;
+                            case "bold.cs" or "font.bold.cs" or "boldcs":
+                                markOnlyRPr.RemoveAllChildren<BoldComplexScript>();
+                                InsertRunPropInSchemaOrder(markOnlyRPr, new BoldComplexScript { Val = DocumentFormat.OpenXml.OnOffValue.FromBoolean(false) });
+                                break;
+                            case "italic.cs" or "font.italic.cs" or "italiccs":
+                                markOnlyRPr.RemoveAllChildren<ItalicComplexScript>();
+                                InsertRunPropInSchemaOrder(markOnlyRPr, new ItalicComplexScript { Val = DocumentFormat.OpenXml.OnOffValue.FromBoolean(false) });
+                                break;
+                            default:
+                                ApplyRunFormatting(markOnlyRPr, sub, value);
+                                break;
+                        }
+                    }
+                    else
+                    {
+                        ApplyRunFormatting(markOnlyRPr, sub, value);
+                    }
                     break;
                 }
                 case "size" or "font" or "bold" or "italic" or "color" or "highlight" or "underline" or "strike"
-                  or "font.latin" or "font.ea" or "font.eastasia" or "font.eastasian"
+                  or "underline.color" or "underlinecolor" or "underlineColor" or "font.underline.color"
+                  or "font.latin" or "font.ascii" or "font.hansi" or "font.hAnsi"
+                  or "font.ea" or "font.eastasia" or "font.eastasian"
                   or "font.cs" or "font.complexscript" or "font.complex"
                   or "bold.cs" or "italic.cs" or "size.cs"
                   or "font.bold.cs" or "font.italic.cs" or "font.size.cs"
                   or "font.asciitheme" or "font.asciiTheme"
                   or "font.hansitheme" or "font.hAnsiTheme"
                   or "font.eatheme" or "font.eaTheme" or "font.eastasiatheme"
-                  or "font.cstheme" or "font.csTheme":
+                  or "font.cstheme" or "font.csTheme"
+                  // CONSISTENCY(set-para-run-keys): rPr-bound keys that also
+                  // belong on the paragraph mark when no runs exist yet.
+                  // ApplyRunFormatting handles each individually.
+                  or "kern" or "bdr" or "lang" or "lang.latin" or "lang.val"
+                  or "lang.ea" or "lang.eastasia" or "lang.cs" or "lang.bidi":
                     // Apply run-level formatting to all runs in the paragraph.
                     var allParaRuns = para.Descendants<Run>().ToList();
                     // Paragraph-mark run properties (<w:rPr> inside <w:pPr>)
@@ -1050,9 +1119,22 @@ public partial class WordHandler
                         para.AppendChild(seedRun);
                         allParaRuns.Add(seedRun);
                     }
-                    if (allParaRuns.Count == 0 || pmrpExisting != null)
+                    // CONSISTENCY(markRPr-bare-vs-dotted): when the same Set
+                    // carries an explicit markRPr.<key>, the dotted form is
+                    // the authoritative mark-only value — the bare key must
+                    // propagate to visible runs but NOT overwrite markRPr.
+                    // Without this, source's `markRPr.size=12pt + size=15pt`
+                    // (¶ glyph at 12pt, runs at 15pt) collapses to 15pt on
+                    // both after replay because iteration order isn't stable.
+                    bool explicitMarkOverride = properties.ContainsKey($"markRPr.{key}")
+                                             || properties.ContainsKey($"markrpr.{key}");
+                    // Use the pre-iteration snapshot: only mirror to markRPr
+                    // when the source's markRPr existed before this Set started.
+                    // A markRPr created mid-loop by an earlier explicit
+                    // markRPr.* setter does NOT enable bare-key mirroring.
+                    if ((allParaRuns.Count == 0 || markRPrPreExisted) && !explicitMarkOverride)
                     {
-                        var markRPr = pmrpExisting
+                        var markRPr = pProps.ParagraphMarkRunProperties
                             ?? pProps.AppendChild(new ParagraphMarkRunProperties());
                         ApplyRunFormatting(markRPr, key, value);
                     }
@@ -1115,7 +1197,7 @@ public partial class WordHandler
                     }
                     if (!GenericXmlQuery.TryCreateTypedChild(pProps, key, value))
                         unsupported.Add(unsupported.Count == 0
-                            ? $"{key} (valid paragraph props: text, style, alignment, bold, italic, font, size, color, spaceBefore, spaceAfter, lineSpacing, indent, liststyle, formula, direction, bidi)"
+                            ? $"{key} (valid paragraph props: text, style, alignment, bold, italic, font, size, color, spaceBefore, spaceAfter, spaceBeforeLines, spaceAfterLines, lineSpacing, indent, liststyle, formula, direction, bidi)"
                             : key);
                     break;
             }
@@ -1210,6 +1292,12 @@ public partial class WordHandler
         {
             switch (key.ToLowerInvariant())
             {
+                case "skipgridsync":
+                    // CONSISTENCY(tblgrid-preserve): consumed inline by the
+                    // width branch as a side-effect modifier. Recognized
+                    // here so dump→batch replay doesn't flag the emitter-
+                    // injected skipGridSync=true as UNSUPPORTED.
+                    break;
                 case "text":
                     // Defer text handling until after formatting is applied
                     deferredText = value;
@@ -1221,6 +1309,9 @@ public partial class WordHandler
                 case "color":
                 case "highlight":
                 case "underline":
+                case "underline.color":
+                case "underlinecolor":
+                case "underlineColor":
                 case "strike":
                     // Apply to all runs in all paragraphs in the cell
                     // CONSISTENCY(run-prop-helper): per-prop OOXML write
@@ -1378,7 +1469,16 @@ public partial class WordHandler
                         // gridCol slot it occupies and Word's column-boundary
                         // inference breaks across all other rows. Mirrors the
                         // startCol calculation used by the gridspan branch.
-                        if (cell.Parent is TableRow widthRow
+                        // CONSISTENCY(tblgrid-preserve): dump→batch can disable
+                        // the tblGrid sync via skipGridSync=true on the tc set
+                        // because AddTable wrote authoritative colWidths and
+                        // sources are allowed to carry per-cell tcW values that
+                        // disagree with the gridCol widths (Word renders cells
+                        // by their own tcW; tblGrid is just a layout hint).
+                        bool skipGridSync = properties.TryGetValue("skipgridsync", out var sgs)
+                                         || properties.TryGetValue("skipGridSync", out sgs);
+                        if (!(skipGridSync && IsTruthy(sgs))
+                            && cell.Parent is TableRow widthRow
                             && widthRow.Parent is Table widthTbl)
                         {
                             var widthGrid = widthTbl.GetFirstChild<TableGrid>();
@@ -1536,12 +1636,20 @@ public partial class WordHandler
                     break;
                 }
                 case "vmerge":
+                {
                     // ST_Merge schema only defines "restart" — continuation is bare <w:vMerge/>.
-                    // BUG-R5-table-merge BUG-9: continuation vMerge in the
-                    // first row has no restart anchor above it — Word renders
-                    // the cell as invisible / repairs the file. Reject up
-                    // front; users must set vmerge=restart instead.
-                    if (value.ToLowerInvariant() != "restart"
+                    // Removal values (none / clear / remove / false / "") strip
+                    // the element entirely so the cell stands alone.
+                    var vmLower = value.ToLowerInvariant();
+                    bool isRestart = vmLower == "restart";
+                    bool isContinue = vmLower == "continue";
+                    bool isRemove = vmLower is "none" or "clear" or "remove" or "false" or "0" or "no" or "off" or "";
+
+                    // BUG-R5-table-merge BUG-9: continuation vMerge in the first
+                    // row has no restart anchor above it — Word renders the cell
+                    // as invisible / repairs the file. Only reject the explicit
+                    // continuation case; removal and restart are always safe.
+                    if (isContinue
                         && cell.Parent is TableRow vmRow0
                         && vmRow0.Parent is Table vmTbl0
                         && vmTbl0.Elements<TableRow>().FirstOrDefault() == vmRow0)
@@ -1549,10 +1657,15 @@ public partial class WordHandler
                         throw new ArgumentException(
                             "Cannot set vmerge=continue on a cell in the first row: there is no restart anchor above it. Use vmerge=restart instead.");
                     }
-                    tcPr.VerticalMerge = value.ToLowerInvariant() == "restart"
-                        ? new VerticalMerge { Val = MergedCellValues.Restart }
-                        : new VerticalMerge();
+
+                    if (isRemove)
+                        tcPr.VerticalMerge = null;
+                    else if (isRestart)
+                        tcPr.VerticalMerge = new VerticalMerge { Val = MergedCellValues.Restart };
+                    else // continue (bare <w:vMerge/>)
+                        tcPr.VerticalMerge = new VerticalMerge();
                     break;
+                }
                 case "hmerge":
                     // BUG-R1-P1-8: <w:hMerge> is a legacy DOC binary-compat
                     // attribute that Word *ignores* in DOCX. The OOXML way to

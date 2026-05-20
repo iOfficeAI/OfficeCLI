@@ -56,7 +56,11 @@ static partial class CommandBuilder
             if (inlineCommands != null && inputFile != null)
                 throw new ArgumentException(
                     "batch: --commands and --input are mutually exclusive. Pick one source.");
-            if ((inlineCommands != null || inputFile != null) && stdinHasInput
+            // '--input -' explicitly opts INTO stdin — don't emit the
+            // "stdin will be ignored" warning in that case, since stdin
+            // is exactly what will be read.
+            var inputIsStdinAlias = inputFile != null && inputFile.Name == "-";
+            if ((inlineCommands != null || (inputFile != null && !inputIsStdinAlias)) && stdinHasInput
                 && Environment.GetEnvironmentVariable("OFFICECLI_BATCH_ALLOW_STDIN_REDIRECT") == null)
             {
                 Console.Error.WriteLine(
@@ -70,16 +74,35 @@ static partial class CommandBuilder
             }
             else if (inputFile != null)
             {
-                if (!inputFile.Exists)
+                // Accept the conventional Unix '-' alias for stdin so
+                // pipelines like `cat ops.json | officecli batch foo.pptx --input -`
+                // don't have to drop --input entirely. Matches the implicit
+                // "no --input ⇒ read stdin" branch below; using --input -
+                // makes the intent explicit instead of relying on the
+                // absent-flag default. (TargetMode/Exists checks are
+                // skipped on purpose — '-' is not a path.)
+                if (inputFile.Name == "-")
                 {
-                    throw new FileNotFoundException($"Input file not found: {inputFile.FullName}");
+                    jsonText = StripBom(Console.In.ReadToEnd());
                 }
-                jsonText = File.ReadAllText(inputFile.FullName);
+                else
+                {
+                    if (!inputFile.Exists)
+                    {
+                        throw new FileNotFoundException($"Input file not found: {inputFile.FullName}");
+                    }
+                    jsonText = File.ReadAllText(inputFile.FullName);
+                }
             }
             else
             {
-                // Read from stdin
-                jsonText = Console.In.ReadToEnd();
+                // Read from stdin. File.ReadAllText auto-detects and strips
+                // UTF-8 BOM; Console.In does not. Without an explicit strip,
+                // `cat utf8bom.json | officecli batch foo.pptx` failed
+                // System.Text.Json.Parse with "'﻿' is an invalid start of
+                // a value" while `batch --input utf8bom.json` succeeded —
+                // splitting the contract on the input source.
+                jsonText = StripBom(Console.In.ReadToEnd());
             }
 
             // Pre-validate: check for unknown JSON fields before deserializing
@@ -250,13 +273,16 @@ static partial class CommandBuilder
             // calls OutputFormatter.WrapEnvelope on any JSON-shaped stdout).
             // Capture PrintBatchResults output and apply the same envelope
             // here so callers see the same shape regardless of resident state.
-            // JSON Envelope contract: batch is a *judgment* command — any
-            // failed step means the batch as a whole did not deliver what the
-            // caller asked for, so envelope.success mirrors exit code. Note
-            // there are two `success` fields in the JSON: outer (this one,
-            // batch verdict) and per-step `data.results[].success`. They are
-            // not the same and have distinct JSON paths.
-            var batchSuccess = !batchResults.Any(r => !r.Success);
+            // JSON Envelope contract: batch is a *judgment* command (root
+            // CLAUDE.md "Judgment: any batch step failed -> outer false").
+            // Outer envelope.success is true only when every step succeeded;
+            // a single failed step flips outer to false even if siblings
+            // succeeded. Per-step verdicts still ride on
+            // `data.results[].success`. Exit code stays in lockstep with
+            // envelope.success so CI gates and shells can rely on the single
+            // signal. Two `success` fields appear in the JSON (outer batch
+            // verdict, inner per-step) — disambiguate by JSON path.
+            var batchSuccess = batchResults.Count == 0 || !batchResults.Any(r => !r.Success);
             if (json)
             {
                 using var sw = new System.IO.StringWriter();
@@ -275,4 +301,9 @@ static partial class CommandBuilder
 
         return batchCommand;
     }
+
+    // UTF-8 BOM trim. File.ReadAllText handles this implicitly via
+    // StreamReader's detect-encoding; Console.In feeds raw chars.
+    private static string StripBom(string s)
+        => !string.IsNullOrEmpty(s) && s[0] == '﻿' ? s.Substring(1) : s;
 }

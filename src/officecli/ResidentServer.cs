@@ -16,7 +16,18 @@ public class ResidentServer : IDisposable
     private IDocumentHandler _handler;
     private readonly string _filePath;
     private readonly string _pipeName;
-    private readonly bool _editable;
+    // Mutable: PromoteToEditable() latches this to true on first write so
+    // subsequent reopen sites (view-screenshot, page-count, refresh) use
+    // the promoted mode rather than reverting to the ctor's editable=false.
+    private bool _editable;
+    // Stderr captured during DocumentHandlerFactory.Open (i.e. while the
+    // constructor was building _handler). At that point there's no
+    // per-command Console.SetError scope, so warnings written by plugin
+    // invokers (e.g. "dump-reader produced no commands") would otherwise
+    // be swallowed by the un-drained resident-stderr pipe. Held until the
+    // first HandleRequest, which folds it into that command's stderr
+    // envelope and clears the buffer.
+    private string? _startupStderr;
     // Shutdown uses TWO independent CTSs so the ping pipe can outlive the
     // handler dispose. This establishes the critical invariant that
     // TryResident relies on:
@@ -108,12 +119,33 @@ public class ResidentServer : IDisposable
 
     public string PipeName => _pipeName;
 
-    public ResidentServer(string filePath, bool editable = true)
+    // BUG-RESIDENT-EDITABLE-DEFAULT: ctor now defaults to editable=false so
+    // a resident that only ever serves read-only commands (view/get/query/
+    // raw/validate/dump) never writes the file back on shutdown. Mutation
+    // commands (set/add/remove/move/swap/refresh/raw-set/add-part/batch)
+    // promote the handler to editable=true on first use via
+    // PromoteToEditable(); the promotion is sticky for the resident's
+    // lifetime, matching the pre-existing reopen pattern used by
+    // view-screenshot/page-count/refresh.
+    public ResidentServer(string filePath, bool editable = false)
     {
         _filePath = Path.GetFullPath(filePath);
         _pipeName = GetPipeName(_filePath);
         _editable = editable;
-        _handler = DocumentHandlerFactory.Open(_filePath, editable);
+
+        // Capture Console.Error during handler open so any warnings emitted
+        // by the dump-reader / format-handler open path (which run before
+        // any per-command stderr scope exists) are routed to the first
+        // command's reply envelope. Without this, plugin-side notices like
+        // "dump-reader produced no commands" disappear into the resident's
+        // own unread stderr pipe.
+        var startupErrSink = new StringWriter();
+        var origErr = Console.Error;
+        Console.SetError(startupErrSink);
+        try { _handler = DocumentHandlerFactory.Open(_filePath, editable); }
+        finally { Console.SetError(origErr); }
+        var captured = startupErrSink.ToString().TrimEnd('\r', '\n');
+        if (captured.Length > 0) _startupStderr = captured;
     }
 
     public static string GetPipeName(string filePath)
@@ -514,6 +546,17 @@ public class ResidentServer : IDisposable
             Console.SetOut(stdoutWriter);
             Console.SetError(stderrWriter);
 
+            // Replay any stderr captured during the constructor's
+            // DocumentHandlerFactory.Open so plugin-side warnings (e.g.
+            // "dump-reader produced no commands") reach the user on the
+            // first command's reply. One-shot drain: subsequent commands
+            // see an empty buffer.
+            if (_startupStderr is not null)
+            {
+                Console.Error.WriteLine(_startupStderr);
+                _startupStderr = null;
+            }
+
             try
             {
                 ExecuteCommand(request);
@@ -555,11 +598,26 @@ public class ResidentServer : IDisposable
                 // emitted success=true while exit code went to 1 — exactly the
                 // mismatch the non-resident path was already broken for.
                 var businessSuccess = !(batchFailure || validateFailure);
-                var envelope = IsJson(stdout)
-                    ? OutputFormatter.WrapEnvelope(stdout, warnings, success: businessSuccess)
-                    : isFailure
-                        ? OutputFormatter.WrapEnvelopeError(stdout, warnings)
-                        : OutputFormatter.WrapEnvelopeText(stdout, warnings, success: businessSuccess);
+                // If the sub-command already produced a top-level envelope
+                // (json object with a `success` field — set/add/get/dump all
+                // do this via WrapEnvelope*), forward it unchanged. Rewrapping
+                // here used to nest the inner envelope under `data`, producing
+                // a {success, data:{success, data:...}} double envelope. Only
+                // merge warnings/businessSuccess into the existing envelope
+                // for judgment commands whose verdict the resident layer adds.
+                string envelope;
+                if (IsAlreadyWrappedEnvelope(stdout))
+                {
+                    envelope = MergeIntoExistingEnvelope(stdout, warnings, batchFailure || validateFailure);
+                }
+                else
+                {
+                    envelope = IsJson(stdout)
+                        ? OutputFormatter.WrapEnvelope(stdout, warnings, success: businessSuccess)
+                        : isFailure
+                            ? OutputFormatter.WrapEnvelopeError(stdout, warnings)
+                            : OutputFormatter.WrapEnvelopeText(stdout, warnings, success: businessSuccess);
+                }
                 // BUG-R11-03: JSON-mode exit code must match text mode. Previously
                 // hard-coded to 0, which silently swallowed every error type
                 // (path-not-found, unsupported_property, failed open) for any
@@ -635,6 +693,56 @@ public class ResidentServer : IDisposable
         }
     }
 
+    // Detect an envelope already minted by CommandBuilder.* (set/add/get/dump
+    // call WrapEnvelope*). Rewrapping such payloads nested them under `data`,
+    // producing {success, data:{success, ...}}. Heuristic: top-level JSON
+    // object with a boolean `success` field — same contract WrapEnvelope* emits
+    // and that EnvelopeSuccess already keys off.
+    private static bool IsAlreadyWrappedEnvelope(string s)
+    {
+        if (!IsJson(s)) return false;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(s);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return false;
+            if (!doc.RootElement.TryGetProperty("success", out var succ)) return false;
+            return succ.ValueKind == System.Text.Json.JsonValueKind.True
+                || succ.ValueKind == System.Text.Json.JsonValueKind.False;
+        }
+        catch { return false; }
+    }
+
+    // Forward the inner envelope unchanged but: (a) flip success=false if the
+    // resident layer detected a batch/validate verdict failure the sub-command
+    // didn't surface, (b) append our stderr-derived warnings to the existing
+    // warnings array. No restructure of `data`/`message`/`error`.
+    private static string MergeIntoExistingEnvelope(string envelopeJson, List<CliWarning>? extraWarnings, bool forceFailure)
+    {
+        try
+        {
+            var node = System.Text.Json.Nodes.JsonNode.Parse(envelopeJson);
+            if (node is not System.Text.Json.Nodes.JsonObject obj) return envelopeJson;
+            if (forceFailure) obj["success"] = false;
+            if (extraWarnings is { Count: > 0 })
+            {
+                if (obj["warnings"] is System.Text.Json.Nodes.JsonArray existing)
+                {
+                    foreach (var w in extraWarnings)
+                        existing.Add(System.Text.Json.JsonSerializer.SerializeToNode(w, AppJsonContext.Default.CliWarning));
+                }
+                else
+                {
+                    obj["warnings"] = System.Text.Json.JsonSerializer.SerializeToNode(extraWarnings, AppJsonContext.Default.ListCliWarning);
+                }
+            }
+            return obj.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch
+        {
+            return envelopeJson;
+        }
+    }
+
     private static List<CliWarning>? BuildWarnings(string stderr)
     {
         if (string.IsNullOrEmpty(stderr)) return null;
@@ -645,9 +753,32 @@ public class ResidentServer : IDisposable
             var warning = new CliWarning { Message = line.Trim() };
             if (line.Contains("UNSUPPORTED")) warning.Code = "unsupported_property";
             else if (line.Contains("VALIDATION")) warning.Code = "validation_error";
+            // CONSISTENCY(dump-warning-code): mirror the
+            // unsupported_element code emitted by CommandBuilder.Dump.cs so
+            // resident-routed and direct dump callers see the same envelope.
+            else if (line.StartsWith("warning: skipped ", StringComparison.Ordinal)) warning.Code = "unsupported_element";
             else warning.Code = "warning";
             return warning;
         }).ToList();
+    }
+
+    // BUG-RESIDENT-EDITABLE-DEFAULT: dispose+reopen the handler in writable
+    // mode the first time a mutation command runs. The naive Dispose +
+    // DocumentHandlerFactory.Open round-trip mirrors the existing reopen
+    // sites (view-screenshot, page-count, refresh). It runs inside the
+    // _commandLock-serialized dispatcher so no caller can hold a stale
+    // _handler reference. Once promoted, _editable stays true for the
+    // resident's lifetime — matches the previous "always-editable" cost
+    // model so a long mixed-mode session does not pay the reopen cost
+    // repeatedly. The final Dispose during shutdown still flushes the
+    // in-memory tree, which is now the correct behavior because the user
+    // has actually mutated the document.
+    private void PromoteToEditable()
+    {
+        if (_editable) return;
+        _handler.Dispose();
+        _handler = OfficeCli.Handlers.DocumentHandlerFactory.Open(_filePath, editable: true);
+        _editable = true;
     }
 
     private void ExecuteCommand(ResidentRequest request)
@@ -666,11 +797,13 @@ public class ResidentServer : IDisposable
                 ExecuteQuery(request, format);
                 break;
             case "set":
+                PromoteToEditable();
                 ExecuteSet(request);
                 NotifyWatchSlideChanged(request.GetArg("path"));
                 break;
             case "add":
             {
+                PromoteToEditable();
                 var oldCount = GetPptSlideCount();
                 ExecuteAdd(request);
                 var parent = request.GetArg("parent");
@@ -682,6 +815,7 @@ public class ResidentServer : IDisposable
             }
             case "remove":
             {
+                PromoteToEditable();
                 var oldCount = GetPptSlideCount();
                 var path = request.GetArg("path");
                 ExecuteRemove(request);
@@ -692,14 +826,17 @@ public class ResidentServer : IDisposable
                 break;
             }
             case "move":
+                PromoteToEditable();
                 ExecuteMove(request);
                 NotifyWatchSlideChanged(request.GetArg("path"));
                 break;
             case "swap":
+                PromoteToEditable();
                 ExecuteSwap(request);
                 NotifyWatchFullRefresh();
                 break;
             case "refresh":
+                PromoteToEditable();
                 ExecuteRefresh(request);
                 NotifyWatchFullRefresh();
                 break;
@@ -707,10 +844,12 @@ public class ResidentServer : IDisposable
                 ExecuteRaw(request);
                 break;
             case "raw-set":
+                PromoteToEditable();
                 ExecuteRawSet(request);
                 NotifyWatchFullRefresh();
                 break;
             case "add-part":
+                PromoteToEditable();
                 ExecuteAddPart(request);
                 NotifyWatchFullRefresh();
                 break;
@@ -718,6 +857,7 @@ public class ResidentServer : IDisposable
                 ExecuteValidate();
                 break;
             case "batch":
+                PromoteToEditable();
                 ExecuteBatch(request);
                 break;
             case "dump":
@@ -799,6 +939,11 @@ public class ResidentServer : IDisposable
             }
         }
 
+        // Judgment contract: batch is classified as a judgment command (root
+        // CLAUDE.md "Judgment: any batch step failed -> outer false"). The
+        // verdict flips to failure as soon as ANY step is rejected. Keeps
+        // envelope.success / exit code in lockstep with the non-resident
+        // path.
         _lastBatchHadFailure = results.Any(r => !r.Success);
         CommandBuilder.PrintBatchResults(results, json, items.Count);
     }
@@ -927,6 +1072,8 @@ public class ResidentServer : IDisposable
                 html = excelHandler.ViewAsHtml();
             else if (_handler is OfficeCli.Handlers.WordHandler wordHandler)
                 html = wordHandler.ViewAsHtml(pageFilter);
+            else if (_handler is OfficeCli.Core.Plugins.FormatHandlerProxy proxy)
+                html = proxy.ViewAsHtml(int.TryParse(pageFilter, out var pp) ? pp : (int?)null);
 
             if (html != null)
             {
@@ -1063,6 +1210,18 @@ public class ResidentServer : IDisposable
                 var svg = pptSvgHandler.ViewAsSvg(slideNum);
                 Console.Write(svg);
             }
+            else if (_handler is OfficeCli.Core.Plugins.FormatHandlerProxy svgProxy)
+            {
+                int? svgPage = null;
+                if (!string.IsNullOrEmpty(pageFilter)
+                    && int.TryParse(pageFilter.Split(',')[0].Split('-')[0].Trim(), out var sp))
+                    svgPage = sp;
+                var svg = svgProxy.ViewAsSvg(svgPage);
+                if (svg is null)
+                    Console.Error.WriteLine("SVG preview is not supported by the format-handler plugin.");
+                else
+                    Console.Write(svg);
+            }
             else
             {
                 Console.Error.WriteLine("SVG preview is only supported for .pptx files.");
@@ -1118,28 +1277,69 @@ public class ResidentServer : IDisposable
             {
                 if (_handler is OfficeCli.Handlers.WordHandler wordFormsHandler)
                     Console.WriteLine(wordFormsHandler.ViewAsFormsJson().ToJsonString(OutputFormatter.PublicJsonOptions));
+                else if (_handler is OfficeCli.Core.Plugins.FormatHandlerProxy formsProxy)
+                {
+                    var formsJson = formsProxy.ViewAsFormsJson();
+                    if (formsJson is null)
+                        Console.Error.WriteLine($"Forms view is not supported by the format-handler plugin.");
+                    else
+                        Console.WriteLine(formsJson.ToJsonString(OutputFormatter.PublicJsonOptions));
+                }
                 else
                     Console.Error.WriteLine("Forms view is only supported for .docx files.");
             }
             else
-                Console.WriteLine($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms");
+                // Unknown mode is a caller bug, not a successful view: throw
+                // the same CliException CommandBuilder.View.cs raises in the
+                // direct-mode path so the envelope reports success=false /
+                // code=invalid_value instead of stdout-ing the error message
+                // as the view payload.
+                throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms")
+                {
+                    Code = "invalid_value",
+                    ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "pdf", "forms"]
+                };
         }
         else
         {
-            var output = mode!.ToLowerInvariant() switch
+            var modeKey = mode!.ToLowerInvariant();
+            string output;
+            switch (modeKey)
             {
-                "text" or "t" => _handler.ViewAsText(start, end, maxLines, cols),
-                "annotated" or "a" => _handler.ViewAsAnnotated(start, end, maxLines, cols),
-                "outline" or "o" => _handler.ViewAsOutline(),
-                "stats" or "s" => pageCountValue.HasValue
-                    ? $"Pages: {pageCountValue}\n" + _handler.ViewAsStats()
-                    : _handler.ViewAsStats(),
-                "issues" or "i" => OutputFormatter.FormatIssues(_handler.ViewAsIssues(issueType, limit), format),
-                "forms" or "f" => _handler is OfficeCli.Handlers.WordHandler wfh
-                    ? wfh.ViewAsForms()
-                    : "Forms view is only supported for .docx files.",
-                _ => $"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms"
-            };
+                case "text" or "t":
+                    output = _handler.ViewAsText(start, end, maxLines, cols); break;
+                case "annotated" or "a":
+                    output = _handler.ViewAsAnnotated(start, end, maxLines, cols); break;
+                case "outline" or "o":
+                    output = _handler.ViewAsOutline(); break;
+                case "stats" or "s":
+                    output = pageCountValue.HasValue
+                        ? $"Pages: {pageCountValue}\n" + _handler.ViewAsStats()
+                        : _handler.ViewAsStats(); break;
+                case "issues" or "i":
+                    output = OutputFormatter.FormatIssues(_handler.ViewAsIssues(issueType, limit), format); break;
+                case "forms" or "f":
+                    output = _handler switch
+                    {
+                        OfficeCli.Handlers.WordHandler wfh => wfh.ViewAsForms(),
+                        OfficeCli.Core.Plugins.FormatHandlerProxy fp
+                            => fp.ViewAsFormsJson()?.ToJsonString(OutputFormatter.PublicJsonOptions)
+                               ?? throw new OfficeCli.Core.CliException("Forms view is not supported by the format-handler plugin.")
+                                   { Code = "unsupported_type" },
+                        _ => throw new OfficeCli.Core.CliException("Forms view is only supported for .docx files.")
+                        {
+                            Code = "unsupported_type",
+                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "pdf", "forms"]
+                        }
+                    };
+                    break;
+                default:
+                    throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms")
+                    {
+                        Code = "invalid_value",
+                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "pdf", "forms"]
+                    };
+            }
             Console.WriteLine(output);
         }
     }
@@ -1196,17 +1396,37 @@ public class ResidentServer : IDisposable
             throw new CliException($"Unsupported --format: {dumpFormat}. Valid: batch")
                 { Code = "invalid_format", ValidValues = ["batch"] };
 
-        if (_handler is not WordHandler word)
-            throw new CliException("dump currently supports .docx only")
+        // CONSISTENCY(dump-format-dispatch): mirrors docx vs pptx branch
+        List<BatchItem> items;
+        if (_handler is WordHandler word)
+        {
+            items = WordBatchEmitter.EmitWord(word, path);
+        }
+        else if (_handler is OfficeCli.Handlers.PowerPointHandler ppt)
+        {
+            var (pItems, pWarnings) = OfficeCli.Handlers.PptxBatchEmitter.EmitPptx(ppt, path);
+            items = pItems;
+            // Surface unsupported-element warnings via stderr so the
+            // envelope-builder in HandleClient picks them up as
+            // envelope.warnings (matches non-resident dispatch in
+            // CommandBuilder.Dump.cs).
+            foreach (var w in pWarnings)
+                Console.Error.WriteLine($"warning: skipped {w.Element} on {w.SlidePath}");
+        }
+        else
+        {
+            throw new CliException("dump currently supports .docx and .pptx only")
                 { Code = "unsupported_format" };
-
-        var items = BatchEmitter.EmitWord(word, path);
+        }
         var output = System.Text.Json.JsonSerializer.Serialize(items, BatchJsonContext.Default.ListBatchItem);
 
         if (outPath == "-") outPath = null;
         if (!string.IsNullOrEmpty(outPath))
         {
-            File.WriteAllText(outPath, output);
+            // CONSISTENCY(trailing-newline): match CommandBuilder.Dump.cs —
+            // stdout path ends with a newline (Console.WriteLine), file path
+            // must too so consumers see the same payload either way.
+            File.WriteAllText(outPath, output + "\n");
             if (req.Json)
             {
                 var meta = new System.Text.Json.Nodes.JsonObject
@@ -1278,8 +1498,18 @@ public class ResidentServer : IDisposable
                 $"path '{path}' must start with '/'. Did you mean '/{path}'?");
 
         var unsupported = _handler.Set(path, properties);
+        // CONSISTENCY(unsupported-key-extract): mirrored in CommandBuilder.Set.cs.
+        // Handler entries may be "key (reason)" or "key=value (reason)" (e.g.
+        // geometry=invalid_preset). Trim trailing help text, then strip the
+        // optional "=value" so the membership test below matches the raw
+        // property key in `properties`.
         var unsupportedKeys = unsupported
-            .Select(u => u.Contains(' ') ? u[..u.IndexOf(' ')] : u)
+            .Select(u =>
+            {
+                var head = u.Contains(' ') ? u[..u.IndexOf(' ')] : u;
+                var eq = head.IndexOf('=');
+                return eq >= 0 ? head[..eq] : head;
+            })
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var applied = properties.Where(kv => !unsupportedKeys.Contains(kv.Key)).ToList();
 

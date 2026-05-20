@@ -34,7 +34,12 @@ public partial class PowerPointHandler
         if (string.IsNullOrEmpty(url) || url.Equals("none", StringComparison.OrdinalIgnoreCase))
             return null;
 
-        // Named slide-action shortcuts (no relationship required)
+        // Named slide-action shortcuts (no relationship required). 'endshow'
+        // is the PowerPoint action that terminates the slide show — emitted
+        // as ppaction://hlinkshowjump?jump=endshow same as the navigation
+        // jumps. 'prevslide' is intentionally absent: keep 'previousslide'
+        // as the only canonical form so input and Get output match (no
+        // silent normalization).
         var lower = url.Trim().ToLowerInvariant();
         switch (lower)
         {
@@ -44,8 +49,10 @@ public partial class PowerPointHandler
                 return new HyperlinkTarget { Action = "ppaction://hlinkshowjump?jump=lastslide" };
             case "nextslide":
                 return new HyperlinkTarget { Action = "ppaction://hlinkshowjump?jump=nextslide" };
-            case "previousslide" or "prevslide":
+            case "previousslide":
                 return new HyperlinkTarget { Action = "ppaction://hlinkshowjump?jump=previousslide" };
+            case "endshow":
+                return new HyperlinkTarget { Action = "ppaction://hlinkshowjump?jump=endshow" };
         }
 
         // Explicit slide[N] jump
@@ -85,7 +92,12 @@ public partial class PowerPointHandler
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
             throw new ArgumentException(
                 $"Invalid hyperlink URL '{url}'. Expected an absolute URI (e.g. 'https://example.com'), " +
-                $"'slide[N]', or a named action (firstslide/lastslide/nextslide/previousslide).");
+                $"'slide[N]', or a named action (firstslide/lastslide/nextslide/previousslide/endshow).");
+        // CONSISTENCY(hyperlink-scheme-allowlist): reject javascript:, file:,
+        // data:, vbscript:, … before they reach the relationships file.
+        // Mirrored in ExcelHandler.Set.cs cell link + WordHandler.Set.Element.cs
+        // run/hyperlink writers; ppaction:// URIs are accepted (allowlisted).
+        Core.HyperlinkUriValidator.RequireSafeScheme(url, "link");
         var extRel = slidePart.AddHyperlinkRelationship(uri, isExternal: true);
         return new HyperlinkTarget { Id = extRel.Id, IsExternal = true };
     }
@@ -98,7 +110,18 @@ public partial class PowerPointHandler
         if (!string.IsNullOrEmpty(target.Action))
             hlink.Action = target.Action;
         if (!string.IsNullOrEmpty(tooltip))
+        {
+            // Tooltip becomes an attribute value in the saved part XML. Without
+            // a guard here, codepoints outside XML 1.0 character data (e.g.
+            // U+0007 BEL) escape unrejected and surface as a raw XmlException
+            // at PackageProperties.Save() — the catch site then poisons the
+            // open package and the next Close writes an empty file over the
+            // user's deck. Mirror Add.Text / Add.Shape: validate at the write
+            // boundary so the caller sees an `invalid_value` CliException
+            // instead of an opaque OOXML save failure.
+            Core.XmlTextValidator.ValidateOrThrow(tooltip, "tooltip");
             hlink.Tooltip = tooltip;
+        }
         return hlink;
     }
 
@@ -145,6 +168,54 @@ public partial class PowerPointHandler
     }
 
     /// <summary>
+    /// Apply a click-hyperlink to a group. Groups have no runs of their own,
+    /// so the link lives on the group's NonVisualDrawingProperties
+    /// (nvGrpSpPr/cNvPr) — mirroring how PowerPoint writes click-targets on
+    /// grouped shapes. Pass "none" or "" to remove.
+    /// </summary>
+    private static void ApplyGroupHyperlink(SlidePart slidePart, GroupShape grp, string url, string? tooltip = null)
+    {
+        var nvDp = grp.NonVisualGroupShapeProperties?.NonVisualDrawingProperties;
+        if (nvDp == null) return;
+
+        if (string.IsNullOrEmpty(url) || url.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            nvDp.RemoveAllChildren<Drawing.HyperlinkOnClick>();
+            return;
+        }
+
+        var target = ResolveHyperlinkTarget(slidePart, url);
+        if (target == null) return;
+
+        nvDp.RemoveAllChildren<Drawing.HyperlinkOnClick>();
+        nvDp.AppendChild(BuildHyperlinkElement(target.Value, tooltip));
+    }
+
+    /// <summary>
+    /// Apply a click-hyperlink to a picture. Pictures have no runs (BlipFill
+    /// is image data, not text), so the link lives only on the picture's
+    /// NonVisualDrawingProperties (nvPicPr/cNvPr) — mirroring how PowerPoint
+    /// writes click-targets on inserted images. Pass "none" or "" to remove.
+    /// </summary>
+    private static void ApplyPictureHyperlink(SlidePart slidePart, Picture picture, string url, string? tooltip = null)
+    {
+        var nvDp = picture.NonVisualPictureProperties?.NonVisualDrawingProperties;
+        if (nvDp == null) return;
+
+        if (string.IsNullOrEmpty(url) || url.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            nvDp.RemoveAllChildren<Drawing.HyperlinkOnClick>();
+            return;
+        }
+
+        var target = ResolveHyperlinkTarget(slidePart, url);
+        if (target == null) return;
+
+        nvDp.RemoveAllChildren<Drawing.HyperlinkOnClick>();
+        nvDp.AppendChild(BuildHyperlinkElement(target.Value, tooltip));
+    }
+
+    /// <summary>
     /// Apply a hyperlink to a single run. Pass "none" or "" to remove.
     /// </summary>
     private static void ApplyRunHyperlink(SlidePart slidePart, Drawing.Run run, string url, string? tooltip = null)
@@ -172,6 +243,17 @@ public partial class PowerPointHandler
     private static string? ReadRunHyperlinkUrl(Drawing.Run run, OpenXmlPart part)
     {
         var hlClick = run.RunProperties?.GetFirstChild<Drawing.HyperlinkOnClick>();
+        return ReadHyperlinkOnClickUrl(hlClick, part);
+    }
+
+    /// <summary>
+    /// Read the friendly URL form of a HyperlinkOnClick element (action-name,
+    /// slide[N], or absolute URI). Returns null if absent or unresolvable.
+    /// Shared by run-level (text) and shape-level (cNvPr) hyperlinks —
+    /// including picture-level, which uses the same nvDp/cNvPr slot.
+    /// </summary>
+    private static string? ReadHyperlinkOnClickUrl(Drawing.HyperlinkOnClick? hlClick, OpenXmlPart part)
+    {
         if (hlClick == null) return null;
         var id = hlClick.Id?.Value;
         var action = hlClick.Action?.Value;
@@ -187,7 +269,7 @@ public partial class PowerPointHandler
                 var jump = action[showJumpPrefix.Length..].ToLowerInvariant();
                 return jump switch
                 {
-                    "firstslide" or "lastslide" or "nextslide" or "previousslide" => jump,
+                    "firstslide" or "lastslide" or "nextslide" or "previousslide" or "endshow" => jump,
                     _ => action
                 };
             }
@@ -198,7 +280,14 @@ public partial class PowerPointHandler
         try
         {
             var rel = part.HyperlinkRelationships.FirstOrDefault(r => r.Id == id);
-            if (rel?.Uri != null) return rel.Uri.ToString();
+            // Prefer Uri.OriginalString over Uri.ToString(): ToString() normalises
+            // path-empty URIs by injecting a "/" before the query (so
+            // https://example.com round-trips as https://example.com/, and
+            // ppaction://hlinkshowjump?jump=firstslide as
+            // ppaction://hlinkshowjump/?jump=firstslide). OriginalString preserves
+            // the exact form the user supplied at Add/Set time, matching how
+            // PowerPoint persists rels/*.rels Target= verbatim.
+            if (rel?.Uri != null) return rel.Uri.OriginalString;
             // Internal slide-jump: relationship is to another SlidePart, not a hyperlink relationship
             if (part is SlidePart sp)
             {

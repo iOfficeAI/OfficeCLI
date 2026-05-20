@@ -13,6 +13,27 @@ namespace OfficeCli.Handlers;
 
 public partial class PowerPointHandler
 {
+    /// <summary>
+    /// Return the 1-based positional index of the shape with the given OOXML
+    /// id on the slide at <paramref name="slideIdx"/>, or null if none matches.
+    /// Counts the same element types ResolveShape() exposes (plain <p:sp>),
+    /// matching what the /slide[N]/shape[K] positional path resolves to.
+    /// </summary>
+    internal int? ResolveShapeOrdinalById(int slideIdx, uint id)
+    {
+        var slideParts = GetSlideParts().ToList();
+        if (slideIdx < 1 || slideIdx > slideParts.Count) return null;
+        var shapeTree = GetSlide(slideParts[slideIdx - 1]).CommonSlideData?.ShapeTree;
+        if (shapeTree == null) return null;
+        var shapes = shapeTree.Elements<Shape>().ToList();
+        for (int i = 0; i < shapes.Count; i++)
+        {
+            var sid = shapes[i].NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value;
+            if (sid == id) return i + 1;
+        }
+        return null;
+    }
+
     private (SlidePart slidePart, Shape shape) ResolveShape(int slideIdx, int shapeIdx)
     {
         var slideParts = GetSlideParts().ToList();
@@ -53,7 +74,24 @@ public partial class PowerPointHandler
         var chartRef = gf.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().FirstOrDefault();
         ChartPart? chartPart = null;
         if (chartRef?.Id?.Value != null)
-            chartPart = (ChartPart)slidePart.GetPartById(chartRef.Id.Value);
+        {
+            // Broken c:chart/@r:id (relationship missing from the slide part —
+            // happens after a hand-edited zip or a partially-imported deck) makes
+            // GetPartById throw the SDK's bare ArgumentOutOfRangeException
+            // ("Specified argument was out of the range of valid values.") with
+            // no rId context. Surface a CliException with a stable code and the
+            // offending rId so callers can route to repair instead of guessing.
+            try
+            {
+                chartPart = (ChartPart)slidePart.GetPartById(chartRef.Id.Value);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                throw new CliException(
+                    $"Chart relationship '{chartRef.Id.Value}' on slide {slideIdx} points to a missing part. The chart's r:id has no matching relationship in the slide's rels file.")
+                    { Code = "broken_chart_relationship" };
+            }
+        }
 
         // cx:chart (extended) reference — note: the SDK has TWO classes that
         // both serialize with LocalName "chart":
@@ -76,7 +114,18 @@ public partial class PowerPointHandler
                 var relIdAttr = cxChartRef.GetAttributes()
                     .FirstOrDefault(a => a.LocalName == "id" && a.NamespaceUri == rNs);
                 if (!string.IsNullOrEmpty(relIdAttr.Value))
-                    extChartPart = (ExtendedChartPart)slidePart.GetPartById(relIdAttr.Value);
+                {
+                    try
+                    {
+                        extChartPart = (ExtendedChartPart)slidePart.GetPartById(relIdAttr.Value);
+                    }
+                    catch (ArgumentOutOfRangeException)
+                    {
+                        throw new CliException(
+                            $"Extended chart relationship '{relIdAttr.Value}' on slide {slideIdx} points to a missing part.")
+                            { Code = "broken_chart_relationship" };
+                    }
+                }
             }
         }
 
@@ -185,6 +234,32 @@ public partial class PowerPointHandler
         if (connectors > 0) parts.Add($"{connectors} connector(s)");
         if (groups > 0) parts.Add($"{groups} group(s)");
         return parts.Count > 0 ? string.Join(", ", parts) : "(empty slide)";
+    }
+
+    // Inverse of ParsePlaceholderType — picks the canonical human-readable
+    // alias so Get's Format["phType"] round-trips through Add's phType prop.
+    // Null/absent <p:ph type=…> defaults to "body" per ECMA-376 (§19.7.10
+    // says omitting the attr is equivalent to type="body"). The Title vs
+    // CenteredTitle distinction is preserved.
+    private static string? FormatPlaceholderType(PlaceholderValues? value)
+    {
+        if (value == null) return "body";
+        if (value.Value == PlaceholderValues.Title) return "title";
+        if (value.Value == PlaceholderValues.CenteredTitle) return "ctrTitle";
+        if (value.Value == PlaceholderValues.Body) return "body";
+        if (value.Value == PlaceholderValues.SubTitle) return "subtitle";
+        if (value.Value == PlaceholderValues.DateAndTime) return "date";
+        if (value.Value == PlaceholderValues.Footer) return "footer";
+        if (value.Value == PlaceholderValues.SlideNumber) return "slidenum";
+        if (value.Value == PlaceholderValues.Header) return "header";
+        if (value.Value == PlaceholderValues.Object) return "obj";
+        if (value.Value == PlaceholderValues.Chart) return "chart";
+        if (value.Value == PlaceholderValues.Table) return "table";
+        if (value.Value == PlaceholderValues.ClipArt) return "clipart";
+        if (value.Value == PlaceholderValues.Diagram) return "diagram";
+        if (value.Value == PlaceholderValues.Media) return "media";
+        if (value.Value == PlaceholderValues.Picture) return "picture";
+        return value.Value.ToString();
     }
 
     private static PlaceholderValues? ParsePlaceholderType(string name)
@@ -400,11 +475,19 @@ public partial class PowerPointHandler
     // ==================== Layout ====================
 
     /// <summary>
-    /// Resolve a SlideLayoutPart by name, type, or index.
-    /// If layoutHint is null, returns the first layout.
-    /// Matching order: exact name → layout type → numeric index → first layout.
+    /// Resolve a SlideLayoutPart by name, type token, or numeric index. Single
+    /// entry point for the layout-selection grammar used by both Add (new slide)
+    /// and Set (re-layout existing slide). If layoutHint is null/empty, returns
+    /// the first layout. Matching order:
+    ///   1. exact display name (CommonSlideData.Name) or MatchingName
+    ///   2. layout type token — raw OOXML enum InnerText (e.g. "objTx", "blank",
+    ///      "title", "twoObj") AND friendly aliases ("titlecontent",
+    ///      "twocontent", "section", …)
+    ///   3. 1-based numeric index across all masters
+    ///   4. case-insensitive substring match on display name
+    /// Throws ArgumentException with a unified available-list string on miss.
     /// </summary>
-    private static SlideLayoutPart? ResolveSlideLayout(PresentationPart presentationPart, string? layoutHint)
+    internal static SlideLayoutPart? ResolveSlideLayout(PresentationPart presentationPart, string? layoutHint)
     {
         var allLayouts = presentationPart.SlideMasterParts
             .SelectMany(m => m.SlideLayoutParts).ToList();
@@ -424,7 +507,14 @@ public partial class PowerPointHandler
         });
         if (byName != null) return byName;
 
-        // 2. Match by layout type keyword
+        // 2a. Match by raw OOXML enum InnerText (e.g. "objTx", "blank", "title")
+        // — what Get emits as Format["layoutType"], so it round-trips.
+        var byRawType = allLayouts.FirstOrDefault(lp =>
+            lp.SlideLayout?.Type?.HasValue == true &&
+            string.Equals(lp.SlideLayout.Type.InnerText, layoutHint, StringComparison.OrdinalIgnoreCase));
+        if (byRawType != null) return byRawType;
+
+        // 2b. Match by friendly layout type alias
         var layoutType = layoutHint.ToLowerInvariant() switch
         {
             "title"                                     => SlideLayoutValues.Title,
@@ -461,13 +551,20 @@ public partial class PowerPointHandler
 
         throw new ArgumentException(
             $"Layout '{layoutHint}' not found. Available layouts: " +
-            string.Join(", ", allLayouts.Select((lp, i) =>
-            {
-                var name = lp.SlideLayout?.CommonSlideData?.Name?.Value ?? "(unnamed)";
-                var type = lp.SlideLayout?.Type?.HasValue == true ? lp.SlideLayout.Type.InnerText : "?";
-                return $"[{i + 1}] {name} ({type})";
-            })));
+            FormatAvailableLayouts(allLayouts));
     }
+
+    /// <summary>
+    /// Unified available-layouts list used in Add/Set error messages so the
+    /// grammar surface (name | type | index) is discoverable from either path.
+    /// </summary>
+    internal static string FormatAvailableLayouts(IEnumerable<SlideLayoutPart> allLayouts)
+        => string.Join(", ", allLayouts.Select((lp, i) =>
+        {
+            var name = lp.SlideLayout?.CommonSlideData?.Name?.Value ?? "(unnamed)";
+            var type = lp.SlideLayout?.Type?.HasValue == true ? lp.SlideLayout.Type.InnerText : "?";
+            return $"[{i + 1}] {name} ({type})";
+        }));
 
     /// <summary>
     /// Get the layout name for a slide part.

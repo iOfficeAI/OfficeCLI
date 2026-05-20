@@ -27,14 +27,16 @@ internal static partial class ChartHelper
     /// e.g. "50", "75:FF0000", "100:00AA00:Target", "80:0000FF:Average:dash",
     ///      "50:FF0000:2.5:dash", "50:FF0000:2:dash:Target", "50:FF0000::dash:Target"
     /// </summary>
-    internal static void AddReferenceLine(C.Chart chart, string spec)
+    internal static void AddReferenceLine(C.Chart chart, string spec, bool removeExisting = true)
     {
         const double DefaultWidthPt = 1.5;
         var plotArea = chart.GetFirstChild<C.PlotArea>();
         if (plotArea == null) return;
 
-        // Remove any existing reference line series before adding a new one
-        RemoveExistingReferenceLines(plotArea);
+        // Caller may suppress the sweep when accumulating multiple lines from
+        // a semicolon-joined value (see Setter `case "referenceline"`).
+        if (removeExisting)
+            RemoveExistingReferenceLines(plotArea);
 
         var parts = spec.Split(':');
         if (!double.TryParse(parts[0].Trim(),
@@ -266,8 +268,11 @@ internal static partial class ChartHelper
         return token.ToLowerInvariant() switch
         {
             "solid" or "dot" or "sysdot" or "dash" or "sysdash"
-                or "dashdot" or "sysdash_dot"
-                or "longdash" or "longdashdot" or "longdashdotdot" => true,
+                or "dashdot" or "sysdash_dot" or "sysdashdot"
+                or "sysdashdotdot" or "sysdash_dot_dot"
+                or "longdash" or "lgdash"
+                or "longdashdot" or "lgdashdot"
+                or "longdashdotdot" or "lgdashdotdot" => true,
             _ => false
         };
     }

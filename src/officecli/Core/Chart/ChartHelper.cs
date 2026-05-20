@@ -16,9 +16,23 @@ internal static partial class ChartHelper
 
     internal static (string kind, bool is3D, bool stacked, bool percentStacked) ParseChartType(string chartType)
     {
-        var ct = chartType.ToLowerInvariant().Replace(" ", "").Replace("_", "").Replace("-", "");
+        var ct = SchemaKeyNormalizer.Normalize(chartType);
         var is3D = ct.EndsWith("3d") || ct.Contains("3d");
         ct = ct.Replace("3d", "");
+
+        // OOXML has no Scatter3D or Radar3D variant — CT_ScatterChart and
+        // CT_RadarChart are 2D-only. Previously `scatter3d`/`radar3d` silently
+        // had the `3d` stripped and became plain scatter/radar, losing caller
+        // intent (round-trip returned `scatter`/`radar`, real PowerPoint
+        // rendered flat). Reject these forms explicitly with a helpful error
+        // pointing at the supported alternatives.
+        if (is3D && (ct == "scatter" || ct == "xy" || ct == "radar" || ct == "spider"))
+        {
+            throw new ArgumentException(
+                $"Chart type '{chartType}' is not supported. " +
+                "OOXML has no Scatter3D or Radar3D variant — both CT_ScatterChart and CT_RadarChart " +
+                "are 2D-only. Use 'scatter' / 'radar' (optionally with radarStyle=filled|marker|standard).");
+        }
 
         var stacked = ct.Contains("stacked") && !ct.Contains("percent");
         var percentStacked = ct.Contains("percentstacked") || ct.Contains("pstacked");
@@ -30,6 +44,8 @@ internal static partial class ChartHelper
             "column" or "col" => "column",
             "line" => "line",
             "pie" => "pie",
+            "pieofpie" => "pieofpie",
+            "barofpie" => "barofpie",
             "doughnut" or "donut" => "doughnut",
             "area" => "area",
             "scatter" or "xy" => "scatter",
@@ -72,18 +88,26 @@ internal static partial class ChartHelper
     }
 
     /// <summary>
-    /// Returns true if the value looks like a single cell reference (A1, $A$1, Sheet1!A1,
-    /// Sheet1!$A$1) or a single-cell range (A1:A1, Sheet1!A1:A1). Used to detect when
-    /// a series.name parameter should be emitted as a c:strRef instead of literal c:v.
+    /// Returns true if the value looks like a single cell reference with an
+    /// explicit sheet prefix (Sheet1!A1, Sheet1!$A$1, 'My Sheet'!A1:A1). Used
+    /// to detect when a series.name / chart title parameter should be emitted
+    /// as a c:strRef instead of literal c:v.
+    ///
+    /// Bare cell-shaped tokens (e.g. "Q1", "A1", "B2") are deliberately NOT
+    /// treated as cell references — they collide with common literal labels
+    /// (quarter codes, product names) and emitting a strRef without an
+    /// external workbook backing causes real PowerPoint to render no title /
+    /// no series name at all (data loss). Callers wanting a cell reference
+    /// must qualify with the sheet name.
     /// </summary>
     internal static bool IsCellReference(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return false;
         var trimmed = value.Trim();
-        // Optional sheet prefix (Sheet1! or 'Sheet with spaces'!), single cell A1 or $A$1,
-        // optionally followed by :A1 range of size 1.
+        // Mandatory sheet prefix (Sheet1! or 'Sheet with spaces'!), single
+        // cell A1 or $A$1, optionally followed by :A1 range of size 1.
         return System.Text.RegularExpressions.Regex.IsMatch(trimmed,
-            @"^(?:'[^']+'!|[A-Za-z_][\w\.]*!)?\$?[A-Za-z]+\$?\d+(?::\$?[A-Za-z]+\$?\d+)?$");
+            @"^(?:'[^']+'!|[A-Za-z_][\w\.]*!)\$?[A-Za-z]+\$?\d+(?::\$?[A-Za-z]+\$?\d+)?$");
     }
 
     /// <summary>
@@ -353,6 +377,29 @@ internal static partial class ChartHelper
                 merged[i] = DefaultSeriesColors[i % DefaultSeriesColors.Length];
         }
         return merged;
+    }
+
+    /// <summary>
+    /// Like ParseSeriesColors but returns ONLY the per-series dotted color
+    /// keys (`series{N}.color=<hex>`), without merging the positional
+    /// `colors=` array. Used by single-series chart builders
+    /// (pie/doughnut/stock) where positional `colors=` is per-data-point but
+    /// `series{N}.color` should still tint the whole series.
+    /// </summary>
+    internal static Dictionary<int, string> ParseDottedSeriesColorsOnly(Dictionary<string, string> properties)
+    {
+        var dotted = new Dictionary<int, string>();
+        foreach (var kv in properties)
+        {
+            var k = kv.Key;
+            if (!k.StartsWith("series", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!k.EndsWith(".color", StringComparison.OrdinalIgnoreCase)) continue;
+            var mid = k.Substring(6, k.Length - 6 - ".color".Length);
+            if (!int.TryParse(mid, out var idx) || idx < 1) continue;
+            if (!string.IsNullOrWhiteSpace(kv.Value))
+                dotted[idx] = kv.Value.Trim();
+        }
+        return dotted;
     }
 
     // ==================== ManualLayout Helpers ====================

@@ -33,6 +33,80 @@ internal static partial class ChartHelper
         var chartType = DetectChartType(plotArea);
         if (chartType != null) node.Format["chartType"] = chartType;
 
+        // Waterfall: surface increase/decrease/totalColor at chart level so
+        // dump→replay preserves the bar colors. Without these the encoded
+        // triplet (Base/Increase/Decrease) is collapsed back to deltas by
+        // the emitter and Builder falls back to the default 4472C4 / FF0000
+        // palette, dropping the user's customisation.
+        if (chartType == "waterfall"
+            && plotArea.GetFirstChild<C.BarChart>() is C.BarChart wfBar)
+        {
+            var wfSeries = wfBar.Elements<C.BarChartSeries>().ToList();
+            // Increase = series[1], Decrease = series[2] (Builder convention).
+            if (wfSeries.Count >= 3)
+            {
+                var incFill = wfSeries[1].GetFirstChild<C.ChartShapeProperties>()
+                    ?.GetFirstChild<Drawing.SolidFill>();
+                var incClr = incFill != null ? ReadColorFromFill(incFill) : null;
+                if (incClr != null) node.Format["increaseColor"] = incClr;
+
+                var decFill = wfSeries[2].GetFirstChild<C.ChartShapeProperties>()
+                    ?.GetFirstChild<Drawing.SolidFill>();
+                var decClr = decFill != null ? ReadColorFromFill(decFill) : null;
+                if (decClr != null) node.Format["decreaseColor"] = decClr;
+
+                // Total bar = last DataPoint override on Increase series.
+                var dpts = wfSeries[1].Elements<C.DataPoint>().ToList();
+                var lastDpt = dpts.LastOrDefault();
+                var totFill = lastDpt?.GetFirstChild<C.ChartShapeProperties>()
+                    ?.GetFirstChild<Drawing.SolidFill>();
+                var totClr = totFill != null ? ReadColorFromFill(totFill) : null;
+                if (totClr != null) node.Format["totalColor"] = totClr;
+            }
+        }
+
+        // R24 — for combo charts surface the per-series type list (and the
+        // split point if it cleanly partitions into a primary block + tail)
+        // so dump→replay can reconstruct mixed-type charts. Without this,
+        // every combo collapsed back to a column+line split at index 1.
+        if (chartType == "combo")
+        {
+            var typesPerSeries = new List<string>();
+            foreach (var ct in plotArea.Elements<OpenXmlCompositeElement>())
+            {
+                string? ctLabel = ct switch
+                {
+                    C.BarChart bc => bc.GetFirstChild<C.BarDirection>()?.Val?.Value == C.BarDirectionValues.Bar
+                        ? "bar" : "column",
+                    C.LineChart => "line",
+                    C.AreaChart => "area",
+                    C.ScatterChart => "scatter",
+                    C.PieChart => "pie",
+                    C.DoughnutChart => "doughnut",
+                    C.BubbleChart => "bubble",
+                    C.RadarChart => "radar",
+                    _ => null,
+                };
+                if (ctLabel == null) continue;
+                var serCount = ct.Elements<OpenXmlCompositeElement>()
+                    .Count(e => e.LocalName == "ser");
+                for (int i = 0; i < serCount; i++) typesPerSeries.Add(ctLabel);
+            }
+            if (typesPerSeries.Count > 0)
+            {
+                node.Format["comboTypes"] = string.Join(",", typesPerSeries);
+                // combosplit = number of leading series of the first type — the
+                // partition the simple Builder.combo path can rebuild without
+                // touching RebuildComboChart.
+                int splitAt = 0;
+                var first = typesPerSeries[0];
+                while (splitAt < typesPerSeries.Count && typesPerSeries[splitAt] == first)
+                    splitAt++;
+                if (splitAt > 0 && splitAt < typesPerSeries.Count)
+                    node.Format["combosplit"] = splitAt;
+            }
+        }
+
         var titleEl = chart.GetFirstChild<C.Title>();
         var titleText = titleEl?.Descendants<Drawing.Text>().FirstOrDefault()?.Text;
         if (titleText == null && titleEl != null)
@@ -46,6 +120,38 @@ internal static partial class ChartHelper
             if (!string.IsNullOrEmpty(strRefFormula)) titleText = strRefFormula;
         }
         if (titleText != null) node.Format["title"] = titleText;
+
+        // AutoTitleDeleted only round-trips when explicitly emitted in the
+        // OOXML — its absence is the default. Surface only the truthy form
+        // so dump→replay doesn't fight scatter charts, which Excel writes
+        // with <c:autoTitleDeleted val="1"/> to suppress the auto-generated
+        // single-series title. Without this emit, replayed scatter charts
+        // gained a synthetic title and PowerPoint flagged the file as
+        // corrupt (Error 422).
+        var autoTitleDeleted = chart.GetFirstChild<C.AutoTitleDeleted>()?.Val?.Value;
+        if (autoTitleDeleted == true) node.Format["autoTitleDeleted"] = "true";
+
+        // Reference lines (AddReferenceLine overlays) — emit as a single
+        // chart-level `referenceLine=value:color:label:dash` (or semicolon-
+        // joined list) so dump→replay reconstructs the same overlay.
+        // Without this the lineChart sibling round-tripped as a real data
+        // series and the chartType heuristic that excluded ref-line-only
+        // LineCharts found nothing to emit, so the overlay was lost.
+        {
+            var refLines = ReadReferenceLines(plotArea);
+            if (refLines.Count > 0)
+            {
+                var specs = refLines.Select(r =>
+                {
+                    var v = r.Value.ToString("G",
+                        System.Globalization.CultureInfo.InvariantCulture);
+                    var label = string.IsNullOrEmpty(r.Name) ? "" : r.Name;
+                    var dash = r.Dash;
+                    return $"{v}:{r.Color}:{label}:{dash}";
+                });
+                node.Format["referenceLine"] = string.Join(";", specs);
+            }
+        }
 
         // Title formatting: font, size, color, bold from RunProperties
         if (titleEl != null)
@@ -83,6 +189,12 @@ internal static partial class ChartHelper
                 "tr" => "topRight",
                 _ => posRaw
             };
+        }
+        else
+        {
+            // Builder defaults to legend=bottom when prop absent; emit explicit
+            // "none" so dump→replay round-trip preserves the no-legend state.
+            node.Format["legend"] = "none";
         }
 
         var dataLabels = plotArea.Descendants<C.DataLabels>().FirstOrDefault();
@@ -219,9 +331,48 @@ internal static partial class ChartHelper
             if (axisFontStr != null) node.Format["axisFont"] = axisFontStr;
         }
 
-        // Secondary axis
+        // Secondary axis — emit the 1-based series indices bound to the
+        // secondary axis so dump→replay round-trips. The Setter expects
+        // "1,3" form (series indices); emitting bare "true" silently failed
+        // parsing on replay because every comma-split token tried as int
+        // produced [-1] then was filtered out.
         var valAxes = plotArea.Elements<C.ValueAxis>().ToList();
-        if (valAxes.Count > 1) node.Format["secondaryAxis"] = "true";
+        if (valAxes.Count > 1)
+        {
+            // Map AxisId -> rank by document order; rank 0 = primary, 1 = secondary.
+            var axisRank = new Dictionary<uint, int>();
+            for (int ai = 0; ai < valAxes.Count; ai++)
+            {
+                var axId = valAxes[ai].GetFirstChild<C.AxisId>()?.Val?.Value;
+                if (axId.HasValue) axisRank[axId.Value] = ai;
+            }
+            // Walk every series across every chart-type child of plotArea;
+            // series indices are 1-based in document order matching how
+            // ApplySecondaryAxis enumerates them.
+            var secIdx = new List<int>();
+            int seriesIdx = 0;
+            foreach (var ct in plotArea.Elements<OpenXmlCompositeElement>())
+            {
+                foreach (var ser in ct.Elements<OpenXmlCompositeElement>()
+                    .Where(e => e.LocalName == "ser"))
+                {
+                    seriesIdx++;
+                    var seriesAxisIds = ser.Parent?.Elements<C.AxisId>().ToList()
+                        ?? new List<C.AxisId>();
+                    // A series's axis is determined by its parent chart-type
+                    // element's c:axId children; primary vs secondary depends
+                    // on which value-axis those IDs match.
+                    var binds = seriesAxisIds
+                        .Select(a => a.Val?.Value)
+                        .Where(v => v.HasValue && axisRank.ContainsKey(v.Value))
+                        .Select(v => axisRank[v!.Value]);
+                    if (binds.Any(r => r >= 1)) secIdx.Add(seriesIdx);
+                }
+            }
+            node.Format["secondaryAxis"] = secIdx.Count > 0
+                ? string.Join(",", secIdx)
+                : "true"; // Fallback only if we couldn't resolve any series.
+        }
 
         // Axis label rotation (txPr/bodyPr/@rot in 60000ths of a degree)
         var catAxisForRot = (OpenXmlElement?)plotArea.GetFirstChild<C.CategoryAxis>()
@@ -329,6 +480,25 @@ internal static partial class ChartHelper
         var showMarker = lineChart?.GetFirstChild<C.ShowMarker>()?.Val;
         if (showMarker?.HasValue == true) node.Format["showMarker"] = showMarker.Value ? "true" : "false";
 
+        // Line-chart overlay elements: dropLines, hiLowLines, upDownBars.
+        // Serialize back into Setter-spec form so dump→replay round-trips
+        // visually (R31-F1: charts-line p7 lost the up/down bar overlay
+        // because Reader was silent on these CT_LineChart children).
+        if (lineChart != null)
+        {
+            var dropLinesEl = lineChart.GetFirstChild<C.DropLines>();
+            if (dropLinesEl != null)
+                node.Format["droplines"] = FormatLineOverlaySpec(dropLinesEl);
+
+            var hiLowLinesEl = lineChart.GetFirstChild<C.HighLowLines>();
+            if (hiLowLinesEl != null)
+                node.Format["hilowlines"] = FormatLineOverlaySpec(hiLowLinesEl);
+
+            var upDownBarsEl = lineChart.GetFirstChild<C.UpDownBars>();
+            if (upDownBarsEl != null)
+                node.Format["updownbars"] = FormatUpDownBarsSpec(upDownBarsEl);
+        }
+
         var scatterChart = plotArea.GetFirstChild<C.ScatterChart>();
         var scatterStyle = scatterChart?.GetFirstChild<C.ScatterStyle>()?.Val;
         if (scatterStyle?.HasValue == true) node.Format["scatterStyle"] = scatterStyle.InnerText;
@@ -363,13 +533,16 @@ internal static partial class ChartHelper
             var rotY = view3d.GetFirstChild<C.RotateY>()?.Val?.Value;
             var persp = view3d.GetFirstChild<C.Perspective>()?.Val?.Value;
             var v3dParts = new List<string>();
-            if (rotX != null) v3dParts.Add(rotX.Value.ToString());
-            else v3dParts.Add("0");
-            if (rotY != null) v3dParts.Add(rotY.Value.ToString());
-            else v3dParts.Add("0");
-            if (persp != null) v3dParts.Add(persp.Value.ToString());
-            else v3dParts.Add("0");
-            node.Format["view3d"] = string.Join(",", v3dParts);
+            // Emit empty slot for missing child to preserve "not set" through
+            // dump→replay. "0" placeholders caused Setter to write explicit
+            // rotX/rotY/perspective=0 elements that PPT then renders as a flat
+            // 3D camera (phantom rotation).
+            v3dParts.Add(rotX != null ? rotX.Value.ToString() : "");
+            v3dParts.Add(rotY != null ? rotY.Value.ToString() : "");
+            v3dParts.Add(persp != null ? persp.Value.ToString() : "");
+            // Suppress wholly-empty tuple (no children present at all).
+            if (rotX != null || rotY != null || persp != null)
+                node.Format["view3d"] = string.Join(",", v3dParts);
             if (rotX != null) node.Format["view3d.rotateX"] = (int)rotX.Value;
             if (rotY != null) node.Format["view3d.rotateY"] = (int)rotY.Value;
             if (persp != null) node.Format["view3d.perspective"] = (int)persp.Value;
@@ -406,7 +579,32 @@ internal static partial class ChartHelper
 
         var doughnutChart = plotArea.GetFirstChild<C.DoughnutChart>();
         var holeSize = doughnutChart?.GetFirstChild<C.HoleSize>()?.Val?.Value;
-        if (holeSize != null) node.Format["holeSize"] = (int)holeSize;
+        // CONSISTENCY(chart-format-type): emit as string to match sister
+        // numeric chart props (gapwidth, overlap, explosion, style…).
+        if (holeSize != null) node.Format["holeSize"] = ((int)holeSize).ToString();
+
+        // Chart-level explosion (pie/doughnut): the Setter writes c:explosion
+        // to every series uniformly. Surface as a single chart-level value
+        // when all series agree; otherwise leave to per-series read-out.
+        if (pieChart != null || doughnutChart != null)
+        {
+            var pieLikeSeries = plotArea.Descendants<OpenXmlCompositeElement>()
+                .Where(e => e.LocalName == "ser" && (e.Parent is C.PieChart || e.Parent is C.DoughnutChart || e.Parent is C.Pie3DChart || e.Parent is C.OfPieChart))
+                .ToList();
+            if (pieLikeSeries.Count > 0)
+            {
+                uint? uniform = null;
+                bool allSame = true;
+                foreach (var ser in pieLikeSeries)
+                {
+                    var ex = ser.GetFirstChild<C.Explosion>()?.Val?.Value;
+                    if (uniform == null) uniform = ex ?? 0;
+                    else if ((ex ?? 0) != uniform) { allSame = false; break; }
+                }
+                if (allSame && uniform != null && uniform > 0)
+                    node.Format["explosion"] = uniform.Value.ToString();
+            }
+        }
 
         var bubbleChart = plotArea.GetFirstChild<C.BubbleChart>();
         var bubbleScale = bubbleChart?.GetFirstChild<C.BubbleScale>()?.Val?.Value;
@@ -419,6 +617,34 @@ internal static partial class ChartHelper
             if (separator != null) node.Format["dataLabels.separator"] = separator;
             var dlNumFmt = dataLabels.GetFirstChild<C.NumberingFormat>()?.FormatCode?.Value;
             if (dlNumFmt != null) node.Format["dataLabels.numFmt"] = dlNumFmt;
+
+            // labelFont readback (R35-F3): BuildLabelTextProperties writes
+            // <c:txPr><a:p><a:pPr><a:defRPr sz="..." b="..."><a:solidFill>
+            // <a:srgbClr val="..."/></a:solidFill><a:latin typeface="..."/>
+            // </a:defRPr></a:pPr></a:p></c:txPr>. Surface size / color / font
+            // as dotted keys so dump→replay can rebuild the same spec via
+            // labelFont=size:color:fontname.
+            var dlDefRp = dataLabels.GetFirstChild<C.TextProperties>()
+                ?.GetFirstChild<Drawing.Paragraph>()
+                ?.GetFirstChild<Drawing.ParagraphProperties>()
+                ?.GetFirstChild<Drawing.DefaultRunProperties>();
+            if (dlDefRp != null)
+            {
+                if (dlDefRp.FontSize?.HasValue == true)
+                    node.Format["labelFont.size"] = (dlDefRp.FontSize.Value / 100).ToString();
+                if (dlDefRp.Bold?.HasValue == true && dlDefRp.Bold.Value)
+                    node.Format["labelFont.bold"] = "true";
+                var dlLabelFill = dlDefRp.GetFirstChild<Drawing.SolidFill>();
+                if (dlLabelFill != null)
+                {
+                    var dlLabelColor = ReadColorFromFill(dlLabelFill);
+                    if (dlLabelColor != null)
+                        node.Format["labelFont.color"] = dlLabelColor;
+                }
+                var dlLatin = dlDefRp.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value;
+                if (!string.IsNullOrEmpty(dlLatin))
+                    node.Format["labelFont.name"] = dlLatin;
+            }
         }
 
         var seriesCount = CountSeries(plotArea);
@@ -430,12 +656,39 @@ internal static partial class ChartHelper
         // (schema declares gradient/marker get:true on chart-scope).
         var allSer = plotArea.Descendants<OpenXmlCompositeElement>()
             .Where(e => e.LocalName == "ser").ToList();
-        if (allSer.Any(s => s.GetFirstChild<C.ChartShapeProperties>()?.GetFirstChild<Drawing.GradientFill>() != null))
-            node.Format["gradient"] = "true";
-        var firstMarkerSym = allSer
-            .Select(s => s.GetFirstChild<C.Marker>()?.GetFirstChild<C.Symbol>()?.Val)
-            .FirstOrDefault(v => v?.HasValue == true);
+        // R24 — emit the chart-level gradient as the same spec form the Setter
+        // accepts ("colorA-colorB[:angle]") so dump→replay round-trips. Reading
+        // the first series's GradientFill is sufficient because chart-scope
+        // Set fans the same spec to every series (line 853 in Setter).
+        var firstGradFill = allSer
+            .Select(s => s.GetFirstChild<C.ChartShapeProperties>()?.GetFirstChild<Drawing.GradientFill>())
+            .FirstOrDefault(g => g != null);
+        if (firstGradFill != null)
+        {
+            var spec = ReadGradientSpec(firstGradFill);
+            node.Format["gradient"] = spec ?? "true";
+        }
+        // Skip reference-line overlay series — their marker (val=none) is a
+        // structural side-effect of AddReferenceLine, not a user-set marker.
+        // Including them caused chart-level `marker=none` to be emitted on
+        // any chart whose first real series had no explicit marker, then
+        // dump→replay applied marker=none to series 1.
+        var firstRealMarker = allSer
+            .Where(s => !IsReferenceLineSeries(s))
+            .Select(s => s.GetFirstChild<C.Marker>())
+            .FirstOrDefault(m => m?.GetFirstChild<C.Symbol>()?.Val?.HasValue == true);
+        var firstMarkerSym = firstRealMarker?.GetFirstChild<C.Symbol>()?.Val;
         if (firstMarkerSym != null) node.Format["marker"] = firstMarkerSym.InnerText;
+        // markerColor fan-out: Setter accepts `marker=symbol:size:color`
+        // but tests assert the bare-symbol readback, so emit color on a
+        // separate key (mirrors markerSize). Reads the marker's spPr/solidFill.
+        var firstMarkerFill = firstRealMarker?.GetFirstChild<C.ChartShapeProperties>()
+            ?.GetFirstChild<Drawing.SolidFill>();
+        if (firstMarkerFill != null)
+        {
+            var mColor = ReadColorFromFill(firstMarkerFill);
+            if (mColor != null) node.Format["markerColor"] = mColor;
+        }
 
         var cats = ReadCategories(plotArea);
         if (cats != null) node.Format["categories"] = string.Join(",", cats);
@@ -449,8 +702,10 @@ internal static partial class ChartHelper
             .FirstOrDefault(s => s.GetFirstChild<C.Trendline>() != null);
         if (firstTrendlineSer != null)
         {
-            var tlType = firstTrendlineSer.GetFirstChild<C.Trendline>()?.GetFirstChild<C.TrendlineType>()?.Val;
-            if (tlType?.HasValue == true) node.Format["trendline"] = tlType.InnerText;
+            var firstTl = firstTrendlineSer.GetFirstChild<C.Trendline>();
+            var tlType = firstTl?.GetFirstChild<C.TrendlineType>()?.Val;
+            if (tlType?.HasValue == true)
+                node.Format["trendline"] = FormatTrendlineSpec(firstTl!, tlType.InnerText ?? "");
         }
 
         if (depth > 0)
@@ -471,6 +726,12 @@ internal static partial class ChartHelper
                 var serEl = plotArea.Descendants<OpenXmlCompositeElement>()
                     .Where(e => e.LocalName == "ser").ElementAtOrDefault(i);
 
+                // Flag reference-line overlay series so the batch emitter
+                // knows to omit them from `data=...` (the chart-level
+                // `referenceLine=spec` rebuilds them via AddReferenceLine).
+                if (serEl != null && IsReferenceLineSeries(serEl))
+                    seriesNode.Format["refLine"] = "true";
+
                 // Cell reference formulas (for series with NumberReference/StringReference)
                 if (serEl != null)
                 {
@@ -485,6 +746,12 @@ internal static partial class ChartHelper
                 }
 
                 var serSpPr = serEl?.GetFirstChild<C.ChartShapeProperties>();
+                // NoFill round-trip: when ApplySeriesColor wrote <a:noFill/>
+                // (color=none), Reader previously skipped emit and dump→replay
+                // reverted to the default auto color. Surface "none" so the
+                // setter side re-applies NoFill.
+                if (serSpPr?.GetFirstChild<Drawing.NoFill>() != null)
+                    seriesNode.Format["color"] = "none";
                 var serColor = serSpPr?.GetFirstChild<Drawing.SolidFill>();
                 if (serColor != null)
                 {
@@ -503,12 +770,17 @@ internal static partial class ChartHelper
                     {
                         var alphaUnits = (int)alphaEl.Val.Value;
                         seriesNode.Format["alpha"] = alphaUnits;
-                        seriesNode.Format["transparency"] = 100000 - alphaUnits;
+                        // transparency setter expects 0..100 percent — emit in
+                        // the same unit so dump→batch round-trips cleanly.
+                        // OOXML alpha is 0..100000 (100000 = fully opaque), so
+                        // transparency% = (100000 - alpha) / 1000.
+                        seriesNode.Format["transparency"] = Math.Round((100000 - alphaUnits) / 1000.0, 2);
                     }
                 }
-                // Gradient
+                // Gradient — emit the round-trippable spec form when possible.
                 var gradFill = serSpPr?.GetFirstChild<Drawing.GradientFill>();
-                if (gradFill != null) seriesNode.Format["gradient"] = "true";
+                if (gradFill != null)
+                    seriesNode.Format["gradient"] = ReadGradientSpec(gradFill) ?? "true";
                 // Line width
                 var outline = serSpPr?.GetFirstChild<Drawing.Outline>();
                 if (outline?.Width?.HasValue == true)
@@ -536,26 +808,82 @@ internal static partial class ChartHelper
                 var markerSize = marker?.GetFirstChild<C.Size>()?.Val;
                 if (markerSize?.HasValue == true)
                     seriesNode.Format["markerSize"] = (int)markerSize.Value;
+                // markerColor: marker fill ships on its own key (see
+                // chart-level fan-out above) so the bare `marker=symbol`
+                // readback expected by tests is preserved.
+                var markerFill = marker?.GetFirstChild<C.ChartShapeProperties>()
+                    ?.GetFirstChild<Drawing.SolidFill>();
+                if (markerFill != null)
+                {
+                    var mColor = ReadColorFromFill(markerFill);
+                    if (mColor != null) seriesNode.Format["markerColor"] = mColor;
+                }
                 // Smooth
                 var serSmooth = serEl?.GetFirstChild<C.Smooth>()?.Val;
                 if (serSmooth?.HasValue == true) seriesNode.Format["smooth"] = serSmooth.Value ? "true" : "false";
-                // Trendline
-                var trendline = serEl?.GetFirstChild<C.Trendline>();
-                if (trendline != null)
+                // Trendline(s): Excel allows multiple trendlines per series
+                // (e.g. linear AND polynomial together). Emit all of them as
+                // a semicolon-joined spec list so dump→replay re-applies each.
+                // dispRSqr/dispEq mirror the FIRST trendline's display flags
+                // (chart-level fan-out targets every trendline anyway).
+                var trendlines = serEl?.Elements<C.Trendline>().ToList()
+                    ?? new List<C.Trendline>();
+                if (trendlines.Count > 0)
                 {
-                    var tlType = trendline.GetFirstChild<C.TrendlineType>()?.Val;
-                    if (tlType?.HasValue == true) seriesNode.Format["trendline"] = tlType.InnerText;
-                    var dispRSqr = trendline.GetFirstChild<C.DisplayRSquaredValue>()?.Val;
+                    var specs = new List<string>();
+                    foreach (var tl in trendlines)
+                    {
+                        var tlType = tl.GetFirstChild<C.TrendlineType>()?.Val;
+                        if (tlType?.HasValue == true)
+                            specs.Add(FormatTrendlineSpec(tl, tlType.InnerText ?? ""));
+                    }
+                    if (specs.Count > 0)
+                        seriesNode.Format["trendline"] = string.Join(";", specs);
+                    var firstTl = trendlines[0];
+                    var dispRSqr = firstTl.GetFirstChild<C.DisplayRSquaredValue>()?.Val;
                     if (dispRSqr?.HasValue == true && dispRSqr.Value) seriesNode.Format["trendline.dispRSqr"] = "true";
-                    var dispEq = trendline.GetFirstChild<C.DisplayEquation>()?.Val;
+                    var dispEq = firstTl.GetFirstChild<C.DisplayEquation>()?.Val;
                     if (dispEq?.HasValue == true && dispEq.Value) seriesNode.Format["trendline.dispEq"] = "true";
                 }
-                // Error bars
+                // Error bars — emit as a "type:value" spec mirroring the
+                // BuildErrorBars input form so dump→replay re-creates the
+                // <c:errBars> element. Reading only the bare type lost the
+                // magnitude (the <c:val>/<c:plus>/<c:minus> NumericLiteral),
+                // and the per-series key `errBars` was also overshadowed by
+                // chart-level errbars=... in batch emit.
                 var errBars = serEl?.GetFirstChild<C.ErrorBars>();
                 if (errBars != null)
                 {
                     var errValType = errBars.GetFirstChild<C.ErrorBarValueType>()?.Val;
-                    if (errValType?.HasValue == true) seriesNode.Format["errBars"] = errValType.InnerText;
+                    if (errValType?.HasValue == true)
+                    {
+                        var typeName = errValType.InnerText switch
+                        {
+                            "fixedVal" => "fixed",
+                            "percentage" => "percent",
+                            "stdDev" => "stddev",
+                            "stdErr" => "stderr",
+                            _ => errValType.InnerText
+                        };
+                        // Magnitude lives in either <c:val>, or shared
+                        // <c:plus>/<c:minus> NumericLiteral first point.
+                        string? mag = null;
+                        var valEl = errBars.GetFirstChild<C.ErrorBarValue>()?.Val?.Value;
+                        if (valEl.HasValue && valEl.Value != 0)
+                            mag = valEl.Value.ToString("G",
+                                System.Globalization.CultureInfo.InvariantCulture);
+                        else
+                        {
+                            var plusLit = errBars.GetFirstChild<C.Plus>()
+                                ?.GetFirstChild<C.NumberLiteral>();
+                            var firstPt = plusLit?.Elements<C.NumericPoint>().FirstOrDefault();
+                            var numStr = firstPt?.GetFirstChild<C.NumericValue>()?.Text;
+                            if (!string.IsNullOrEmpty(numStr)) mag = numStr;
+                        }
+                        seriesNode.Format["errbars"] = mag != null
+                            ? $"{typeName}:{mag}"
+                            : typeName;
+                    }
                 }
                 // InvertIfNegative
                 var inv = serEl?.GetFirstChild<C.InvertIfNegative>()?.Val;
@@ -570,7 +898,10 @@ internal static partial class ChartHelper
                     {
                         var ptIdx = dPt.Index?.Val?.Value;
                         if (ptIdx == null) continue;
-                        var ptFill = dPt.GetFirstChild<C.ChartShapeProperties>()?.GetFirstChild<Drawing.SolidFill>();
+                        var ptSpPr = dPt.GetFirstChild<C.ChartShapeProperties>();
+                        if (ptSpPr?.GetFirstChild<Drawing.NoFill>() != null)
+                            seriesNode.Format[$"point{ptIdx.Value + 1}.color"] = "none";
+                        var ptFill = ptSpPr?.GetFirstChild<Drawing.SolidFill>();
                         if (ptFill != null)
                         {
                             var ptColor = ReadColorFromFill(ptFill);
@@ -596,9 +927,18 @@ internal static partial class ChartHelper
         var chartTypeCount = plotArea.ChildElements
             .Count(e => (e is C.BarChart or C.LineChart or C.PieChart or C.AreaChart or C.Area3DChart
                 or C.ScatterChart or C.DoughnutChart or C.Bar3DChart or C.Line3DChart or C.Pie3DChart
+                or C.OfPieChart
                 or C.BubbleChart or C.RadarChart or C.StockChart)
                 && !(e is C.LineChart lc && IsReferenceLineOnlyChart(lc)));
         if (chartTypeCount > 1) return "combo";
+
+        // The dispatch below picks the first real chart-type child. A
+        // reference-line-only LineChart sibling (added by AddReferenceLine on
+        // an area/bar/column chart) must not steal the dispatch -- otherwise
+        // a chart authored as `type=area` + `referenceLine=60` reports
+        // chartType=line on Get, and dump→replay rebuilds it as a single
+        // lineChart with no areaChart in plotArea.
+        bool IsRefOnly(OpenXmlElement el) => el is C.LineChart lc2 && IsReferenceLineOnlyChart(lc2);
 
         if (plotArea.GetFirstChild<C.BarChart>() is C.BarChart bar)
         {
@@ -615,8 +955,23 @@ internal static partial class ChartHelper
             if (grp == "percentStacked") return $"{prefix}_percentStacked";
             return prefix;
         }
-        if (plotArea.GetFirstChild<C.LineChart>() != null) return "line";
+        if (plotArea.Elements<C.LineChart>().FirstOrDefault(lc => !IsRefOnly(lc)) is C.LineChart lineCh)
+        {
+            // Mirror bar/area: encode stacked / percentStacked into the
+            // chartType token so dump→replay rebuilds the right grouping
+            // (Builder reads chartType only — no separate `grouping` Set key).
+            var lineGrp = lineCh.GetFirstChild<C.Grouping>()?.Val?.InnerText;
+            if (lineGrp == "stacked") return "line_stacked";
+            if (lineGrp == "percentStacked") return "line_percentStacked";
+            return "line";
+        }
         if (plotArea.GetFirstChild<C.PieChart>() != null) return "pie";
+        if (plotArea.GetFirstChild<C.OfPieChart>() is C.OfPieChart ofPie)
+        {
+            // CT_OfPieChart distinguishes via c:ofPieType (pie | bar).
+            var ofPieType = ofPie.GetFirstChild<C.OfPieType>()?.Val?.Value;
+            return ofPieType == C.OfPieValues.Bar ? "barOfPie" : "pieOfPie";
+        }
         if (plotArea.GetFirstChild<C.DoughnutChart>() != null) return "doughnut";
         if (plotArea.GetFirstChild<C.AreaChart>() is C.AreaChart area)
         {
@@ -915,6 +1270,125 @@ internal static partial class ChartHelper
         var scheme = solidFill.GetFirstChild<Drawing.SchemeColor>()?.Val;
         if (scheme?.HasValue == true) return scheme.InnerText;
         return null;
+    }
+
+    /// <summary>
+    /// Read a GradientFill as the dump/replay spec form
+    /// "colorA-colorB[-colorC][:angle]". Returns null if no stops can be
+    /// resolved. Drops alpha; preserves stop order. Mirrors the input format
+    /// accepted by ApplySeriesGradient in the Setter.
+    /// </summary>
+    internal static string? ReadGradientSpec(Drawing.GradientFill gradFill)
+    {
+        var stops = gradFill.GetFirstChild<Drawing.GradientStopList>()
+            ?.Elements<Drawing.GradientStop>().ToList();
+        // R28-B4: a 1-stop gradient is an edge case (Excel/PowerPoint normally
+        // require ≥2 stops) but does occur in hand-edited or third-party files.
+        // Returning null silently dropped it on dump; instead emit the single
+        // color so ApplySeriesGradient (which already tolerates 1-stop input
+        // via its duplicate-on-empty fallback) reconstructs an equivalent
+        // gradient. Zero stops still cannot round-trip — return null then.
+        if (stops == null || stops.Count == 0) return null;
+        var parts = new List<string>();
+        foreach (var stop in stops)
+        {
+            var rgb = stop.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
+            var scheme = stop.GetFirstChild<Drawing.SchemeColor>()?.Val;
+            if (rgb != null) parts.Add(rgb);
+            else if (scheme?.HasValue == true) parts.Add(scheme.InnerText!);
+            else return null;
+        }
+        var spec = string.Join("-", parts);
+        var linear = gradFill.GetFirstChild<Drawing.LinearGradientFill>();
+        if (linear?.Angle?.HasValue == true)
+            spec += ":" + (linear.Angle.Value / 60000);
+        return spec;
+    }
+
+    /// <summary>
+    /// Format a dropLines / hiLowLines element as a Setter-spec string.
+    /// Empty (no spPr.outline) emits "true"; presence-with-styling emits
+    /// "color[:widthPt[:dash]]". Mirrors BuildLineShapeProperties input.
+    /// </summary>
+    private static string FormatLineOverlaySpec(OpenXmlElement overlay)
+    {
+        var spPr = overlay.GetFirstChild<C.ChartShapeProperties>();
+        var outline = spPr?.GetFirstChild<Drawing.Outline>();
+        if (outline == null) return "true";
+        var color = ReadColorFromFill(outline.GetFirstChild<Drawing.SolidFill>());
+        if (color == null) return "true";
+        // Strip leading '#' for Setter-spec compatibility (BuildChartColorElement
+        // accepts both forms; dump output stays consistent with other Setter
+        // round-trip keys like updownbars which emit bare hex).
+        if (color.StartsWith('#')) color = color.Substring(1);
+        var parts = new List<string> { color };
+        if (outline.Width?.HasValue == true && outline.Width.Value > 0)
+        {
+            var widthPt = outline.Width.Value / 12700.0;
+            parts.Add(widthPt.ToString("G", System.Globalization.CultureInfo.InvariantCulture));
+        }
+        var dash = outline.GetFirstChild<Drawing.PresetDash>()?.Val;
+        if (dash?.HasValue == true)
+        {
+            if (parts.Count == 1) parts.Add("0.5"); // default width slot
+            parts.Add(dash.InnerText);
+        }
+        return string.Join(":", parts);
+    }
+
+    /// <summary>
+    /// Format an upDownBars element as "gapWidth[:upColor[:downColor]]".
+    /// Mirrors the Setter spec accepted in ChartHelper.Setter.cs case
+    /// "updownbars". Empty fill on up/down bars => slot left blank.
+    /// </summary>
+    private static string FormatUpDownBarsSpec(C.UpDownBars udb)
+    {
+        var gapWidth = udb.GetFirstChild<C.GapWidth>()?.Val?.Value ?? 150;
+        string? upColor = null, downColor = null;
+        var upBars = udb.GetFirstChild<C.UpBars>();
+        if (upBars != null)
+        {
+            var fill = upBars.GetFirstChild<C.ChartShapeProperties>()
+                ?.GetFirstChild<Drawing.SolidFill>();
+            upColor = ReadColorFromFill(fill);
+            if (upColor != null && upColor.StartsWith('#')) upColor = upColor.Substring(1);
+        }
+        var downBars = udb.GetFirstChild<C.DownBars>();
+        if (downBars != null)
+        {
+            var fill = downBars.GetFirstChild<C.ChartShapeProperties>()
+                ?.GetFirstChild<Drawing.SolidFill>();
+            downColor = ReadColorFromFill(fill);
+            if (downColor != null && downColor.StartsWith('#')) downColor = downColor.Substring(1);
+        }
+        // Only emit trailing slots if non-null. Setter accepts the abbreviated
+        // forms ("150", "150:00AA00", "150:00AA00:FF0000").
+        if (downColor != null)
+            return $"{gapWidth}:{upColor ?? ""}:{downColor}";
+        if (upColor != null)
+            return $"{gapWidth}:{upColor}";
+        return gapWidth.ToString();
+    }
+
+    /// <summary>
+    /// Build the canonical trendline spec string from a <c:trendline> element.
+    /// Embeds order for poly (poly:N) and period for movingAvg (movingAvg:N) so
+    /// dump→batch replay round-trips the polynomial degree / window size that
+    /// were otherwise silently dropped (the bare type name lost the parameter).
+    /// </summary>
+    private static string FormatTrendlineSpec(C.Trendline trendline, string typeName)
+    {
+        if (string.Equals(typeName, "poly", StringComparison.OrdinalIgnoreCase))
+        {
+            var order = trendline.GetFirstChild<C.PolynomialOrder>()?.Val;
+            if (order?.HasValue == true) return $"poly:{order.Value}";
+        }
+        else if (string.Equals(typeName, "movingAvg", StringComparison.OrdinalIgnoreCase))
+        {
+            var period = trendline.GetFirstChild<C.Period>()?.Val;
+            if (period?.HasValue == true) return $"movingAvg:{period.Value}";
+        }
+        return typeName;
     }
 
     /// <summary>

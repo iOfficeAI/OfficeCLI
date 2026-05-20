@@ -298,7 +298,12 @@ internal static class SpacingConverter
     public static string FormatPptLineSpacingPercent(int val)
     {
         var multiplier = val / 100000.0;
-        return $"{multiplier:0.##}x";
+        // SpacingPercent stores multiplier*100000 so the underlying precision
+        // is 5 decimal places. "0.##" rounds to 2dp which collapsed any
+        // multiplier below 0.005 to "0x", losing the fact that the value was
+        // non-zero. Use "0.#####" so small non-zero multipliers round-trip
+        // visibly (0.001x -> "0.001x" rather than "0x").
+        return $"{multiplier:0.#####}x";
     }
 
     /// <summary>

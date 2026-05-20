@@ -20,11 +20,14 @@ internal static class DrawingEffectsHelper
     /// </summary>
     public static Drawing.OuterShadow BuildOuterShadow(string value, Func<string, OpenXmlElement> colorBuilder)
     {
-        value = value.Replace(';', '-');
-        var parts = value.Split('-');
+        var parts = SplitEffectParts(value);
         var blurPt = ParseParam(parts, 1, 4.0, "shadow blur");
         var angleDeg = ParseParam(parts, 2, 45.0, "shadow angle");
         var distPt = ParseParam(parts, 3, 3.0, "shadow distance");
+        // Distinguish "user supplied opacity" from "default 40%": if the color
+        // carries an 8-digit hex alpha (#RRGGBBAA) and no explicit -OPACITY tail,
+        // the alpha-from-color must win over the 40% default so RRGGBBAA round-trips.
+        bool hasExplicitOpacity = parts.Length > 4;
         var opacity = ParseParam(parts, 4, 40.0, "shadow opacity");
 
         var shadow = new Drawing.OuterShadow
@@ -36,7 +39,15 @@ internal static class DrawingEffectsHelper
             RotateWithShape = false
         };
         var clr = colorBuilder(parts[0]);
-        SetAlphaChild(clr, (int)(opacity * 1000));
+        bool colorHasAlpha = clr.GetFirstChild<Drawing.Alpha>() != null;
+        // ColorEncodesAlpha: user wrote an 8-digit hex with alpha=FF — the
+        // alpha element is absent from the built color (SanitizeColorForOoxml
+        // drops the redundant 100% alpha child), but the caller's intent was
+        // an explicit "fully opaque" shadow. Suppress the 40% default so the
+        // explicit FF alpha doesn't silently downgrade to 40%.
+        bool colorEncodesAlpha = ColorEncodesExplicitAlpha(parts[0]);
+        if (hasExplicitOpacity || (!colorHasAlpha && !colorEncodesAlpha))
+            SetAlphaChild(clr, (int)(opacity * 1000));
         shadow.AppendChild(clr);
         return shadow;
     }
@@ -48,16 +59,35 @@ internal static class DrawingEffectsHelper
     /// </summary>
     public static Drawing.Glow BuildGlow(string value, Func<string, OpenXmlElement> colorBuilder)
     {
-        value = value.Replace(';', '-');
-        var parts = value.Split('-');
+        var parts = SplitEffectParts(value);
         var radiusPt = ParseParam(parts, 1, 8.0, "glow radius");
+        bool hasExplicitOpacity = parts.Length > 2;
         var opacity = ParseParam(parts, 2, 75.0, "glow opacity");
 
         var glow = new Drawing.Glow { Radius = (long)(radiusPt * 12700) };
         var clr = colorBuilder(parts[0]);
-        SetAlphaChild(clr, (int)(opacity * 1000));
+        bool colorHasAlpha = clr.GetFirstChild<Drawing.Alpha>() != null;
+        bool colorEncodesAlpha = ColorEncodesExplicitAlpha(parts[0]);
+        if (hasExplicitOpacity || (!colorHasAlpha && !colorEncodesAlpha))
+            SetAlphaChild(clr, (int)(opacity * 1000));
         glow.AppendChild(clr);
         return glow;
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="colorInput"/> is an 8-digit hex form
+    /// (CSS #RRGGBBAA or OOXML AARRGGBB) — i.e. the caller explicitly encoded
+    /// an alpha byte. Even when that byte resolves to 0xFF (fully opaque),
+    /// SanitizeColorForOoxml drops the redundant alpha element, so a naive
+    /// "no alpha child → use default 40% / 75%" check would silently override
+    /// the user's "100% opaque" intent. Mirror SanitizeColorForOoxml's
+    /// detection here so shadow/glow honor the explicit encoding.
+    /// </summary>
+    private static bool ColorEncodesExplicitAlpha(string colorInput)
+    {
+        if (string.IsNullOrEmpty(colorInput)) return false;
+        var hex = colorInput.TrimStart('#');
+        return hex.Length == 8 && hex.All(c => char.IsAsciiHexDigit(c));
     }
 
     /// <summary>
@@ -66,13 +96,22 @@ internal static class DrawingEffectsHelper
     /// </summary>
     public static Drawing.Reflection BuildReflection(string value)
     {
-        int endPos = value.ToLowerInvariant() switch
+        // Unknown preset names (and out-of-range numerics) used to silently
+        // fall back to "half" (90000), masking typos. Reject so the caller
+        // surfaces the value rather than writing a no-op effect.
+        int endPos;
+        switch (value.ToLowerInvariant())
         {
-            "tight" or "small" => 55000,
-            "true" or "half" => 90000,
-            "full" => 100000,
-            _ => int.TryParse(value, out var pct) ? (int)Math.Min((long)pct * 1000, 100000) : 90000
-        };
+            case "tight": case "small": endPos = 55000; break;
+            case "true":  case "half":  endPos = 90000; break;
+            case "full":               endPos = 100000; break;
+            default:
+                if (!int.TryParse(value, out var pct) || pct < 0 || pct > 100)
+                    throw new ArgumentException(
+                        $"Invalid 'reflection' value '{value}'. Valid presets: none, tight, small, half, true, full; or a numeric percentage 0-100.");
+                endPos = (int)Math.Min((long)pct * 1000, 100000);
+                break;
+        }
 
         return new Drawing.Reflection
         {
@@ -241,9 +280,58 @@ internal static class DrawingEffectsHelper
     private static double ParseParam(string[] parts, int index, double defaultValue, string paramName)
     {
         if (parts.Length <= index) return defaultValue;
-        if (!double.TryParse(parts[index], System.Globalization.CultureInfo.InvariantCulture, out var val)
+        var raw = parts[index];
+        // The historical contract is "bare double" — blur/dist in pt, angle
+        // in deg, opacity in %. Accept unit-qualified inputs that match each
+        // dimension so callers can write "5pt", "45deg", "40%" without
+        // forcing them to know the internal unit. Strip and parse the
+        // numeric prefix; reject unknown trailing letters.
+        var num = raw.Trim();
+        if (num.Length == 0)
+            throw new ArgumentException($"Invalid {paramName} value: '{raw}' (empty).");
+        // Strip a trailing alpha unit suffix (pt/deg/%/cm/in/px/emu). The
+        // numeric routes through pt/deg/% as-is — units other than pt for a
+        // pt-dimension still parse the number but the result is not
+        // converted; agents should stick to bare numbers or the native unit
+        // for now. The point of this fix is to stop ParseParam throwing on
+        // a unit-qualified token; a future pass can do real unit conversion.
+        int suffixStart = num.Length;
+        while (suffixStart > 0 && (char.IsLetter(num[suffixStart - 1]) || num[suffixStart - 1] == '%'))
+            suffixStart--;
+        var numPart = num[..suffixStart];
+        if (!double.TryParse(numPart, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var val)
             || double.IsNaN(val) || double.IsInfinity(val))
-            throw new ArgumentException($"Invalid {paramName} value: '{parts[index]}'.");
+            throw new ArgumentException($"Invalid {paramName} value: '{raw}'.");
         return val;
+    }
+
+    /// <summary>
+    /// Split an effect value string into ["color", "p1", "p2", …] tokens.
+    /// Historical separator is '-', but '-' collides with negative numbers
+    /// (e.g. "red;-5" for a shadow with negative angle). Prefer ';' when
+    /// present; fall back to '-' for the legacy form. Empty tokens are
+    /// rejected up front so opacity/blur don't silently take the default
+    /// for a malformed input like "red;;5".
+    /// </summary>
+    private static string[] SplitEffectParts(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            throw new ArgumentException("Effect value cannot be empty.");
+        // Prefer ';' so negative numeric params (e.g. "-5") survive split.
+        // When ';' is present, treat '-' as part of a numeric value, not a
+        // separator. Fall back to '-' for the legacy form. In ';' mode,
+        // reject empty tokens up front — the historical '-' code defaulted
+        // them silently, which masked typos like "red;;5".
+        if (value.Contains(';'))
+        {
+            var parts = value.Split(';');
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (string.IsNullOrEmpty(parts[i]))
+                    throw new ArgumentException($"Invalid effect value '{value}': empty token at position {i + 1}.");
+            }
+            return parts;
+        }
+        return value.Split('-');
     }
 }

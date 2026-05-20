@@ -196,6 +196,8 @@ public partial class WordHandler
             "pagebreak" or "columnbreak" or "break" => AddBreak(parent, parentPath, index, properties, type),
             "sdt" or "contentcontrol" => AddSdt(parent, parentPath, index, properties),
             "watermark" => AddWatermark(parent, parentPath, index, properties),
+            "textbox" or "txbx" => AddTextbox(parent, parentPath, index, properties),
+            "shape" or "sp" => AddShape(parent, parentPath, index, properties),
             "formfield" => AddFormField(parent, parentPath, index, properties),
             // Reject tracked-revision element types. Falling through to
             // AddDefault produces schema-invalid XML (unnamespaced attrs —

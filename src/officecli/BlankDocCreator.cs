@@ -27,8 +27,47 @@ public static class BlankDocCreator
                 CreatePowerPoint(path);
                 break;
             default:
-                throw new NotSupportedException($"Unsupported file type: {ext}. Supported: .docx, .xlsx, .pptx");
+                if (TryCreateViaPlugin(path, ext)) break;
+                throw new NotSupportedException($"Unsupported file type: {ext}. Supported: .docx, .xlsx, .pptx, or any extension served by an installed format-handler plugin that implements `create`.");
         }
+    }
+
+    /// <summary>
+    /// Delegate creation of an unknown extension to a registered format-handler
+    /// plugin, if one exists for that extension and exposes a `create &lt;path&gt;`
+    /// CLI subcommand. Returns <c>true</c> if a plugin was found and produced
+    /// the file successfully. Generic per docs/plugin-protocol.md — keeps
+    /// BlankDocCreator format-agnostic; any plugin that implements the
+    /// `create` subcommand on its executable participates.
+    /// </summary>
+    private static bool TryCreateViaPlugin(string path, string ext)
+    {
+        var plugin = OfficeCli.Core.Plugins.PluginRegistry.FindFor(
+            OfficeCli.Core.Plugins.PluginKind.FormatHandler, ext);
+        if (plugin is null) return false;
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = plugin.ExecutablePath,
+            ArgumentList = { "create", System.IO.Path.GetFullPath(path) },
+            UseShellExecute = false,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        using var proc = System.Diagnostics.Process.Start(psi);
+        if (proc is null) return false;
+        var stderr = proc.StandardError.ReadToEnd();
+        proc.WaitForExit();
+        if (proc.ExitCode != 0)
+        {
+            // Treat unknown-subcommand exit-64 as "plugin doesn't implement
+            // create" — fall back to NotSupportedException so the user sees
+            // the same error they'd see without any plugin installed.
+            if (proc.ExitCode == 64) return false;
+            throw new OfficeCli.Core.CliException(
+                $"Format-handler plugin '{plugin.Manifest.Name}' failed to create {path}: {stderr.Trim()}")
+            { Code = "plugin_create_failed" };
+        }
+        return true;
     }
 
     private static void CreateExcel(string path)
@@ -81,7 +120,7 @@ public static class BlankDocCreator
             )
         );
         // i18n: stamp themeFontLang from --locale so HTML preview, screen
-        // readers, and Word / LibreOffice's per-script font fallback know
+        // readers, and Word's per-script font fallback know
         // the document's primary language. Routes the locale to EastAsia
         // (CJK), Bidi (Arabic / Hebrew / Persian / Urdu / Thai / Hindi),
         // or the bare Val attribute otherwise.
@@ -150,19 +189,19 @@ public static class BlankDocCreator
         // as Ignorable — w14/wp14/w15 carry attributes like paraId/anchorId
         // directly. wps/wpg/wpi/wpc only appear inside mc:Choice and are
         // already gated by mc:Fallback, so they don't need (and shouldn't get)
-        // Ignorable. Mirrors LibreOffice's docxexport MainXmlNamespaces.
+        // Ignorable. Mirrors the docxexport MainXmlNamespaces.
         foreach (var p in new[] { "w14", "w15", "wp14" })
             ignorableTokens.Add(p);
         document.MCAttributes.Ignorable = string.Join(" ", ignorableTokens);
         mainPart.Document = document;
 
         // Two paths: full (default) emits Word-aligned baseline (Calibri 11pt
-        // + Normal style + theme1.xml — matches LibreOffice's behavior, which
+        // + Normal style + theme1.xml — matches the de-facto baseline, which
         // is what Word actually writes); minimal emits raw OOXML (TNR, no sz,
         // no Normal, no theme — matches POI's `new XWPFDocument()`). The
         // minimal path is the prior officecli behavior; the full path was
         // added so docs created by officecli render identically in Word /
-        // LibreOffice / cli preview without relying on each renderer's
+        // / cli preview without relying on each renderer's
         // Normal.dotm fallback heuristics.
         //
         // Resolve locale-specific defaults from LocaleFontRegistry (POI/LO
@@ -415,7 +454,7 @@ public static class BlankDocCreator
                     ),
                     new DocumentFormat.OpenXml.Presentation.GroupShapeProperties(),
                     CreateLayoutPlaceholder(2, "Title", PlaceholderValues.CenteredTitle, 685800, 2130425, 7772400, 1470025),
-                    CreateLayoutPlaceholder(3, "Subtitle", PlaceholderValues.SubTitle, 1371600, 3886200, 6400800, 1752600)
+                    CreateLayoutPlaceholder(3, "Subtitle", PlaceholderValues.SubTitle, 1371600, 3886200, 6400800, 1752600, idx: 1)
                 )
             ) { Name = "Title Slide" }
         ) { Type = DocumentFormat.OpenXml.Presentation.SlideLayoutValues.Title };
@@ -434,7 +473,7 @@ public static class BlankDocCreator
                     ),
                     new DocumentFormat.OpenXml.Presentation.GroupShapeProperties(),
                     CreateLayoutPlaceholder(2, "Title", PlaceholderValues.Title, 838200, 365125, 10515600, 1325563),
-                    CreateLayoutPlaceholder(3, "Content", PlaceholderValues.Body, 838200, 1825625, 10515600, 4351338)
+                    CreateLayoutPlaceholder(3, "Content", PlaceholderValues.Body, 838200, 1825625, 10515600, 4351338, idx: 1)
                 )
             ) { Name = "Title and Content" }
         ) { Type = DocumentFormat.OpenXml.Presentation.SlideLayoutValues.ObjectText };
@@ -453,8 +492,8 @@ public static class BlankDocCreator
                     ),
                     new DocumentFormat.OpenXml.Presentation.GroupShapeProperties(),
                     CreateLayoutPlaceholder(2, "Title", PlaceholderValues.Title, 838200, 365125, 10515600, 1325563),
-                    CreateLayoutPlaceholder(3, "Content Left", PlaceholderValues.Body, 838200, 1825625, 5181600, 4351338),
-                    CreateLayoutPlaceholder(4, "Content Right", PlaceholderValues.Body, 6172200, 1825625, 5181600, 4351338)
+                    CreateLayoutPlaceholder(3, "Content Left", PlaceholderValues.Body, 838200, 1825625, 5181600, 4351338, idx: 1),
+                    CreateLayoutPlaceholder(4, "Content Right", PlaceholderValues.Body, 6172200, 1825625, 5181600, 4351338, idx: 2)
                 )
             ) { Name = "Two Content" }
         ) { Type = DocumentFormat.OpenXml.Presentation.SlideLayoutValues.TwoColumnText };
@@ -529,13 +568,19 @@ public static class BlankDocCreator
     }
 
     private static Shape CreateLayoutPlaceholder(uint id, string name, PlaceholderValues phType,
-        long x, long y, long cx, long cy)
+        long x, long y, long cx, long cy, uint? idx = null)
     {
         var shape = new Shape();
+        // OOXML convention (PowerPoint templates): Title/CenteredTitle placeholders
+        // omit @idx (defaults to 0); SubTitle / Body / Footer / Date / SlideNumber
+        // slots carry an explicit @idx so slide-side <p:ph idx="N"/> can bind back to
+        // the matching layout placeholder during inheritance resolution.
+        var placeholder = new PlaceholderShape { Type = phType };
+        if (idx.HasValue) placeholder.Index = idx.Value;
         shape.NonVisualShapeProperties = new NonVisualShapeProperties(
             new NonVisualDrawingProperties { Id = id, Name = name },
             new NonVisualShapeDrawingProperties(new DocumentFormat.OpenXml.Drawing.ShapeLocks { NoGrouping = true }),
-            new ApplicationNonVisualDrawingProperties(new PlaceholderShape { Type = phType })
+            new ApplicationNonVisualDrawingProperties(placeholder)
         );
         shape.ShapeProperties = new ShapeProperties(
             new DocumentFormat.OpenXml.Drawing.Transform2D(

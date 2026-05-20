@@ -392,7 +392,7 @@ public partial class ExcelHandler
                         var pProps = firstPara?.ParagraphProperties?.CloneNode(true);
                         var rProps = firstPara?.Elements<Drawing.Run>().FirstOrDefault()?.RunProperties?.CloneNode(true);
                         txBody.RemoveAllChildren<Drawing.Paragraph>();
-                        var lines = value.Replace("\\n", "\n").Split('\n');
+                        var lines = value.Split('\n');
                         foreach (var line in lines)
                         {
                             var para = new Drawing.Paragraph();
@@ -441,9 +441,8 @@ public partial class ExcelHandler
                     {
                         var rPr = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
                         rPr.RemoveAllChildren<Drawing.SolidFill>();
-                        var (cRgb, _) = ParseHelpers.SanitizeColorForOoxml(value);
                         OfficeCli.Core.DrawingEffectsHelper.InsertFillInRunProperties(rPr,
-                            new Drawing.SolidFill(new Drawing.RgbColorModelHex { Val = cRgb }));
+                            DrawingColorBuilder.BuildSolidFill(value));
                     }
                     break;
                 case "underline":
@@ -474,8 +473,7 @@ public partial class ExcelHandler
                             spPr.AppendChild(new Drawing.NoFill());
                         else
                         {
-                            var (fRgb, _) = ParseHelpers.SanitizeColorForOoxml(value);
-                            spPr.AppendChild(new Drawing.SolidFill(new Drawing.RgbColorModelHex { Val = fRgb }));
+                            spPr.AppendChild(DrawingColorBuilder.BuildSolidFill(value));
                         }
                     }
                     break;
@@ -535,9 +533,7 @@ public partial class ExcelHandler
                         break;
                     }
                     var parts = value.Split(':');
-                    var (lRgb, _) = ParseHelpers.SanitizeColorForOoxml(parts[0]);
-                    var outline = new Drawing.Outline(
-                        new Drawing.SolidFill(new Drawing.RgbColorModelHex { Val = lRgb }));
+                    var outline = new Drawing.Outline(DrawingColorBuilder.BuildSolidFill(parts[0]));
                     if (parts.Length > 1
                         && double.TryParse(parts[1], System.Globalization.NumberStyles.Float,
                             System.Globalization.CultureInfo.InvariantCulture, out var wpt))

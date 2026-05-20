@@ -31,6 +31,18 @@
       "readback": "twips",
       "enforcement": "report"
     },
+    "skipGridSync": {
+      "type": "bool",
+      "description": "suppress the per-cell tblGrid synchronization side effect that normally fires when `width` is set. Used by dump → batch replay to preserve the source table's authoritative colWidths when individual tcW values disagree with the gridCol widths (Word renders by tcW; tblGrid is a layout hint). Set-only.",
+      "add": false,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop skipGridSync=true"
+      ],
+      "readback": "n/a",
+      "enforcement": "report"
+    },
     "font": {
       "type": "string",
       "description": "font family applied to every run in every paragraph in the cell (set-only; apply after add).",

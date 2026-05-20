@@ -6,7 +6,7 @@ using DocumentFormat.OpenXml.Packaging;
 namespace OfficeCli.Core;
 
 /// <summary>
-/// HTML-based refresh fallback. Mirrors LibreOffice's TOC update pipeline
+/// HTML-based refresh fallback. Mirrors the TOC update pipeline
 /// but uses the browser's pagination instead of Word's layout engine —
 /// page numbers may differ from what F9 in Word would produce, but the
 /// values are internally consistent with officecli's own HTML preview.

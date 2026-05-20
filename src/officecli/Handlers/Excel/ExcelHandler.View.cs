@@ -74,6 +74,13 @@ public partial class ExcelHandler
             if (sheetData == null) continue;
 
             int totalRows = sheetData.Elements<Row>().Count();
+            // CONSISTENCY(view-text-evaluator): annotated mode must construct
+            // the same FormulaEvaluator that view text uses, so a formula
+            // cell with evaluated=true (cached <v> OR evaluator prediction)
+            // surfaces the real value instead of the #OCLI_NOTEVAL! sentinel.
+            // Without this, GetCellDisplayValue falls through with no
+            // evaluator and emits the sentinel for every empty-cache formula.
+            var evaluator = new Core.FormulaEvaluator(sheetData, _doc.WorkbookPart);
             int lineNum = 0;
             foreach (var row in sheetData.Elements<Row>())
             {
@@ -95,7 +102,7 @@ public partial class ExcelHandler
                 foreach (var cell in cellElements)
                 {
                     var cellRef = cell.CellReference?.Value ?? "?";
-                    var value = GetCellDisplayValue(cell);
+                    var value = GetCellDisplayValue(cell, evaluator);
                     var formula = cell.CellFormula?.Text;
                     var type = GetCellTypeName(cell);
 

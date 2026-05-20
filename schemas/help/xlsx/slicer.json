@@ -20,7 +20,7 @@
       "description": "path or reference to an existing pivot table. Bare names resolve against the host sheet's pivots.",
       "aliases": ["pivot", "source", "tableName"],
       "add": true, "set": true, "get": true,
-      "examples": ["--prop pivotTable=/Sheet1/pivottable[1]", "--prop tableName=Pivot1"],
+      "examples": ["--prop pivotTable='/Sheet1/pivottable[1]'", "--prop tableName=Pivot1"],
       "readback": "pivot reference",
       "enforcement": "report"
     },

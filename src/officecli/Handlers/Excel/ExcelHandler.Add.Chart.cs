@@ -50,7 +50,7 @@ public partial class ExcelHandler
         }
 
         if (seriesData.Count == 0)
-            throw new ArgumentException("Chart requires data. Use: data=\"Series1:1,2,3;Series2:4,5,6\" " +
+            throw new ArgumentException("Chart requires a 'data' property. Use: data=\"Series1:1,2,3;Series2:4,5,6\" " +
                 "or dataRange=\"Sheet1!A1:D5\" or series1=\"Revenue:100,200,300\"");
 
         // Create DrawingsPart if needed

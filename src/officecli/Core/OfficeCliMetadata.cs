@@ -16,7 +16,7 @@ internal static class OfficeCliMetadata
 {
     public const string ProductName = "OfficeCLI";
 
-    // Application string follows the LibreOffice convention "<Product>/<Version>"
+    // Application string follows the convention "<Product>/<Version>"
     // so the version is visible everywhere Application is surfaced (Windows
     // Word's Advanced Properties → Statistics, audit tools, file inspectors).
     // We deliberately omit ap:AppVersion: its OOXML "X.YYYY" format would
@@ -63,7 +63,7 @@ internal static class OfficeCliMetadata
     ///
     /// Read-modify-write semantics: every existing element (with its
     /// attributes) is preserved verbatim — including non-standard fields
-    /// LibreOffice / Pages / Keynote / WPS occasionally add — and only the
+    /// other producers (Pages / Keynote / WPS) occasionally add — and only the
     /// four OfficeCLI-relevant fields are upserted.
     /// </summary>
     private static void WriteCoreProperties(OpenXmlPackage doc, DateTime nowUtc)

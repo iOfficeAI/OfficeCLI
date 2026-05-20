@@ -1,14 +1,10 @@
 // Copyright 2025 OfficeCLI (officecli.ai)
 // SPDX-License-Identifier: Apache-2.0
 
-using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
 using OfficeCli.Core;
-using Drawing = DocumentFormat.OpenXml.Drawing;
-using C = DocumentFormat.OpenXml.Drawing.Charts;
-using M = DocumentFormat.OpenXml.Math;
 
 namespace OfficeCli.Handlers;
 
@@ -17,6 +13,19 @@ public partial class PowerPointHandler
     private string AddSlide(string parentPath, int? index, Dictionary<string, string> properties)
     {
                 properties ??= new Dictionary<string, string>();
+                // A slide can only attach to the presentation root. Earlier
+                // releases silently fell back to "/" when the caller passed
+                // a non-root parent (e.g. `/slide[1]`, `/section[2]`,
+                // `/bogus`), which masked path typos and produced a slide
+                // somewhere other than where the caller expected.
+                if (!string.IsNullOrEmpty(parentPath)
+                    && parentPath != "/"
+                    && parentPath != "")
+                {
+                    throw new ArgumentException(
+                        $"Invalid parent '{parentPath}' for --type slide: a slide can only be added at '/' " +
+                        "(slides hang off the presentation root, not under another element).");
+                }
                 var presentationPart = _doc.PresentationPart
                     ?? throw new InvalidOperationException("Presentation not found");
                 var presentation = presentationPart.Presentation
@@ -48,6 +57,7 @@ public partial class PowerPointHandler
                 uint nextShapeId = 2;
                 if (properties.TryGetValue("title", out var titleText))
                 {
+                    XmlTextValidator.ValidateOrThrow(titleText, "title");
                     var titleShape = CreateTextShape(nextShapeId++, "Title", titleText, true);
                     newSlidePart.Slide.CommonSlideData!.ShapeTree!.AppendChild(titleShape);
                 }
@@ -55,7 +65,15 @@ public partial class PowerPointHandler
                 // Add content text if provided
                 if (properties.TryGetValue("text", out var contentText))
                 {
-                    var textShape = CreateTextShape(nextShapeId++, "Content", contentText, false);
+                    XmlTextValidator.ValidateOrThrow(contentText, "text");
+                    // Symmetry with the title path above: title carries
+                    // <p:ph type="title"/>, so content carries
+                    // <p:ph type="body" idx="1"/> — both bind to layout
+                    // slots and Get reports them as placeholder-flavored
+                    // (title → type=title; content → type=placeholder +
+                    // phType=body) instead of mismatched title vs bare textbox.
+                    var textShape = CreateTextShape(nextShapeId++, "Content", contentText, false, isTextBox: true,
+                        placeholderType: PlaceholderValues.Body, placeholderIndex: 1);
                     newSlidePart.Slide.CommonSlideData!.ShapeTree!.AppendChild(textShape);
                 }
 
@@ -74,6 +92,8 @@ public partial class PowerPointHandler
                     SetAdvanceTime(newSlidePart.Slide, advTime);
                 if (properties.TryGetValue("advanceclick", out var advClick) || properties.TryGetValue("advanceClick", out advClick))
                     SetAdvanceClick(newSlidePart.Slide, IsTruthy(advClick));
+                if (properties.TryGetValue("hidden", out var hiddenVal) && IsTruthy(hiddenVal))
+                    newSlidePart.Slide.Show = false;
 
                 newSlidePart.Slide.Save();
 

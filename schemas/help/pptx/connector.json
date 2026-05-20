@@ -28,7 +28,7 @@
       "type": "string",
       "description": "start-point shape reference (Add/Set only). Accepts /slide[N]/shape[M] (positional) or /slide[N]/shape[@id=M] (as returned by 'query shape'). Reverse path resolution is not implemented.",
       "add": true, "set": true, "get": false,
-      "examples": ["--prop from=/slide[1]/shape[1]", "--prop from=/slide[1]/shape[@id=10001]"],
+      "examples": ["--prop from='/slide[1]/shape[1]'", "--prop from='/slide[1]/shape[@id=10001]'"],
       "readback": "see startShape/endShape get-only properties for resolved endpoint shape ids",
       "enforcement": "report"
     },
@@ -36,7 +36,7 @@
       "type": "string",
       "description": "end-point shape reference (Add/Set only). Accepts /slide[N]/shape[M] (positional) or /slide[N]/shape[@id=M] (as returned by 'query shape'). Reverse path resolution is not implemented.",
       "add": true, "set": true, "get": false,
-      "examples": ["--prop to=/slide[1]/shape[2]", "--prop to=/slide[1]/shape[@id=10002]"],
+      "examples": ["--prop to='/slide[1]/shape[2]'", "--prop to='/slide[1]/shape[@id=10002]'"],
       "readback": "see startShape/endShape get-only properties for resolved endpoint shape ids",
       "enforcement": "report"
     },
@@ -85,11 +85,12 @@
     },
     "lineDash": {
       "type": "enum",
-      "values": ["solid", "dot", "dash", "dashDot", "longDash", "longDashDot", "sysDot", "sysDash"],
+      "values": ["solid", "dot", "dash", "dashDot", "lgDash", "lgDashDot", "lgDashDotDot", "sysDot", "sysDash", "sysDashDot", "sysDashDotDot", "longdash", "longdashdot"],
+      "description": "outline dash pattern (drawingML prstDash). Get readback emits the canonical OOXML token (lgDash/lgDashDot/lgDashDotDot/sysDot/...); the long* aliases are accepted on Add/Set only. 'dashDotDot' has no native enum member; it is accepted as an alias for sysDashDotDot (Get readback returns sysDashDotDot).",
       "add": true, "set": true, "get": true,
       "aliases": ["linedash"],
-      "examples": ["--prop lineDash=dash"],
-      "readback": "OOXML preset dash name",
+      "examples": ["--prop lineDash=dash", "--prop lineDash=lgDash", "--prop lineDash=sysDash"],
+      "readback": "canonical OOXML preset dash token (e.g. lgDash, sysDashDot)",
       "enforcement": "report"
     },
     "headEnd": {
@@ -128,6 +129,15 @@
     "startShape": { "type":"number", "add":false, "set":false, "get":true, "description":"shape id of the start connection endpoint.", "readback":"integer shape id", "enforcement":"report" },
     "startIdx":   { "type":"number", "add":false, "set":false, "get":true, "description":"connection point index on start shape (0-based; omitted when 0).", "readback":"integer", "enforcement":"report" },
     "endShape":   { "type":"number", "add":false, "set":false, "get":true, "description":"shape id of the end connection endpoint.", "readback":"integer shape id", "enforcement":"report" },
-    "endIdx":     { "type":"number", "add":false, "set":false, "get":true, "description":"connection point index on end shape (0-based; omitted when 0).", "readback":"integer", "enforcement":"report" }
+    "endIdx":     { "type":"number", "add":false, "set":false, "get":true, "description":"connection point index on end shape (0-based; omitted when 0).", "readback":"integer", "enforcement":"report" },
+    "zorder": {
+      "type": "string",
+      "description": "1-based z-order in slide shape tree. Add accepts 'top'/'bottom'/'forward'/'backward'/integer (same vocabulary as shape/picture/group); Get returns the resolved integer position.",
+      "aliases": ["z-order", "order"],
+      "add": true, "set": false, "get": true,
+      "examples": ["--prop zorder=top", "--prop zorder=2"],
+      "readback": "integer (1-based position among content elements)",
+      "enforcement": "report"
+    }
   }
 }

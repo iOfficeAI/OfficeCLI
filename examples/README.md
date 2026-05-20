@@ -14,17 +14,28 @@ examples/
 │   └── numbering-showcase.sh / numbering-showcase.docx
 ├── excel/                             # 📊 Excel examples
 │   ├── charts.sh / charts.xlsx        # Master chart showcase
-│   ├── charts-demo.sh / charts-demo.xlsx
-│   ├── charts-<type>.py / .xlsx       # Per-type chart scripts
-│   │   (basic, advanced, extended, area, bar, boxwhisker,
-│   │    bubble, column, combo, histogram, line, pie, radar,
-│   │    scatter, stock, waterfall)
+│   ├── charts/                        # Per-type chart scripts
+│   │   ├── charts-demo.{sh,md,xlsx}
+│   │   └── charts-<type>.{md,py,xlsx}
+│   │       (basic, advanced, extended, area, bar, boxwhisker,
+│   │        bubble, column, combo, histogram, line, pie, radar,
+│   │        scatter, stock, waterfall)
 │   └── pivot-tables.py / pivot-tables.xlsx
 └── ppt/                               # 🎨 PowerPoint examples
     ├── presentation.{md,sh,pptx}
     ├── animations.{md,sh,pptx}
     ├── video.{md,py,pptx}
-    └── 3d-model.{md,sh,pptx}
+    ├── 3d-model.{md,sh,pptx}
+    ├── charts/                        # PowerPoint chart showcases
+    │   └── charts-<type>.{md,py,pptx}
+    │       (column, bar, line, pie, doughnut, area, scatter,
+    │        bubble, radar, stock, combo, waterfall, 3d, advanced)
+    ├── tables/                        # PowerPoint table showcases
+    │   └── tables-<topic>.{md,sh,pptx}
+    │       (basic, styled, merged, borders, rows-cols, financial)
+    └── transitions/                   # Slide transition showcases
+        └── transitions-<topic>.{md,sh,pptx}
+            (basic, directional, shapes, bands, dynamic, modern, random, timing, morph)
 ```
 
 Each example follows the same trio: `<name>.md` (walkthrough), `<name>.sh`/`.py` (build script), `<name>.<ext>` (pre-generated output).
@@ -48,8 +59,8 @@ bash numbering-showcase.sh   # List/numbering styles
 ```bash
 cd excel
 bash charts.sh               # Master chart showcase
-bash charts-demo.sh          # 14+ chart types
-python charts-line.py        # Single-type example (any charts-<type>.py)
+bash charts/charts-demo.sh   # 14+ chart types
+python charts/charts-line.py # Single-type example (any charts/charts-<type>.py)
 python pivot-tables.py       # Pivot tables
 ```
 
@@ -60,6 +71,22 @@ bash presentation.sh         # Morph transitions / full deck
 bash animations.sh           # Animation effects
 python video.py              # Video embedding
 bash 3d-model.sh             # 3D model embedding
+python charts/charts-column.py      # PowerPoint chart examples (any charts/charts-<type>.py)
+bash tables/tables-basic.sh         # Tables — minimal create + populate
+bash tables/tables-styled.sh        # 9 built-in styles + banding flags + rowHeight/name=
+bash tables/tables-merged.sh        # gridSpan horizontal merge
+bash tables/tables-borders.sh       # Per-side / per-cell borders
+bash tables/tables-rows-cols.sh     # add row/column, per-row height, gridSpan + merge.down
+bash tables/tables-financial.sh     # End-to-end financial deck
+bash transitions/transitions-basic.sh        # cut/fade/dissolve/flash + 'none' clear
+bash transitions/transitions-directional.sh  # push/wipe/cover/uncover × direction matrix
+bash transitions/transitions-shapes.sh       # circle/diamond/wedge/wheel/zoom
+bash transitions/transitions-bands.sh        # blinds/strips/split/checker
+bash transitions/transitions-dynamic.sh      # 2010+ Exciting gallery (vortex/flip/...)
+bash transitions/transitions-modern.sh       # 2013+ Exciting gallery (pageCurl/airplane/origami/...)
+bash transitions/transitions-random.sh       # newsflash / random
+bash transitions/transitions-timing.sh       # speed, duration, advanceTime, advanceClick
+bash transitions/transitions-morph.sh        # 2016+ Morph tweening
 ```
 
 ---
@@ -81,6 +108,9 @@ bash 3d-model.sh             # 3D model embedding
 - Slide / shape construction
 - Morph transitions and animations
 - Video and 3D model embedding
+- Native chart examples (column, bar, line, pie, doughnut, area, scatter, bubble, radar, stock, combo, waterfall, 3D, advanced)
+- Tables — basic, built-in styles, merged cells, borders, row/column ops, real-world financial deck
+- Slide transitions — all 59 schema tokens covered across 9 trios: basic, directional, shape, band, dynamic 3D (p14), modern (p15 — Page Curl, Airplane, Origami, …), random, timing, and Morph
 
 ---
 

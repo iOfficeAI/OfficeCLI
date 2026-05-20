@@ -58,20 +58,20 @@
     "errBars": {
       "type": "string",
       "add": false,
-      "set": false,
+      "set": true,
       "get": true,
-      "description": "error bar value type token (e.g. cust, fixedVal, stdDev).",
+      "description": "error bar value type (fixed, percent, stddev, stderr); accepted aliases: fixedValue, percentage/pct, standardDeviation, standardError. Pass 'none' to clear. Silently ignored on series types that don't support error bars.",
       "readback": "OOXML errValType token",
-      "enforcement": "report"
+      "enforcement": "lenient"
     },
     "invertIfNeg": {
-      "type": "bool",
+      "type": "string",
       "add": false,
-      "set": false,
+      "set": true,
       "get": true,
-      "description": "invert color for negative values (per-series readback).",
+      "description": "invert color for negative values. Bar/column/area/pie series only; line/scatter silently ignore.",
       "readback": "true | false",
-      "enforcement": "report"
+      "enforcement": "lenient"
     },
     "lineDash": {
       "type": "enum",
@@ -93,7 +93,7 @@
       "aliases": [
         "dash"
       ],
-      "description": "series line dash style. Set accepts user-friendly aliases (dash/dot/dashDot/longDash); Get returns OOXML token (sysDash/sysDot/sysDashDot/lgDash). 'solid' is the only round-trip-stable value.",
+      "description": "series line dash style. Set accepts user-friendly aliases (dash/dot/dashDot/longDash); Get returns OOXML token (sysDash/sysDot/sysDashDot/lgDash). 'dashDotDot' has no native enum member and is accepted as an alias for sysDashDotDot — Get readback will return sysDashDotDot. 'solid' is the only round-trip-stable value.",
       "examples": [
         "--prop lineDash=dash",
         "--prop lineDash=solid"
@@ -133,6 +133,20 @@
         "--prop markerSize=8"
       ],
       "readback": "integer",
+      "enforcement": "report"
+    },
+    "markerColor": {
+      "type": "string",
+      "aliases": [
+        "marker.color"
+      ],
+      "set": true,
+      "get": true,
+      "description": "per-series marker fill color (line/scatter/radar). Preserves existing symbol and size — pair with marker=/markerSize= to set the triplet independently. Round-trips via Reader's spPr/solidFill probe.",
+      "examples": [
+        "--prop markerColor=FF0000"
+      ],
+      "readback": "hex color, e.g. #FF0000",
       "enforcement": "report"
     },
     "name": {
@@ -183,8 +197,8 @@
       "enforcement": "report"
     },
     "smooth": {
-      "type": "bool",
-      "description": "smooth line interpolation for line/scatter series.",
+      "type": "string",
+      "description": "smooth line interpolation for line/scatter series (true|false).",
       "appliesWhen": {
         "parent.chartType": [
           "line",

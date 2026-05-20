@@ -365,9 +365,11 @@ public partial class ExcelHandler
                     // Auto-detect formula: value starting with '=' is treated as formula
                     if (effectiveValue.StartsWith('=') && effectiveValue.Length > 1)
                         goto case "formula";
-                    // CONSISTENCY(escape-sequences): mirror PPTX/Word — interpret
-                    // \n and \t two-char escapes as real newline / tab.
-                    var cellValue = effectiveValue.Replace("\\n", "\n").Replace("\\t", "\t");
+                    // CONSISTENCY(text-escape-boundary): \n / \t resolution is
+                    // applied at the CLI --prop parse boundary
+                    // (CommandBuilder.ParsePropsArray); the value arrives here
+                    // with real newlines/tabs already decoded.
+                    var cellValue = effectiveValue;
                     // Warn when overwriting an existing formula with a literal value.
                     // Without this, `set --prop value=N` on a formula cell silently
                     // drops the formula — the same conflict-class as supplying both
@@ -422,6 +424,16 @@ public partial class ExcelHandler
                         // R13-2: accept date-with-time variants (T and space separators).
                         if (!explicitTypeIsString && TryParseIsoDateFlexible(cellValue, out var dt))
                         {
+                            // Excel's date serial epoch is 1899-12-30 (preserving the
+                            // 1900 leap bug). Dates earlier than that map to negative
+                            // serials, which Excel renders as ####### or silently
+                            // clamps to the epoch — neither is what the user asked
+                            // for. Reject up front so the round-trip is honest
+                            // instead of writing serial 0 and reading back "1899-12-30".
+                            if (dt < new System.DateTime(1900, 1, 1))
+                                throw new ArgumentException(
+                                    $"Cannot store '{cellValue}' as date; Excel does not support dates before 1900-01-01 " +
+                                    $"(serial epoch is 1899-12-30). Use type=string to keep the literal text.");
                             cell.CellValue = new CellValue(dt.ToOADate().ToString(System.Globalization.CultureInfo.InvariantCulture));
                             cell.DataType = null;
                             if (!properties.ContainsKey("numberformat") && !properties.ContainsKey("numfmt") && !properties.ContainsKey("format"))
@@ -513,8 +525,20 @@ public partial class ExcelHandler
                         evalResult = inner;
                     if (evalResult is { IsNumeric: true })
                     {
-                        cell.CellValue = new CellValue(evalResult.ToCellValueText());
-                        cell.DataType = null;
+                        // IEEE-754 ±Infinity / NaN have no OOXML representation;
+                        // writing "<v>-Infinity</v>" produces a file Excel refuses
+                        // to open. Promote to #NUM! so the cell switches to t="e".
+                        var nv = evalResult.NumericValue!.Value;
+                        if (double.IsNaN(nv) || double.IsInfinity(nv))
+                        {
+                            cell.CellValue = new CellValue("#NUM!");
+                            cell.DataType = new DocumentFormat.OpenXml.EnumValue<CellValues>(CellValues.Error);
+                        }
+                        else
+                        {
+                            cell.CellValue = new CellValue(evalResult.ToCellValueText());
+                            cell.DataType = null;
+                        }
                     }
                     else if (evalResult is { IsString: true })
                     {
@@ -673,6 +697,12 @@ public partial class ExcelHandler
                         }
                         else
                         {
+                            // CONSISTENCY(hyperlink-scheme-allowlist): reject
+                            // javascript:/file:/data:/vbscript: before the
+                            // relationship is created. Internal targets
+                            // (Sheet!Cell, named ranges) already routed above
+                            // via TryParseInternalHyperlinkLocation.
+                            Core.HyperlinkUriValidator.RequireSafeScheme(value, "link");
                             var hlUri = new Uri(value, UriKind.RelativeOrAbsolute);
                             var hlRel = worksheet.AddHyperlinkRelationship(hlUri, isExternal: true);
                             var hl = new Hyperlink { Reference = cellRef.ToUpperInvariant(), Id = hlRel.Id };
@@ -2490,6 +2520,12 @@ public partial class ExcelHandler
         var unsupported = new List<string>();
         var ws = GetSheet(worksheet);
         var colIdx = (uint)ColumnNameToIndex(colName);
+        // Excel's column space tops out at XFD (16384). Anything past that
+        // can't render in Excel; reject at the handler boundary so callers
+        // get an invalid_value rather than a quietly-corrupt OOXML file.
+        if (colIdx < 1 || colIdx > 16384)
+            throw new ArgumentException(
+                $"Invalid column '{colName}'. Column index {colIdx} is out of range; valid range is A-XFD (1-16384).");
 
         var columns = ws.GetFirstChild<Columns>();
         if (columns == null)
@@ -2653,6 +2689,12 @@ public partial class ExcelHandler
     private List<string> SetRow(WorksheetPart worksheet, uint rowIdx, Dictionary<string, string> properties)
     {
         var unsupported = new List<string>();
+        // Excel's row space tops out at 1048576 (2^20). Reject anything past
+        // that at the handler boundary so callers get an invalid_value
+        // rather than a quietly-corrupt OOXML file.
+        if (rowIdx < 1 || rowIdx > 1048576)
+            throw new ArgumentException(
+                $"Invalid row index {rowIdx}. Valid row range is 1-1048576.");
         var ws = GetSheet(worksheet);
         var sheetData = ws.GetFirstChild<SheetData>();
         if (sheetData == null)

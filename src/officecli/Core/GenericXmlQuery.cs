@@ -329,6 +329,14 @@ internal static class GenericXmlQuery
 
         try
         {
+            // Normalize boolean inputs to OOXML canonical "1"/"0" for typed
+            // ST_OnOff elements (w:kinsoku, w:snapToGrid, w:wordWrap,
+            // w:autoSpaceDE, w:bidi, etc.). The SDK parses "true"/"false"
+            // correctly and Word/LibreOffice render either way, but strict
+            // schema validators expect "1"/"0" and most reference docs emit
+            // that canonical form. Detect by probing if the typed element's
+            // Val property is OnOffValue / TrueFalseValue / similar.
+            value = NormalizeOnOffIfTyped(parent, key, value);
             var escapedVal = System.Security.SecurityElement.Escape(value);
             // OOXML attribute namespace handling differs by schema:
             //   - WordprocessingML: attributeFormDefault="qualified" → w:val
@@ -371,6 +379,53 @@ internal static class GenericXmlQuery
         {
             return false;
         }
+    }
+
+    // OOXML boolean (ST_OnOff) values: canonical is "1"/"0". SDK accepts
+    // "true"/"false"/"on"/"off"/"yes"/"no" but emits whatever was input.
+    // Normalize so the typed-child writer emits canonical "1"/"0" instead
+    // of leaking the user's input form to disk.
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2075",
+        Justification = "Probing for SDK-generated 'Val' property type. Same justification as TryCreateTypedChild.")]
+    private static string NormalizeOnOffIfTyped(OpenXmlElement parent, string key, string value)
+    {
+        // Cheap guard: only normalize when value is one of the boolean spellings
+        // we know about. Anything else (numbers, enums, strings) passes through.
+        var v = value.Trim();
+        bool? truthy = v.ToLowerInvariant() switch
+        {
+            "1" or "true" or "on" or "yes" => true,
+            "0" or "false" or "off" or "no" => false,
+            _ => null,
+        };
+        if (truthy == null) return value;
+
+        // Probe the typed Val property type. Bail out cheaply on anything
+        // that doesn't smell like an SDK OnOff wrapper (StringValue / Int32Value
+        // / enum types stay as-is).
+        var nsUri  = parent.NamespaceUri;
+        var prefix = parent.Prefix;
+        if (string.IsNullOrEmpty(nsUri) || string.IsNullOrEmpty(prefix)) return value;
+        try
+        {
+            var tempElement = parent.CloneNode(false);
+            tempElement.InnerXml = $"<{prefix}:{key} xmlns:{prefix}=\"{nsUri}\" {prefix}:val=\"1\"/>";
+            var newChild = tempElement.FirstChild;
+            if (newChild is null or OpenXmlUnknownElement) return value;
+            var valProp = newChild.GetType().GetProperty("Val");
+            if (valProp == null) return value;
+            // OnOffValue / TrueFalseValue / TrueFalseBlankValue all live in
+            // DocumentFormat.OpenXml namespace. Match by name to avoid hard
+            // dependency on a single nullable wrapper.
+            var typeName = (Nullable.GetUnderlyingType(valProp.PropertyType) ?? valProp.PropertyType).Name;
+            if (typeName is "OnOffValue" or "TrueFalseValue" or "TrueFalseBlankValue")
+                return truthy.Value ? "1" : "0";
+        }
+        catch
+        {
+            // Probe failure → preserve original (best-effort normalization).
+        }
+        return value;
     }
 
     // Build a candidate child via SDK InnerXml parse, return it only if the

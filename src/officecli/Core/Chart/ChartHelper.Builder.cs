@@ -36,11 +36,25 @@ internal static partial class ChartHelper
         var plotArea = new C.PlotArea(new C.Layout());
         uint catAxisId = 1;
         uint valAxisId = 2;
+        uint serAxisId = 3;
 
         OpenXmlCompositeElement? chartElement;
         bool needsAxes = true;
+        // 3D charts (bar3D/column3D/line3D/area3D) require a third axId on the
+        // chart element (CT_Bar3DChart / CT_Line3DChart / CT_Area3DChart) bound
+        // to a c:serAx in the plotArea. Without it, OpenXmlValidator rejects the
+        // chart and PowerPoint silently repairs the file with a degenerate
+        // render (single ribbon / no series progression).
+        bool needsSerAxis = false;
 
         var colors = ParseSeriesColors(properties);
+        // CONSISTENCY(chart-series-color): for single-series chart kinds
+        // (pie/doughnut/stock), the merged `colors[]` is consumed as per-point
+        // dPt overrides. A user typing `series1.color=#FF0000` expects the
+        // whole series tinted (matches `set chart` ApplySeriesColor), which
+        // would otherwise be silently dropped. Capture the dotted-only spec so
+        // those builders can call ApplySeriesColor in addition to per-point.
+        var dottedSeriesColors = ParseDottedSeriesColorsOnly(properties);
 
         switch (kind)
         {
@@ -64,7 +78,9 @@ internal static partial class ChartHelper
                 bar3dAuto.AppendChild(new C.GapWidth { Val = 150 });
                 bar3dAuto.AppendChild(new C.AxisId { Val = catAxisId });
                 bar3dAuto.AppendChild(new C.AxisId { Val = valAxisId });
+                bar3dAuto.AppendChild(new C.AxisId { Val = serAxisId });
                 chartElement = bar3dAuto;
+                needsSerAxis = true;
                 break;
             }
             case "bar":
@@ -92,7 +108,9 @@ internal static partial class ChartHelper
                 }
                 line3d.AppendChild(new C.AxisId { Val = catAxisId });
                 line3d.AppendChild(new C.AxisId { Val = valAxisId });
+                line3d.AppendChild(new C.AxisId { Val = serAxisId });
                 chartElement = line3d;
+                needsSerAxis = true;
                 break;
             }
             case "line":
@@ -116,7 +134,9 @@ internal static partial class ChartHelper
                 }
                 area3d.AppendChild(new C.AxisId { Val = catAxisId });
                 area3d.AppendChild(new C.AxisId { Val = valAxisId });
+                area3d.AppendChild(new C.AxisId { Val = serAxisId });
                 chartElement = area3d;
+                needsSerAxis = true;
                 break;
             }
             case "area":
@@ -125,14 +145,21 @@ internal static partial class ChartHelper
                 break;
             case "pie" when is3D:
             {
+                // Pie charts vary color by data point, not by series. Writing a
+                // series-level solidFill (via BuildPieSeries(..., color)) overrides
+                // varyColors and renders every slice in one color. Match the 2D
+                // pie path: build the series without a series color, then attach
+                // per-point colors through ApplyDataPointColors.
                 var pie3d = new C.Pie3DChart(
                     new C.VaryColors { Val = true }
                 );
-                for (int i = 0; i < seriesData.Count; i++)
+                if (seriesData.Count > 0)
                 {
-                    var color = colors != null && i < colors.Length ? colors[i] : DefaultSeriesColors[i % DefaultSeriesColors.Length];
-                    pie3d.AppendChild(BuildPieSeries((uint)i, seriesData[i].name,
-                        categories, seriesData[i].values, color));
+                    var series = BuildPieSeries(0, seriesData[0].name,
+                        categories, seriesData[0].values);
+                    ApplyDataPointColors(series, seriesData[0].values.Length, colors);
+                    ApplyDottedSeriesColors(new[] { (OpenXmlCompositeElement)series }, dottedSeriesColors);
+                    pie3d.AppendChild(series);
                 }
                 chartElement = pie3d;
                 needsAxes = false;
@@ -140,15 +167,25 @@ internal static partial class ChartHelper
             }
             case "pie":
                 chartElement = BuildPieChart(categories, seriesData, colors);
+                ApplyDottedSeriesColors(((C.PieChart)chartElement).Elements<C.PieChartSeries>().Cast<OpenXmlCompositeElement>().ToArray(), dottedSeriesColors);
+                needsAxes = false;
+                break;
+            case "pieofpie":
+            case "barofpie":
+                chartElement = BuildOfPieChart(
+                    kind == "barofpie" ? C.OfPieValues.Bar : C.OfPieValues.Pie,
+                    categories, seriesData, colors);
+                ApplyDottedSeriesColors(((C.OfPieChart)chartElement).Elements<C.PieChartSeries>().Cast<OpenXmlCompositeElement>().ToArray(), dottedSeriesColors);
                 needsAxes = false;
                 break;
             case "doughnut":
                 chartElement = BuildDoughnutChart(categories, seriesData, colors);
+                ApplyDottedSeriesColors(((C.DoughnutChart)chartElement).Elements<C.PieChartSeries>().Cast<OpenXmlCompositeElement>().ToArray(), dottedSeriesColors);
                 needsAxes = false;
                 break;
             case "scatter":
                 var scatterStyle = properties.GetValueOrDefault("scatterStyle", "lineMarker");
-                chartElement = BuildScatterChart(categories, seriesData, catAxisId, valAxisId, scatterStyle);
+                chartElement = BuildScatterChart(categories, seriesData, catAxisId, valAxisId, scatterStyle, colors);
                 break;
             case "bubble":
                 chartElement = BuildBubbleChart(categories, seriesData, catAxisId, valAxisId, colors);
@@ -162,6 +199,10 @@ internal static partial class ChartHelper
             // Note: column3d/bar3d are handled by "column when is3D" / "bar when is3D" above
             case "stock":
                 chartElement = BuildStockChart(categories, seriesData, catAxisId, valAxisId);
+                // Stock series default to NoFill outline (hi-lo lines carry the
+                // visual). series{N}.color must still be honored — apply after
+                // build so user-chosen tints reach the LineChartSeries spPr.
+                ApplyDottedSeriesColors(((C.StockChart)chartElement).Elements<C.LineChartSeries>().Cast<OpenXmlCompositeElement>().ToArray(), dottedSeriesColors);
                 needsAxes = true;
                 break;
             case "waterfall":
@@ -192,45 +233,43 @@ internal static partial class ChartHelper
             }
             case "combo":
             {
-                int splitAt = 1;
-                if (properties.TryGetValue("combosplit", out var splitStr))
-                    splitAt = ParseHelpers.SafeParseInt(splitStr, "combosplit");
-                splitAt = Math.Min(splitAt, seriesData.Count);
-
-                var barData = seriesData.Take(splitAt).ToList();
-                var lineData = seriesData.Skip(splitAt).ToList();
-
-                var comboBar = new C.BarChart(
-                    new C.BarDirection { Val = C.BarDirectionValues.Column },
-                    new C.BarGrouping { Val = C.BarGroupingValues.Clustered },
-                    new C.VaryColors { Val = false }
-                );
-                for (int ci = 0; ci < barData.Count; ci++)
+                // Reader emits per-series type list as `comboTypes=column,column,line`
+                // (or area,area,column,column,line — any mix). Honor it so dump→replay
+                // of line+area / bar+line / area+column+line combos rebuilds the
+                // correct CT_*Chart elements with each ser bound to its original type.
+                // Falls back to the legacy column-vs-line split at `combosplit` when
+                // comboTypes is absent.
+                string[]? comboTypes = null;
+                if (properties.TryGetValue("comboTypes", out var ctList))
+                    comboTypes = ctList.Split(',').Select(t => t.Trim().ToLowerInvariant()).ToArray();
+                if (comboTypes == null || comboTypes.Length == 0)
                 {
-                    var clr = colors != null && ci < colors.Length ? colors[ci] : DefaultSeriesColors[ci % DefaultSeriesColors.Length];
-                    comboBar.AppendChild(BuildBarSeries((uint)ci, barData[ci].name, categories, barData[ci].values, clr));
+                    int splitAt = 1;
+                    if (properties.TryGetValue("combosplit", out var splitStr))
+                        splitAt = ParseHelpers.SafeParseInt(splitStr, "combosplit");
+                    splitAt = Math.Min(splitAt, seriesData.Count);
+                    comboTypes = new string[seriesData.Count];
+                    for (int i = 0; i < seriesData.Count; i++)
+                        comboTypes[i] = i < splitAt ? "column" : "line";
                 }
-                comboBar.AppendChild(new C.AxisId { Val = catAxisId });
-                comboBar.AppendChild(new C.AxisId { Val = valAxisId });
-                plotArea.AppendChild(comboBar);
 
-                if (lineData.Count > 0)
+                // Group adjacent series of identical type into one CT_*Chart container
+                // (matches OOXML structure: each chart element holds a contiguous
+                // run of series of its own type; combo charts may interleave by
+                // chart-element ordering but each container is homogeneous).
+                int gi = 0;
+                while (gi < seriesData.Count)
                 {
-                    var comboLine = new C.LineChart(
-                        new C.Grouping { Val = C.GroupingValues.Standard },
-                        new C.VaryColors { Val = false }
-                    );
-                    for (int ci = 0; ci < lineData.Count; ci++)
-                    {
-                        var sIdx = (uint)(splitAt + ci);
-                        var cIdx = splitAt + ci;
-                        var clr = colors != null && cIdx < colors.Length ? colors[cIdx] : DefaultSeriesColors[cIdx % DefaultSeriesColors.Length];
-                        comboLine.AppendChild(BuildLineSeries(sIdx, lineData[ci].name, categories, lineData[ci].values, clr));
-                    }
-                    comboLine.AppendChild(new C.ShowMarker { Val = true });
-                    comboLine.AppendChild(new C.AxisId { Val = catAxisId });
-                    comboLine.AppendChild(new C.AxisId { Val = valAxisId });
-                    plotArea.AppendChild(comboLine);
+                    var t = gi < comboTypes.Length ? comboTypes[gi] : "line";
+                    int gj = gi + 1;
+                    while (gj < seriesData.Count
+                           && gj < comboTypes.Length
+                           && comboTypes[gj] == t)
+                        gj++;
+                    BuildComboGroup(t, plotArea, seriesData, categories,
+                        startIdx: gi, endIdxExclusive: gj,
+                        catAxisId, valAxisId, colors);
+                    gi = gj;
                 }
                 chartElement = null;
                 break;
@@ -255,6 +294,8 @@ internal static partial class ChartHelper
             {
                 plotArea.AppendChild(BuildCategoryAxis(catAxisId, valAxisId));
                 plotArea.AppendChild(BuildValueAxis(valAxisId, catAxisId, C.AxisPositionValues.Left));
+                if (needsSerAxis)
+                    plotArea.AppendChild(BuildSeriesAxis(serAxisId, valAxisId));
             }
         }
 
@@ -457,6 +498,11 @@ internal static partial class ChartHelper
         "majorunit", "minorunit",
         "axisnumfmt", "axisnumberformat",
         "gridlines", "majorgridlines", "minorgridlines",
+        // R24 — dotted gridline subkeys (Reader emits gridlineColor /
+        // gridlineWidth / gridlineDash; without deferring, Add dropped them).
+        "gridlinecolor", "gridlinewidth", "gridlinedash",
+        "majorgridlinecolor", "majorgridlinewidth", "majorgridlinedash",
+        "minorgridlinecolor", "minorgridlinewidth", "minorgridlinedash",
         "plotareafill", "plotfill", "chartareafill", "chartfill",
         "linewidth", "linedash", "dash", "marker", "markers", "markersize",
         "style", "styleid",
@@ -481,6 +527,11 @@ internal static partial class ChartHelper
         "plotarea.border", "plotborder", "chartarea.border", "chartborder",
         "gapwidth", "gap", "overlap",
         "axisline", "axis.line", "cataxisline", "valaxisline",
+        // R24 — dotted subkeys mirroring Reader emit.
+        "valaxisline.color", "valaxisline.width", "valaxisline.dash",
+        "cataxisline.color", "cataxisline.width", "cataxisline.dash",
+        "plotarea.border.color", "plotarea.border.width", "plotarea.border.dash",
+        "chartarea.border.color", "chartarea.border.width", "chartarea.border.dash",
         "explosion", "explode", "invertifneg", "invertifnegative",
         "errbars", "errorbars", "series.shadow", "seriesshadow",
         "series.outline", "seriesoutline",
@@ -522,6 +573,10 @@ internal static partial class ChartHelper
         "title.glow", "titleglow", "title.shadow", "titleshadow",
         // Area fill
         "areafill", "area.fill",
+        // R24 — bar chart bar-direction (rtl reverses category order on bar
+        // groupings). Was previously skipped on Add because it wasn't deferred,
+        // so dump→replay dropped the prop.
+        "direction",
     };
 
     /// <summary>
@@ -567,10 +622,70 @@ internal static partial class ChartHelper
         "explosion", "explode",
         "linewidth", "linedash", "dash",
         "shadow", "outline",
+        "outlinecolor", "outlinewidth", "outlinedash",
         "alpha", "transparency",
     };
 
     // ==================== Chart Type Builders ====================
+
+    /// <summary>
+    /// Build one homogeneous CT_*Chart container for a contiguous slice of
+    /// the combo's seriesData and append it to plotArea. Series indices remain
+    /// global (startIdx..endIdxExclusive-1) so each ser's c:idx matches its
+    /// original position — required for the Reader's comboTypes round-trip.
+    /// </summary>
+    private static void BuildComboGroup(string typeLabel,
+        C.PlotArea plotArea,
+        List<(string name, double[] values)> seriesData,
+        string[]? categories,
+        int startIdx, int endIdxExclusive,
+        uint catAxisId, uint valAxisId,
+        string[]? colors)
+    {
+        OpenXmlCompositeElement container = typeLabel switch
+        {
+            "bar" => new C.BarChart(
+                new C.BarDirection { Val = C.BarDirectionValues.Bar },
+                new C.BarGrouping { Val = C.BarGroupingValues.Clustered },
+                new C.VaryColors { Val = false }),
+            "column" => new C.BarChart(
+                new C.BarDirection { Val = C.BarDirectionValues.Column },
+                new C.BarGrouping { Val = C.BarGroupingValues.Clustered },
+                new C.VaryColors { Val = false }),
+            "area" => new C.AreaChart(
+                new C.Grouping { Val = C.GroupingValues.Standard },
+                new C.VaryColors { Val = false }),
+            "line" => new C.LineChart(
+                new C.Grouping { Val = C.GroupingValues.Standard },
+                new C.VaryColors { Val = false }),
+            _ => new C.LineChart(
+                new C.Grouping { Val = C.GroupingValues.Standard },
+                new C.VaryColors { Val = false }),
+        };
+
+        for (int i = startIdx; i < endIdxExclusive; i++)
+        {
+            var clr = colors != null && i < colors.Length ? colors[i]
+                : DefaultSeriesColors[i % DefaultSeriesColors.Length];
+            OpenXmlCompositeElement ser = typeLabel switch
+            {
+                "bar" or "column" => BuildBarSeries((uint)i, seriesData[i].name,
+                    categories, seriesData[i].values, clr),
+                "area" => BuildAreaSeries((uint)i, seriesData[i].name,
+                    categories, seriesData[i].values, clr),
+                _ => BuildLineSeries((uint)i, seriesData[i].name,
+                    categories, seriesData[i].values, clr),
+            };
+            container.AppendChild(ser);
+        }
+
+        if (typeLabel == "bar" || typeLabel == "column")
+            container.AppendChild(new C.GapWidth { Val = 150 });
+
+        container.AppendChild(new C.AxisId { Val = catAxisId });
+        container.AppendChild(new C.AxisId { Val = valAxisId });
+        plotArea.AppendChild(container);
+    }
 
     internal static C.BarChart BuildBarChart(
         C.BarDirectionValues direction, bool stacked, bool percentStacked,
@@ -623,7 +738,9 @@ internal static partial class ChartHelper
                 categories, seriesData[i].values, color));
         }
 
-        lineChart.AppendChild(new C.ShowMarker { Val = true });
+        // ShowMarker is opt-in: only emit when user sets the prop (Setter
+        // handles "showmarker" / "showmarkers"). Hard-coding true broke
+        // dump→replay for line charts that should have no markers.
         lineChart.AppendChild(new C.AxisId { Val = catAxisId });
         lineChart.AppendChild(new C.AxisId { Val = valAxisId });
         return lineChart;
@@ -670,6 +787,36 @@ internal static partial class ChartHelper
         return pieChart;
     }
 
+    /// <summary>
+    /// Build a c:ofPieChart (pieOfPie / barOfPie) — splits the trailing
+    /// data points of a single pie series into a secondary pie/bar so the
+    /// small-value slices remain readable. CT_OfPieChart requires an
+    /// ofPieType ("pie" or "bar") plus exactly one c:ser; the SecondPiePoints
+    /// knob defaults to 3 (matching Excel's default split).
+    /// </summary>
+    internal static C.OfPieChart BuildOfPieChart(
+        C.OfPieValues ofPieType,
+        string[]? categories, List<(string name, double[] values)> seriesData,
+        string[]? colors = null)
+    {
+        var ofPieChart = new C.OfPieChart(
+            new C.OfPieType { Val = ofPieType },
+            new C.VaryColors { Val = true }
+        );
+        if (seriesData.Count > 0)
+        {
+            var series = BuildPieSeries(0, seriesData[0].name,
+                categories, seriesData[0].values);
+            ApplyDataPointColors(series, seriesData[0].values.Length, colors);
+            ofPieChart.AppendChild(series);
+        }
+        // Default split = 3 trailing points (Excel's default). Document syntax:
+        // user can later set via secondPieSize / splitPos in a future round.
+        ofPieChart.AppendChild(new C.SecondPieSize { Val = 75 });
+        ofPieChart.AppendChild(new C.SeriesLines());
+        return ofPieChart;
+    }
+
     internal static C.DoughnutChart BuildDoughnutChart(
         string[]? categories, List<(string name, double[] values)> seriesData,
         string[]? colors = null)
@@ -702,7 +849,8 @@ internal static partial class ChartHelper
 
     internal static C.ScatterChart BuildScatterChart(
         string[]? categories, List<(string name, double[] values)> seriesData,
-        uint catAxisId, uint valAxisId, string scatterStyle = "lineMarker")
+        uint catAxisId, uint valAxisId, string scatterStyle = "lineMarker",
+        string[]? colors = null)
     {
         var styleVal = scatterStyle.ToLowerInvariant() switch
         {
@@ -726,14 +874,24 @@ internal static partial class ChartHelper
         {
             var ser = BuildScatterSeries((uint)i, seriesData[i].name,
                 xValues, seriesData[i].values);
-            // For marker-only style, explicitly hide connecting lines
+            // For marker-only style, explicitly hide connecting lines.
+            // CT_ScatterSer schema: idx, order, tx, spPr, marker, dPt*, dLbls?,
+            // trendline*, errBars?, xVal?, yVal?, smooth?, extLst? — spPr must
+            // sit right after tx; appending at end loses it on strict readers.
+            // CONSISTENCY(chart-schema-order): route through the same helper used
+            // by per-series fill/line/effect setters.
             if (hideLines)
             {
-                var spPr = ser.GetFirstChild<C.ChartShapeProperties>() ?? new C.ChartShapeProperties();
-                if (ser.GetFirstChild<C.ChartShapeProperties>() == null) ser.AppendChild(spPr);
+                var spPr = GetOrCreateSeriesShapeProperties(ser);
                 spPr.RemoveAllChildren<Drawing.Outline>();
                 spPr.AppendChild(new Drawing.Outline(new Drawing.NoFill()));
             }
+            // CONSISTENCY(series-color-builder): mirror BuildBarChart /
+            // BuildLineChart — when user supplied colors[] via series{N}.color
+            // or a colors property, apply per-series so scatter rounds-trip
+            // a non-default palette through dump→replay.
+            if (colors != null && i < colors.Length && !string.IsNullOrEmpty(colors[i]))
+                ApplySeriesColor(ser, colors[i]);
             scatterChart.AppendChild(ser);
         }
 
@@ -753,6 +911,56 @@ internal static partial class ChartHelper
         double[]? xValues = null;
         if (categories != null)
             xValues = categories.Select(c => double.TryParse(c, out var v) ? v : 0).ToArray();
+
+        // Bubble-specific data shape: data="X:..;Y:..;Size:.." describes ONE
+        // bubble series with X/Y/Size triples — not three parallel categorical
+        // series (the old behaviour stacked all bubbles at the last X value
+        // because each "series" emitted a y-line at the same x indices).
+        // Detect the X/Y/Size sentinel (case-insensitive) and collapse to a
+        // single C.BubbleChartSeries. Falls back to the per-series path
+        // (legacy: each row is its own bubble series) when the names don't
+        // match the triple.
+        if (seriesData.Count >= 2)
+        {
+            var byName = seriesData.ToDictionary(
+                s => s.name.Trim().ToLowerInvariant(),
+                s => s.values);
+            if (byName.ContainsKey("x") && byName.ContainsKey("y"))
+            {
+                var xs = byName["x"];
+                var ys = byName["y"];
+                var sizes = byName.TryGetValue("size", out var sz) ? sz
+                          : byName.TryGetValue("r", out var rsz) ? rsz
+                          : ys;
+                var color = colors != null && colors.Length > 0 ? colors[0] : DefaultSeriesColors[0];
+                var series = new C.BubbleChartSeries(
+                    new C.Index { Val = 0 },
+                    new C.Order { Val = 0 },
+                    new C.SeriesText(new C.NumericValue("Bubble"))
+                );
+                ApplySeriesColor(series, color);
+
+                var xLit = new C.NumberLiteral(new C.PointCount { Val = (uint)xs.Length });
+                for (int j = 0; j < xs.Length; j++)
+                    xLit.AppendChild(new C.NumericPoint(new C.NumericValue(xs[j].ToString("G"))) { Index = (uint)j });
+                series.AppendChild(new C.XValues(xLit));
+
+                var yLit = new C.NumberLiteral(new C.PointCount { Val = (uint)ys.Length });
+                for (int j = 0; j < ys.Length; j++)
+                    yLit.AppendChild(new C.NumericPoint(new C.NumericValue(ys[j].ToString("G"))) { Index = (uint)j });
+                series.AppendChild(new C.YValues(yLit));
+
+                var sizeLit = new C.NumberLiteral(new C.PointCount { Val = (uint)sizes.Length });
+                for (int j = 0; j < sizes.Length; j++)
+                    sizeLit.AppendChild(new C.NumericPoint(new C.NumericValue(sizes[j].ToString("G"))) { Index = (uint)j });
+                series.AppendChild(new C.BubbleSize(sizeLit));
+
+                bubbleChart.AppendChild(series);
+                bubbleChart.AppendChild(new C.AxisId { Val = catAxisId });
+                bubbleChart.AppendChild(new C.AxisId { Val = valAxisId });
+                return bubbleChart;
+            }
+        }
 
         for (int i = 0; i < seriesData.Count; i++)
         {
@@ -899,10 +1107,33 @@ internal static partial class ChartHelper
 
     // ==================== Series Color ====================
 
+    /// <summary>
+    /// Apply per-series dotted colors (`series{N}.color=<hex>`) to the
+    /// provided series elements. Used by single-series chart builders
+    /// (pie/doughnut/stock) where positional `colors=` is per-data-point.
+    /// </summary>
+    internal static void ApplyDottedSeriesColors(OpenXmlCompositeElement[] seriesElems, Dictionary<int, string> dotted)
+    {
+        if (dotted == null || dotted.Count == 0) return;
+        for (int i = 0; i < seriesElems.Length; i++)
+        {
+            if (dotted.TryGetValue(i + 1, out var c) && !string.IsNullOrEmpty(c))
+                ApplySeriesColor(seriesElems[i], c);
+        }
+    }
+
     internal static void ApplySeriesColor(OpenXmlCompositeElement series, string color)
     {
         series.RemoveAllChildren<C.ChartShapeProperties>();
         var spPr = new C.ChartShapeProperties();
+        if (color.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            spPr.AppendChild(new Drawing.NoFill());
+            var serText0 = series.GetFirstChild<C.SeriesText>();
+            if (serText0 != null) serText0.InsertAfterSelf(spPr);
+            else series.PrependChild(spPr);
+            return;
+        }
         var solidFill = new Drawing.SolidFill();
         solidFill.AppendChild(BuildChartColorElement(color));
         spPr.AppendChild(solidFill);
@@ -1376,6 +1607,24 @@ internal static partial class ChartHelper
             new C.CrossingAxis { Val = crossAxisId },
             new C.Crosses { Val = C.CrossesValues.AutoZero },
             new C.CrossBetween { Val = C.CrossBetweenValues.Between }
+        );
+    }
+
+    /// <summary>
+    /// Build a c:serAx (series axis) for 3D chart types. CT_Bar3DChart /
+    /// CT_Line3DChart / CT_Area3DChart require a third axId on the chart
+    /// element bound to a serAx in the plotArea — without it the chart fails
+    /// OpenXmlValidator and PowerPoint repairs the file with a degenerate
+    /// render (no series progression across the depth axis).
+    /// </summary>
+    internal static C.SeriesAxis BuildSeriesAxis(uint axisId, uint crossAxisId)
+    {
+        return new C.SeriesAxis(
+            new C.AxisId { Val = axisId },
+            new C.Scaling(new C.Orientation { Val = C.OrientationValues.MinMax }),
+            new C.Delete { Val = false },
+            new C.AxisPosition { Val = C.AxisPositionValues.Bottom },
+            new C.CrossingAxis { Val = crossAxisId }
         );
     }
 

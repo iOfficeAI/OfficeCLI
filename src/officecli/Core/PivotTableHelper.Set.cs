@@ -652,7 +652,7 @@ internal static partial class PivotTableHelper
             foreach (var (idx, func, showAs, displayName) in valueFields)
             {
                 // BaseField/BaseItem: Excel ignores these when ShowDataAs is normal,
-                // but LibreOffice and Excel both emit them unconditionally on every
+                // but Excel both emit them unconditionally on every
                 // dataField (verified against pivot_dark1.xlsx and other LO fixtures).
                 // Following the verified pattern rather than my earlier "omit them"
                 // theory — being closer to what real producers write reduces the risk

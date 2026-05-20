@@ -961,6 +961,28 @@ public partial class WordHandler
                     "tc" => current.Elements<TableCell>().Cast<OpenXmlElement>(),
                     "sdt" => current.ChildElements
                         .Where(e => e is SdtBlock || e is SdtRun).Cast<OpenXmlElement>(),
+                    // v5.7-cont: /body/textbox[N] → walk descendant drawings,
+                    // pick the Nth wps:txbx host, return its w:txbxContent
+                    // so child p[M] resolves naturally via the next loop iter.
+                    "textbox" => current.Descendants<Drawing>()
+                        .Where(d => d.InnerXml.Contains("<wps:txbx") || d.InnerXml.Contains("txBox=\"1\""))
+                        .Select(d => (OpenXmlElement?)d.Descendants().FirstOrDefault(e =>
+                            e.LocalName == "txbxContent"
+                            && e.NamespaceUri == "http://schemas.openxmlformats.org/wordprocessingml/2006/main"))
+                        .Where(e => e != null)
+                        .Cast<OpenXmlElement>(),
+                    // v5.7-cont: /body/shape[N] → walk descendant drawings,
+                    // pick the Nth wps:wsp that isn't itself a textbox. Returns
+                    // the wps:wsp element so children resolve in its scope.
+                    "shape" => current.Descendants<Drawing>()
+                        .Where(d => d.InnerXml.Contains("<wps:wsp")
+                                 && !d.InnerXml.Contains("<wps:txbx")
+                                 && !d.InnerXml.Contains("txBox=\"1\""))
+                        .Select(d => (OpenXmlElement?)d.Descendants().FirstOrDefault(e =>
+                            e.LocalName == "wsp"
+                            && e.NamespaceUri == "http://schemas.microsoft.com/office/word/2010/wordprocessingShape"))
+                        .Where(e => e != null)
+                        .Cast<OpenXmlElement>(),
                     // /<para>/tab[N] and /styles/<id>/tab[N] descend
                     // transparently through pPr/tabs (or StyleParagraph-
                     // Properties/tabs) so the user-facing path stays flat
@@ -1335,6 +1357,19 @@ public partial class WordHandler
             // DocumentNode.Format projection hides it.
 
             var pProps = para.ParagraphProperties;
+            // AddParagraph writes <w:pPrChange> for `trackChange=format`. The
+            // pPrChange block carries author/date attribution alongside a
+            // baseline snapshot of the pre-format pPr — mirror what the run
+            // side does for <w:rPrChange>.
+            var pPrChange = pProps?.GetFirstChild<ParagraphPropertiesChange>();
+            if (pPrChange != null)
+            {
+                node.Format["trackChange"] = "format";
+                if (!string.IsNullOrEmpty(pPrChange.Author?.Value))
+                    node.Format["trackChange.author"] = pPrChange.Author!.Value!;
+                if (pPrChange.Date?.Value is DateTime pDate)
+                    node.Format["trackChange.date"] = pDate.ToString("o");
+            }
             if (pProps != null)
             {
                 if (pProps.ParagraphStyleId?.Val?.Value != null)
@@ -1375,6 +1410,17 @@ public partial class WordHandler
                     if (pProps.SpacingBetweenLines.LineRule?.HasValue == true)
                     {
                         node.Format["lineRule"] = pProps.SpacingBetweenLines.LineRule.InnerText;
+                    }
+                    // CONSISTENCY(ind-chars): mirror style-level Get (Query.cs)
+                    // for the chars-unit space-before/after slots so P1-7
+                    // round-trip works on paragraphs as well as styles.
+                    if (pProps.SpacingBetweenLines.BeforeLines?.Value != null)
+                    {
+                        node.Format["spaceBeforeLines"] = pProps.SpacingBetweenLines.BeforeLines.Value;
+                    }
+                    if (pProps.SpacingBetweenLines.AfterLines?.Value != null)
+                    {
+                        node.Format["spaceAfterLines"] = pProps.SpacingBetweenLines.AfterLines.Value;
                     }
                 }
                 if (pProps.Indentation != null)
@@ -1492,7 +1538,7 @@ public partial class WordHandler
                         var (inhId, inhLvl) = inherited.Value;
                         node.Format["numId"] = inhId.ToString();
                         node.Format["numLevel"] = inhLvl.ToString();
-                        // BUG-DUMP26-01: flag style-inherited values so BatchEmitter
+                        // BUG-DUMP26-01: flag style-inherited values so WordBatchEmitter
                         // can suppress them on `add p` — they're already covered by
                         // the paragraph's style and emitting them would semantically
                         // promote inherited→explicit on round-trip. Mirrors the
@@ -1856,7 +1902,7 @@ public partial class WordHandler
                         // BUG-DUMP18-02: surface a hyperlink-scoped subpath on
                         // runs that are direct children of <w:hyperlink>. The
                         // canonical Path stays flat (/…/r[N]) for back-compat
-                        // with every existing caller; BatchEmitter's
+                        // with every existing caller; WordBatchEmitter's
                         // CollapseFieldChains carries this hint to the synth
                         // field-add row so a fldChar-chain field inside a
                         // hyperlink replays INSIDE the hyperlink instead of
@@ -2015,7 +2061,7 @@ public partial class WordHandler
                 // (which appended every bookmark at the tail of
                 // node.Children) is intentionally left empty.
                 // BUG-DUMP4-06: surface inline SdtRun (content control) children
-                // so BatchEmitter can re-emit a typed `add sdt` row carrying
+                // so WordBatchEmitter can re-emit a typed `add sdt` row carrying
                 // alias/tag/type metadata. Without this, GetAllRuns unwrapped
                 // the SdtRun's inner Run as a plain `add r` and the metadata
                 // was silently dropped on dump round-trip.
@@ -2049,7 +2095,7 @@ public partial class WordHandler
                     }
                 }
                 // BUG-DUMP6-01: surface <w:fldSimple> children as typed `field`
-                // nodes so BatchEmitter can re-emit `add field` with the
+                // nodes so WordBatchEmitter can re-emit `add field` with the
                 // instruction preserved. Without this, GetAllRuns descended
                 // into SimpleField and surfaced the inner display run as a
                 // plain run, silently dropping the w:instr attribute.
@@ -2156,6 +2202,22 @@ public partial class WordHandler
                     if (delAncestor.Date?.Value is DateTime delDate)
                         node.Format["trackChange.date"] = delDate.ToString("o");
                 }
+                else
+                {
+                    // AddRun writes <w:rPrChange> for `trackChange=format`. The
+                    // rPrChange block carries the same author/date attribution
+                    // as the ins/del wrappers, but rides inside <w:rPr> rather
+                    // than wrapping the run.
+                    var rPrChange = run.RunProperties?.GetFirstChild<RunPropertiesChange>();
+                    if (rPrChange != null)
+                    {
+                        node.Format["trackChange"] = "format";
+                        if (!string.IsNullOrEmpty(rPrChange.Author?.Value))
+                            node.Format["trackChange.author"] = rPrChange.Author!.Value!;
+                        if (rPrChange.Date?.Value is DateTime rDate)
+                            node.Format["trackChange.date"] = rDate.ToString("o");
+                    }
+                }
             }
             // CONSISTENCY(canonical-keys): mirror style Get (WordHandler.Query.cs:546-553) —
             // emit per-script font slots, no flat "font" alias. R6 BUG-1: previously
@@ -2244,6 +2306,12 @@ public partial class WordHandler
                 node.Format["superscript"] = true;
             if (run.RunProperties?.VerticalTextAlignment?.Val?.Value == VerticalPositionValues.Subscript)
                 node.Format["subscript"] = true;
+            // ApplyRunFormatting writes <w:position> for `position` (raised /
+            // lowered baseline offset in half-points). Mirror it on the Get
+            // side so the round-trip key survives.
+            var posVal = run.RunProperties?.GetFirstChild<Position>()?.Val?.Value;
+            if (!string.IsNullOrEmpty(posVal))
+                node.Format["position"] = posVal;
             if (run.RunProperties?.Spacing?.Val?.HasValue == true)
                 node.Format["charSpacing"] = $"{run.RunProperties.Spacing.Val.Value / 20.0:0.##}pt";
             // BUG-DUMP22-08: <w:bdr/> (character border) is multi-attribute
@@ -2306,7 +2374,7 @@ public partial class WordHandler
             // BUG-R5-T3: previously this branch wrote only id/name/alt/width/
             // height/relId — wrap/hPosition/vPosition/hRelative/vRelative/
             // behindText for floating pictures were silently dropped, which
-            // also broke dump→batch round-trip (BatchEmitter relies on Get).
+            // also broke dump→batch round-trip (WordBatchEmitter relies on Get).
             // Reuse CreateImageNode (the canonical picture-node builder) and
             // merge its Format bag into the run node.
             var runDrawing = run.GetFirstChild<Drawing>();
@@ -2472,7 +2540,7 @@ public partial class WordHandler
                 // BUG-DUMP10-05: a hyperlink wrapper with neither r:id nor
                 // anchor (tooltip-only / history-only) used to fall through
                 // both branches below, leaving the run with no Format keys
-                // that would trigger the BatchEmitter hyperlink-emit guard.
+                // that would trigger the WordBatchEmitter hyperlink-emit guard.
                 // Surface a sentinel so the wrapper survives even when there
                 // is no destination — required for w:hyperlink[@w:tooltip]
                 // bookmarks-style hover popups.
@@ -2492,7 +2560,7 @@ public partial class WordHandler
                 // CONSISTENCY(internal-anchor-hyperlink): runs inside an
                 // internal anchor hyperlink (w:hyperlink[@w:anchor]) had no
                 // r:id, so `anchor` was never surfaced on the run. The
-                // BatchEmitter hyperlink branch keys off Format["anchor"]/
+                // WordBatchEmitter hyperlink branch keys off Format["anchor"]/
                 // ["url"] to emit `add hyperlink`; without anchor the run
                 // was demoted to a plain `add r` and the link was lost on
                 // dump→batch round-trip.
@@ -2711,7 +2779,7 @@ public partial class WordHandler
                     node.Format["padding.right"] = dcm.TableCellRightMargin.Width.Value;
                 // Table-level shading (w:tblPr/w:shd). Mirror paragraph shading
                 // pattern: split into shading.val/.fill/.color sub-keys.
-                // BatchEmitter's shading-fold collapses these into a single
+                // WordBatchEmitter's shading-fold collapses these into a single
                 // semicolon-encoded `shading=VAL;FILL[;COLOR]` value, which
                 // AddTable consumes via the existing "shading" case.
                 // BUG-DUMP22-09: floating-table position (<w:tblpPr/>) and
@@ -2793,6 +2861,17 @@ public partial class WordHandler
                     if (tblLookRead.NoVerticalBand?.HasValue == true && !tblLookRead.NoVerticalBand.Value)
                         node.Format["bandedCols"] = true;
                 }
+
+                // Accessibility: table caption / description. Set writes
+                // <w:tblCaption w:val="…"/> and <w:tblDescription w:val="…"/>
+                // (see Set.Element.cs table branch). Without the readback,
+                // get/dump silently drops these on round-trip.
+                var tblCaption = tp.GetFirstChild<TableCaption>();
+                if (!string.IsNullOrEmpty(tblCaption?.Val?.Value))
+                    node.Format["caption"] = tblCaption.Val.Value!;
+                var tblDescription = tp.GetFirstChild<TableDescription>();
+                if (!string.IsNullOrEmpty(tblDescription?.Val?.Value))
+                    node.Format["description"] = tblDescription.Val.Value!;
             }
 
             // Column widths from grid

@@ -33,11 +33,18 @@ public partial class PowerPointHandler
             .Where(kv => !kv.Key.Equals("link", StringComparison.OrdinalIgnoreCase)
                       && !kv.Key.Equals("tooltip", StringComparison.OrdinalIgnoreCase))
             .ToDictionary(kv => kv.Key, kv => kv.Value);
-        var unsupported = SetRunOrShapeProperties(runOnlyProps, new List<Drawing.Run> { targetRun }, shape, slidePart, runContext: true);
+        var unsupported = SetRunOrShapeProperties(runOnlyProps, new List<Drawing.Run> { targetRun }, shape, slidePart, runContext: true, unsupportedContextHint: RunPropsHint);
         if (linkValRun != null) ApplyRunHyperlink(slidePart, targetRun, linkValRun, tooltipValRun);
         GetSlide(slidePart).Save();
         return unsupported;
     }
+
+    // Context labels used by SetRunOrShapeProperties so paragraph/run paths
+    // report paragraph-/run-valid props instead of the broader shape list.
+    private const string RunPropsHint =
+        "valid run props: text, bold, italic, underline, strike, color, fill, size, font, font.latin, font.ea, font.cs, link, tooltip, baseline, spacing, cap";
+    private const string ParagraphPropsHint =
+        "valid paragraph props: align, indent, level, marginLeft, marginRight, lineSpacing, spaceBefore, spaceAfter, link, tooltip — plus any run prop (applied to all runs in the paragraph)";
 
     private List<string> SetParagraphRunByPath(Match paraRunMatch, Dictionary<string, string> properties)
     {
@@ -47,11 +54,60 @@ public partial class PowerPointHandler
         var runIdx = int.Parse(paraRunMatch.Groups[4].Value);
 
         var (slidePart, shape) = ResolveShape(slideIdx, shapeIdx);
+        return SetParagraphRunOnShape(slidePart, shape, paraIdx, runIdx, properties);
+    }
+
+
+    // CONSISTENCY(placeholder-paragraph-path): /slide[N]/placeholder[X]/paragraph[K]
+    // shares the same paragraph/run setter as the /shape[M]/paragraph[K] form.
+    // ResolvePlaceholderShape materializes layout-inherited placeholders so
+    // the slide-level <p:sp> exists before we navigate into its txBody.
+    private List<string> SetPlaceholderParagraphByPath(Match phParaMatch, Dictionary<string, string> properties)
+    {
+        var slideIdx = int.Parse(phParaMatch.Groups[1].Value);
+        var phId = phParaMatch.Groups[2].Value;
+        var paraIdx = int.Parse(phParaMatch.Groups[3].Value);
+
+        var slideParts = GetSlideParts().ToList();
+        if (slideIdx < 1 || slideIdx > slideParts.Count)
+            throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
+        var slidePart = slideParts[slideIdx - 1];
+        var shape = ResolvePlaceholderShape(slidePart, phId);
+        return SetParagraphOnShape(slidePart, shape, paraIdx, properties);
+    }
+
+    private List<string> SetPlaceholderParagraphRunByPath(Match phParaRunMatch, Dictionary<string, string> properties)
+    {
+        var slideIdx = int.Parse(phParaRunMatch.Groups[1].Value);
+        var phId = phParaRunMatch.Groups[2].Value;
+        var paraIdx = int.Parse(phParaRunMatch.Groups[3].Value);
+        var runIdx = int.Parse(phParaRunMatch.Groups[4].Value);
+
+        var slideParts = GetSlideParts().ToList();
+        if (slideIdx < 1 || slideIdx > slideParts.Count)
+            throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
+        var slidePart = slideParts[slideIdx - 1];
+        var shape = ResolvePlaceholderShape(slidePart, phId);
+        return SetParagraphRunOnShape(slidePart, shape, paraIdx, runIdx, properties);
+    }
+
+
+    private List<string> SetParagraphByPath(Match paraMatch, Dictionary<string, string> properties)
+    {
+        var slideIdx = int.Parse(paraMatch.Groups[1].Value);
+        var shapeIdx = int.Parse(paraMatch.Groups[2].Value);
+        var paraIdx = int.Parse(paraMatch.Groups[3].Value);
+
+        var (slidePart, shape) = ResolveShape(slideIdx, shapeIdx);
+        return SetParagraphOnShape(slidePart, shape, paraIdx, properties);
+    }
+
+    private List<string> SetParagraphRunOnShape(SlidePart slidePart, Shape shape, int paraIdx, int runIdx, Dictionary<string, string> properties)
+    {
         var paragraphs = shape.TextBody?.Elements<Drawing.Paragraph>().ToList()
             ?? throw new ArgumentException("Shape has no text body");
         if (paraIdx < 1 || paraIdx > paragraphs.Count)
             throw new ArgumentException($"Paragraph {paraIdx} not found (shape has {paragraphs.Count} paragraphs)");
-
         var para = paragraphs[paraIdx - 1];
         var paraRuns = para.Elements<Drawing.Run>().ToList();
         if (runIdx < 1 || runIdx > paraRuns.Count)
@@ -64,20 +120,14 @@ public partial class PowerPointHandler
             .Where(kv => !kv.Key.Equals("link", StringComparison.OrdinalIgnoreCase)
                       && !kv.Key.Equals("tooltip", StringComparison.OrdinalIgnoreCase))
             .ToDictionary(kv => kv.Key, kv => kv.Value);
-        var unsupported = SetRunOrShapeProperties(runOnlyProps, new List<Drawing.Run> { targetRun }, shape, slidePart, runContext: true);
+        var unsupported = SetRunOrShapeProperties(runOnlyProps, new List<Drawing.Run> { targetRun }, shape, slidePart, runContext: true, unsupportedContextHint: RunPropsHint);
         if (linkVal != null) ApplyRunHyperlink(slidePart, targetRun, linkVal, tooltipVal);
         GetSlide(slidePart).Save();
         return unsupported;
     }
 
-
-    private List<string> SetParagraphByPath(Match paraMatch, Dictionary<string, string> properties)
+    private List<string> SetParagraphOnShape(SlidePart slidePart, Shape shape, int paraIdx, Dictionary<string, string> properties)
     {
-        var slideIdx = int.Parse(paraMatch.Groups[1].Value);
-        var shapeIdx = int.Parse(paraMatch.Groups[2].Value);
-        var paraIdx = int.Parse(paraMatch.Groups[3].Value);
-
-        var (slidePart, shape) = ResolveShape(slideIdx, shapeIdx);
         var paragraphs = shape.TextBody?.Elements<Drawing.Paragraph>().ToList()
             ?? throw new ArgumentException("Shape has no text body");
         if (paraIdx < 1 || paraIdx > paragraphs.Count)
@@ -87,11 +137,32 @@ public partial class PowerPointHandler
         var paraRuns = para.Elements<Drawing.Run>().ToList();
         var unsupported = new List<string>();
 
-        foreach (var (key, value) in properties)
+        // Order keys so `text` is processed BEFORE run-style props (size /
+        // color / font.* / bold / italic / ...). The text branch in
+        // SetRunOrShapeProperties rebuilds the shape's paragraphs from
+        // scratch whenever the original run count was 0 (empty placeholder)
+        // or the new text contains newlines / tabs — every Drawing.Run
+        // already mutated by an earlier key in the iteration order is then
+        // detached from the tree, and the styling silently disappears. The
+        // post-text refresh below repairs the case where text comes first or
+        // is interleaved with later keys; reordering up-front guarantees the
+        // common dump→replay pattern ("set paragraph text=X, size=48pt,
+        // color=#FFFFFF") lands the styling on the new runs.
+        var orderedKeys = properties.Keys
+            .OrderBy(k => k.Equals("text", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ToList();
+
+        foreach (var key in orderedKeys)
         {
+            var value = properties[key];
             switch (key.ToLowerInvariant())
             {
-                case "align":
+                // Schema declares aliases: [alignment, halign] for paragraph.align.
+                // CONSISTENCY(canonical-keys): accept the documented aliases here so
+                // they don't drop through to SetRunOrShapeProperties (which would
+                // surface them as UNSUPPORTED, since shape's `align` is text body
+                // alignment with a different code path).
+                case "align" or "alignment" or "halign":
                 {
                     var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                     pProps.Alignment = ParseTextAlignment(value);
@@ -128,26 +199,27 @@ public partial class PowerPointHandler
                     var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                     pProps.RemoveAllChildren<Drawing.LineSpacing>();
                     var (lsVal2, lsIsPercent) = SpacingConverter.ParsePptLineSpacing(value);
-                    if (lsIsPercent)
-                        pProps.AppendChild(new Drawing.LineSpacing(
-                            new Drawing.SpacingPercent { Val = lsVal2 }));
-                    else
-                        pProps.AppendChild(new Drawing.LineSpacing(
-                            new Drawing.SpacingPoints { Val = lsVal2 }));
+                    var lnSpc = lsIsPercent
+                        ? new Drawing.LineSpacing(new Drawing.SpacingPercent { Val = lsVal2 })
+                        : new Drawing.LineSpacing(new Drawing.SpacingPoints { Val = lsVal2 });
+                    // CONSISTENCY(schema-order-pptx): pPr children must follow
+                    // CT_TextParagraphProperties order or PowerPoint silently
+                    // drops them. See PowerPointHandler.Helpers.cs.
+                    InsertPPrChild(pProps, lnSpc);
                     break;
                 }
                 case "spacebefore" or "space.before":
                 {
                     var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                     pProps.RemoveAllChildren<Drawing.SpaceBefore>();
-                    pProps.AppendChild(new Drawing.SpaceBefore(new Drawing.SpacingPoints { Val = SpacingConverter.ParsePptSpacing(value) }));
+                    InsertPPrChild(pProps, new Drawing.SpaceBefore(new Drawing.SpacingPoints { Val = SpacingConverter.ParsePptSpacing(value) }));
                     break;
                 }
                 case "spaceafter" or "space.after":
                 {
                     var pProps = para.ParagraphProperties ?? (para.ParagraphProperties = new Drawing.ParagraphProperties());
                     pProps.RemoveAllChildren<Drawing.SpaceAfter>();
-                    pProps.AppendChild(new Drawing.SpaceAfter(new Drawing.SpacingPoints { Val = SpacingConverter.ParsePptSpacing(value) }));
+                    InsertPPrChild(pProps, new Drawing.SpaceAfter(new Drawing.SpacingPoints { Val = SpacingConverter.ParsePptSpacing(value) }));
                     break;
                 }
                 case "link":
@@ -163,8 +235,31 @@ public partial class PowerPointHandler
                 default:
                     // Apply run-level properties to all runs in this paragraph
                     var runUnsup = SetRunOrShapeProperties(
-                        new Dictionary<string, string> { { key, value } }, paraRuns, shape, slidePart, runContext: true);
+                        new Dictionary<string, string> { { key, value } }, paraRuns, shape, slidePart, runContext: true,
+                        unsupportedContextHint: ParagraphPropsHint);
                     unsupported.AddRange(runUnsup);
+                    // The `text` case in SetRunOrShapeProperties rebuilds the
+                    // shape's paragraphs from scratch when the original run
+                    // count was 0 (empty placeholder) or when the new text
+                    // spans multiple lines / contains tabs — in either case
+                    // every Drawing.Run captured in paraRuns is detached from
+                    // the tree and any subsequent property write lands on
+                    // orphaned XML. Refresh paraRuns against the live shape
+                    // so the very next key (size / color / font.latin / ...)
+                    // hits the new run instances. Re-resolve via paraIdx so
+                    // dump→replay of an empty title placeholder ("set para
+                    // text=X, size=48pt, color=#FFF") keeps the rPr on the
+                    // run instead of dropping every styling key after text.
+                    if (key.Equals("text", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var refreshed = shape.TextBody?.Elements<Drawing.Paragraph>().ToList()
+                            ?? new List<Drawing.Paragraph>();
+                        if (paraIdx >= 1 && paraIdx <= refreshed.Count)
+                        {
+                            para = refreshed[paraIdx - 1];
+                            paraRuns = para.Elements<Drawing.Run>().ToList();
+                        }
+                    }
                     break;
             }
         }
@@ -209,6 +304,11 @@ public partial class PowerPointHandler
             throw new ArgumentException($"Group {grpIdx} not found (total: {groups.Count})");
 
         var grp = groups[grpIdx - 1];
+        // Pull link/tooltip up front so the tooltip is applied alongside link
+        // even when only one of them is also in properties — same pairing as
+        // ApplyShapeHyperlink at shape level.
+        var grpLinkValue = properties.GetValueOrDefault("link");
+        var grpTooltipValue = properties.GetValueOrDefault("tooltip");
         var unsupported = new List<string>();
         foreach (var (key, value) in properties)
         {
@@ -216,7 +316,29 @@ public partial class PowerPointHandler
             {
                 case "name":
                     var nvGrpPr = grp.NonVisualGroupShapeProperties?.NonVisualDrawingProperties;
-                    if (nvGrpPr != null) nvGrpPr.Name = value;
+                    if (nvGrpPr != null)
+                    {
+                        Core.XmlTextValidator.ValidateOrThrow(value, "name");
+                        nvGrpPr.Name = value;
+                    }
+                    break;
+                case "link":
+                    ApplyGroupHyperlink(slidePart, grp, value, grpTooltipValue);
+                    break;
+                case "tooltip":
+                    // Paired with "link" above. When the user sets tooltip
+                    // without link on a group that already has a hyperlink,
+                    // update only the tooltip attribute in place.
+                    if (grpLinkValue == null)
+                    {
+                        var existing = grp.NonVisualGroupShapeProperties?.NonVisualDrawingProperties
+                            ?.GetFirstChild<Drawing.HyperlinkOnClick>();
+                        if (existing != null)
+                        {
+                            Core.XmlTextValidator.ValidateOrThrow(value, "tooltip");
+                            existing.Tooltip = value;
+                        }
+                    }
                     break;
                 case "x" or "y" or "width" or "height":
                 {
@@ -247,7 +369,7 @@ public partial class PowerPointHandler
                 {
                     var grpSpPr = grp.GroupShapeProperties ?? (grp.GroupShapeProperties = new GroupShapeProperties());
                     var xfrm = grpSpPr.TransformGroup ?? (grpSpPr.TransformGroup = new Drawing.TransformGroup());
-                    xfrm.Rotation = (int)(ParseHelpers.SafeParseDouble(value, "rotation") * 60000);
+                    xfrm.Rotation = (int)(ParseHelpers.SafeParseRotationDegrees(value, "rotation") * 60000);
                     break;
                 }
                 case "fill":
@@ -266,7 +388,7 @@ public partial class PowerPointHandler
                     if (!GenericXmlQuery.SetGenericAttribute(grp, key, value))
                     {
                         if (unsupported.Count == 0)
-                            unsupported.Add($"{key} (valid group props: x, y, width, height, rotation, name, fill)");
+                            unsupported.Add($"{key} (valid group props: x, y, width, height, rotation, name, fill, link, tooltip)");
                         else
                             unsupported.Add(key);
                     }
@@ -301,7 +423,11 @@ public partial class PowerPointHandler
             {
                 case "name":
                     var nvCxnPr = cxn.NonVisualConnectionShapeProperties?.NonVisualDrawingProperties;
-                    if (nvCxnPr != null) nvCxnPr.Name = value;
+                    if (nvCxnPr != null)
+                    {
+                        Core.XmlTextValidator.ValidateOrThrow(value, "name");
+                        nvCxnPr.Name = value;
+                    }
                     break;
                 case "x" or "y" or "width" or "height":
                 {
@@ -321,12 +447,26 @@ public partial class PowerPointHandler
                 }
                 case "linecolor" or "line.color" or "line" or "color":
                 {
+                    // Schema documents compound 'color[:width[:style]]'
+                    // for shape line=; mirror the same surface on connector
+                    // so the documented form works uniformly.
+                    var (lineColorPart, lineWidthPart, lineDashPart) = SplitCompoundLineValue(value);
                     var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
                     var outline = EnsureOutline(spPr);
-                    var (rgb, _) = ParseHelpers.SanitizeColorForOoxml(value);
                     outline.RemoveAllChildren<Drawing.SolidFill>();
-                    var newFill = new Drawing.SolidFill(
-                        new Drawing.RgbColorModelHex { Val = rgb });
+                    if (lineWidthPart != null)
+                        outline.Width = Core.EmuConverter.ParseLineWidth(lineWidthPart);
+                    if (lineDashPart != null)
+                    {
+                        outline.RemoveAllChildren<Drawing.PresetDash>();
+                        outline.AppendChild(new Drawing.PresetDash { Val = ParseLineDashValue(lineDashPart) });
+                    }
+                    // CONSISTENCY(color-input-scheme): shape line= already routes
+                    // through BuildSolidFill which accepts scheme names (accent1,
+                    // dark1, …) and hex equally; mirror the same surface here so
+                    // a connector accepts the documented vocabulary instead of
+                    // rejecting scheme colors at SanitizeColorForOoxml.
+                    var newFill = BuildSolidFill(lineColorPart);
                     // CT_LineProperties schema: fill → prstDash → ... → headEnd → tailEnd
                     var prstDash = outline.GetFirstChild<Drawing.PresetDash>();
                     if (prstDash != null)
@@ -353,21 +493,27 @@ public partial class PowerPointHandler
                     ApplyShapeFill(spPr, value);
                     break;
                 }
+                case "line.gradient" or "linegradient":
+                {
+                    var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
+                    var outline = EnsureOutline(spPr);
+                    outline.RemoveAllChildren<Drawing.SolidFill>();
+                    outline.RemoveAllChildren<Drawing.NoFill>();
+                    outline.RemoveAllChildren<Drawing.GradientFill>();
+                    var cxnGrad = BuildGradientFill(value);
+                    var cxnPrstDash = outline.GetFirstChild<Drawing.PresetDash>();
+                    if (cxnPrstDash != null)
+                        outline.InsertBefore(cxnGrad, cxnPrstDash);
+                    else
+                        outline.PrependChild(cxnGrad);
+                    break;
+                }
                 case "linedash" or "line.dash":
                 {
                     var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
                     var outline = EnsureOutline(spPr);
                     outline.RemoveAllChildren<Drawing.PresetDash>();
-                    var newDash = new Drawing.PresetDash { Val = value.ToLowerInvariant() switch
-                    {
-                        "solid" => Drawing.PresetLineDashValues.Solid,
-                        "dot" => Drawing.PresetLineDashValues.Dot,
-                        "dash" => Drawing.PresetLineDashValues.Dash,
-                        "dashdot" or "dash_dot" => Drawing.PresetLineDashValues.DashDot,
-                        "longdash" or "lgdash" or "lg_dash" => Drawing.PresetLineDashValues.LargeDash,
-                        "longdashdot" or "lgdashdot" or "lg_dash_dot" => Drawing.PresetLineDashValues.LargeDashDot,
-                        _ => throw new ArgumentException($"Invalid 'lineDash' value: '{value}'. Valid values: solid, dot, dash, dashdot, longdash, longdashdot.")
-                    }};
+                    var newDash = new Drawing.PresetDash { Val = ParseLineDashValue(value) };
                     // CT_LineProperties schema: fill → prstDash → ... → headEnd → tailEnd
                     var headEnd = outline.GetFirstChild<Drawing.HeadEnd>();
                     if (headEnd != null)
@@ -428,7 +574,7 @@ public partial class PowerPointHandler
                 {
                     var spPr = cxn.ShapeProperties ?? (cxn.ShapeProperties = new ShapeProperties());
                     var xfrm = spPr.Transform2D ?? (spPr.Transform2D = new Drawing.Transform2D());
-                    xfrm.Rotation = (int)(ParseHelpers.SafeParseDouble(value, "rotation") * 60000);
+                    xfrm.Rotation = (int)(ParseHelpers.SafeParseRotationDegrees(value, "rotation") * 60000);
                     break;
                 }
                 case "preset" or "prstgeom" or "shape":
@@ -552,6 +698,60 @@ public partial class PowerPointHandler
         return ApplyShapePropsCore(slidePart, innerShapes[shapeIdx - 1], properties);
     }
 
+    /// <summary>
+    /// Resolve a Shape nested inside a group on a slide and return it
+    /// alongside the owning SlidePart. Used by group-paragraph / group-run
+    /// setters so the dispatch tier can pass control to the existing
+    /// SetParagraphOnShape / SetParagraphRunOnShape helpers without
+    /// duplicating navigation logic.
+    /// </summary>
+    private (SlidePart slidePart, Shape shape) ResolveGroupInnerShape(int slideIdx, int grpIdx, int shapeIdx)
+    {
+        var slideParts = GetSlideParts().ToList();
+        if (slideIdx < 1 || slideIdx > slideParts.Count)
+            throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
+        var slidePart = slideParts[slideIdx - 1];
+        var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
+            ?? throw new ArgumentException("Slide has no shape tree");
+        var groups = shapeTree.Elements<GroupShape>().ToList();
+        if (grpIdx < 1 || grpIdx > groups.Count)
+            throw new ArgumentException($"Group {grpIdx} not found (total: {groups.Count})");
+        var grp = groups[grpIdx - 1];
+        var innerShapes = grp.Elements<Shape>().ToList();
+        if (shapeIdx < 1 || shapeIdx > innerShapes.Count)
+            throw new ArgumentException($"Shape {shapeIdx} not found in group {grpIdx} (total: {innerShapes.Count})");
+        return (slidePart, innerShapes[shapeIdx - 1]);
+    }
+
+    /// <summary>
+    /// /slide[N]/group[M]/shape[K]/paragraph[P] — mirrors SetParagraphByPath
+    /// but navigates into a group first.
+    /// </summary>
+    private List<string> SetGroupParagraphByPath(Match m, Dictionary<string, string> properties)
+    {
+        var slideIdx = int.Parse(m.Groups[1].Value);
+        var grpIdx = int.Parse(m.Groups[2].Value);
+        var shapeIdx = int.Parse(m.Groups[3].Value);
+        var paraIdx = int.Parse(m.Groups[4].Value);
+        var (slidePart, shape) = ResolveGroupInnerShape(slideIdx, grpIdx, shapeIdx);
+        return SetParagraphOnShape(slidePart, shape, paraIdx, properties);
+    }
+
+    /// <summary>
+    /// /slide[N]/group[M]/shape[K]/paragraph[P]/run[R] — mirrors
+    /// SetParagraphRunByPath but navigates into a group first.
+    /// </summary>
+    private List<string> SetGroupParagraphRunByPath(Match m, Dictionary<string, string> properties)
+    {
+        var slideIdx = int.Parse(m.Groups[1].Value);
+        var grpIdx = int.Parse(m.Groups[2].Value);
+        var shapeIdx = int.Parse(m.Groups[3].Value);
+        var paraIdx = int.Parse(m.Groups[4].Value);
+        var runIdx = int.Parse(m.Groups[5].Value);
+        var (slidePart, shape) = ResolveGroupInnerShape(slideIdx, grpIdx, shapeIdx);
+        return SetParagraphRunOnShape(slidePart, shape, paraIdx, runIdx, properties);
+    }
+
     private List<string> ApplyShapePropsCore(SlidePart slidePart, Shape shape, Dictionary<string, string> properties)
     {
         // Handle z-order first (changes shape position in tree)
@@ -597,6 +797,27 @@ public partial class PowerPointHandler
                 ApplyMotionPathAnimation(slidePart, shape, motionPathValue);
             if (linkValue != null)
                 ApplyShapeHyperlink(slidePart, shape, linkValue, tooltipValue);
+            else if (tooltipValue != null)
+            {
+                // Standalone tooltip update — apply in place to the existing
+                // hlinkClick on shape and all runs. Previously this was a silent
+                // no-op: set returned "Updated" but the tooltip slot was untouched.
+                // If no hyperlink exists, reject so callers don't believe a
+                // tooltip without a link was stored.
+                Core.XmlTextValidator.ValidateOrThrow(tooltipValue, "tooltip");
+                var shapeHl = shape.NonVisualShapeProperties?.NonVisualDrawingProperties
+                    ?.GetFirstChild<Drawing.HyperlinkOnClick>();
+                var runHls = shape.Descendants<Drawing.Run>()
+                    .Select(r => r.RunProperties?.GetFirstChild<Drawing.HyperlinkOnClick>())
+                    .Where(h => h != null)
+                    .ToList();
+                if (shapeHl == null && runHls.Count == 0)
+                    throw new ArgumentException(
+                        "tooltip requires an existing hyperlink — set 'link' in the same call (e.g. --prop link=https://example.com --prop tooltip=…) " +
+                        "or apply 'link' first, then update 'tooltip' on its own.");
+                if (shapeHl != null) shapeHl.Tooltip = tooltipValue;
+                foreach (var rh in runHls) rh!.Tooltip = tooltipValue;
+            }
 
             GetSlide(slidePart).Save();
             return unsupported;
@@ -621,33 +842,198 @@ public partial class PowerPointHandler
             throw new ArgumentException(
                 $"Animation {animIdx} not found on shape {shapeIdx} (total: {ctns.Count})");
 
-        // Read current animation properties via PopulateAnimationNode, then merge
-        // with user-provided overrides, then re-apply via the standard pipeline.
-        // Limitation: like Set on /slide/shape with animation=, this replaces ALL
-        // animations on the shape (the apply pipeline only knows how to add one).
-        // CONSISTENCY(animation-set): mirrors Add's animValue string assembly.
-        var existing = new DocumentNode { Path = "" };
-        PopulateAnimationNode(existing, ctns[animIdx - 1]);
+        // Reject schema set:false keys up front. Without this, the merge
+        // loop silently dropped them and Set returned success with the
+        // value unchanged. Schema: presetId / easein / easeout / motionPath
+        // are read-only (Get-only).
+        var readOnlyAnimKeys = new[] { "presetId", "presetid", "easein", "easeout", "motionPath", "motionpath" };
+        foreach (var k in readOnlyAnimKeys)
+        {
+            if (properties.ContainsKey(k))
+                throw new ArgumentException(
+                    $"Animation property '{k}' is read-only (Get-only per schema). " +
+                    "It is derived from the effect preset and cannot be set directly.");
+        }
 
-        string Get(string key, string? fallback = null)
-            => properties.TryGetValue(key, out var v)
-                ? v
-                : (existing.Format.TryGetValue(key, out var ev) ? ev?.ToString() ?? fallback ?? "" : fallback ?? "");
+        // L3 sub-A: chain-preserving Set. Snapshot every existing animation on
+        // the shape into a (props) dict via PopulateAnimationNode, mutate the
+        // K-th dict with the caller's overrides, then rebuild the whole chain
+        // in original order. Previously this method removed ALL animations and
+        // re-added one, destroying the chain on any indexed Set call.
+        // CONSISTENCY(animation-chain): rebuild model also used implicitly by
+        // /animation[K] Remove (RemoveSingleShapeAnimation), so Add/Get/Set/Remove
+        // share one indexing contract.
+        var snapshots = new List<Dictionary<string, string>>(ctns.Count);
+        for (int i = 0; i < ctns.Count; i++)
+        {
+            var n = new DocumentNode { Path = "" };
+            PopulateAnimationNode(n, ctns[i]);
+            var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (k, v) in n.Format)
+            {
+                if (v == null) continue;
+                var s = v.ToString() ?? "";
+                if (s.Length == 0) continue;
+                // presetId is derived, not a re-applicable input.
+                if (k.Equals("presetId", StringComparison.OrdinalIgnoreCase)) continue;
+                d[k] = s;
+            }
+            snapshots.Add(d);
+        }
 
-        var effect = Get("effect", "fade");
-        // bt-1 fix: mirror AddAnimation's class-suffix routing so set
-        // effect=fly-out flips class to exit (was silently kept as
-        // entrance). CONSISTENCY(animation-class-suffix).
-        var explicitCls = properties.TryGetValue("class", out var ec) ? ec : null;
+        // Merge caller overrides onto the target index. CONSISTENCY(animation-
+        // class-suffix): if the user overrides `effect` with a suffixed form
+        // (fly-out, fade-exit, …) and did not also pass an explicit `class`,
+        // drop the snapshot's class so the suffix's class wins. Mirrors
+        // AddAnimation's behaviour where suffixCls overrides the entrance
+        // default unless an explicit class= was supplied.
+        var target = snapshots[animIdx - 1];
+        var userOverridesEffect = properties.ContainsKey("effect");
+        var userPassesClass = properties.ContainsKey("class");
+        foreach (var (k, v) in properties)
+        {
+            target[k] = v;
+        }
+        if (userOverridesEffect && !userPassesClass)
+        {
+            var (_, suffixCls) = ParseEffectClassSuffix(properties["effect"]);
+            if (suffixCls != null) target["class"] = suffixCls;
+        }
+
+        // Validate the target snapshot. Unsupplied snapshot values were
+        // already validated on the original Add path, but the caller's
+        // overrides may be junk — re-validate everything that touches the
+        // schema-typed slots so the surface is symmetric with AddAnimation.
+        if (target.TryGetValue("class", out var tCls)) ValidateAnimationClass(tCls);
+        if (target.TryGetValue("duration", out var tDur)) ValidateAnimationDuration(tDur);
+        if (target.TryGetValue("dur", out var tDur2)) ValidateAnimationDuration(tDur2);
+        if (target.TryGetValue("delay", out var tDel)) ValidateAnimationDelay(tDel);
+        if (target.TryGetValue("repeat", out var tRep)) ValidateAnimationRepeat(tRep);
+        if (target.TryGetValue("restart", out var tRes)) ValidateAnimationRestart(tRes);
+        if (target.TryGetValue("autoReverse", out var tAr)) ValidateAnimationAutoReverse(tAr);
+        else if (target.TryGetValue("autoreverse", out tAr)) ValidateAnimationAutoReverse(tAr);
+
+        // Wipe all animations on the shape, then re-apply each snapshot in order.
+        // CONSISTENCY(animation-chain): motion-class snapshots route through
+        // AppendMotionPathAnimation; preset (entrance/exit/emphasis) snapshots
+        // route through ApplyShapeAnimation. Both append to the MainSequence
+        // ChildTimeNodeList in original order so animation[K] indexing holds.
+        var shapeId = shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value;
+        if (shapeId.HasValue)
+        {
+            RemoveShapeAnimations(slidePart.Slide!, shapeId.Value);
+            // RemoveShapeAnimations targets MainSequence groups that contain
+            // a matching ShapeTarget; motion-path groups land in the same list
+            // so they're removed too. Belt-and-suspenders: also drop motion
+            // path animations explicitly in case the writer changes.
+            RemoveAllMotionPathAnimationsForShape(slidePart.Slide!, shapeId.Value);
+        }
+        for (int i = 0; i < snapshots.Count; i++)
+        {
+            var snap = snapshots[i];
+            if (snap.TryGetValue("class", out var snapCls)
+                && snapCls.Equals("motion", StringComparison.OrdinalIgnoreCase))
+            {
+                ReapplyMotionFromSnapshot(slidePart, shape, snap);
+            }
+            else
+            {
+                var animValue = BuildAnimValueFromProps(snap);
+                ApplyShapeAnimation(slidePart, shape, animValue);
+            }
+        }
+        GetSlide(slidePart).Save();
+        return [];
+    }
+
+    /// <summary>
+    /// Re-emit a motion-path animation from a snapshot dict produced by
+    /// PopulateAnimationNode. Resolves preset+direction back to a path string
+    /// (falling back to d= for path=custom) and appends via AppendMotionPathAnimation.
+    /// CONSISTENCY(animation-motion-presets).
+    /// </summary>
+    private static void ReapplyMotionFromSnapshot(
+        SlidePart slidePart, Shape shape, Dictionary<string, string> snap)
+    {
+        string pathString;
+        var preset = snap.GetValueOrDefault("path");
+        if (string.IsNullOrEmpty(preset)
+            || preset.Equals("custom", StringComparison.OrdinalIgnoreCase))
+        {
+            // Custom path: prefer d= override, else stored motionPath string.
+            pathString = snap.GetValueOrDefault("d")
+                ?? snap.GetValueOrDefault("motionPath")
+                ?? "M 0 0 L 0 0 E";
+        }
+        else
+        {
+            var dir = snap.GetValueOrDefault("direction");
+            pathString = GetMotionPresetPath(preset, dir)
+                ?? snap.GetValueOrDefault("motionPath")
+                ?? "M 0 0 L 0 0 E";
+        }
+        var duration = int.TryParse(snap.GetValueOrDefault("duration", "2000"),
+            out var dv) ? dv : 2000;
+        var trigger = snap.GetValueOrDefault("trigger", "onClick").ToLowerInvariant() switch
+        {
+            "afterprevious" => PowerPointHandler.AnimTrigger.AfterPrevious,
+            "withprevious"  => PowerPointHandler.AnimTrigger.WithPrevious,
+            _                => PowerPointHandler.AnimTrigger.OnClick
+        };
+        var delayMs = int.TryParse(snap.GetValueOrDefault("delay", "0"), out var dvL) ? dvL : 0;
+        var easin   = int.TryParse(snap.GetValueOrDefault("easein", "0"), out var ein) ? ein * 1000 : 0;
+        var easout  = int.TryParse(snap.GetValueOrDefault("easeout", "0"), out var eout) ? eout * 1000 : 0;
+        AppendMotionPathAnimation(slidePart, shape, pathString, duration,
+            trigger, delayMs, easin, easout);
+    }
+
+    /// <summary>
+    /// Drop every motion-path animation group on the slide that targets the
+    /// given shape. Mirrors RemoveShapeAnimations' walk-up to the MainSequence
+    /// click-group par, narrowed to ctns carrying presetClass="motion".
+    /// </summary>
+    private static void RemoveAllMotionPathAnimationsForShape(Slide slide, uint shapeId)
+    {
+        var timing = slide.GetFirstChild<Timing>();
+        if (timing == null) return;
+        var spIdStr = shapeId.ToString();
+        var toRemove = timing.Descendants<ShapeTarget>()
+            .Where(st => st.ShapeId?.Value == spIdStr)
+            .Select(st =>
+            {
+                OpenXmlElement? node = st;
+                while (node?.Parent != null)
+                {
+                    if (node.Parent is ChildTimeNodeList ctl
+                        && ctl.Parent is CommonTimeNode ctn
+                        && ctn.NodeType?.Value == TimeNodeValues.MainSequence)
+                        return node;
+                    node = node.Parent;
+                }
+                return null;
+            })
+            .Where(n => n != null
+                && n.Descendants<CommonTimeNode>().Any(c =>
+                    c.GetAttributes().Any(a => a.LocalName == "presetClass" && a.Value == "motion")))
+            .Distinct()
+            .ToList();
+        foreach (var n in toRemove) n!.Remove();
+    }
+
+    /// <summary>
+    /// Render a property dictionary (as produced by PopulateAnimationNode + user
+    /// overrides) into the composite animValue string parsed by ApplyShapeAnimation.
+    /// CONSISTENCY(animation-set): mirrors AddAnimation's animValue assembly.
+    /// </summary>
+    private static string BuildAnimValueFromProps(Dictionary<string, string> p)
+    {
+        var effect = p.TryGetValue("effect", out var e) ? e : "fade";
         var (effectStripped, suffixCls) = ParseEffectClassSuffix(effect);
         effect = effectStripped;
-        var cls = explicitCls
-            ?? suffixCls
-            ?? (existing.Format.TryGetValue("class", out var exCls) ? exCls?.ToString() ?? "entrance" : "entrance");
-        var duration = properties.TryGetValue("duration", out var dv) ? dv
-            : properties.TryGetValue("dur", out var dv2) ? dv2
-            : (existing.Format.TryGetValue("duration", out var ed) ? ed?.ToString() ?? "500" : "500");
-        var trigger = Get("trigger", "onclick");
+        var cls = p.TryGetValue("class", out var c) ? c : (suffixCls ?? "entrance");
+        var duration = p.TryGetValue("duration", out var d) ? d
+            : p.TryGetValue("dur", out var d2) ? d2 : "500";
+        var trigger = p.TryGetValue("trigger", out var t) ? t : "onclick";
         var triggerPart = trigger.ToLowerInvariant() switch
         {
             "onclick" or "click" => "click",
@@ -656,27 +1042,25 @@ public partial class PowerPointHandler
             _ => throw new ArgumentException(
                 $"Invalid animation trigger: '{trigger}'. Valid values: onclick, click, after, afterprevious, with, withprevious.")
         };
-
         var animValue = $"{effect}-{cls}-{duration}-{triggerPart}";
-        string? Resolve(string key)
-            => properties.TryGetValue(key, out var pv) ? pv
-             : (existing.Format.TryGetValue(key, out var ev) ? ev?.ToString() : null);
-        var delayVal = Resolve("delay");
-        if (!string.IsNullOrEmpty(delayVal)) animValue += $"-delay={delayVal}";
-        var einVal = Resolve("easein");
-        if (!string.IsNullOrEmpty(einVal)) animValue += $"-easein={einVal}";
-        var eoutVal = Resolve("easeout");
-        if (!string.IsNullOrEmpty(eoutVal)) animValue += $"-easeout={eoutVal}";
-        if (properties.TryGetValue("easing", out var easing))
-            animValue += $"-easing={easing}";
-        if (properties.TryGetValue("direction", out var dir))
+        if (p.TryGetValue("delay", out var del) && !string.IsNullOrEmpty(del))
+            animValue += $"-delay={del}";
+        if (p.TryGetValue("easein", out var ein) && !string.IsNullOrEmpty(ein))
+            animValue += $"-easein={ein}";
+        if (p.TryGetValue("easeout", out var eout) && !string.IsNullOrEmpty(eout))
+            animValue += $"-easeout={eout}";
+        if (p.TryGetValue("easing", out var eas) && !string.IsNullOrEmpty(eas))
+            animValue += $"-easing={eas}";
+        if (p.TryGetValue("direction", out var dir) && !string.IsNullOrEmpty(dir))
             animValue += $"-{dir}";
-
-        var shapeId = shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value;
-        if (shapeId.HasValue)
-            RemoveShapeAnimations(slidePart.Slide!, shapeId.Value);
-        ApplyShapeAnimation(slidePart, shape, animValue);
-        GetSlide(slidePart).Save();
-        return [];
+        if (p.TryGetValue("repeat", out var rep) && !string.IsNullOrEmpty(rep))
+            animValue += $"-repeat={rep}";
+        if (p.TryGetValue("restart", out var res) && !string.IsNullOrEmpty(res))
+            animValue += $"-restart={res}";
+        var arKey = p.TryGetValue("autoReverse", out var ar) ? ar
+            : p.TryGetValue("autoreverse", out var ar2) ? ar2 : null;
+        if (!string.IsNullOrEmpty(arKey))
+            animValue += $"-autoReverse={arKey}";
+        return animValue;
     }
 }

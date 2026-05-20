@@ -3,6 +3,7 @@
 
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
+using OfficeCli.Core;
 using Drawing = DocumentFormat.OpenXml.Drawing;
 
 namespace OfficeCli.Handlers;
@@ -28,6 +29,44 @@ public partial class PowerPointHandler
             }
         }
         return "";
+    }
+
+    /// <summary>
+    /// Walk the notes body placeholder's first run and mirror its run-level
+    /// formatting onto the notes DocumentNode.Format dictionary. Required so
+    /// that `Set /slide[N]/notes --prop bold=true color=#FF0000` is observable
+    /// via `Get /slide[N]/notes` (round-trip parity with shape Get).
+    /// </summary>
+    private static void PopulateNotesFormat(NotesSlidePart notesPart, DocumentNode node)
+    {
+        var spTree = notesPart.NotesSlide?.CommonSlideData?.ShapeTree;
+        if (spTree == null) return;
+        Shape? notesShape = null;
+        foreach (var shape in spTree.Elements<Shape>())
+        {
+            var ph = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
+                ?.GetFirstChild<PlaceholderShape>();
+            if (ph?.Index?.Value == 1) { notesShape = shape; break; }
+        }
+        if (notesShape == null) return;
+        var firstRun = notesShape.TextBody?
+            .Elements<Drawing.Paragraph>()
+            .SelectMany(p => p.Elements<Drawing.Run>())
+            .FirstOrDefault();
+        if (firstRun == null) return;
+        // Reuse RunToNode (Format-builder for runs) and merge its Format keys
+        // into the notes node — skip `text` so we don't clobber the notes-level
+        // text (concatenation of all runs across all paragraphs).
+        var runNode = RunToNode(firstRun, node.Path + "/run[1]", notesPart);
+        foreach (var kv in runNode.Format)
+        {
+            if (kv.Key == "text") continue;
+            node.Format[kv.Key] = kv.Value;
+        }
+        // Reading direction (rtl) lives on the paragraph, not the run.
+        var firstPara = notesShape.TextBody?.Elements<Drawing.Paragraph>().FirstOrDefault();
+        if (firstPara?.ParagraphProperties?.RightToLeft?.Value == true)
+            node.Format["direction"] = "rtl";
     }
 
     private static void SetNotesText(NotesSlidePart notesPart, string text)

@@ -53,6 +53,15 @@
       "examples": ["--prop height=10cm"],
       "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
+    },
+    "rotation": {
+      "type": "string",
+      "description": "Model rotation as comma-separated degrees \"ax,ay,az\" (X, Y, Z axes). Missing axes default to 0. Per-axis aliases rotx/roty/rotz also accepted on set.",
+      "aliases": ["rotx", "roty", "rotz"],
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop rotation=30,45,0", "--prop rotx=30"],
+      "readback": "\"ax,ay,az\" degrees (e.g. \"30,45,0\")",
+      "enforcement": "report"
     }
   }
 }

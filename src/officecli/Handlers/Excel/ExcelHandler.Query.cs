@@ -66,6 +66,86 @@ public partial class ExcelHandler
             return node;
         }
 
+        // Bare /namedrange (no index): list all defined names as children
+        // instead of falling through to the sheet-name lookup, where the
+        // literal word "namedrange" was treated as a missing sheet and
+        // produced a confusing "sheet not found" error.
+        var bareNamedRange = Regex.Match(path.TrimStart('/'), @"^namedrange$", RegexOptions.IgnoreCase);
+        if (bareNamedRange.Success)
+        {
+            var listNode = new DocumentNode { Path = "/namedrange", Type = "namedrange_list" };
+            var workbook = GetWorkbook();
+            var allDefs = workbook.GetFirstChild<DefinedNames>()?.Elements<DefinedName>().ToList()
+                ?? new List<DefinedName>();
+            for (int i = 0; i < allDefs.Count; i++)
+            {
+                var dn = allDefs[i];
+                var nrNode = new DocumentNode
+                {
+                    Path = $"/namedrange[{i + 1}]",
+                    Type = "namedrange",
+                    Text = dn.InnerText ?? dn.Name?.Value ?? "",
+                    Preview = dn.InnerText
+                };
+                nrNode.Format["name"] = dn.Name?.Value ?? "";
+                nrNode.Format["ref"] = dn.InnerText ?? "";
+                if (dn.LocalSheetId?.HasValue == true)
+                {
+                    var sheets = workbook.GetFirstChild<Sheets>()?.Elements<Sheet>().ToList();
+                    if (sheets != null && (int)dn.LocalSheetId.Value < sheets.Count)
+                        nrNode.Format["scope"] = sheets[(int)dn.LocalSheetId.Value].Name?.Value ?? "";
+                }
+                else
+                {
+                    nrNode.Format["scope"] = "workbook";
+                }
+                if (!string.IsNullOrEmpty(dn.Comment?.Value))
+                    nrNode.Format["comment"] = dn.Comment.Value;
+                if (dn.Function?.Value == true)
+                    nrNode.Format["volatile"] = true;
+                listNode.Children.Add(nrNode);
+            }
+            listNode.ChildCount = listNode.Children.Count;
+            return listNode;
+        }
+
+        // Bare /sheet (no index): list all sheets as children.
+        // CONSISTENCY(bare-path-lister): mirrors /namedrange so agents can
+        // discover top-level collections without first knowing names.
+        var bareSheet = Regex.Match(path.TrimStart('/'), @"^sheet$", RegexOptions.IgnoreCase);
+        if (bareSheet.Success)
+        {
+            var listNode = new DocumentNode { Path = "/sheet", Type = "sheet_list" };
+            foreach (var (sheetName, worksheetPart) in GetWorksheets())
+            {
+                var sheetNode = new DocumentNode { Path = $"/{sheetName}", Type = "sheet", Preview = sheetName };
+                var sd = GetSheet(worksheetPart).GetFirstChild<SheetData>();
+                var rowCount = sd?.Elements<Row>().Count() ?? 0;
+                var chartCount = worksheetPart.DrawingsPart != null ? CountExcelCharts(worksheetPart.DrawingsPart) : 0;
+                sheetNode.ChildCount = rowCount + chartCount;
+                sheetNode.Format["name"] = sheetName;
+                listNode.Children.Add(sheetNode);
+            }
+            listNode.ChildCount = listNode.Children.Count;
+            return listNode;
+        }
+
+        // Bare /table (no index): list every table across every sheet.
+        // CONSISTENCY(bare-path-lister): mirrors /namedrange.
+        var bareTable = Regex.Match(path.TrimStart('/'), @"^table$", RegexOptions.IgnoreCase);
+        if (bareTable.Success)
+        {
+            var listNode = new DocumentNode { Path = "/table", Type = "table_list" };
+            foreach (var (sheetName, worksheetPart) in GetWorksheets())
+            {
+                var tParts = worksheetPart.TableDefinitionParts.ToList();
+                for (int i = 0; i < tParts.Count; i++)
+                    listNode.Children.Add(TableToNode(sheetName, worksheetPart, i + 1, 0));
+            }
+            listNode.ChildCount = listNode.Children.Count;
+            return listNode;
+        }
+
         // Handle /namedrange[N] or /namedrange[Name] or /namedrange[@name=X]
         var namedRangeMatch = Regex.Match(path.TrimStart('/'), @"^namedrange\[(.+?)\]$", RegexOptions.IgnoreCase);
         if (namedRangeMatch.Success)
@@ -482,14 +562,16 @@ public partial class ExcelHandler
             var rule = cf.Elements<ConditionalFormattingRule>().FirstOrDefault();
             if (rule != null)
             {
+                // Canonical CF type key. Normalized variants overwrite this below
+                // (e.g. ConditionalFormatValues.Top10 -> "topN", Expression -> "formula").
                 if (rule.Type?.Value != null)
-                    cfNode.Format["ruleType"] = rule.Type.InnerText;
+                    cfNode.Format["type"] = rule.Type.InnerText;
 
                 // DataBar
                 var dataBar = rule.GetFirstChild<DataBar>();
                 if (dataBar != null)
                 {
-                    cfNode.Format["cfType"] = "dataBar";
+                    cfNode.Format["type"] = "dataBar";
                     var dbColor = dataBar.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.Color>();
                     if (dbColor?.Rgb?.Value != null)
                         cfNode.Format["color"] = ParseHelpers.FormatHexColor(dbColor.Rgb.Value);
@@ -525,7 +607,7 @@ public partial class ExcelHandler
                 var colorScale = rule.GetFirstChild<ColorScale>();
                 if (colorScale != null)
                 {
-                    cfNode.Format["cfType"] = "colorScale";
+                    cfNode.Format["type"] = "colorScale";
                     var colors = colorScale.Elements<DocumentFormat.OpenXml.Spreadsheet.Color>().ToList();
                     if (colors.Count >= 2)
                     {
@@ -548,7 +630,7 @@ public partial class ExcelHandler
                 var iconSet = rule.GetFirstChild<IconSet>();
                 if (iconSet != null)
                 {
-                    cfNode.Format["cfType"] = "iconSet";
+                    cfNode.Format["type"] = "iconSet";
                     if (iconSet.IconSetValue?.Value != null)
                         cfNode.Format["iconset"] = iconSet.IconSetValue.InnerText;
                     if (iconSet.ShowValue?.Value != null)
@@ -561,7 +643,7 @@ public partial class ExcelHandler
                 var formula = rule.GetFirstChild<Formula>();
                 if (formula != null && rule.Type?.Value == ConditionalFormatValues.Expression)
                 {
-                    cfNode.Format["cfType"] = "formula";
+                    cfNode.Format["type"] = "formula";
                     cfNode.Format["formula"] = formula.Text ?? "";
                     if (rule.FormatId?.Value != null)
                         cfNode.Format["dxfId"] = rule.FormatId.Value;
@@ -570,7 +652,7 @@ public partial class ExcelHandler
                 // Top/Bottom N
                 if (rule.Type?.Value == ConditionalFormatValues.Top10)
                 {
-                    cfNode.Format["cfType"] = "topN";
+                    cfNode.Format["type"] = "topN";
                     if (rule.Rank?.HasValue == true) cfNode.Format["rank"] = rule.Rank.Value;
                     if (rule.Bottom?.Value == true) cfNode.Format["bottom"] = true;
                     if (rule.Percent?.Value == true) cfNode.Format["percent"] = true;
@@ -580,7 +662,7 @@ public partial class ExcelHandler
                 // Above/Below Average
                 if (rule.Type?.Value == ConditionalFormatValues.AboveAverage)
                 {
-                    cfNode.Format["cfType"] = "aboveAverage";
+                    cfNode.Format["type"] = "aboveAverage";
                     if (rule.AboveAverage?.HasValue == true) cfNode.Format["aboveAverage"] = rule.AboveAverage.Value;
                     if (rule.FormatId?.Value != null) cfNode.Format["dxfId"] = rule.FormatId.Value;
                 }
@@ -588,21 +670,21 @@ public partial class ExcelHandler
                 // Duplicate Values
                 if (rule.Type?.Value == ConditionalFormatValues.DuplicateValues)
                 {
-                    cfNode.Format["cfType"] = "duplicateValues";
+                    cfNode.Format["type"] = "duplicateValues";
                     if (rule.FormatId?.Value != null) cfNode.Format["dxfId"] = rule.FormatId.Value;
                 }
 
                 // Unique Values
                 if (rule.Type?.Value == ConditionalFormatValues.UniqueValues)
                 {
-                    cfNode.Format["cfType"] = "uniqueValues";
+                    cfNode.Format["type"] = "uniqueValues";
                     if (rule.FormatId?.Value != null) cfNode.Format["dxfId"] = rule.FormatId.Value;
                 }
 
                 // Contains Text
                 if (rule.Type?.Value == ConditionalFormatValues.ContainsText)
                 {
-                    cfNode.Format["cfType"] = "containsText";
+                    cfNode.Format["type"] = "containsText";
                     if (rule.Text?.HasValue == true) cfNode.Format["text"] = rule.Text.Value;
                     if (rule.FormatId?.Value != null) cfNode.Format["dxfId"] = rule.FormatId.Value;
                 }
@@ -610,7 +692,7 @@ public partial class ExcelHandler
                 // CellIs (operator-based comparison: between/equal/greaterThan/...)
                 if (rule.Type?.Value == ConditionalFormatValues.CellIs)
                 {
-                    cfNode.Format["cfType"] = "cellIs";
+                    cfNode.Format["type"] = "cellIs";
                     if (rule.Operator?.HasValue == true)
                         cfNode.Format["operator"] = rule.Operator.InnerText;
                     var cellIsFormulas = rule.Elements<Formula>().ToList();
@@ -624,7 +706,7 @@ public partial class ExcelHandler
                 // Time Period (date occurring)
                 if (rule.Type?.Value == ConditionalFormatValues.TimePeriod)
                 {
-                    cfNode.Format["cfType"] = "timePeriod";
+                    cfNode.Format["type"] = "timePeriod";
                     if (rule.TimePeriod?.HasValue == true) cfNode.Format["period"] = rule.TimePeriod.InnerText;
                     if (rule.FormatId?.Value != null) cfNode.Format["dxfId"] = rule.FormatId.Value;
                 }
@@ -992,8 +1074,22 @@ public partial class ExcelHandler
         selector = Regex.Replace(selector, @"(^|!)(merge|mergedrange)\b", "$1mergeCell", RegexOptions.IgnoreCase);
 
         // Check if element type is known (Scheme A) or should fall back to generic XML (Scheme B)
-        // Strip sheet prefix (Sheet1!cell[...]) but not != operator
+        // Strip sheet prefix (Sheet1!cell[...]) but not != operator.
+        // Also accept path-style: "/element" (bare) and "/Sheet/element[...]"
+        // so the same dispatch table catches query "/sheet", "/table",
+        // "/namedrange", and "/Sheet1/table[1]". Mirrors GET's bare-path
+        // listers (see ecb36111) — without this normalization, the bare
+        // path falls through to ParseCellSelector and returns cells.
         var selectorForType = Regex.Replace(selector, @"^.+?!(?!=)", "");
+        if (selectorForType.StartsWith('/'))
+        {
+            var trimmed = selectorForType.TrimStart('/');
+            var slashIdx = trimmed.IndexOf('/');
+            // "/element..."   → "element..."
+            // "/Sheet/elem"   → "elem" (the trailing element governs dispatch;
+            //                  parsed.Sheet captures the prefix separately).
+            selectorForType = slashIdx < 0 ? trimmed : trimmed[(slashIdx + 1)..];
+        }
         var elementMatch = Regex.Match(selectorForType, @"^(\w+)");
         // Lowercase once so all downstream `elementName is "..."` dispatch is
         // case-insensitive. CONSISTENCY(query-case-insensitive): matches how

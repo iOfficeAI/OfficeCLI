@@ -30,6 +30,33 @@ public partial class ExcelHandler
 
         parentPath = NormalizeExcelPath(parentPath);
         parentPath = ResolveSheetIndexInPath(parentPath);
+
+        // Reject element types that belong to a different document format up
+        // front. Without this, "add /xlsx --type slide" fell into AddDefault,
+        // tried to resolve the parent sheet from an empty path segment, and
+        // produced a misleading "Sheet not found: " error with an empty name.
+        // Naming the wrong-format type explicitly tells the caller where to
+        // look (e.g. use the .pptx variant) instead of sending them on a
+        // sheet-permission hunt.
+        var typeLower = type.ToLowerInvariant();
+        if (typeLower is "slide" or "slidemaster" or "slidelayout" or "notes"
+            or "paragraph" or "p" or "field"
+            or "section" or "header" or "footer")
+        {
+            var sourceFormat = typeLower switch
+            {
+                "slide" or "slidemaster" or "slidelayout" or "notes" => "pptx",
+                "paragraph" or "p" or "field" => "docx/pptx",
+                "section" or "header" or "footer" => "docx",
+                _ => "another format"
+            };
+            throw new ArgumentException(
+                $"Invalid element type '{type}' for xlsx files (belongs to {sourceFormat}). " +
+                "Valid values: sheet, row, cell, col, namedrange, comment, validation, autofilter, " +
+                "cf, databar, colorscale, iconset, formulacf, cellis, ole, picture, shape, slicer, " +
+                "sparkline, table, chart, pivottable.");
+        }
+
         switch (type.ToLowerInvariant())
         {
             case "sheet":

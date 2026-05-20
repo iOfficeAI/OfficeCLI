@@ -254,19 +254,12 @@
       "readback": "formula expression",
       "enforcement": "report"
     },
-    "ruleType": {
-      "type": "string",
-      "description": "Get-only readback of the underlying OOXML CT_CfRule@type (e.g. cellIs, colorScale, dataBar, iconSet, expression, top10, aboveAverage, duplicateValues, uniqueValues, containsText, timePeriod). Distinct from 'cfType' which is the higher-level family token.",
-      "add": false, "set": false, "get": true,
-      "readback": "OOXML cfRule@type token",
-      "enforcement": "report"
-    },
-    "cfType": {
+    "type": {
       "type": "enum",
       "values": ["dataBar", "colorScale", "iconSet", "formula", "topN", "aboveAverage", "duplicateValues", "uniqueValues", "containsText", "cellIs", "timePeriod"],
-      "description": "Get-only readback of the high-level CF family (camelCase). Set by Get based on which OOXML child element is present on the rule.",
+      "description": "Canonical Get-only CF rule type token (camelCase). One key per semantic value — previously split as ruleType + cfType.",
       "add": false, "set": false, "get": true,
-      "readback": "camelCase family token",
+      "readback": "canonical CF type token",
       "enforcement": "report"
     },
     "dxfId": {

@@ -1726,7 +1726,12 @@ public partial class WordHandler
                         is "drop" or "margin";
                 if (paraIsDropCap && dropCapWrapRemaining == 0)
                 {
-                    sb.Append("<div class=\"dropcap-wrap\" style=\"display:block;overflow:hidden\">");
+                    // Reserve the drop cap paragraph's own spacing-after below
+                    // the floated frame so consecutive drop cap structures
+                    // stack with the same gap as ordinary paragraphs.
+                    var dcAfterPt = ResolveParaAfterSpacingPt(para);
+                    var marginCss = dcAfterPt > 0 ? $";margin-bottom:{dcAfterPt:0.##}pt" : "";
+                    sb.Append($"<div class=\"dropcap-wrap\" style=\"display:block;overflow:hidden{marginCss}\">");
                     dropCapWrapRemaining = 2;
                 }
 
@@ -1799,7 +1804,13 @@ public partial class WordHandler
                             numIdLevelOffset.Clear();
                         }
                     }
-                    // Apply stored level offset for this numId
+                    // Preserve the paragraph's OOXML ilvl (the index into
+                    // <w:abstractNum><w:lvl>) for level-rPr / level-pPr lookups
+                    // that must read the level definition the doc actually
+                    // references. The HTML rendering may stack this list a
+                    // step deeper for visual nesting across numIds; that
+                    // structural depth uses the bumped value.
+                    var ilvlOoxml = ilvl;
                     if (numIdLevelOffset.TryGetValue(numId, out var offset))
                         ilvl += offset;
 
@@ -1885,7 +1896,30 @@ public partial class WordHandler
 
                     while (listStack.Count < ilvl + 1)
                     {
-                        sb.AppendLine($"<{tag}{indentStyle}>");
+                        // Nested-deeper open: the previous list item (parent) is
+                        // about to host this <ol>/<ul> as its child, so the
+                        // parent <li>'s margin-bottom applies AFTER the nested
+                        // list ends, not between the parent text and the first
+                        // nested item. OOXML §17.3.1.4 spaceAfter applies per
+                        // paragraph regardless of list nesting; promote the
+                        // parent's after-spacing to the nested list's margin-top
+                        // so consecutive level transitions get the same vertical
+                        // gap as same-level siblings.
+                        var nestedStyle = indentStyle;
+                        if (listStack.Count > 0)
+                        {
+                            var parentPara = para.PreviousSibling<Paragraph>();
+                            if (parentPara != null)
+                            {
+                                var parentAfterPt = ResolveParaAfterSpacingPt(parentPara);
+                                if (parentAfterPt > 0)
+                                {
+                                    var styleAttr = nestedStyle.TrimEnd('"');
+                                    nestedStyle = styleAttr + $";margin-top:{parentAfterPt:0.##}pt\"";
+                                }
+                            }
+                        }
+                        sb.AppendLine($"<{tag}{nestedStyle}>");
                         listStack.Push(tag);
                     }
                     // If same level but different list type, swap
@@ -1935,7 +1969,7 @@ public partial class WordHandler
                     // BuildListMarkerCss so this <li> picks up the abstractNum
                     // level rPr (color/font/size/bold/italic) for ul, plus
                     // a custom list-style-type string when applicable.
-                    sb.Append($" class=\"marker-{numId}-{ilvl}\"");
+                    sb.Append($" class=\"marker-{numId}-{ilvlOoxml}\"");
                     var paraStyle = GetParagraphInlineCss(para, isListItem: true);
                     // ul markers render via ::marker pseudo, which sits outside
                     // the line box and can't inflate it. ol markers render via
@@ -1943,7 +1977,7 @@ public partial class WordHandler
                     // height — the precise line-height there is enough.
                     if (tag == "ul")
                     {
-                        var liLh = GetListItemLineHeightOverride(numId, ilvl, para);
+                        var liLh = GetListItemLineHeightOverride(numId, ilvlOoxml, para);
                         if (liLh.HasValue)
                         {
                             var rx = new System.Text.RegularExpressions.Regex(@"line-height:[^;]+");
@@ -1982,7 +2016,7 @@ public partial class WordHandler
                         // for ul ::marker. Word lets per-level rPr restyle markers
                         // independent of the body run; mirroring that here keeps
                         // sections like "red bold 1." parallel between ol/ul.
-                        var inlineMarkerCss = GetMarkerInlineCss(numId, ilvl, para);
+                        var inlineMarkerCss = GetMarkerInlineCss(numId, ilvlOoxml, para);
                         var markerStyle = $"display:inline-block;min-width:{markerWidth};padding-right:{markerPadding};text-align:{align}";
                         if (!string.IsNullOrEmpty(inlineMarkerCss))
                             markerStyle = inlineMarkerCss + ";" + markerStyle;

@@ -19,7 +19,7 @@
       "/slide[N]/table[M]"
     ]
   },
-  "note": "A table is a GraphicFrame wrapping a Drawing.Table. Data can be seeded inline via 'data' (semicolon-separated rows, comma-separated cells) or per-cell via 'r{R}c{C}' props. Dimensions in EMU-parseable length (1in/2cm/raw EMU/720pt).",
+  "note": "A table is a GraphicFrame wrapping a Drawing.Table. Data can be seeded inline via 'data' (semicolon-separated rows, comma-separated cells) or per-cell via 'r{R}c{C}' props. Dimensions in EMU-parseable length (1in/2cm/raw EMU/720pt). Read depth: `get /slide[N]/table[K]` (default --depth=1) returns the table node plus row stubs; cell content is not included. Pass `--depth 2` to materialize cells, or address them directly via `get /slide[N]/table[K]/row[R]/cell[C]`. The default stays at 1 because large tables (e.g. 50x10) at depth=2 dominate the response body.",
   "children": [
     {
       "element": "row",
@@ -45,6 +45,17 @@
       "get": true,
       "description": "OOXML graphic frame id (cNvPr id). pptx-only readback.",
       "readback": "integer (cNvPr graphic frame id)",
+      "enforcement": "report"
+    },
+    "zorder": {
+      "type": "number",
+      "description": "1-based z-order in slide shape tree. On add/set, repositions the table within the shape tree (1 = back).",
+      "aliases": ["z-order", "order"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": ["--prop zorder=1"],
+      "readback": "1-based integer (1 = back)",
       "enforcement": "report"
     },
     "x": {
@@ -128,8 +139,8 @@
     },
     "firstRow": {
       "type": "bool",
-      "add": false,
-      "set": false,
+      "add": true,
+      "set": true,
       "get": true,
       "description": "tblPr @firstRow flag — header-row styling enabled.",
       "readback": "true|false",
@@ -137,8 +148,8 @@
     },
     "lastRow": {
       "type": "bool",
-      "add": false,
-      "set": false,
+      "add": true,
+      "set": true,
       "get": true,
       "description": "tblPr @lastRow flag — total-row styling enabled.",
       "readback": "true|false",
@@ -146,8 +157,8 @@
     },
     "firstCol": {
       "type": "bool",
-      "add": false,
-      "set": false,
+      "add": true,
+      "set": true,
       "get": true,
       "description": "tblPr @firstCol flag — first-column styling enabled.",
       "readback": "true|false",
@@ -155,8 +166,8 @@
     },
     "lastCol": {
       "type": "bool",
-      "add": false,
-      "set": false,
+      "add": true,
+      "set": true,
       "get": true,
       "description": "tblPr @lastCol flag — last-column styling enabled.",
       "readback": "true|false",
@@ -164,8 +175,8 @@
     },
     "bandedRows": {
       "type": "bool",
-      "add": false,
-      "set": false,
+      "add": true,
+      "set": true,
       "get": true,
       "description": "tblPr @bandRow flag — alternating row banding from the table style.",
       "readback": "true|false",
@@ -173,8 +184,8 @@
     },
     "bandedCols": {
       "type": "bool",
-      "add": false,
-      "set": false,
+      "add": true,
+      "set": true,
       "get": true,
       "description": "tblPr @bandCol flag — alternating column banding from the table style.",
       "readback": "true|false",

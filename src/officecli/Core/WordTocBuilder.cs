@@ -11,7 +11,7 @@ namespace OfficeCli.Core;
 /// <summary>
 /// Regenerate TOC field entries from document headings.
 ///
-/// Mirrors the LibreOffice 4-phase pipeline (sw/source/core/doc/doctxm.cxx):
+/// Mirrors the 4-phase pipeline:
 /// 1. Heading enumeration  — walk body, find paragraphs at requested levels
 /// 2. Bookmark management  — ensure each heading has a stable anchor
 /// 3. Entry generation     — emit TOC1/TOC2/TOC3 paragraphs with hyperlink + PAGEREF

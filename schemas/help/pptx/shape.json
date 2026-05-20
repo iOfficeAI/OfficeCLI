@@ -17,9 +17,16 @@
       "/slide[N]/shape[N]"
     ]
   },
-  "note": "Positional /shape[N] enumerates ALL shapes on the slide including layout-inherited placeholders (title, body, etc.) — newly added shapes typically land at the end, not at /shape[1]. The 'add' command echoes back the canonical /shape[@id=ID] path; prefer that for follow-up Set/Get rather than guessing the positional index.\n\neffective.* keys (direction, size, font, color, bold) are read-only resolved values walked up the placeholder→layout→master→presentation defaults inheritance chain. They appear only when the direct key is absent on this shape; once a direct value is set, the corresponding effective.* is suppressed. There are no .src counterparts (the implementation does not emit them).",
+  "note": "Positional /shape[N] enumerates ALL shapes on the slide including layout-inherited placeholders (title, body, etc.) — newly added shapes typically land at the end, not at /shape[1]. The 'add' command echoes back the canonical /shape[@id=ID] path; prefer that for follow-up Set/Get rather than guessing the positional index.\n\neffective.* keys (direction, size, font, color, bold) are read-only resolved values walked up the placeholder→layout→master→presentation defaults inheritance chain. They appear only when the direct key is absent on this shape; once a direct value is set, the corresponding effective.* is suppressed. Each effective.* key has a paired effective.*.src key (e.g. effective.bold.src) naming the cascade layer that supplied the value (placeholder|layout|master|defaults).",
   "extends": "_shared/shape",
   "properties": {
+    "evaluated": {
+      "type": "bool",
+      "description": "cross-handler protocol flag — emitted on shapes whose body contains an <a:fld> dynamic field (slide number, date-time, footer, etc.). True when every dynamic field has cached text the renderer can show; false when at least one is empty (view text substitutes #OCLI_NOTEVAL!{type}; view issues emits subtype slide_field_not_evaluated). PowerPoint always re-renders fields on open, so there is no cache_stale equivalent. Read this via get --json instead of pattern-matching the sentinel.",
+      "add": false, "set": false, "get": true,
+      "readback": "true|false (true ⇒ all <a:fld> shapes on this node carry display text)",
+      "enforcement": "report"
+    },
     "opacity": {
       "type": "number",
       "description": "fill opacity (0.0 - 1.0). Requires a fill to attach to — opacity alone (without fill/gradient/pattern) has no effect in OOXML.",
@@ -127,8 +134,13 @@
       "enforcement": "report"
     },
     "strike": {
-      "type": "bool",
-      "description": "strikethrough on shape text.",
+      "type": "enum",
+      "description": "strikethrough on shape text. Single and double are distinct OOXML tokens (sngStrike / dblStrike); Word splits these into `strike` + `dstrike`, PowerPoint folds both into one attribute.",
+      "values": [
+        "none",
+        "single",
+        "double"
+      ],
       "aliases": [
         "strikethrough",
         "font.strike",
@@ -138,9 +150,11 @@
       "set": true,
       "get": true,
       "examples": [
+        "--prop strike=single",
+        "--prop strike=double",
         "--prop strike=true"
       ],
-      "readback": "true | false",
+      "readback": "single | double | none. Boolean `true` on add/set is accepted as an alias for `single`.",
       "enforcement": "report"
     },
     "cap": {
@@ -202,14 +216,14 @@
     },
     "kern": {
       "type": "number",
-      "description": "minimum kerning size in 1/100 pt (drawingML rPr/@kern). Add/Set only — Get does not surface this back today.",
+      "description": "minimum kerning size in 1/100 pt (drawingML rPr/@kern). Get surfaces the raw integer via long-tail rPr attribute readback.",
       "add": true,
       "set": true,
-      "get": false,
+      "get": true,
       "examples": [
         "--prop kern=1200"
       ],
-      "readback": "n/a",
+      "readback": "integer",
       "enforcement": "report"
     },
     "autoFit": {
@@ -334,6 +348,177 @@
       "readback": "length in pt (e.g. \"1pt\")",
       "enforcement": "report"
     },
+    "lineDash": {
+      "type": "enum",
+      "description": "outline dash pattern (drawingML prstDash). Also reachable as the third segment of the compound line='color:width:style' form.",
+      "aliases": [
+        "linedash",
+        "line.dash"
+      ],
+      "values": [
+        "solid",
+        "dot",
+        "dash",
+        "dashDot",
+        "lgDash",
+        "lgDashDot",
+        "lgDashDotDot",
+        "sysDot",
+        "sysDash",
+        "sysDashDot",
+        "sysDashDotDot",
+        "longdash",
+        "longdashdot"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop lineDash=dash",
+        "--prop lineDash=dashDot",
+        "--prop lineDash=sysDash",
+        "--prop line=FF0000:1.5:dash"
+      ],
+      "readback": "canonical OOXML prstDash token (solid | dot | dash | dashDot | lgDash | lgDashDot | lgDashDotDot | sysDot | sysDash | sysDashDot | sysDashDotDot). 'longdash'/'longdashdot' are accepted on input as aliases for lgDash/lgDashDot. 'dashDotDot' has no native enum member; it is accepted as an alias for sysDashDotDot (Get readback returns sysDashDotDot).",
+      "enforcement": "report"
+    },
+    "lineCap": {
+      "type": "enum",
+      "description": "line end cap style (drawingML <a:ln @cap>). Affects how the stroke terminates at endpoints (and dash gaps for dashed strokes).",
+      "aliases": [
+        "linecap",
+        "line.cap"
+      ],
+      "values": [
+        "round",
+        "flat",
+        "square"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop lineCap=round"
+      ],
+      "readback": "round | flat | square",
+      "enforcement": "report"
+    },
+    "lineJoin": {
+      "type": "enum",
+      "description": "line join style at shape corners (drawingML <a:ln> child <a:round/> | <a:bevel/> | <a:miter/>).",
+      "aliases": [
+        "linejoin",
+        "line.join"
+      ],
+      "values": [
+        "round",
+        "bevel",
+        "miter"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop lineJoin=miter"
+      ],
+      "readback": "round | bevel | miter",
+      "enforcement": "report"
+    },
+    "cmpd": {
+      "type": "enum",
+      "description": "compound line style (drawingML <a:ln @cmpd>) for double/triple/asymmetric strokes.",
+      "aliases": [
+        "compoundLine",
+        "compoundline",
+        "line.compound"
+      ],
+      "values": [
+        "sng",
+        "dbl",
+        "thickThin",
+        "thinThick",
+        "tri"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop cmpd=dbl",
+        "--prop cmpd=thickThin"
+      ],
+      "readback": "canonical OOXML token (sng | dbl | thickThin | thinThick | tri)",
+      "enforcement": "report"
+    },
+    "lineAlign": {
+      "type": "enum",
+      "description": "stroke alignment relative to the path (drawingML <a:ln @algn>). 'ctr' centers the stroke on the path; 'in' insets it inside the shape boundary.",
+      "aliases": [
+        "linealign",
+        "line.align"
+      ],
+      "values": [
+        "ctr",
+        "in"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop lineAlign=ctr"
+      ],
+      "readback": "ctr | in",
+      "enforcement": "report"
+    },
+    "headEnd": {
+      "type": "enum",
+      "description": "arrowhead at the line's start (drawingML <a:headEnd type=...>). Supported on any outline (shape or connector), not connector-only.",
+      "aliases": [
+        "headend",
+        "arrowStart",
+        "arrowstart"
+      ],
+      "values": [
+        "none",
+        "triangle",
+        "stealth",
+        "diamond",
+        "oval",
+        "arrow"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop headEnd=triangle"
+      ],
+      "readback": "canonical OOXML token (none | triangle | stealth | diamond | oval | arrow)",
+      "enforcement": "report"
+    },
+    "tailEnd": {
+      "type": "enum",
+      "description": "arrowhead at the line's end (drawingML <a:tailEnd type=...>). Supported on any outline (shape or connector).",
+      "aliases": [
+        "tailend",
+        "arrowEnd",
+        "arrowend"
+      ],
+      "values": [
+        "none",
+        "triangle",
+        "stealth",
+        "diamond",
+        "oval",
+        "arrow"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop tailEnd=arrow"
+      ],
+      "readback": "canonical OOXML token (none | triangle | stealth | diamond | oval | arrow)",
+      "enforcement": "report"
+    },
     "list": {
       "type": "string",
       "description": "list style for shape paragraphs (bullet|ordered|none).",
@@ -437,6 +622,30 @@
       "readback": "true/false",
       "enforcement": "report"
     },
+    "effective.italic": { "type": "bool", "description": "resolved italic via cascade.", "add": false, "set": false, "get": true, "readback": "true/false", "enforcement": "report" },
+    "effective.underline": { "type": "string", "description": "resolved underline via cascade.", "add": false, "set": false, "get": true, "readback": "single/double/none", "enforcement": "report" },
+    "effective.strike": { "type": "string", "description": "resolved strike via cascade.", "add": false, "set": false, "get": true, "readback": "single/double/none", "enforcement": "report" },
+    "effective.font.latin": { "type": "string", "description": "resolved Latin font via cascade.", "add": false, "set": false, "get": true, "readback": "font name", "enforcement": "report" },
+    "effective.font.ea": { "type": "string", "description": "resolved East Asian font via cascade.", "add": false, "set": false, "get": true, "readback": "font name", "enforcement": "report" },
+    "effective.font.cs": { "type": "string", "description": "resolved complex script font via cascade.", "add": false, "set": false, "get": true, "readback": "font name", "enforcement": "report" },
+    "effective.align": { "type": "string", "description": "resolved paragraph alignment via cascade.", "add": false, "set": false, "get": true, "readback": "left/center/right/justify", "enforcement": "report" },
+    "effective.lineSpacing": { "type": "string", "description": "resolved line spacing via cascade.", "add": false, "set": false, "get": true, "readback": "multiplier (e.g. 1.5x) or fixed pt", "enforcement": "report" },
+    "effective.spaceBefore": { "type": "length", "description": "resolved spaceBefore via cascade.", "add": false, "set": false, "get": true, "readback": "unit-qualified pt", "enforcement": "report" },
+    "effective.spaceAfter": { "type": "length", "description": "resolved spaceAfter via cascade.", "add": false, "set": false, "get": true, "readback": "unit-qualified pt", "enforcement": "report" },
+    "effective.size.src": { "type": "string", "description": "path of the cascade layer that wrote effective.size.", "add": false, "set": false, "get": true, "readback": "path string", "enforcement": "report" },
+    "effective.font.src": { "type": "string", "description": "path of the cascade layer that wrote effective.font.", "add": false, "set": false, "get": true, "readback": "path string", "enforcement": "report" },
+    "effective.font.latin.src": { "type": "string", "description": "path of the cascade layer that wrote effective.font.latin.", "add": false, "set": false, "get": true, "readback": "path string", "enforcement": "report" },
+    "effective.font.ea.src": { "type": "string", "description": "path of the cascade layer that wrote effective.font.ea.", "add": false, "set": false, "get": true, "readback": "path string", "enforcement": "report" },
+    "effective.font.cs.src": { "type": "string", "description": "path of the cascade layer that wrote effective.font.cs.", "add": false, "set": false, "get": true, "readback": "path string", "enforcement": "report" },
+    "effective.color.src": { "type": "string", "description": "path of the cascade layer that wrote effective.color.", "add": false, "set": false, "get": true, "readback": "path string", "enforcement": "report" },
+    "effective.bold.src": { "type": "string", "description": "path of the cascade layer that wrote effective.bold.", "add": false, "set": false, "get": true, "readback": "path string", "enforcement": "report" },
+    "effective.italic.src": { "type": "string", "description": "path of the cascade layer that wrote effective.italic.", "add": false, "set": false, "get": true, "readback": "path string", "enforcement": "report" },
+    "effective.underline.src": { "type": "string", "description": "path of the cascade layer that wrote effective.underline.", "add": false, "set": false, "get": true, "readback": "path string", "enforcement": "report" },
+    "effective.strike.src": { "type": "string", "description": "path of the cascade layer that wrote effective.strike.", "add": false, "set": false, "get": true, "readback": "path string", "enforcement": "report" },
+    "effective.align.src": { "type": "string", "description": "path of the cascade layer that wrote effective.align.", "add": false, "set": false, "get": true, "readback": "path string", "enforcement": "report" },
+    "effective.lineSpacing.src": { "type": "string", "description": "path of the cascade layer that wrote effective.lineSpacing.", "add": false, "set": false, "get": true, "readback": "path string", "enforcement": "report" },
+    "effective.spaceBefore.src": { "type": "string", "description": "path of the cascade layer that wrote effective.spaceBefore.", "add": false, "set": false, "get": true, "readback": "path string", "enforcement": "report" },
+    "effective.spaceAfter.src": { "type": "string", "description": "path of the cascade layer that wrote effective.spaceAfter.", "add": false, "set": false, "get": true, "readback": "path string", "enforcement": "report" },
     "id": {
       "type": "number",
       "description": "OOXML shape id; source of the @id in the stable path /shape[@id=ID].",
@@ -448,56 +657,123 @@
     },
     "zorder": {
       "type": "number",
-      "description": "1-based z-order in slide shape tree.",
-      "add": false,
-      "set": false,
+      "description": "1-based z-order in slide shape tree. On add/set, repositions the shape within the shape tree (1 = back).",
+      "aliases": ["z-order", "order"],
+      "add": true,
+      "set": true,
       "get": true,
+      "examples": ["--prop zorder=1"],
       "readback": "1-based integer (1 = back)",
       "enforcement": "report"
     },
     "bevel": {
       "type": "string",
-      "add": false,
-      "set": false,
+      "add": true,
+      "set": true,
       "get": true,
-      "description": "3-D top bevel descriptor (preset[:width:height], e.g. `circle:6:6`). Surfaces when sp3d.bevelT is present.",
-      "readback": "`preset:width:height` token",
+      "description": "3-D top bevel descriptor (sp3d.bevelT). Form: 'preset[-width[-height]]' with width/height in points; height defaults to width. Preset values: angle, artDeco, circle, convex, coolSlant, cross, divot, hardEdge, relaxedInset, riblet, slope, softRound. Example: 'circle-6-6'.",
+      "examples": [
+        "--prop bevel=circle",
+        "--prop bevel=circle-6",
+        "--prop bevel=angle-8-4"
+      ],
+      "readback": "'preset' alone, or 'preset-widthPt-heightPt' when non-default sizing was written. Surfaces when sp3d.bevelT is present.",
       "enforcement": "report"
     },
     "bevelBottom": {
       "type": "string",
-      "add": false,
-      "set": false,
+      "add": true,
+      "set": true,
       "get": true,
-      "description": "3-D bottom bevel descriptor (sp3d.bevelB).",
-      "readback": "`preset:width:height` token",
+      "description": "3-D bottom bevel descriptor (sp3d.bevelB). Same grammar as 'bevel'.",
+      "examples": [
+        "--prop bevelBottom=circle-4-4"
+      ],
+      "readback": "'preset' alone, or 'preset-widthPt-heightPt'.",
       "enforcement": "report"
     },
     "depth": {
       "type": "length",
-      "add": false,
-      "set": false,
+      "add": true,
+      "set": true,
       "get": true,
-      "description": "3-D extrusion height (sp3d @extrusionH) in points.",
-      "readback": "unit-qualified pt length",
+      "description": "3-D extrusion height (sp3d @extrusionH). Accepts the canonical length input forms — bare number is points, also accepts pt/cm/in/px/emu suffix. 'none' or '0' clears.",
+      "examples": [
+        "--prop depth=10",
+        "--prop depth=10pt",
+        "--prop depth=0.5cm",
+        "--prop depth=none"
+      ],
+      "readback": "bare numeric points (e.g. '10', '14.17').",
       "enforcement": "report"
     },
     "lighting": {
       "type": "string",
-      "add": false,
-      "set": false,
+      "add": true,
+      "set": true,
       "get": true,
-      "description": "3-D scene lighting rig name (e.g. threePt, balanced, soft).",
-      "readback": "OOXML preset light rig token",
+      "description": "3-D scene lighting rig name (scene3d.lightRig @rig). OOXML preset rig values: threePt, balanced, soft, harsh, flood, contrasting, morning, sunrise, sunset, chilly, freezing, flat, twoPt, glow, brightRoom.",
+      "examples": [
+        "--prop lighting=threePt",
+        "--prop lighting=balanced"
+      ],
+      "readback": "OOXML preset light rig token.",
       "enforcement": "report"
     },
     "material": {
       "type": "string",
-      "add": false,
-      "set": false,
+      "add": true,
+      "set": true,
       "get": true,
-      "description": "3-D preset material (e.g. metal, plastic, matte).",
-      "readback": "OOXML preset material token",
+      "description": "3-D preset material (sp3d.prstMaterial). Accepted tokens (case-insensitive): clear, darkEdge (alias dkEdge), flat, matte, metal, plastic, powder, softEdge, softMetal, translucentPowder, warmMatte, wireframe (alias wire).",
+      "examples": [
+        "--prop material=metal",
+        "--prop material=plastic"
+      ],
+      "readback": "OOXML preset material token.",
+      "enforcement": "report"
+    },
+    "reflection": {
+      "type": "string",
+      "description": "reflection effect. Accepts 'true' / 'tight' / 'half' / 'full' to enable a reflection of varying length, or 'none' to clear.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop reflection=true",
+        "--prop reflection=half",
+        "--prop reflection=full"
+      ],
+      "readback": "tight | half | full (mapped from a:reflection @endPos: <70000=tight, <95000=half, else=full).",
+      "enforcement": "report"
+    },
+    "shadow": {
+      "type": "string",
+      "description": "outer shadow. Pass a color (e.g. '000000') or 'true' (defaults to black). Routed to text-level rPr for text-only shapes.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop shadow=#808080",
+        "--prop shadow=none",
+        "--prop shadow=000000",
+        "--prop shadow=true"
+      ],
+      "readback": "compound '#RRGGBBAA-blurPt-angleDeg-distPt-opacityPct' (e.g. '#00000066-4-45-3-40'). Color is CSS-form 8-digit hex with leading # (alpha last); blur, distance in pt; angle in degrees; opacity in percent (0-100).",
+      "enforcement": "report"
+    },
+    "glow": {
+      "type": "string",
+      "description": "glow effect. Pass a color (e.g. '4472C4') or 'true' (defaults to accent blue).",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop glow=#4472C4",
+        "--prop glow=4472C4",
+        "--prop glow=true"
+      ],
+      "readback": "compound '#RRGGBBAA-radiusPt-opacityPct' (e.g. '#4472C4BF-8-75'). Color is CSS-form 8-digit hex with leading # (alpha last); radius in pt; opacity in percent.",
       "enforcement": "report"
     },
     "lineOpacity": {

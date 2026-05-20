@@ -6,6 +6,9 @@ using System.Text.Json.Nodes;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
+#pragma warning disable OOXML0001
+using DocumentFormat.OpenXml.Experimental;
+#pragma warning restore OOXML0001
 using OfficeCli.Core;
 using Drawing = DocumentFormat.OpenXml.Drawing;
 
@@ -34,13 +37,30 @@ public partial class PowerPointHandler
             sb.AppendLine($"=== /slide[{slideNum}] ===");
             // CONSISTENCY(pptx-group-flatten): Descendants<Shape>() walks into
             // GroupShape children; Elements<Shape>() would drop them.
-            var shapes = GetSlide(slidePart).CommonSlideData?.ShapeTree?.Descendants<Shape>() ?? Enumerable.Empty<Shape>();
+            var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree;
+            var shapes = shapeTree?.Descendants<Shape>() ?? Enumerable.Empty<Shape>();
 
             foreach (var shape in shapes)
             {
                 var text = GetShapeText(shape);
                 if (!string.IsNullOrWhiteSpace(text))
                     sb.AppendLine(text);
+            }
+
+            // Table cell text — Descendants<Shape>() does not reach text inside
+            // a:tbl cells (tables are GraphicFrame, not Shape). Emit each cell's
+            // text on its own line so view text mirrors the slide's visible copy.
+            if (shapeTree != null)
+            {
+                foreach (var table in shapeTree.Descendants<Drawing.Table>())
+                {
+                    foreach (var cell in table.Descendants<Drawing.TableCell>())
+                    {
+                        var cellText = GetCellTextWithParagraphBreaks(cell);
+                        if (!string.IsNullOrWhiteSpace(cellText))
+                            sb.AppendLine(cellText);
+                    }
+                }
             }
             sb.AppendLine();
         }
@@ -225,7 +245,12 @@ public partial class PowerPointHandler
             totalCharts += shapeTree.Descendants<GraphicFrame>()
                 .Count(gf => gf.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().Any()
                           || IsExtendedChartFrame(gf));
-            totalShapes += shapes.Count;
+            // CONSISTENCY(stats-table-count): tables are GraphicFrame too — pre-R5
+            // they vanished from totalShapes entirely and cell text was never
+            // word-counted, so a deck whose only content was a 5x5 grid reported
+            // "0 shapes / 0 words".
+            var tables = shapeTree.Descendants<Drawing.Table>().ToList();
+            totalShapes += shapes.Count + tables.Count;
             totalPictures += pictures.Count;
             totalTextBoxes += shapes.Count(s => !IsTitle(s));
 
@@ -241,6 +266,17 @@ public partial class PowerPointHandler
                 var text = GetShapeText(shape);
                 if (!string.IsNullOrWhiteSpace(text))
                     totalWords += text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+            }
+
+            // Count words from table cells (mirror the ViewAsText walk).
+            foreach (var table in tables)
+            {
+                foreach (var cell in table.Descendants<Drawing.TableCell>())
+                {
+                    var cellText = GetCellTextWithParagraphBreaks(cell);
+                    if (!string.IsNullOrWhiteSpace(cellText))
+                        totalWords += cellText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+                }
             }
 
             // Collect font usage
@@ -318,7 +354,9 @@ public partial class PowerPointHandler
             totalCharts += shapeTree.Descendants<GraphicFrame>()
                 .Count(gf => gf.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().Any()
                           || IsExtendedChartFrame(gf));
-            totalShapes += shapes.Count;
+            // CONSISTENCY(stats-table-count): see ViewAsStats.
+            var tables = shapeTree.Descendants<Drawing.Table>().ToList();
+            totalShapes += shapes.Count + tables.Count;
             totalPictures += pictures.Count;
             totalTextBoxes += shapes.Count(s => !IsTitle(s));
 
@@ -338,6 +376,16 @@ public partial class PowerPointHandler
                         ?? run.RunProperties?.GetFirstChild<Drawing.EastAsianFont>()?.Typeface;
                     if (font != null)
                         fontCounts[font!] = fontCounts.GetValueOrDefault(font!) + 1;
+                }
+            }
+
+            foreach (var table in tables)
+            {
+                foreach (var cell in table.Descendants<Drawing.TableCell>())
+                {
+                    var cellText = GetCellTextWithParagraphBreaks(cell);
+                    if (!string.IsNullOrWhiteSpace(cellText))
+                        totalWords += cellText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
                 }
             }
         }
@@ -474,18 +522,193 @@ public partial class PowerPointHandler
             var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree;
             if (shapeTree == null) continue;
 
-            var shapes = shapeTree.Elements<Shape>().ToList();
-            if (!shapes.Any(IsTitle))
+            // Broken part-relationship detection. A slide's .rels file can
+            // point r:id="rN" at /ppt/media/NONEXISTENT.png (or similar) when
+            // a deck was hand-edited, partial-extracted, or assembled by a
+            // buggy authoring tool. The Open XML SDK loads the relationship
+            // but throws when any reader (NodeBuilder picture, ResolveChart,
+            // HTML preview) calls GetPartById and the package can't resolve
+            // the target. Surface this as a stable, filterable issue so the
+            // gap is observable BEFORE callers hit a failure path —
+            // mirrors xlsx's definedname_broken / chart_series_ref_missing_sheet
+            // observability for "rot in the package" rather than deferred
+            // evaluation.
+            // A slide's .rels file can point r:id="rN" Target="/ppt/media/NONEXISTENT.png"
+            // (or similar) when a deck was hand-edited, partial-extracted, or
+            // assembled by a buggy authoring tool. The Open XML SDK silently
+            // skips such relationships during enumeration of slidePart.Parts
+            // (the target part isn't constructed), but downstream readers
+            // (NodeBuilder/ResolveChart/HtmlPreview) that walk the slide XML
+            // and call slidePart.GetPartById(rId) raise
+            // ArgumentOutOfRangeException "Part: <uri> doesn't exist in the
+            // package." with no rId / slide context — opaque to agents and
+            // unfilterable in `view issues`.
+            //
+            // Diff slide-XML referenced rIds against the SDK-loaded ones to
+            // surface the gap as a stable broken_part_ref subtype BEFORE
+            // any reader hits the failure path. Mirrors xlsx's
+            // definedname_broken observability for "rot in the package".
+            // Build the set of package Uris and the slide's relationship
+            // table by reading the rels XML directly. The SDK's
+            // slidePart.Parts iteration silently skips a relationship
+            // whose Target points to a missing part — and may also drop
+            // valid siblings under the same rels file once the broken one
+            // is encountered. Reading rels XML + comparing Target to
+            // package.GetParts() Uri gives a reader-faithful gap report
+            // without relying on the SDK's tolerant enumeration.
+            var brokenRelIds = new Dictionary<string, string>(StringComparer.Ordinal);
+            // R8-2: also flag rIds the slide XML references that the rels
+            // file doesn't declare at all. The original scan covered
+            // declared-but-dangling rels (Target points to a missing part),
+            // but a slide carrying r:embed="rId99" with no matching
+            // <Relationship Id="rId99"> in the rels XML produced a silent
+            // ArgumentException at render time instead of a stable issue.
+            var declaredRelIds = new HashSet<string>(StringComparer.Ordinal);
+            try
             {
+#pragma warning disable OOXML0001
+                var pkg = slidePart.OpenXmlPackage.GetPackage();
+#pragma warning restore OOXML0001
+                var packageUris = new HashSet<string>(
+                    pkg.GetParts().Select(p => p.Uri.OriginalString.TrimStart('/')),
+                    StringComparer.OrdinalIgnoreCase);
+                // Read the slide's .rels file directly — IPackage's
+                // Relationships collection silently drops relationships
+                // whose Target points to a missing part, so a Parts-vs-rels
+                // diff via the SDK's API misses the very rot we want to
+                // surface. Reading the rels XML preserves every declared
+                // relationship, including dangling ones.
+                var slideUriPath = slidePart.Uri.OriginalString.TrimStart('/');
+                var lastSlash = slideUriPath.LastIndexOf('/');
+                var relPartUri = lastSlash >= 0
+                    ? "/" + slideUriPath.Substring(0, lastSlash) + "/_rels/" + slideUriPath.Substring(lastSlash + 1) + ".rels"
+                    : "/_rels/" + slideUriPath + ".rels";
+                var relsUri = new Uri(relPartUri, UriKind.Relative);
+                if (pkg.PartExists(relsUri))
+                {
+                    var relsPart = pkg.GetPart(relsUri);
+                    using var rs = relsPart.GetStream(System.IO.FileMode.Open, System.IO.FileAccess.Read);
+                    var relsDoc = System.Xml.Linq.XDocument.Load(rs);
+                    System.Xml.Linq.XNamespace relsNs2006 = "http://schemas.openxmlformats.org/package/2006/relationships";
+                    foreach (var relEl in relsDoc.Descendants(relsNs2006 + "Relationship"))
+                    {
+                        var targetMode = (string?)relEl.Attribute("TargetMode") ?? "Internal";
+                        if (!string.Equals(targetMode, "Internal", StringComparison.OrdinalIgnoreCase)) continue;
+                        var id = (string?)relEl.Attribute("Id");
+                        var target = (string?)relEl.Attribute("Target");
+                        if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(target)) continue;
+                        declaredRelIds.Add(id);
+                        Uri resolved;
+                        try
+                        {
+                            resolved = System.IO.Packaging.PackUriHelper.ResolvePartUri(
+                                slidePart.Uri, new Uri(target, UriKind.RelativeOrAbsolute));
+                        }
+                        catch { continue; }
+                        var key = resolved.OriginalString.TrimStart('/');
+                        if (!packageUris.Contains(key))
+                            brokenRelIds[id] = key;
+                    }
+                }
+            }
+            catch { /* probe is best-effort; never break view issues */ }
+
+            // Resident-mode parity: when a chart/picture/etc. is added via the
+            // long-lived resident, the new IdPartPair lives in the SDK's
+            // in-memory part tree before the rels XML stream gets flushed to
+            // the package. The disk-rels XML probe above then doesn't see the
+            // newly-declared rId, and view issues falsely reports
+            // broken_part_ref. Mirror the in-memory state by also accepting
+            // any rId the SDK currently exposes via Parts /
+            // HyperlinkRelationships / ExternalRelationships /
+            // DataPartReferenceRelationships. Disk-only state still flags
+            // genuinely-broken rels because brokenRelIds is populated from
+            // the disk probe above.
+            try
+            {
+                foreach (var pair in slidePart.Parts)
+                    if (!string.IsNullOrEmpty(pair.RelationshipId))
+                    {
+                        declaredRelIds.Add(pair.RelationshipId);
+                        // The part exists in-memory under this rId — clear
+                        // any stale "broken" verdict the disk probe inferred
+                        // before the SDK flushed the new IdPartPair.
+                        brokenRelIds.Remove(pair.RelationshipId);
+                    }
+                foreach (var hr in slidePart.HyperlinkRelationships)
+                    if (!string.IsNullOrEmpty(hr.Id)) declaredRelIds.Add(hr.Id);
+                foreach (var er in slidePart.ExternalRelationships)
+                    if (!string.IsNullOrEmpty(er.Id)) declaredRelIds.Add(er.Id);
+                foreach (var dr in slidePart.DataPartReferenceRelationships)
+                    if (!string.IsNullOrEmpty(dr.Id)) declaredRelIds.Add(dr.Id);
+            }
+            catch { /* probe is best-effort */ }
+
+            const string relNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+            // R8-2: walk the raw slide XML, not the SDK's parsed Slide. The
+            // SDK silently drops elements whose rels don't resolve (e.g. a
+            // <p:pic> with r:embed pointing at an undeclared rId), so the
+            // SDK-loaded view shows nothing to flag. Reading the part stream
+            // exposes every r:embed/r:link/r:id the file actually carries.
+            var rawRefs = new List<(string ElemName, string AttrLocal, string RId)>();
+            try
+            {
+                using var slideStream = slidePart.GetStream(System.IO.FileMode.Open, System.IO.FileAccess.Read);
+                var slideDoc = System.Xml.Linq.XDocument.Load(slideStream);
+                System.Xml.Linq.XNamespace rNs = relNs;
+                foreach (var el in slideDoc.Descendants())
+                {
+                    foreach (var name in new[] { "id", "embed", "link" })
+                    {
+                        var a = el.Attribute(rNs + name);
+                        if (a == null || string.IsNullOrEmpty(a.Value)) continue;
+                        rawRefs.Add((el.Name.LocalName, name, a.Value));
+                    }
+                }
+            }
+            catch { /* probe is best-effort */ }
+
+            var reportedRids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var (elemName, attrLocal, rId) in rawRefs)
+            {
+                if (string.IsNullOrEmpty(rId)) continue;
+                string message;
+                string suggestion;
+                if (brokenRelIds.TryGetValue(rId, out var missingTarget))
+                {
+                    message = $"Slide rel '{rId}' on <{elemName}> targets missing part '/{missingTarget}'";
+                    suggestion = "Restore the missing target part, or remove the dangling relationship and the referencing element.";
+                }
+                else if (!declaredRelIds.Contains(rId))
+                {
+                    // R8-2: rId referenced by slide XML but not declared in
+                    // the rels file at all. Distinct diagnostic so users can
+                    // tell "I need to add the rel" apart from "I need to
+                    // restore the part".
+                    message = $"Slide rel '{rId}' on <{elemName}> is referenced but not declared in the slide rels";
+                    suggestion = $"Add a matching <Relationship Id=\"{rId}\"> to the slide's rels file, or drop the referencing element.";
+                }
+                else continue;
+                if (!reportedRids.Add(rId)) continue;
                 issues.Add(new DocumentIssue
                 {
-                    Id = $"S{++issueNum}",
+                    Id = $"R{++issueNum}",
                     Type = IssueType.Structure,
-                    Severity = IssueSeverity.Warning,
+                    Subtype = Core.IssueSubtypes.BrokenPartRef,
+                    Severity = IssueSeverity.Error,
                     Path = $"/slide[{slideNum}]",
-                    Message = "Slide has no title"
+                    Message = message,
+                    Context = $"<{elemName} r:{attrLocal}=\"{rId}\">",
+                    Suggestion = suggestion
                 });
             }
+
+            var shapes = shapeTree.Elements<Shape>().ToList();
+            // No "slide has no title" warning: PowerPoint does not require a
+            // Title placeholder, free-form / chart-only / image-only slides
+            // are legitimate, and the check has no actionable subtype or
+            // suggestion. A dedicated a11y audit mode is the right home for
+            // this kind of structural lint if it returns later.
 
             // Check for font consistency issues
             int shapeIdx = 0;
@@ -526,6 +749,43 @@ public partial class PowerPointHandler
                         Path = shapePath,
                         Message = $"Inconsistent fonts in text box: {string.Join(", ", fonts)}"
                     });
+                }
+            }
+
+            // Table row/grid width mismatch. OOXML requires each <a:tr> to have
+            // <a:tc> count equal to its parent <a:tblGrid>'s <a:gridCol> count
+            // (gridSpan creates wide cells via hMerge placeholders, not by
+            // dropping cells). A short row produces undefined render — real
+            // PowerPoint stretches it with empty stubs, other viewers may
+            // skip it; either way it's malformed. Common cause: an earlier
+            // `add row --prop cols=N` with N < grid count, now rejected at
+            // write time but old files may still carry the bug.
+            int tableIdx = 0;
+            foreach (var graphicFrame in shapeTree.Descendants<GraphicFrame>())
+            {
+                var table = graphicFrame.Descendants<Drawing.Table>().FirstOrDefault();
+                if (table == null) continue;
+                tableIdx++;
+                var gridColCount = table.TableGrid?.Elements<Drawing.GridColumn>().Count() ?? 0;
+                if (gridColCount == 0) continue;
+                int rowIdx = 0;
+                foreach (var tr in table.Elements<Drawing.TableRow>())
+                {
+                    rowIdx++;
+                    var tcCount = tr.Elements<Drawing.TableCell>().Count();
+                    if (tcCount != gridColCount)
+                    {
+                        issues.Add(new DocumentIssue
+                        {
+                            Id = $"S{++issueNum}",
+                            Type = IssueType.Structure,
+                            Severity = IssueSeverity.Warning,
+                            Path = $"/slide[{slideNum}]/table[{tableIdx}]/tr[{rowIdx}]",
+                            Message = $"Row has {tcCount} cell(s) but table grid has {gridColCount} column(s). " +
+                                      "Real PowerPoint silently pads/clips; other viewers may render incorrectly. " +
+                                      "Add empty cells or use gridSpan to merge."
+                        });
+                    }
                 }
             }
 

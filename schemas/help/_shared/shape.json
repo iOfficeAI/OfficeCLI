@@ -251,10 +251,12 @@
       "description": "Soft edge radius, or 'none' to clear.",
       "add": true,
       "set": true,
+      "get": true,
       "examples": [
         "--prop softEdge=5",
         "--prop softEdge=4pt"
       ],
+      "readback": "unit-qualified string in points, e.g. \"5pt\"",
       "enforcement": "report"
     },
     "text": {

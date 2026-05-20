@@ -113,7 +113,7 @@ public partial class PowerPointHandler
                 if (properties.TryGetValue("y", out var yStr) || properties.TryGetValue("top", out yStr))
                     yEmu = ParseEmu(yStr);
 
-                var imgShapeId = GenerateUniqueShapeId(imgShapeTree);
+                var imgShapeId = AcquireShapeId(imgShapeTree, properties);
                 var imgName = properties.GetValueOrDefault("name", $"Picture {imgShapeTree.Elements<Picture>().Count() + 1}");
                 // BUG-R5-02: data URIs / raw base64 blobs make Path.GetFileName
                 // return a meaningless tail (e.g. "png;base64,iVBOR..."). Use a
@@ -332,7 +332,38 @@ public partial class PowerPointHandler
                     new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = ParsePresetShape(picGeomName) }
                 );
 
+                // CONSISTENCY(shape-picture-parity): rotation lives on the
+                // same Transform2D as shape/connector/group; PowerPoint
+                // applies it identically to pictures. Set.Media already
+                // accepts rotation on picture; Add must mirror so Add and
+                // Set agree on the property surface.
+                if (properties.TryGetValue("rotation", out var picRotStr)
+                    || properties.TryGetValue("rotate", out picRotStr))
+                {
+                    picture.ShapeProperties.Transform2D!.Rotation =
+                        (int)(ParseHelpers.SafeParseDouble(picRotStr, "rotation") * 60000);
+                }
+
+                // CONSISTENCY(shape-picture-parity): pictures are routinely
+                // click-targets — wire link= the same way shape does.
+                // Tooltip is the same secondary key as on shape.
+                if (properties.TryGetValue("link", out var picLink))
+                {
+                    var picTip = properties.GetValueOrDefault("tooltip");
+                    ApplyPictureHyperlink(imgSlidePart, picture, picLink, picTip);
+                }
+
                 InsertAtPosition(imgShapeTree, picture, index);
+
+                // CONSISTENCY(zorder-on-add): dump-emit carries zorder=N; without
+                // consuming it here every picture appended at the end of the tree.
+                if (properties.TryGetValue("zorder", out var picZ)
+                    || properties.TryGetValue("z-order", out picZ)
+                    || properties.TryGetValue("order", out picZ))
+                {
+                    ApplyZOrder(imgSlidePart, picture, picZ);
+                }
+
                 GetSlide(imgSlidePart).Save();
 
                 return $"/slide[{imgSlideIdx}]/{BuildElementPathSegment("picture", picture, imgShapeTree.Elements<Picture>().Count())}";
@@ -367,15 +398,34 @@ public partial class PowerPointHandler
                     throw new ArgumentException("Chart requires data. Use: data=\"Series1:1,2,3;Series2:4,5,6\" " +
                         "or series1=\"Revenue:100,200,300\"");
 
-                // Position
+                // Position. Accept `anchor=x,y` (2-arg, position only — size
+                // falls back to defaults) or `anchor=x,y,w,h` (full rect).
+                // Schema documents both 2- and 4-arg forms; explicit
+                // `x=`/`y=`/`width=`/`height=` props still override anchor
+                // for that axis (matches OLE/picture/shape add convention).
                 long chartX = properties.TryGetValue("x", out var xv) ? ParseEmu(xv) : 838200;     // ~2.3cm
                 long chartY = properties.TryGetValue("y", out var yv) ? ParseEmu(yv) : 1825625;     // ~5cm
                 long chartCx = properties.TryGetValue("width", out var wv) ? ParseEmu(wv) : 8229600; // ~22.9cm
                 long chartCy = properties.TryGetValue("height", out var hv) ? ParseEmu(hv) : 4572000; // ~12.7cm
+                if (properties.TryGetValue("anchor", out var chartAnchorRaw) && !string.IsNullOrWhiteSpace(chartAnchorRaw))
+                {
+                    var anchorParts = chartAnchorRaw.Split(',', StringSplitOptions.TrimEntries);
+                    if (anchorParts.Length != 2 && anchorParts.Length != 4)
+                        throw new ArgumentException(
+                            $"Invalid anchor: '{chartAnchorRaw}'. Expected 'x,y' (e.g. '2cm,3cm') or 'x,y,w,h' (e.g. '2cm,3cm,18cm,10cm'). " +
+                            "Cell-range form (e.g. 'D2:J18') is xlsx-only.");
+                    if (!properties.ContainsKey("x")) chartX = ParseEmu(anchorParts[0]);
+                    if (!properties.ContainsKey("y")) chartY = ParseEmu(anchorParts[1]);
+                    if (anchorParts.Length == 4)
+                    {
+                        if (!properties.ContainsKey("width")) chartCx = ParseEmu(anchorParts[2]);
+                        if (!properties.ContainsKey("height")) chartCy = ParseEmu(anchorParts[3]);
+                    }
+                }
                 // CONSISTENCY(positive-size): symmetric with Add.Shape negative-size guard.
                 if (chartCx < 0) throw new ArgumentException($"Negative width is not allowed: '{wv}'.");
                 if (chartCy < 0) throw new ArgumentException($"Negative height is not allowed: '{hv}'.");
-                var chartId = GenerateUniqueShapeId(chartShapeTree);
+                var chartId = AcquireShapeId(chartShapeTree, properties);
                 var chartName = properties.GetValueOrDefault("name", chartTitle ?? $"Chart {chartShapeTree.Elements<GraphicFrame>().Count(gf => gf.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().Any() || IsExtendedChartFrame(gf)) + 1}");
 
                 // Extended chart types (cx:chart) — funnel, treemap, sunburst, boxWhisker, histogram
@@ -411,6 +461,10 @@ public partial class PowerPointHandler
                     var chartGfEx = BuildExtendedChartGraphicFrame(chartSlidePart, extChartPart,
                         chartId, chartName, chartX, chartY, chartCx, chartCy);
                     InsertAtPosition(chartShapeTree, chartGfEx, index);
+                    if (properties.TryGetValue("zorder", out var cxZ)
+                        || properties.TryGetValue("z-order", out cxZ)
+                        || properties.TryGetValue("order", out cxZ))
+                        ApplyZOrder(chartSlidePart, chartGfEx, cxZ);
                     GetSlide(chartSlidePart).Save();
 
                     // Count all charts (both regular and extended)
@@ -435,6 +489,10 @@ public partial class PowerPointHandler
                 var chartGf = BuildChartGraphicFrame(chartSlidePart, chartPart, chartId, chartName,
                     chartX, chartY, chartCx, chartCy);
                 InsertAtPosition(chartShapeTree, chartGf, index);
+                if (properties.TryGetValue("zorder", out var stdZ)
+                    || properties.TryGetValue("z-order", out stdZ)
+                    || properties.TryGetValue("order", out stdZ))
+                    ApplyZOrder(chartSlidePart, chartGf, stdZ);
                 GetSlide(chartSlidePart).Save();
 
                 var chartCount = chartShapeTree.Elements<GraphicFrame>()
@@ -530,7 +588,7 @@ public partial class PowerPointHandler
                 long mX = properties.TryGetValue("x", out var mxv) ? ParseEmu(mxv) : (mediaSlideW - mCx) / 2;
                 long mY = properties.TryGetValue("y", out var myv) ? ParseEmu(myv) : (mediaSlideH - mCy) / 2;
 
-                var mediaId = GenerateUniqueShapeId(mediaShapeTree);
+                var mediaId = AcquireShapeId(mediaShapeTree, properties);
                 var mediaName = properties.GetValueOrDefault("name", isVideo ? "video" : "audio");
 
                 // 4. Build Picture element with proper video/audio structure
@@ -574,14 +632,18 @@ public partial class PowerPointHandler
                     new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = Drawing.ShapeTypeValues.Rectangle }
                 );
 
-                // p14:trim (optional start/end trim in milliseconds)
+                // p14:trim (optional start/end trim). Schema accepts both
+                // "hh:mm:ss.fff" timestamps and bare millisecond counts on
+                // input; normalize to ms-int on write — PowerPoint refuses
+                // to open a file whose p14:trim/@st is a timestamp literal
+                // (0x80070570 "file corrupted").
                 properties.TryGetValue("trimstart", out var trimStart);
                 properties.TryGetValue("trimend", out var trimEnd);
                 if (trimStart != null || trimEnd != null)
                 {
                     var trim = new DocumentFormat.OpenXml.Office2010.PowerPoint.MediaTrim();
-                    if (trimStart != null) trim.Start = trimStart;
-                    if (trimEnd != null) trim.End = trimEnd;
+                    if (trimStart != null) trim.Start = NormalizeMediaTimeMs(trimStart, "trimStart");
+                    if (trimEnd != null) trim.End = NormalizeMediaTimeMs(trimEnd, "trimEnd");
                     p14Media.MediaTrim = trim;
                 }
 
@@ -598,10 +660,22 @@ public partial class PowerPointHandler
                     if (volDbl > 0 && volDbl <= 1.0) volDbl *= 100;
                     vol = (int)(volDbl * 1000); // 0-100 → 0-100000
                 }
-                var autoPlay = properties.GetValueOrDefault("autoplay", "false")
-                    .Equals("true", StringComparison.OrdinalIgnoreCase);
+                // CONSISTENCY(media-autoplay-aliases): autoStart is the
+                // PowerPoint UI label and matches the OOXML verb naming;
+                // autoplay is the existing canonical. Accept both on add
+                // — Set already needs the same alias surface.
+                string? apRaw = null;
+                if (properties.TryGetValue("autoplay", out var apV)) apRaw = apV;
+                else if (properties.TryGetValue("autostart", out apV)) apRaw = apV;
+                var autoPlay = apRaw != null
+                    && apRaw.Equals("true", StringComparison.OrdinalIgnoreCase);
 
-                AddMediaTimingNode(mediaSlide, mediaId, isVideo, vol, autoPlay);
+                // loop: PowerPoint stores "Loop until Stopped" as
+                // repeatCount="indefinite" on the player's cTn (inside the
+                // CommonMediaNode). Default false.
+                var loop = properties.TryGetValue("loop", out var loopV) && IsTruthy(loopV);
+
+                AddMediaTimingNode(mediaSlide, mediaId, isVideo, vol, autoPlay, loop);
 
                 mediaSlide.Save();
 
@@ -659,11 +733,17 @@ public partial class PowerPointHandler
         // 3. Icon image part (placeholder PNG or user-supplied).
         var (_, oleIconRelId) = OfficeCli.Core.OleHelper.CreateIconPart(oleSlidePart, properties);
 
-        // 4. Dimensions.
+        // 4. Dimensions. width/height must be >= 1 EMU — zero / negative would
+        // produce a <a:ext cx="0"/> which Office silently rejects on open and
+        // throws the whole shape away (matches shape size validation).
         long oleCx = properties.TryGetValue("width", out var wv)
             ? ParseEmu(wv) : OfficeCli.Core.OleHelper.DefaultOleWidthEmu;
         long oleCy = properties.TryGetValue("height", out var hv)
             ? ParseEmu(hv) : OfficeCli.Core.OleHelper.DefaultOleHeightEmu;
+        if (oleCx < 1)
+            throw new ArgumentException($"Invalid ole width '{properties.GetValueOrDefault("width")}': must be >= 1 EMU.");
+        if (oleCy < 1)
+            throw new ArgumentException($"Invalid ole height '{properties.GetValueOrDefault("height")}': must be >= 1 EMU.");
         long oleX = properties.TryGetValue("x", out var xv) ? ParseEmu(xv) : 457200;
         long oleY = properties.TryGetValue("y", out var yv) ? ParseEmu(yv) : 457200;
 
@@ -678,7 +758,7 @@ public partial class PowerPointHandler
         //    attributes get schema-checked; only the outer GraphicFrame
         //    wrapper uses hand-built OuterXml because GraphicData.Uri is
         //    a string attribute, not a type particle.
-        var oleShapeId = GenerateUniqueShapeId(oleShapeTree);
+        var oleShapeId = AcquireShapeId(oleShapeTree, properties);
         var oleName = properties.GetValueOrDefault("name", $"Object {oleShapeId}");
 
         var oleObj = new DocumentFormat.OpenXml.Presentation.OleObject
@@ -745,6 +825,68 @@ public partial class PowerPointHandler
         var oleFrames = oleShapeTree.Elements<GraphicFrame>()
             .Count(gf => gf.Descendants<DocumentFormat.OpenXml.Presentation.OleObject>().Any());
         return $"/slide[{oleSlideIdx}]/ole[{oleFrames}]";
+    }
+
+    // Normalize a media trim input into the millisecond-integer string that
+    // PowerPoint accepts for p14:trim/@st|@end. Accepted input forms:
+    //   - bare ms count  ("200", "200ms")
+    //   - seconds        ("0.2s", "1.5s")
+    //   - hh:mm:ss(.fff) ("00:00:00.200", "00:01:30")
+    // PowerPoint refuses to open a file whose @st is a hh:mm:ss literal
+    // (0x80070570). Schema docs the timestamp form so it has to be tolerated
+    // on input; the wire form is always ms-int.
+    internal static string NormalizeMediaTimeMs(string raw, string propName)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            throw new ArgumentException($"Invalid '{propName}' value: empty.");
+        var s = raw.Trim();
+
+        // hh:mm:ss(.fff) — at least one colon
+        if (s.IndexOf(':') >= 0)
+        {
+            var parts = s.Split(':');
+            if (parts.Length < 2 || parts.Length > 3)
+                throw new ArgumentException(
+                    $"Invalid '{propName}' value: '{raw}'. Expected ms (e.g. '200'), seconds ('0.2s'), or 'hh:mm:ss.fff'.");
+            double h = 0, m, sec;
+            try
+            {
+                if (parts.Length == 3)
+                {
+                    h = double.Parse(parts[0], System.Globalization.CultureInfo.InvariantCulture);
+                    m = double.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture);
+                    sec = double.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture);
+                }
+                else
+                {
+                    m = double.Parse(parts[0], System.Globalization.CultureInfo.InvariantCulture);
+                    sec = double.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture);
+                }
+            }
+            catch (FormatException)
+            {
+                throw new ArgumentException(
+                    $"Invalid '{propName}' value: '{raw}'. Expected ms (e.g. '200'), seconds ('0.2s'), or 'hh:mm:ss.fff'.");
+            }
+            var totalMs = (h * 3600 + m * 60 + sec) * 1000;
+            if (totalMs < 0)
+                throw new ArgumentException($"Invalid '{propName}' value: '{raw}'. Must be non-negative.");
+            return ((long)Math.Round(totalMs)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        // suffix: ms / s
+        double scale = 1.0;
+        var body = s;
+        if (s.EndsWith("ms", StringComparison.OrdinalIgnoreCase))
+        { body = s[..^2].Trim(); scale = 1.0; }
+        else if (s.EndsWith("s", StringComparison.OrdinalIgnoreCase))
+        { body = s[..^1].Trim(); scale = 1000.0; }
+
+        if (!double.TryParse(body, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var n) || n < 0)
+            throw new ArgumentException(
+                $"Invalid '{propName}' value: '{raw}'. Expected ms (e.g. '200'), seconds ('0.2s'), or 'hh:mm:ss.fff'.");
+        return ((long)Math.Round(n * scale)).ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
 }

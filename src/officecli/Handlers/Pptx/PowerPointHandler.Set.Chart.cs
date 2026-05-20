@@ -95,7 +95,11 @@ public partial class PowerPointHandler
                 }
                 case "name":
                     var nvPr = chartGf.NonVisualGraphicFrameProperties?.NonVisualDrawingProperties;
-                    if (nvPr != null) nvPr.Name = value;
+                    if (nvPr != null)
+                    {
+                        Core.XmlTextValidator.ValidateOrThrow(value, "name");
+                        nvPr.Name = value;
+                    }
                     break;
             }
         }
@@ -116,6 +120,23 @@ public partial class PowerPointHandler
             unsupported = chartProps.Keys.ToList();
         }
         GetSlide(slidePart).Save();
+        // When the path targeted a single series (/chart[K]/series[N]) we
+        // rewrote each prop to "seriesN.<prop>" above before calling into the
+        // shared chart setter. Unsupported items echo back with that prefix,
+        // but CommandBuilder.Set compares them against the original
+        // properties dict ({"dataLabels.position","markerFill",…}) to decide
+        // which props made it. The prefix mismatch leaks every rejected prop
+        // into the "applied" set, producing both an "Updated …: key=val"
+        // success line AND an "UNSUPPORTED props: seriesN.key" rejection on
+        // the same call. Strip the prefix so the unsupported list speaks the
+        // same vocabulary as the caller.
+        if (seriesIdx > 0 && unsupported.Count > 0)
+        {
+            var prefix = $"series{seriesIdx}.";
+            unsupported = unsupported
+                .Select(u => u.StartsWith(prefix, StringComparison.Ordinal) ? u[prefix.Length..] : u)
+                .ToList();
+        }
         return unsupported;
     }
 }

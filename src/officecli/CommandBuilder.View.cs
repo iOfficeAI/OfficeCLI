@@ -12,7 +12,7 @@ static partial class CommandBuilder
     private static Command BuildViewCommand(Option<bool> jsonOption)
     {
         var viewFileArg = new Argument<FileInfo>("file") { Description = "Office document path (.docx, .xlsx, .pptx)" };
-        var viewModeArg = new Argument<string>("mode") { Description = "View mode: text, annotated, outline, stats, issues, html, svg, screenshot, forms" };
+        var viewModeArg = new Argument<string>("mode") { Description = "View mode: text, annotated, outline, stats, issues, html, svg, screenshot, pdf, forms" };
         var startLineOpt = new Option<int?>("--start") { Description = "Start line/paragraph number" };
         var endLineOpt = new Option<int?>("--end") { Description = "End line/paragraph number" };
         var maxLinesOpt = new Option<int?>("--max-lines") { Description = "Maximum number of lines/rows/slides to output (truncates with total count)" };
@@ -69,6 +69,37 @@ static partial class CommandBuilder
                 throw new OfficeCli.Core.CliException($"Invalid --render value: {renderMode}. Valid: auto, native, html") { Code = "invalid_render", ValidValues = ["auto", "native", "html"] };
             var withPages = result.GetValue(withPagesOpt);
 
+            // pdf mode runs entirely through an exporter plugin (no handler
+            // open, no resident hop — the plugin gets a snapshot of the
+            // source and writes the PDF). Handled before TryResident
+            // because exporter invocation needs the file lock released, and
+            // ExporterInvoker closes the resident itself when present.
+            if (mode.ToLowerInvariant() is "pdf")
+            {
+                var pdfPath = outArg ?? Path.ChangeExtension(file.FullName, "pdf");
+                var exp = OfficeCli.Core.Plugins.ExporterInvoker.Run(file.FullName, ".pdf", pdfPath);
+                if (json)
+                {
+                    Console.WriteLine(OutputFormatter.WrapEnvelopeText(exp.OutputPath));
+                }
+                else
+                {
+                    Console.WriteLine(Path.GetFullPath(exp.OutputPath));
+                    if (exp.ResidentClosed)
+                        Console.Error.WriteLine($"[note] resident closed to release lock; reopen with `officecli open` if needed");
+                }
+                if (browser)
+                {
+                    try
+                    {
+                        var psi = new System.Diagnostics.ProcessStartInfo(exp.OutputPath) { UseShellExecute = true };
+                        System.Diagnostics.Process.Start(psi);
+                    }
+                    catch { /* silently ignore if no default PDF viewer */ }
+                }
+                return 0;
+            }
+
             // Try resident first
             if (TryResident(file.FullName, req =>
             {
@@ -112,6 +143,8 @@ static partial class CommandBuilder
                     html = excelHandler.ViewAsHtml();
                 else if (handler is OfficeCli.Handlers.WordHandler wordHandler)
                     html = wordHandler.ViewAsHtml(pageFilter);
+                else if (handler is OfficeCli.Core.Plugins.FormatHandlerProxy proxy)
+                    html = proxy.ViewAsHtml(int.TryParse(pageFilter, out var p) ? p : (int?)null);
 
                 if (html != null)
                 {
@@ -292,6 +325,35 @@ static partial class CommandBuilder
                         Console.Write(svg);
                     }
                 }
+                else if (handler is OfficeCli.Core.Plugins.FormatHandlerProxy svgProxy)
+                {
+                    int? svgPage = null;
+                    if (!string.IsNullOrEmpty(pageFilter)
+                        && int.TryParse(pageFilter.Split(',')[0].Split('-')[0].Trim(), out var sp))
+                        svgPage = sp;
+                    var svg = svgProxy.ViewAsSvg(svgPage);
+                    if (svg is null)
+                        throw new OfficeCli.Core.CliException(
+                            $"SVG preview is not supported by the format-handler plugin for {file.Extension}.")
+                        { Code = "unsupported_type" };
+                    if (browser)
+                    {
+                        var outPath = Path.Combine(Path.GetTempPath(),
+                            $"officecli_preview_{Path.GetFileNameWithoutExtension(file.Name)}_{DateTime.Now:HHmmss}_{Guid.NewGuid():N}.svg");
+                        File.WriteAllText(outPath, svg);
+                        Console.WriteLine(outPath);
+                        try
+                        {
+                            var psi = new System.Diagnostics.ProcessStartInfo(outPath) { UseShellExecute = true };
+                            System.Diagnostics.Process.Start(psi);
+                        }
+                        catch { /* silently ignore if viewer can't be opened */ }
+                    }
+                    else
+                    {
+                        Console.Write(svg);
+                    }
+                }
                 else
                 {
                     throw new OfficeCli.Core.CliException("SVG preview is only supported for .pptx files.")
@@ -350,18 +412,26 @@ static partial class CommandBuilder
                 {
                     if (handler is OfficeCli.Handlers.WordHandler wordFormsHandler)
                         Console.WriteLine(OutputFormatter.WrapEnvelope(wordFormsHandler.ViewAsFormsJson().ToJsonString(OutputFormatter.PublicJsonOptions)));
+                    else if (handler is OfficeCli.Core.Plugins.FormatHandlerProxy formsProxy)
+                    {
+                        var formsJson = formsProxy.ViewAsFormsJson();
+                        if (formsJson is null)
+                            throw new OfficeCli.Core.CliException($"Forms view is not supported by the format-handler plugin for {file.Extension}.")
+                            { Code = "unsupported_type" };
+                        Console.WriteLine(OutputFormatter.WrapEnvelope(formsJson.ToJsonString(OutputFormatter.PublicJsonOptions)));
+                    }
                     else
                         throw new OfficeCli.Core.CliException("Forms view is only supported for .docx files.")
                         {
                             Code = "unsupported_type",
-                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "forms"]
+                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "pdf", "forms"]
                         };
                 }
                 else
                     throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms")
                     {
                         Code = "invalid_value",
-                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "forms"]
+                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "pdf", "forms"]
                     };
             }
             else
@@ -375,17 +445,23 @@ static partial class CommandBuilder
                         ? $"Pages: {withPagesValue}\n" + handler.ViewAsStats()
                         : handler.ViewAsStats(),
                     "issues" or "i" => OutputFormatter.FormatIssues(handler.ViewAsIssues(issueType, limit), OutputFormat.Text),
-                    "forms" or "f" => handler is OfficeCli.Handlers.WordHandler wfh
-                        ? wfh.ViewAsForms()
-                        : throw new OfficeCli.Core.CliException("Forms view is only supported for .docx files.")
+                    "forms" or "f" => handler switch
+                    {
+                        OfficeCli.Handlers.WordHandler wfh => wfh.ViewAsForms(),
+                        OfficeCli.Core.Plugins.FormatHandlerProxy fp
+                            => fp.ViewAsFormsJson()?.ToJsonString(OutputFormatter.PublicJsonOptions)
+                               ?? throw new OfficeCli.Core.CliException($"Forms view is not supported by the format-handler plugin for {file.Extension}.")
+                                   { Code = "unsupported_type" },
+                        _ => throw new OfficeCli.Core.CliException("Forms view is only supported for .docx files.")
                         {
                             Code = "unsupported_type",
-                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "forms"]
-                        },
+                            ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "pdf", "forms"]
+                        }
+                    },
                     _ => throw new OfficeCli.Core.CliException($"Unknown mode: {mode}. Available: text, annotated, outline, stats, issues, html, svg, screenshot, forms")
                     {
                         Code = "invalid_value",
-                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "forms"]
+                        ValidValues = ["text", "annotated", "outline", "stats", "issues", "html", "svg", "screenshot", "pdf", "forms"]
                     }
                 };
                 Console.WriteLine(output);

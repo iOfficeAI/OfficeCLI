@@ -217,7 +217,16 @@ public partial class PowerPointHandler
                     if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var opacityVal)
                         || double.IsNaN(opacityVal) || double.IsInfinity(opacityVal))
                         throw new ArgumentException($"Invalid 'opacity' value: '{value}'. Expected a finite decimal 0.0-1.0.");
+                    // CONSISTENCY(opacity-clamp): mirror the shape/cell path —
+                    // values in (1, 2) are ambiguous (1.5 as decimal is OOR,
+                    // as percentage would silently become 0.015) so reject
+                    // outright instead of /100-dividing into the alpha=1500
+                    // (≈1.5%) trap.
+                    if (opacityVal > 1.0 && opacityVal < 2.0)
+                        throw new ArgumentException($"Invalid 'opacity' value: '{value}'. Expected 0.0-1.0 as decimal or 2-100 as percent (values in (1, 2) are ambiguous).");
                     if (opacityVal > 1.0) opacityVal /= 100.0;
+                    if (opacityVal < 0.0 || opacityVal > 1.0)
+                        throw new ArgumentException($"Invalid 'opacity' value: '{value}'. Expected 0.0-1.0 (or 0-100 as percent).");
                     var blip = pic.BlipFill?.GetFirstChild<Drawing.Blip>();
                     if (blip != null)
                     {
@@ -230,7 +239,11 @@ public partial class PowerPointHandler
                 case "name":
                 {
                     var nvPr = pic.NonVisualPictureProperties?.NonVisualDrawingProperties;
-                    if (nvPr != null) nvPr.Name = value;
+                    if (nvPr != null)
+                    {
+                        Core.XmlTextValidator.ValidateOrThrow(value, "name");
+                        nvPr.Name = value;
+                    }
                     break;
                 }
                 case "shadow":
@@ -257,27 +270,61 @@ public partial class PowerPointHandler
                         || bcVal < -100 || bcVal > 100)
                         throw new ArgumentException($"Invalid '{key}' value: '{value}'. Expected number in [-100, 100].");
 
-                    var existingLumMod = blipBC.Elements<Drawing.LuminanceModulation>().FirstOrDefault();
-                    var existingLumOff = blipBC.Elements<Drawing.LuminanceOffset>().FirstOrDefault();
-                    int curLumModPct = existingLumMod?.Val?.Value is int vm ? vm : 100000;
-                    int curLumOffPct = existingLumOff?.Val?.Value is int vo ? vo : 0;
+                    // Read existing values from BOTH strongly-typed and
+                    // OpenXmlUnknownElement forms — the SDK re-parses these
+                    // children as unknown (a:lumMod is not strong-typed on
+                    // Drawing.Blip), so a one-shot Remove of the strong type
+                    // leaves the unknown copy behind and yields duplicate
+                    // lumMod/lumOff after a second Set.
+                    int curLumModPct = 100000;
+                    int curLumOffPct = 0;
+                    var staleLum = new List<OpenXmlElement>();
+                    foreach (var kid in blipBC.ChildElements)
+                    {
+                        if (kid.NamespaceUri != "http://schemas.openxmlformats.org/drawingml/2006/main") continue;
+                        if (kid.LocalName != "lumMod" && kid.LocalName != "lumOff") continue;
+                        var valAttr = kid.GetAttribute("val", "").Value;
+                        if (int.TryParse(valAttr, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var iv))
+                        {
+                            if (kid.LocalName == "lumMod") curLumModPct = iv;
+                            else curLumOffPct = iv;
+                        }
+                        staleLum.Add(kid);
+                    }
+                    foreach (var s in staleLum) s.Remove();
 
                     if (key.Equals("brightness", StringComparison.OrdinalIgnoreCase))
                         curLumOffPct = (int)(bcVal * 1000);
                     else
                         curLumModPct = 100000 + (int)(bcVal * 1000);
 
-                    existingLumMod?.Remove();
-                    existingLumOff?.Remove();
                     blipBC.AppendChild(new Drawing.LuminanceModulation { Val = curLumModPct });
                     blipBC.AppendChild(new Drawing.LuminanceOffset { Val = curLumOffPct });
                     break;
                 }
+                case "link":
+                {
+                    // CONSISTENCY(shape-picture-parity): mirror shape's link/tooltip
+                    // pairing — tooltip is applied alongside link in one call.
+                    var picTip = properties.GetValueOrDefault("tooltip");
+                    ApplyPictureHyperlink(slidePart, pic, value, picTip);
+                    break;
+                }
+                case "tooltip":
+                    // handled in tandem with "link"; standalone tooltip change is not supported here
+                    break;
                 default:
-                    if (unsupported.Count == 0)
-                        unsupported.Add($"{key} (valid picture props: path, src, x, y, width, height, rotation, opacity, name, crop, cropleft, croptop, cropright, cropbottom, shadow, glow, brightness, contrast)");
-                    else
-                        unsupported.Add(key);
+                    // Reflection fallback against pic.spPr (drawing shape props)
+                    // catches attributes the manual cases don't enumerate
+                    // (e.g. prst, flipH, flipV). Mirrors Set.Shape.cs:298.
+                    var picSpPr = pic.ShapeProperties ?? (pic.ShapeProperties = new ShapeProperties());
+                    if (!GenericXmlQuery.SetGenericAttribute(picSpPr, key, value))
+                    {
+                        if (unsupported.Count == 0)
+                            unsupported.Add($"{key} (valid picture props: path, src, x, y, width, height, rotation, opacity, name, crop, cropleft, croptop, cropright, cropbottom, shadow, glow, brightness, contrast, link, tooltip)");
+                        else
+                            unsupported.Add(key);
+                    }
                     break;
             }
         }
@@ -395,6 +442,7 @@ public partial class PowerPointHandler
                 }
                 case "name":
                 {
+                    Core.XmlTextValidator.ValidateOrThrow(value, "name");
                     // Update cNvPr name in Choice
                     var nvGfPr = gf?.ChildElements.FirstOrDefault(e => e.LocalName == "nvGraphicFramePr");
                     var choiceCNvPr = nvGfPr?.ChildElements.FirstOrDefault(e => e.LocalName == "cNvPr");
@@ -512,6 +560,7 @@ public partial class PowerPointHandler
                 }
                 case "name":
                 {
+                    Core.XmlTextValidator.ValidateOrThrow(value, "name");
                     var nvSpPr = sp?.ChildElements.FirstOrDefault(e => e.LocalName == "nvGraphicFramePr")
                               ?? sp?.ChildElements.FirstOrDefault(e => e.LocalName == "nvSpPr");
                     var cNvPr = nvSpPr?.ChildElements.FirstOrDefault(e => e.LocalName == "cNvPr");
@@ -536,6 +585,30 @@ public partial class PowerPointHandler
                         }
                         var attrName = key.ToLowerInvariant() switch { "rotx" => "ax", "roty" => "ay", _ => "az" };
                         rot.SetAttribute(new OpenXmlAttribute("", attrName, null!, ParseAngle60k(value).ToString()));
+                    }
+                    break;
+                }
+                case "rotation":
+                {
+                    // Combined "ax,ay,az" form — mirrors Get readback so a Get/Set
+                    // round-trip with the same string works. Missing axes default to 0.
+                    var parts = value.Split(',', StringSplitOptions.TrimEntries);
+                    string axS = parts.Length > 0 ? parts[0] : "0";
+                    string ayS = parts.Length > 1 ? parts[1] : "0";
+                    string azS = parts.Length > 2 ? parts[2] : "0";
+                    var model3dEl = acElement.Descendants().FirstOrDefault(d => d.LocalName == "model3d");
+                    var trans = model3dEl?.ChildElements.FirstOrDefault(e => e.LocalName == "trans");
+                    if (trans != null)
+                    {
+                        var rot = trans.ChildElements.FirstOrDefault(e => e.LocalName == "rot");
+                        if (rot == null)
+                        {
+                            rot = new OpenXmlUnknownElement("am3d", "rot", Am3dNs);
+                            trans.AppendChild(rot);
+                        }
+                        rot.SetAttribute(new OpenXmlAttribute("", "ax", null!, ParseAngle60k(axS).ToString()));
+                        rot.SetAttribute(new OpenXmlAttribute("", "ay", null!, ParseAngle60k(ayS).ToString()));
+                        rot.SetAttribute(new OpenXmlAttribute("", "az", null!, ParseAngle60k(azS).ToString()));
                     }
                     break;
                 }
@@ -590,10 +663,45 @@ public partial class PowerPointHandler
                     break;
                 }
                 case "progid":
+                {
                     OfficeCli.Core.OleHelper.ValidateProgId(value);
+                    // Reject a solo progId change that would leave the embedded
+                    // part's MIME inconsistent with the new ProgID label —
+                    // Office refuses to activate such embeds (progId says Word,
+                    // payload is still an xlsx package, etc.). Caller must
+                    // re-supply src= in the same set call to migrate the
+                    // payload too. Skip when src= is in this same dict — the
+                    // src case above already attached a fresh part.
+                    if (!properties.ContainsKey("src") && !properties.ContainsKey("path"))
+                    {
+                        var newFam = OfficeCli.Core.OleHelper.ProgIdFamily(value);
+                        string? oldContentType = null;
+                        if (oleEl.Id?.Value is string relId && !string.IsNullOrEmpty(relId))
+                        {
+                            try
+                            {
+                                var part = oleSlidePart.GetPartById(relId);
+                                oldContentType = part?.ContentType;
+                            }
+                            catch { /* missing part — skip the guard */ }
+                        }
+                        var oldFam = OfficeCli.Core.OleHelper.ContentTypeFamily(oldContentType);
+                        if (newFam != "unknown" && newFam != "other"
+                            && oldFam != "unknown" && oldFam != "other"
+                            && newFam != oldFam && oldFam != "package")
+                        {
+                            throw new ArgumentException(
+                                $"progId='{value}' ({newFam}) does not match the embedded payload " +
+                                $"(contentType={oldContentType}, family={oldFam}). " +
+                                $"Re-supply both keys in the same set call, e.g. " +
+                                $"--prop src=<new-{newFam}-file> --prop progId={value}.");
+                        }
+                    }
                     oleEl.ProgId = value;
                     break;
+                }
                 case "name":
+                    Core.XmlTextValidator.ValidateOrThrow(value, "name");
                     oleEl.Name = value;
                     break;
                 case "display":
@@ -629,7 +737,14 @@ public partial class PowerPointHandler
                     break;
                 }
                 default:
-                    oleUnsupported.Add(key);
+                    // Reflection fallback against the OleObject element
+                    // catches attributes the manual cases don't enumerate
+                    // (e.g. imgW, imgH, followColorScheme). Mirrors
+                    // Set.Shape.cs:298.
+                    if (!GenericXmlQuery.SetGenericAttribute(oleEl, key, value))
+                    {
+                        oleUnsupported.Add(key);
+                    }
                     break;
             }
         }
@@ -681,7 +796,7 @@ public partial class PowerPointHandler
                     if (mediaNode != null) mediaNode.Volume = vol;
                     break;
                 }
-                case "autoplay":
+                case "autoplay" or "autostart":
                 {
                     if (shapeId == null) { unsupported.Add(key); break; }
                     var autoplayOn = IsTruthy(value);
@@ -732,7 +847,10 @@ public partial class PowerPointHandler
                     if (p14Media != null)
                     {
                         var trim = p14Media.MediaTrim ?? (p14Media.MediaTrim = new DocumentFormat.OpenXml.Office2010.PowerPoint.MediaTrim());
-                        trim.Start = value;
+                        // CONSISTENCY(media-trim-normalize): mirror Add.Media —
+                        // PowerPoint rejects timestamp literals as @st, so we
+                        // always emit ms-int on the wire.
+                        trim.Start = NormalizeMediaTimeMs(value, "trimStart");
                     }
                     break;
                 }
@@ -743,7 +861,7 @@ public partial class PowerPointHandler
                     if (p14Media != null)
                     {
                         var trim = p14Media.MediaTrim ?? (p14Media.MediaTrim = new DocumentFormat.OpenXml.Office2010.PowerPoint.MediaTrim());
-                        trim.End = value;
+                        trim.End = NormalizeMediaTimeMs(value, "trimEnd");
                     }
                     break;
                 }
@@ -785,9 +903,25 @@ public partial class PowerPointHandler
                     catch { /* leave orphan */ }
                     break;
                 }
+                case "loop":
+                {
+                    if (shapeId == null) { unsupported.Add(key); break; }
+                    var loopOn = IsTruthy(value);
+                    // Loop-until-Stopped lives on the player's cTn as
+                    // repeatCount="indefinite" (cMediaNode wrapper). Add/Set
+                    // share the same emitter helper.
+                    var mediaNode = FindMediaTimingNode(slidePart, shapeId.Value);
+                    var cTn = mediaNode?.CommonTimeNode;
+                    if (cTn != null)
+                    {
+                        if (loopOn) cTn.RepeatCount = "indefinite";
+                        else cTn.RepeatCount = null;
+                    }
+                    break;
+                }
                 default:
                     if (unsupported.Count == 0)
-                        unsupported.Add($"{key} (valid media props: volume, autoplay, trimstart, trimend, x, y, width, height, poster)");
+                        unsupported.Add($"{key} (valid media props: volume, autoplay, autostart, loop, trimstart, trimend, x, y, width, height, poster)");
                     else
                         unsupported.Add(key);
                     break;

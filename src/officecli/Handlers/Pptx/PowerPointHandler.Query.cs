@@ -147,6 +147,16 @@ public partial class PowerPointHandler
                 + (shapeTree?.Elements<Picture>().Count() ?? 0);
             masterNode.Format["shapeCount"] = shapeCount;
             ReadBackground(mp.SlideMaster?.CommonSlideData, masterNode);
+            // CONSISTENCY(master-direction): Set persists rtl into the master's
+            // <p:txStyles>/bodyStyle/lvl1pPr@rtl. Mirror it back on Get so users
+            // can verify their own write (was previously set-only — Get omitted
+            // the key entirely).
+            var smTxStyles = mp.SlideMaster?.TextStyles;
+            var rtlVal = smTxStyles?.GetFirstChild<BodyStyle>()?.GetFirstChild<Drawing.Level1ParagraphProperties>()?.RightToLeft?.Value
+                ?? smTxStyles?.GetFirstChild<TitleStyle>()?.GetFirstChild<Drawing.Level1ParagraphProperties>()?.RightToLeft?.Value
+                ?? smTxStyles?.GetFirstChild<OtherStyle>()?.GetFirstChild<Drawing.Level1ParagraphProperties>()?.RightToLeft?.Value;
+            if (rtlVal == true)
+                masterNode.Format["direction"] = "rtl";
             // Add layout children
             int lIdx = 0;
             foreach (var lp in mp.SlideLayoutParts ?? Enumerable.Empty<SlideLayoutPart>())
@@ -204,7 +214,81 @@ public partial class PowerPointHandler
             if (lp.SlideLayout?.Type?.HasValue == true)
                 layoutNode.Format["type"] = lp.SlideLayout.Type.InnerText;
             ReadBackground(lp.SlideLayout?.CommonSlideData, layoutNode);
+
+            // Populate child shapes — mirror what the slide Get branch does so
+            // a layout-rooted Get exposes the same shape tree visible at
+            // /slidelayout[N]/shape[K]. Previously childCount was always 0,
+            // making layout edits non-discoverable via tree walk even though
+            // the direct shape path worked.
+            var layoutShapeTree = lp.SlideLayout?.CommonSlideData?.ShapeTree;
+            if (layoutShapeTree != null)
+            {
+                int sIdx = 0;
+                foreach (var sh in layoutShapeTree.Elements<Shape>())
+                {
+                    sIdx++;
+                    var childNode = ShapeToNode(sh, slideNum: 0, sIdx,
+                        depth: 0, part: null, parentPathPrefix: resolvedPath);
+                    layoutNode.Children.Add(childNode);
+                }
+                layoutNode.ChildCount = layoutNode.Children.Count;
+            }
             return layoutNode;
+        }
+
+        // CONSISTENCY(master-layout-shape-edit): Get on a master/layout shape path.
+        // Add returns `/slidemaster[N]/shape[@id=K]` (and `/slidelayout[N]/shape[K]`,
+        // `/slidemaster[N]/slidelayout[L]/shape[K]`); without this branch the path
+        // fell through to the slide-only fallback and emitted the misleading
+        // "Path must start with /slide[N], ..." error so Add output was
+        // non-round-trippable.
+        var nestedMasterShapeGetMatch = Regex.Match(path,
+            @"^/slidemaster\[(\d+)\]/slidelayout\[(\d+)\]/shape\[(\d+)\]$", RegexOptions.IgnoreCase);
+        var masterShapeGetMatch = Regex.Match(path,
+            @"^/(slidemaster|slidelayout)\[(\d+)\]/shape\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (nestedMasterShapeGetMatch.Success || masterShapeGetMatch.Success)
+        {
+            ShapeTree? mlShapeTree;
+            string mlPathPrefix;
+            if (nestedMasterShapeGetMatch.Success)
+            {
+                var mIdx = int.Parse(nestedMasterShapeGetMatch.Groups[1].Value);
+                var lIdx = int.Parse(nestedMasterShapeGetMatch.Groups[2].Value);
+                var masters = _doc.PresentationPart?.SlideMasterParts?.ToList() ?? [];
+                if (mIdx < 1 || mIdx > masters.Count)
+                    throw new ArgumentException($"Slide master {mIdx} not found (total: {masters.Count})");
+                var layouts = masters[mIdx - 1].SlideLayoutParts?.ToList() ?? [];
+                if (lIdx < 1 || lIdx > layouts.Count)
+                    throw new ArgumentException($"Slide layout {lIdx} not found under master {mIdx} (total: {layouts.Count})");
+                mlShapeTree = layouts[lIdx - 1].SlideLayout?.CommonSlideData?.ShapeTree;
+                mlPathPrefix = $"/slidemaster[{mIdx}]/slidelayout[{lIdx}]";
+                var shapeIdx = int.Parse(nestedMasterShapeGetMatch.Groups[3].Value);
+                return GetMasterOrLayoutShapeNode(mlShapeTree, shapeIdx, mlPathPrefix, depth);
+            }
+            else
+            {
+                var kind = masterShapeGetMatch.Groups[1].Value.ToLowerInvariant();
+                var pIdx = int.Parse(masterShapeGetMatch.Groups[2].Value);
+                var shapeIdx = int.Parse(masterShapeGetMatch.Groups[3].Value);
+                if (kind == "slidemaster")
+                {
+                    var masters = _doc.PresentationPart?.SlideMasterParts?.ToList() ?? [];
+                    if (pIdx < 1 || pIdx > masters.Count)
+                        throw new ArgumentException($"Slide master {pIdx} not found (total: {masters.Count})");
+                    mlShapeTree = masters[pIdx - 1].SlideMaster?.CommonSlideData?.ShapeTree;
+                    mlPathPrefix = $"/slidemaster[{pIdx}]";
+                }
+                else
+                {
+                    var allLayouts = (_doc.PresentationPart?.SlideMasterParts ?? Enumerable.Empty<SlideMasterPart>())
+                        .SelectMany(m => m.SlideLayoutParts ?? Enumerable.Empty<SlideLayoutPart>()).ToList();
+                    if (pIdx < 1 || pIdx > allLayouts.Count)
+                        throw new ArgumentException($"Slide layout {pIdx} not found (total: {allLayouts.Count})");
+                    mlShapeTree = allLayouts[pIdx - 1].SlideLayout?.CommonSlideData?.ShapeTree;
+                    mlPathPrefix = $"/slidelayout[{pIdx}]";
+                }
+                return GetMasterOrLayoutShapeNode(mlShapeTree, shapeIdx, mlPathPrefix, depth);
+            }
         }
 
         // Try OLE path: /slide[N]/ole[M]
@@ -223,6 +307,18 @@ public partial class PowerPointHandler
             return oleNodes[oleNodeIdx - 1];
         }
 
+        // Modern p188 comment reply: /slide[N]/moderncomment[K]/reply[R].
+        // (Top-level /slide[N]/moderncomment[K] is matched by the generic
+        // /slide[N]/<type>[K] branch below via elementType == "moderncomment".)
+        var mcReplyGetMatch = Regex.Match(path,
+            @"^/slide\[(\d+)\]/moderncomment\[(\d+)\]/reply\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (mcReplyGetMatch.Success)
+        {
+            var rr = ResolveModernCommentReply(path)
+                ?? throw new ArgumentException($"Modern comment reply not found: {path}");
+            return ModernCommentReplyToNode(rr.slideIdx, rr.parentIdx, rr.reply, rr.replyIdx);
+        }
+
         // Try notes path: /slide[N]/notes
         var notesGetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/notes$");
         if (notesGetMatch.Success)
@@ -233,11 +329,21 @@ public partial class PowerPointHandler
                 throw new ArgumentException($"Slide {notesSlideIdx} not found (total: {slidePartsN.Count})");
             var slidePartN = slidePartsN[notesSlideIdx - 1];
             if (slidePartN.NotesSlidePart == null)
-                return new DocumentNode { Path = path, Type = "error", Text = $"Slide {notesSlideIdx} has no notes" };
+                // CONSISTENCY(not-found-uniformity): missing notes on a valid
+                // slide is the same shape as out-of-range slide ("entity not
+                // present at a valid path") — surface as not_found, not as
+                // an error-typed DocumentNode (which the envelope formatter
+                // coerces to internal_error).
+                throw new ArgumentException($"Notes not found at /slide[{notesSlideIdx}]/notes (slide has no speaker notes)");
             var notesText = GetNotesText(slidePartN.NotesSlidePart);
             var notesNode = new DocumentNode { Path = path, Type = "notes", Text = notesText };
             // Schema declares text get=true; mirror node.Text into Format for parity.
             notesNode.Format["text"] = notesText ?? "";
+            // Walk the notes body shape's first run to expose font formatting
+            // (bold/italic/underline/color/size/font/lang/spacing/...). Without
+            // this the Set→Get round-trip silently loses every formatting key
+            // accepted by Set --prop. Mirrors the curated reader in RunToNode.
+            PopulateNotesFormat(slidePartN.NotesSlidePart, notesNode);
             return notesNode;
         }
 
@@ -345,6 +451,26 @@ public partial class PowerPointHandler
             return ZoomToNode(zoomElements[zmIdx - 1], sIdx, zmIdx);
         }
 
+        // Try model3d path: /slide[N]/model3d[M]
+        // model3d sits inside mc:AlternateContent, so the generic spTree
+        // ChildElements fallback can't find it. Mirror the zoom branch.
+        var m3dGetMatch = Regex.Match(path, @"^/slide\[(\d+)\]/model3d\[(\d+)\]$", RegexOptions.IgnoreCase);
+        if (m3dGetMatch.Success)
+        {
+            var sIdx = int.Parse(m3dGetMatch.Groups[1].Value);
+            var mIdx = int.Parse(m3dGetMatch.Groups[2].Value);
+            var m3dSlideParts = GetSlideParts().ToList();
+            if (sIdx < 1 || sIdx > m3dSlideParts.Count)
+                throw new ArgumentException($"Slide {sIdx} not found (total: {m3dSlideParts.Count})");
+            var m3dSlidePart = m3dSlideParts[sIdx - 1];
+            var m3dShapeTree = GetSlide(m3dSlidePart).CommonSlideData?.ShapeTree
+                ?? throw new ArgumentException($"Slide {sIdx} has no shapes");
+            var m3dElements = GetModel3DElements(m3dShapeTree);
+            if (mIdx < 1 || mIdx > m3dElements.Count)
+                throw new ArgumentException($"3D model {mIdx} not found at /slide[{sIdx}] (available: {m3dElements.Count}).");
+            return Model3DToNode(m3dElements[mIdx - 1], sIdx, mIdx);
+        }
+
         // Try animation path: /slide[N]/shape[M]/animation[A]
         var animPathMatch = Regex.Match(path, @"^/slide\[(\d+)\]/shape\[(\d+)\]/animation\[(\d+)\]$");
         if (animPathMatch.Success)
@@ -443,6 +569,28 @@ public partial class PowerPointHandler
                 };
             }
 
+            // Cell text direction (a:tcPr @vert). Canonical readback mirrors the
+            // Set vocabulary (horizontal / vertical270 / vertical90 / stacked).
+            if (tcPr?.Vertical?.HasValue == true)
+            {
+                cellNode.Format["textdirection"] = tcPr.Vertical.InnerText switch
+                {
+                    "horz" => "horizontal",
+                    "vert" => "vertical90",
+                    "vert270" => "vertical270",
+                    "wordArtVert" => "stacked",
+                    _ => tcPr.Vertical.InnerText
+                };
+            }
+
+            // Cell text wrap (a:tcPr/a:txBody/a:bodyPr @wrap). Set writes
+            // square|none on the cell's BodyProperties; mirror back as bool.
+            var qCellBodyPr = cell.TextBody?.GetFirstChild<Drawing.BodyProperties>();
+            if (qCellBodyPr?.Wrap?.HasValue == true)
+            {
+                cellNode.Format["wrap"] = qCellBodyPr.Wrap.Value != Drawing.TextWrappingValues.None;
+            }
+
             // BUG-R4-D9: padding.* readback (Set already wrote LeftMargin/etc;
             // Get was missing). Use FormatEmu to mirror cross-handler width/EMU
             // value formatting (e.g. "0.13cm").
@@ -507,9 +655,14 @@ public partial class PowerPointHandler
                         _ => firstRun.RunProperties.Underline.InnerText
                     };
                 }
-                if (firstRun.RunProperties.Strike?.HasValue == true && firstRun.RunProperties.Strike.Value != Drawing.TextStrikeValues.NoStrike)
+                if (firstRun.RunProperties.Strike?.HasValue == true)
                 {
-                    cellNode.Format["strike"] = firstRun.RunProperties.Strike.Value == Drawing.TextStrikeValues.DoubleStrike ? "double" : "single";
+                    cellNode.Format["strike"] = firstRun.RunProperties.Strike.Value switch
+                    {
+                        var v when v == Drawing.TextStrikeValues.DoubleStrike => "double",
+                        var v when v == Drawing.TextStrikeValues.NoStrike => "none",
+                        _ => "single",
+                    };
                 }
                 var colorHex = firstRun.RunProperties.GetFirstChild<Drawing.SolidFill>()
                     ?.GetFirstChild<Drawing.RgbColorModelHex>()?.Val?.Value;
@@ -668,6 +821,123 @@ public partial class PowerPointHandler
                 return GenericXmlQuery.ElementToNode(logicalResolved.Value.element, path, depth);
         }
 
+        // Try arbitrary-depth group descent: /slide[N]/group[M](/group[L])*/<leaf>[K]
+        // CONSISTENCY(group-inner-shape): Get must traverse nested groups the
+        // same way Query already does. Without this branch, paths like
+        // /slide[1]/group[1]/group[1] or /slide[1]/group[1]/group[2]/shape[3]
+        // fall through to the generic XML fallback, which mis-detects
+        // GroupShape (LocalName="grpSp") and emits "Element not found".
+        // Leaf may be a nested group itself or any non-group inner type (shape,
+        // picture, table, chart, connector). Leaf-of-type-group returns the
+        // group node; other leaves delegate to the matching ToNode builder so
+        // the returned DocumentNode carries the full Format payload.
+        var nestedGroupMatch = Regex.Match(path,
+            @"^/slide\[(\d+)\]/group\[(\d+)\]((?:/group\[\d+\])*)(?:/(shape|picture|pic|table|chart|connector|connection)\[(\d+)\])?$");
+        if (nestedGroupMatch.Success && (nestedGroupMatch.Groups[3].Length > 0 || nestedGroupMatch.Groups[4].Success))
+        {
+            var ngSlideIdx = int.Parse(nestedGroupMatch.Groups[1].Value);
+            var ngRootGrpIdx = int.Parse(nestedGroupMatch.Groups[2].Value);
+            var ngSlideParts = GetSlideParts().ToList();
+            if (ngSlideIdx < 1 || ngSlideIdx > ngSlideParts.Count)
+                throw new ArgumentException($"Slide {ngSlideIdx} not found (total: {ngSlideParts.Count})");
+            var ngSlidePart = ngSlideParts[ngSlideIdx - 1];
+            var ngShapeTree = GetSlide(ngSlidePart).CommonSlideData?.ShapeTree
+                ?? throw new ArgumentException("Slide has no shape tree");
+            var ngRootGroups = ngShapeTree.Elements<GroupShape>().ToList();
+            if (ngRootGrpIdx < 1 || ngRootGrpIdx > ngRootGroups.Count)
+                throw new ArgumentException($"Group {ngRootGrpIdx} not found (total: {ngRootGroups.Count})");
+            GroupShape ngCurrent = ngRootGroups[ngRootGrpIdx - 1];
+            var ngPathPrefix = $"/slide[{ngSlideIdx}]/{BuildElementPathSegment("group", ngCurrent, ngRootGrpIdx)}";
+            // Walk nested /group[L] segments
+            foreach (Match seg in Regex.Matches(nestedGroupMatch.Groups[3].Value, @"/group\[(\d+)\]"))
+            {
+                var subIdx = int.Parse(seg.Groups[1].Value);
+                var subs = ngCurrent.Elements<GroupShape>().ToList();
+                if (subIdx < 1 || subIdx > subs.Count)
+                    throw new ArgumentException($"Nested group {subIdx} not found at {ngPathPrefix} (total: {subs.Count})");
+                ngCurrent = subs[subIdx - 1];
+                ngPathPrefix = $"{ngPathPrefix}/{BuildElementPathSegment("group", ngCurrent, subIdx)}";
+            }
+            // No leaf -> return the (possibly nested) group itself via the
+            // shared NodeBuilder so children/Format stay in sync with the
+            // top-level group branch.
+            if (!nestedGroupMatch.Groups[4].Success)
+            {
+                var ngGrpName = ngCurrent.NonVisualGroupShapeProperties?.NonVisualDrawingProperties?.Name?.Value ?? "Group";
+                var ngGrpNode = new DocumentNode
+                {
+                    Path = ngPathPrefix,
+                    Type = "group",
+                    Preview = ngGrpName,
+                    ChildCount = ngCurrent.Elements<Shape>().Count() + ngCurrent.Elements<Picture>().Count()
+                        + ngCurrent.Elements<GraphicFrame>().Count() + ngCurrent.Elements<ConnectionShape>().Count()
+                        + ngCurrent.Elements<GroupShape>().Count()
+                };
+                ngGrpNode.Format["name"] = ngGrpName;
+                var ngXfrm = ngCurrent.GroupShapeProperties?.TransformGroup;
+                if (ngXfrm?.Offset?.X != null) ngGrpNode.Format["x"] = FormatEmu(ngXfrm.Offset.X.Value);
+                if (ngXfrm?.Offset?.Y != null) ngGrpNode.Format["y"] = FormatEmu(ngXfrm.Offset.Y.Value);
+                if (ngXfrm?.Extents?.Cx != null) ngGrpNode.Format["width"] = FormatEmu(ngXfrm.Extents.Cx.Value);
+                if (ngXfrm?.Extents?.Cy != null) ngGrpNode.Format["height"] = FormatEmu(ngXfrm.Extents.Cy.Value);
+                if (ngXfrm?.Rotation != null && ngXfrm.Rotation.Value != 0)
+                    ngGrpNode.Format["rotation"] = $"{ngXfrm.Rotation.Value / 60000.0:0.##}";
+                if (depth > 0)
+                    BuildChildNodesIntoContainer(
+                        ngGrpNode.Children, ngCurrent, ngSlidePart, ngSlideIdx, depth - 1,
+                        ngPathPrefix, isSlideRoot: false);
+                return ngGrpNode;
+            }
+            // Leaf is a non-group inner type
+            var ngLeafType = nestedGroupMatch.Groups[4].Value.ToLowerInvariant();
+            var ngLeafIdx = int.Parse(nestedGroupMatch.Groups[5].Value);
+            switch (ngLeafType)
+            {
+                case "shape":
+                {
+                    var inner = ngCurrent.Elements<Shape>().ToList();
+                    if (ngLeafIdx < 1 || ngLeafIdx > inner.Count)
+                        throw new ArgumentException($"Shape {ngLeafIdx} not found in group {ngPathPrefix} (total: {inner.Count})");
+                    var node = ShapeToNode(inner[ngLeafIdx - 1], ngSlideIdx, ngLeafIdx, depth, ngSlidePart, ngPathPrefix);
+                    node.Path = $"{ngPathPrefix}/{BuildElementPathSegment("shape", inner[ngLeafIdx - 1], ngLeafIdx)}";
+                    return node;
+                }
+                case "picture":
+                case "pic":
+                {
+                    var inner = ngCurrent.Elements<Picture>().ToList();
+                    if (ngLeafIdx < 1 || ngLeafIdx > inner.Count)
+                        throw new ArgumentException($"Picture {ngLeafIdx} not found in group {ngPathPrefix} (total: {inner.Count})");
+                    var node = PictureToNode(inner[ngLeafIdx - 1], ngSlideIdx, ngLeafIdx, ngSlidePart, ngPathPrefix);
+                    node.Path = $"{ngPathPrefix}/{BuildElementPathSegment("picture", inner[ngLeafIdx - 1], ngLeafIdx)}";
+                    return node;
+                }
+                case "connector":
+                case "connection":
+                {
+                    var inner = ngCurrent.Elements<ConnectionShape>().ToList();
+                    if (ngLeafIdx < 1 || ngLeafIdx > inner.Count)
+                        throw new ArgumentException($"Connector {ngLeafIdx} not found in group {ngPathPrefix} (total: {inner.Count})");
+                    return ConnectorToNode(inner[ngLeafIdx - 1], ngSlideIdx, ngLeafIdx, ngPathPrefix);
+                }
+                case "table":
+                {
+                    var inner = ngCurrent.Elements<GraphicFrame>()
+                        .Where(gf => gf.Descendants<Drawing.Table>().Any()).ToList();
+                    if (ngLeafIdx < 1 || ngLeafIdx > inner.Count)
+                        throw new ArgumentException($"Table {ngLeafIdx} not found in group {ngPathPrefix} (total: {inner.Count})");
+                    return TableToNode(inner[ngLeafIdx - 1], ngSlideIdx, ngLeafIdx, depth, ngPathPrefix);
+                }
+                case "chart":
+                {
+                    var inner = ngCurrent.Elements<GraphicFrame>()
+                        .Where(gf => gf.Descendants<C.ChartReference>().Any() || IsExtendedChartFrame(gf)).ToList();
+                    if (ngLeafIdx < 1 || ngLeafIdx > inner.Count)
+                        throw new ArgumentException($"Chart {ngLeafIdx} not found in group {ngPathPrefix} (total: {inner.Count})");
+                    return ChartToNode(inner[ngLeafIdx - 1], ngSlidePart, ngSlideIdx, ngLeafIdx, depth, ngPathPrefix);
+                }
+            }
+        }
+
         // Try group inner shape path: /slide[N]/group[M]/shape[K]
         // CONSISTENCY(group-inner-shape): Set supports this; Get must too.
         // Previously fell through to the generic XML fallback, which mis-detected
@@ -690,8 +960,9 @@ public partial class PowerPointHandler
             var giInnerShapes = giGroups[giGrpIdx - 1].Elements<Shape>().ToList();
             if (giShapeIdx < 1 || giShapeIdx > giInnerShapes.Count)
                 throw new ArgumentException($"Shape {giShapeIdx} not found in group {giGrpIdx} (total: {giInnerShapes.Count})");
-            var giNode = ShapeToNode(giInnerShapes[giShapeIdx - 1], giSlideIdx, giShapeIdx, depth, giSlidePart);
-            giNode.Path = $"/slide[{giSlideIdx}]/group[{giGrpIdx}]/{BuildElementPathSegment("shape", giInnerShapes[giShapeIdx - 1], giShapeIdx)}";
+            var giParentPrefix = $"/slide[{giSlideIdx}]/group[{giGrpIdx}]";
+            var giNode = ShapeToNode(giInnerShapes[giShapeIdx - 1], giSlideIdx, giShapeIdx, depth, giSlidePart, giParentPrefix);
+            giNode.Path = $"{giParentPrefix}/{BuildElementPathSegment("shape", giInnerShapes[giShapeIdx - 1], giShapeIdx)}";
             return giNode;
         }
 
@@ -702,12 +973,14 @@ public partial class PowerPointHandler
             // Generic XML fallback: navigate by element localName
             var allSegments = GenericXmlQuery.ParsePathSegments(path);
             if (allSegments.Count == 0 || !allSegments[0].Name.Equals("slide", StringComparison.OrdinalIgnoreCase) || !allSegments[0].Index.HasValue)
-                throw new ArgumentException($"Path must start with /slide[N]: {path}");
+                throw new CliException($"Path must start with /slide[N], /slidemaster[N], or /slidelayout[N]: {path}")
+                    { Code = "invalid_path" };
 
             var fbSlideIdx = allSegments[0].Index!.Value;
             var fbSlideParts = GetSlideParts().ToList();
             if (fbSlideIdx < 1 || fbSlideIdx > fbSlideParts.Count)
-                throw new ArgumentException($"Slide {fbSlideIdx} not found (total: {fbSlideParts.Count})");
+                throw new CliException($"Slide {fbSlideIdx} not found (total: {fbSlideParts.Count})")
+                    { Code = "path_not_found" };
 
             OpenXmlElement fbCurrent = GetSlide(fbSlideParts[fbSlideIdx - 1]);
             var remaining = allSegments.Skip(1).ToList();
@@ -778,6 +1051,14 @@ public partial class PowerPointHandler
             if (elementIdx < 1 || elementIdx > comments.Count)
                 throw new ArgumentException($"Comment {elementIdx} not found (total: {comments.Count})");
             return CommentToNode(targetSlidePart, slideIdx, comments[elementIdx - 1], elementIdx);
+        }
+
+        // Modern p188 threaded comments live in PowerPointCommentPart(s).
+        if (elementType == "moderncomment")
+        {
+            var top = ResolveModernComment($"/slide[{slideIdx}]/moderncomment[{elementIdx}]")
+                ?? throw new ArgumentException($"Modern comment {elementIdx} not found on slide {slideIdx}");
+            return ModernCommentToNode(slideIdx, top.comment, elementIdx);
         }
 
         if (elementType == "shape")
@@ -875,25 +1156,22 @@ public partial class PowerPointHandler
             if (grpFillColor != null) grpNode.Format["fill"] = grpFillColor;
             else if (grp.GroupShapeProperties?.GetFirstChild<Drawing.NoFill>() != null) grpNode.Format["fill"] = "none";
             else if (grp.GroupShapeProperties?.GetFirstChild<Drawing.GradientFill>() != null) grpNode.Format["fill"] = "gradient";
-            // Bug 5/7 fix: populate Children list for group members
+            // Hyperlink (nvGrpSpPr/cNvPr/a:hlinkClick) — mirrors the NodeBuilder
+            // emit so round-trip Set link → reopen → Get returns the URL.
+            var grpHl = grp.NonVisualGroupShapeProperties?.NonVisualDrawingProperties?
+                .GetFirstChild<Drawing.HyperlinkOnClick>();
+            var grpLinkUrl = ReadHyperlinkOnClickUrl(grpHl, targetSlidePart);
+            if (grpLinkUrl != null) grpNode.Format["link"] = grpLinkUrl;
+            var grpTip = grpHl?.Tooltip?.Value;
+            if (!string.IsNullOrEmpty(grpTip)) grpNode.Format["tooltip"] = grpTip!;
+            // CONSISTENCY(pptx-group-flatten): delegate to the shared walker so
+            // group children include nested groups / tables / charts /
+            // connectors — not just shapes and pictures.
             if (depth > 0)
             {
-                int memberShapeIdx = 0;
-                foreach (var memberShape in grp.Elements<Shape>())
-                {
-                    memberShapeIdx++;
-                    var memberNode = ShapeToNode(memberShape, slideIdx, memberShapeIdx, depth - 1, targetSlidePart);
-                    memberNode.Path = $"{grpPath}/{BuildElementPathSegment("shape", memberShape, memberShapeIdx)}";
-                    grpNode.Children.Add(memberNode);
-                }
-                int memberPicIdx = 0;
-                foreach (var memberPic in grp.Elements<Picture>())
-                {
-                    memberPicIdx++;
-                    var picNode = PictureToNode(memberPic, slideIdx, memberPicIdx, targetSlidePart);
-                    picNode.Path = $"{grpPath}/{BuildElementPathSegment("picture", memberPic, memberPicIdx)}";
-                    grpNode.Children.Add(picNode);
-                }
+                BuildChildNodesIntoContainer(
+                    grpNode.Children, grp, targetSlidePart, slideIdx, depth - 1,
+                    grpPath, isSlideRoot: false);
             }
             return grpNode;
         }
@@ -906,6 +1184,22 @@ public partial class PowerPointHandler
                 throw new ArgumentException($"{elementType} {elementIdx} not found (total: {shapes2.Count}). Slide {slideIdx} contains: {DescribeSlideInventory(shapeTreeEl)}");
             return GenericXmlQuery.ElementToNode(shapes2[elementIdx - 1], path, depth);
         }
+    }
+
+    // CONSISTENCY(master-layout-shape-edit): render a Shape that lives under a
+    // slideMaster or slideLayout. Reuses ShapeToNode for property emission so
+    // master/layout shapes Get back the same Format keys as slide shapes
+    // (name, x/y/w/h, fill/stroke, runs, ...). slideNum=0 is a sentinel —
+    // ShapeToNode honours parentPathPrefix when provided, so the slide index
+    // is never consulted for path construction.
+    private static DocumentNode GetMasterOrLayoutShapeNode(ShapeTree? shapeTree, int shapeIdx, string parentPathPrefix, int depth)
+    {
+        if (shapeTree == null)
+            throw new ArgumentException($"No shape tree found at {parentPathPrefix}");
+        var shapes = shapeTree.Elements<Shape>().ToList();
+        if (shapeIdx < 1 || shapeIdx > shapes.Count)
+            throw new ArgumentException($"Shape {shapeIdx} not found at {parentPathPrefix} (total: {shapes.Count})");
+        return ShapeToNode(shapes[shapeIdx - 1], slideNum: 0, shapeIdx, depth, part: null, parentPathPrefix: parentPathPrefix);
     }
 
     public List<DocumentNode> Query(string selector)
@@ -972,7 +1266,13 @@ public partial class PowerPointHandler
                 or "animation" or "animate"
                 or "tc" or "cell" or "tr" or "row"
                 // BUG-R36-B11: query("comment") enumerates all slide comments.
-                or "comment";
+                or "comment"
+                // Modern p188 threaded comments.
+                or "moderncomment" or "modern-comment" or "thread" or "threadedcomment"
+                // R8-8: paragraph/run as root selectors — walk every shape's
+                // text body and emit one node per paragraph or run, matching
+                // the docx surface where query("run") returns all body runs.
+                or "paragraph" or "p" or "run" or "r";
         if (!isKnownType)
         {
             var genericParsed = GenericXmlQuery.ParseSelector(selector);
@@ -1047,12 +1347,48 @@ public partial class PowerPointHandler
             return results;
         }
 
+        // R8-8: top-level paragraph/run query — walk every slide's shape tree
+        // and surface the paragraph/run sub-nodes that ShapeToNode emits.
+        // Without this, the docx vocabulary `query "run"` returned 0 in
+        // PowerPoint because rawType fell into the generic XML fallback (which
+        // matched no a:r elements at the slide-XML root and bailed).
+        if (rawType is "paragraph" or "p" or "run" or "r")
+        {
+            bool wantRun = rawType is "run" or "r";
+            int qSlideNum = 0;
+            foreach (var sp in GetSlideParts())
+            {
+                qSlideNum++;
+                if (parsed.SlideNum.HasValue && parsed.SlideNum.Value != qSlideNum) continue;
+                var slideNode = Get($"/slide[{qSlideNum}]", depth: 3);
+                CollectParagraphsOrRuns(slideNode, wantRun, parsed.TextContains, parsed.Attributes, results);
+            }
+            return results;
+        }
+
         // BUG-R36-B11: comment query — enumerate per-slide comments.
         if (rawType == "comment")
         {
             var slideFilter = parsed.SlideNum;
             var commentNodes = EnumerateComments(slideFilter);
             foreach (var n in commentNodes)
+            {
+                if (parsed.TextContains != null
+                    && !(n.Text ?? "").Contains(parsed.TextContains, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (MatchesGenericAttributes(n, parsed.Attributes))
+                    results.Add(n);
+            }
+            return results;
+        }
+
+        // Modern p188 threaded comments — enumerate top-level threads
+        // (replies live as children of each top-level node).
+        if (rawType is "moderncomment" or "modern-comment" or "thread" or "threadedcomment")
+        {
+            var slideFilter = parsed.SlideNum;
+            var mcNodes = EnumerateModernComments(slideFilter);
+            foreach (var n in mcNodes)
             {
                 if (parsed.TextContains != null
                     && !(n.Text ?? "").Contains(parsed.TextContains, StringComparison.OrdinalIgnoreCase))
@@ -1080,6 +1416,11 @@ public partial class PowerPointHandler
                 masterNode.Format["layoutCount"] = mp.SlideLayoutParts?.Count() ?? 0;
                 if (mp.ThemePart?.Theme?.Name?.Value != null)
                     masterNode.Format["theme"] = mp.ThemePart.Theme.Name.Value;
+                // CONSISTENCY(slidemaster-emit): Get emits shapeCount; Query must
+                // surface the same canonical keys so both code paths agree.
+                var msShapeTree = mp.SlideMaster?.CommonSlideData?.ShapeTree;
+                masterNode.Format["shapeCount"] = (msShapeTree?.Elements<Shape>().Count() ?? 0)
+                    + (msShapeTree?.Elements<Picture>().Count() ?? 0);
                 results.Add(masterNode);
             }
             return results;
@@ -1538,8 +1879,14 @@ public partial class PowerPointHandler
     // ==================== Animation helpers ====================
 
     /// <summary>
-    /// Returns the ordered list of entrance/exit/emphasis effect CommonTimeNodes for the given shape.
-    /// Motion-path animations (presetClass="motion") are excluded.
+    /// Returns the ordered list of effect CommonTimeNodes for the given shape,
+    /// including entrance/exit/emphasis presets (PresetClass set) and motion-path
+    /// effects (presetClass="motion" raw attribute, no SDK enum). L3 sub-B
+    /// promoted motion paths into this list so animation[K] indexing covers
+    /// every animation surface on the shape.
+    /// CONSISTENCY(animation-chain): Add/Set/Get/Remove all rely on this single
+    /// enumeration order — keep the predicate in sync with what each writer
+    /// emits (ApplyShapeAnimation + AppendMotionPathAnimation).
     /// </summary>
     private List<CommonTimeNode> EnumerateShapeAnimationCTns(SlidePart slidePart, Shape shape)
     {
@@ -1549,9 +1896,21 @@ public partial class PowerPointHandler
         if (timing == null) return [];
         var shapeIdStr = shapeId.Value.ToString();
         return timing.Descendants<CommonTimeNode>()
-            .Where(ctn => ctn.PresetClass != null && ctn.PresetId != null &&
-                   ctn.GetAttributes().All(a => a.LocalName != "presetClass" || a.Value != "motion") &&
-                   ctn.Descendants<ShapeTarget>().Any(st => st.ShapeId?.Value == shapeIdStr))
+            .Where(ctn =>
+            {
+                if (!ctn.Descendants<ShapeTarget>().Any(st => st.ShapeId?.Value == shapeIdStr))
+                    return false;
+                // Regular entrance/exit/emphasis: SDK PresetClass set + PresetId set.
+                if (ctn.PresetClass != null && ctn.PresetId != null) return true;
+                // Motion path: SDK has no enum for "motion", so it's stored as a
+                // raw attribute and PresetClass parses to null. Match via the
+                // raw attribute + AnimateMotion descendant.
+                var rawCls = ctn.GetAttributes()
+                    .FirstOrDefault(a => a.LocalName == "presetClass").Value;
+                if (rawCls == "motion" && ctn.Descendants<AnimateMotion>().Any())
+                    return true;
+                return false;
+            })
             .ToList();
     }
 
@@ -1561,6 +1920,62 @@ public partial class PowerPointHandler
     /// </summary>
     private static void PopulateAnimationNode(DocumentNode animNode, CommonTimeNode effectCTn)
     {
+        // L3 sub-B: motion-path effects are stored under presetClass="motion"
+        // (a raw attribute the SDK doesn't model), with a child p:animMotion.
+        // Surface as class=motion + path=<preset|"custom"> + d=<raw path> so
+        // round-trip through Set/Get/Remove uses the same path= vocabulary as
+        // AddMotionAnimation. CONSISTENCY(animation-motion-presets).
+        var rawClsAttr = effectCTn.GetAttributes()
+            .FirstOrDefault(a => a.LocalName == "presetClass").Value;
+        if (rawClsAttr == "motion")
+        {
+            var animMotion = effectCTn.Descendants<AnimateMotion>().FirstOrDefault();
+            var pathStr = animMotion?.Path?.Value ?? "";
+            animNode.Format["class"] = "motion";
+            animNode.Format["effect"] = "motion";
+            var (preset, dir) = ResolveMotionPreset(pathStr);
+            if (preset != null)
+            {
+                animNode.Format["path"] = preset;
+                if (dir != null) animNode.Format["direction"] = dir;
+            }
+            else
+            {
+                animNode.Format["path"] = "custom";
+                animNode.Format["d"] = pathStr;
+            }
+            animNode.Format["motionPath"] = pathStr;
+            // Duration / trigger / delay / easing all stored on the same nodes
+            // as preset effects — fall through to the regular extraction below.
+            // Re-use the unified Read path by setting marker locals.
+            var motionDur = 500;
+            if (int.TryParse(animMotion?.CommonBehavior?.CommonTimeNode?.Duration, out var mdur)) motionDur = mdur;
+            else if (int.TryParse(effectCTn.Duration, out var mdur2)) motionDur = mdur2;
+            animNode.Format["duration"] = motionDur;
+            var ntm = effectCTn.NodeType?.Value;
+            animNode.Format["trigger"] = ntm == TimeNodeValues.AfterEffect ? "afterPrevious"
+                : ntm == TimeNodeValues.WithEffect ? "withPrevious"
+                : "onClick";
+            if (effectCTn.Acceleration?.HasValue == true && effectCTn.Acceleration.Value > 0)
+                animNode.Format["easein"] = (int)(effectCTn.Acceleration.Value / 1000);
+            if (effectCTn.Deceleration?.HasValue == true && effectCTn.Deceleration.Value > 0)
+                animNode.Format["easeout"] = (int)(effectCTn.Deceleration.Value / 1000);
+            // Walk up for delay (mid cTn pattern).
+            CommonTimeNode? midM = null;
+            var curM = effectCTn.Parent;
+            for (int wd = 0; wd < 5 && curM != null; wd++)
+            {
+                if (curM is CommonTimeNode cand && cand != effectCTn && cand.PresetId == null)
+                { midM = cand; break; }
+                curM = curM.Parent;
+            }
+            var dlyValM = midM?.StartConditionList?.GetFirstChild<Condition>()?.Delay?.Value;
+            if (dlyValM != null && dlyValM != "0"
+                && int.TryParse(dlyValM, out var dMsM) && dMsM > 0)
+                animNode.Format["delay"] = dMsM;
+            return;
+        }
+
         var presetId = effectCTn.PresetId?.Value ?? 0;
         var clsVal = effectCTn.PresetClass?.Value;
         var cls = clsVal == TimeNodePresetClassValues.Exit ? "exit"
@@ -1577,6 +1992,21 @@ public partial class PowerPointHandler
         animNode.Format["effect"] = effectName;
         animNode.Format["class"] = cls;
         animNode.Format["presetId"] = presetId;
+
+        // CONSISTENCY(anim-direction-readback): mirror the slide-level shape Get
+        // direction decode in Animations.cs (`Read direction from presetSubtype`).
+        // Without this key, dump emit cannot round-trip directional effects
+        // (fly-down → fly-up on replay, since AddAnimation defaults direction).
+        var presetSubtype = effectCTn.PresetSubtype?.Value ?? 0;
+        var dirStr = presetSubtype switch
+        {
+            8 => "left",
+            2 => "right",
+            1 when effectName is "fly" or "wipe" or "crawl" => "up",
+            4 when effectName is "fly" or "wipe" or "crawl" => "down",
+            _ => (string?)null
+        };
+        if (dirStr != null) animNode.Format["direction"] = dirStr;
 
         // bt-2 fix: surface trigger (encoded as effectCTn.NodeType in OOXML).
         // ClickEffect → onclick, AfterEffect → afterPrevious, WithEffect → withPrevious.
@@ -1598,6 +2028,32 @@ public partial class PowerPointHandler
         if (effectCTn.Deceleration?.HasValue == true && effectCTn.Deceleration.Value > 0)
             animNode.Format["easeout"] = (int)(effectCTn.Deceleration.Value / 1000);
 
+        // L2 props: emit only when the underlying cTn attribute is present.
+        // OOXML repeatCount is 1000ths-of-a-count or the literal "indefinite";
+        // canonical readback is the plain integer count or "indefinite".
+        var rcRaw = effectCTn.RepeatCount?.Value;
+        if (!string.IsNullOrEmpty(rcRaw))
+        {
+            if (rcRaw.Equals("indefinite", StringComparison.OrdinalIgnoreCase))
+                animNode.Format["repeat"] = "indefinite";
+            else if (int.TryParse(rcRaw, System.Globalization.NumberStyles.Integer,
+                         System.Globalization.CultureInfo.InvariantCulture, out var rcMilli)
+                     && rcMilli >= 1000)
+                animNode.Format["repeat"] = rcMilli / 1000;
+        }
+        var restartVal = effectCTn.Restart?.Value;
+        if (restartVal != null)
+        {
+            // Round-trip canonical enum spelling rather than the SDK ToString().
+            string? canon = null;
+            if (restartVal == TimeNodeRestartValues.Always) canon = "always";
+            else if (restartVal == TimeNodeRestartValues.WhenNotActive) canon = "whenNotActive";
+            else if (restartVal == TimeNodeRestartValues.Never) canon = "never";
+            if (canon != null) animNode.Format["restart"] = canon;
+        }
+        if (effectCTn.AutoReverse?.Value == true)
+            animNode.Format["autoReverse"] = true;
+
         // Delay (stored on midCTn start condition)
         CommonTimeNode? midCTn = null;
         var cur = effectCTn.Parent;
@@ -1615,5 +2071,39 @@ public partial class PowerPointHandler
         if (midDelayVal != null && midDelayVal != "0"
             && int.TryParse(midDelayVal, out var dMs) && dMs > 0)
             animNode.Format["delay"] = dMs;
+    }
+
+    // R8-8: walk a Get-produced slide tree and harvest every paragraph or run
+    // sub-node, applying the same TextContains / attribute filters Query
+    // applies at the shape level. Recurses into shape/group/placeholder/table
+    // bodies so all text-bearing surfaces participate.
+    private static void CollectParagraphsOrRuns(
+        DocumentNode node, bool wantRun, string? textContains,
+        Dictionary<string, (string Value, bool Negate)>? attrs,
+        List<DocumentNode> results)
+    {
+        if (node.Children == null) return;
+        foreach (var child in node.Children)
+        {
+            var ct = child.Type;
+            bool isPara = ct is "paragraph" or "p";
+            bool isRun = ct is "run" or "r";
+            bool match = wantRun ? isRun : isPara;
+            if (match)
+            {
+                if (textContains != null
+                    && !(child.Text ?? "").Contains(textContains, StringComparison.OrdinalIgnoreCase))
+                {
+                    // attribute matchers may still filter; skip on text miss
+                }
+                else if (MatchesGenericAttributes(child, attrs))
+                {
+                    results.Add(child);
+                }
+            }
+            // Recurse: runs live one level under paragraphs, paragraphs under
+            // shape/placeholder/cell bodies. Group/table descend as well.
+            CollectParagraphsOrRuns(child, wantRun, textContains, attrs, results);
+        }
     }
 }

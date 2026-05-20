@@ -248,7 +248,11 @@ html.headless .page-counter { display: none !important; }
 .para { width: 100%; line-height: 1; }
 .picture { position: absolute; overflow: hidden; }
 .picture img { width: 100%; height: 100%; object-fit: fill; }
-.table-container { position: absolute; overflow: hidden; }
+/* overflow:visible (not hidden) — with border-collapse:collapse the
+   rightmost/bottommost cell's outer 1pt border sits exactly on the
+   container edge; overflow:hidden would clip its outer half. Cell
+   content overflow is already handled by .slide-table td below. */
+.table-container { position: absolute; overflow: visible; }
 .slide-table { width: 100%; height: 100%; border-collapse: collapse; table-layout: fixed; }
 .slide-table td { padding: 4px 6px; vertical-align: top; overflow: hidden; font-size: 10pt; color: inherit; }
 .connector { position: absolute; pointer-events: none; }

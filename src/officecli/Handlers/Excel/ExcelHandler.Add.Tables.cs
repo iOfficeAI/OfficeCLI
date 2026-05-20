@@ -48,6 +48,12 @@ public partial class ExcelHandler
         // reference. Otherwise Excel rejects the file with 0x800A03EC.
         if (!System.Text.RegularExpressions.Regex.IsMatch(nrName, @"^[A-Za-z_\\][A-Za-z0-9_\\.]*$"))
             throw new ArgumentException($"Invalid defined-name '{nrName}': must start with a letter/underscore and contain only letters, digits, underscores, or periods (no spaces).");
+        // Excel caps defined-name identifier length at 255 characters; longer
+        // names are silently truncated on open (or the file is rejected with
+        // 0x800A03EC depending on host). Refuse up front instead of letting
+        // a 256+ char name land on disk and round-trip-differ on re-open.
+        if (nrName.Length > 255)
+            throw new ArgumentException($"Invalid defined-name '{nrName}': length {nrName.Length} exceeds the Excel 255-character limit.");
         if (LooksLikeCellReference(nrName))
             throw new ArgumentException($"Invalid defined-name '{nrName}': name parses as a cell reference; choose a different name.");
         // R39-5: Excel reserves the single letters R and C (case-insensitive)
@@ -94,11 +100,33 @@ public partial class ExcelHandler
 
         var dn = new DefinedName(refVal) { Name = nrName };
 
-        if (properties.TryGetValue("scope", out var scope) && !string.IsNullOrEmpty(scope))
+        // Scope resolution: explicit --prop scope= wins. Otherwise, if the
+        // parentPath addresses a specific sheet (e.g. "/Sheet1"), default
+        // the scope to that sheet — callers who picked a sheet-level
+        // parent almost always wanted a sheet-scoped name, and previously
+        // the parentPath was silently ignored and the name landed at
+        // workbook scope. Pass scope=workbook explicitly to keep the old
+        // workbook-global behavior under a sheet parent.
+        string? effectiveScope = null;
+        bool explicitWorkbookScope = false;
+        if (properties.TryGetValue("scope", out var scopeRaw) && !string.IsNullOrEmpty(scopeRaw))
+        {
+            if (string.Equals(scopeRaw, "workbook", StringComparison.OrdinalIgnoreCase))
+                explicitWorkbookScope = true;
+            else
+                effectiveScope = scopeRaw;
+        }
+        if (effectiveScope == null && !explicitWorkbookScope)
+        {
+            var parentTrim = (parentPath ?? "").TrimStart('/').TrimEnd('/');
+            if (!string.IsNullOrEmpty(parentTrim) && !parentTrim.Contains('/'))
+                effectiveScope = parentTrim; // single-segment sheet name
+        }
+        if (effectiveScope != null)
         {
             var nrSheets = workbook.GetFirstChild<Sheets>()?.Elements<Sheet>().ToList();
             var nrSheetIdx = nrSheets?.FindIndex(s =>
-                s.Name?.Value?.Equals(scope, StringComparison.OrdinalIgnoreCase) == true) ?? -1;
+                s.Name?.Value?.Equals(effectiveScope, StringComparison.OrdinalIgnoreCase) == true) ?? -1;
             if (nrSheetIdx >= 0) dn.LocalSheetId = (uint)nrSheetIdx;
         }
         if (properties.TryGetValue("comment", out var nrComment))
@@ -219,7 +247,9 @@ public partial class ExcelHandler
         // CLI) and real LF as line breaks — Excel renders the
         // preserved newline in the comment body. Matches the shape
         // `text` behavior documented in add-shape help.
-        var cmtNormalized = (cmtText ?? "").Replace("\r\n", "\n").Replace("\\n", "\n");
+        // CONSISTENCY(text-escape-boundary): \n / \t resolution lives at the
+        // CLI --prop parse boundary; this value already has real newlines.
+        var cmtNormalized = (cmtText ?? "").Replace("\r\n", "\n");
         comment.CommentText = new CommentText(
             new Run(
                 BuildCommentRunProperties(properties),
@@ -309,6 +339,16 @@ public partial class ExcelHandler
 
         if (properties.TryGetValue("formula2", out var dvFormula2))
             dv.Formula2 = new Formula2(NormalizeValidationFormula(dvFormula2, dv.Type?.Value));
+        else if (dv.Operator?.Value == DataValidationOperatorValues.Between
+                 || dv.Operator?.Value == DataValidationOperatorValues.NotBetween)
+        {
+            // operator=between/notBetween needs both bounds. Without formula2
+            // Excel silently treats the rule as "anything passes" — the file
+            // opens but validates nothing. Reject up front rather than land a
+            // permissive no-op on disk.
+            throw new ArgumentException(
+                $"Property 'formula2' is required when operator='{dv.Operator.InnerText}'; supply both bounds (formula1=lower, formula2=upper).");
+        }
 
         // Build case-insensitive lookup for validation properties
         var dvProps = new Dictionary<string, string>(properties, StringComparer.OrdinalIgnoreCase);

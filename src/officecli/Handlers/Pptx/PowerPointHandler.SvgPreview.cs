@@ -6,6 +6,7 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
 using OfficeCli.Core;
+using OfficeCli.Core.TableStyles;
 using Drawing = DocumentFormat.OpenXml.Drawing;
 
 namespace OfficeCli.Handlers;
@@ -451,23 +452,13 @@ public partial class PowerPointHandler
                 };
             }
 
-            // Counter-flip text so it remains readable when shape is flipped
-            var isFlipH = xfrm?.HorizontalFlip?.Value == true;
-            var isFlipV = xfrm?.VerticalFlip?.Value == true;
-            if (isFlipH || isFlipV)
-            {
-                var sx = isFlipH ? -1 : 1;
-                var sy = isFlipV ? -1 : 1;
-                var tx = isFlipH ? w : 0;
-                var ty = isFlipV ? h : 0;
-                sb.Append($"<g transform=\"translate({tx:0.##},{ty:0.##}) scale({sx},{sy})\">");
-            }
-
+            // PowerPoint mirrors text along with the shape on flipH/flipV. The
+            // shape-level flip transform (lines ~267-271) already applies to the
+            // inner text, so do not counter-flip here. An earlier implementation
+            // counter-flipped to keep text upright; that diverged from real
+            // PowerPoint output (e.g. flipH renders "AI" as "IA").
             RenderTextBodyFO(sb, shape.TextBody, themeColors, w, h,
                 lIns, tIns, rIns, bIns, valign, shape, part);
-
-            if (isFlipH || isFlipV)
-                sb.Append("</g>");
         }
 
         sb.AppendLine("</g>");
@@ -1047,12 +1038,18 @@ public partial class PowerPointHandler
         double tw = EmuToPx(extents.Cx?.Value ?? 0);
         double th = EmuToPx(extents.Cy?.Value ?? 0);
 
-        // Table style
+        // Table style. Banding flags and grid dimensions feed the per-cell
+        // Core/TableStyles resolver below — mirrors HtmlPreview.Tables.cs.
         var tblPr = table.GetFirstChild<Drawing.TableProperties>();
         var tableStyleId = tblPr?.GetFirstChild<Drawing.TableStyleId>()?.InnerText;
-        var tableStyleName = tableStyleId != null && _tableStyleGuidToName.TryGetValue(tableStyleId, out var sn) ? sn : null;
         bool hasFirstRow = tblPr?.FirstRow?.Value == true;
         bool hasBandRow = tblPr?.BandRow?.Value == true;
+        bool hasLastRow = tblPr?.LastRow?.Value == true;
+        bool hasFirstCol = tblPr?.FirstColumn?.Value == true;
+        bool hasLastCol = tblPr?.LastColumn?.Value == true;
+        bool hasBandCol = tblPr?.BandColumn?.Value == true;
+        var allRowsSvg = table.Elements<Drawing.TableRow>().ToList();
+        int totalRowsSvg = allRowsSvg.Count;
 
         // Column widths
         var gridCols = table.TableGrid?.Elements<Drawing.GridColumn>().ToList();
@@ -1091,11 +1088,25 @@ public partial class PowerPointHandler
                 {
                     ParseSvgColor(cellFill, out cellFillColor, out cellFillOpacity);
                 }
-                else if (tableStyleName != null)
+                else
                 {
-                    var (bg, fg) = GetTableStyleColors(tableStyleName, isHeaderRow, isBandedOdd, themeColors);
-                    if (bg != null) ParseSvgColor(bg, out cellFillColor, out cellFillOpacity);
-                    if (fg != null) textColorOverride = fg;
+                    // Core/TableStyles resolver — same call shape used in
+                    // HtmlPreview.Tables.cs. Returns null for unknown style
+                    // ids; an unstyled (or unrecognised) table simply gets
+                    // no fill, matching previous behaviour for that case.
+                    var resolved = TableStyleResolver.Resolve(
+                        tableStyleId,
+                        new CellPosition(
+                            RowIndex: rowIndex, ColIndex: colIndex,
+                            RowCount: totalRowsSvg, ColCount: colWidths.Count,
+                            HasFirstRow: hasFirstRow, HasLastRow: hasLastRow,
+                            HasFirstCol: hasFirstCol, HasLastCol: hasLastCol,
+                            HasBandedRows: hasBandRow, HasBandedCols: hasBandCol),
+                        themeColors);
+                    if (resolved?.Fill != null)
+                        ParseSvgColor(resolved.Fill, out cellFillColor, out cellFillOpacity);
+                    if (resolved?.TextColor != null)
+                        textColorOverride = resolved.TextColor;
                 }
 
                 // Cell background

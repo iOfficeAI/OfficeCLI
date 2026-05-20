@@ -15,6 +15,26 @@ namespace OfficeCli.Handlers;
 
 public partial class ExcelHandler
 {
+    // A1 sqref shape: one or more space-separated single-cell or range
+    // references (relative or absolute, with optional sheet-bare row/col
+    // letters). Reject everything else up front so a conditional-formatting
+    // rule cannot land an `INVALID!REF` literal in the sheet — Excel
+    // refuses to open the file in that state.
+    private static readonly System.Text.RegularExpressions.Regex SqrefShape =
+        new(@"^\$?[A-Z]+\$?[0-9]+(:\$?[A-Z]+\$?[0-9]+)?(\s+\$?[A-Z]+\$?[0-9]+(:\$?[A-Z]+\$?[0-9]+)?)*$",
+            System.Text.RegularExpressions.RegexOptions.Compiled
+            | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    internal static string ValidateSqref(string value, string field)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            throw new ArgumentException($"Invalid {field} '{value}': empty A1 range.");
+        if (!SqrefShape.IsMatch(value.Trim()))
+            throw new ArgumentException(
+                $"Invalid {field} '{value}': expected an A1 reference (e.g. 'A1', 'A1:D10', 'A1 B2:C5').");
+        return value;
+    }
+
     /// <summary>
     /// Validate a sheet name against Excel's rules. Throws ArgumentException
     /// with a clear message on the first rule violation. Rules:
@@ -155,11 +175,14 @@ public partial class ExcelHandler
             sb.Append(inStr ? ' ' : c);
         }
         var stripped = sb.ToString();
-        // Match A1-style refs: optional $ + 1-3 letters + optional $ + 1-7 digits.
+        // Match A1-style refs: optional $ + 1-3 letters + optional $ + 1-8 digits.
+        // (Excel's row ceiling 1048576 is 7-digit, but 8-digit numbers like
+        // A10000000 must still be caught so they're rejected with the clean
+        // "out-of-range" error rather than slipping through validation.)
         // Avoid matching inside an identifier (e.g. "FOO1") via a leading
         // boundary that requires either start-of-string or a non-letter.
         var rx = new System.Text.RegularExpressions.Regex(
-            @"(?<![A-Za-z_])\$?([A-Za-z]{1,3})\$?([0-9]{1,7})\b");
+            @"(?<![A-Za-z_])\$?([A-Za-z]{1,3})\$?([0-9]{1,8})\b");
         foreach (System.Text.RegularExpressions.Match m in rx.Matches(stripped))
         {
             var col = m.Groups[1].Value.ToUpperInvariant();
@@ -1966,6 +1989,35 @@ public partial class ExcelHandler
         if (!SingleMergeRefPattern.IsMatch(refUpper))
             throw new ArgumentException(
                 $"Invalid merge ref '{newRangeRef}': must be a single A1 cell (e.g. 'B2') or A1:B2 range (e.g. 'B4:E4').");
+        // CONSISTENCY(merge-orientation): the ref must read top-left to
+        // bottom-right. Z1:A1 / A10:A1 / B2:A1 (any reversed orientation)
+        // were silently accepted; Excel itself only writes the canonical
+        // form, so callers passing a reversed pair almost certainly typo'd.
+        // Reject with a hint to swap, mirroring the orientation guard the
+        // sheetShift normalizer applies after the fact (ExcelHandler.Set.cs
+        // L1918) and matching how other range-bearing props (validation,
+        // table, autofilter) demand canonical orientation up front.
+        var colonIdx = refUpper.IndexOf(':');
+        if (colonIdx > 0)
+        {
+            var lhs = refUpper.Substring(0, colonIdx);
+            var rhs = refUpper.Substring(colonIdx + 1);
+            try
+            {
+                var (lCol, lRow) = ParseCellReference(lhs);
+                var (rCol, rRow) = ParseCellReference(rhs);
+                int lColIdx = ColumnNameToIndex(lCol);
+                int rColIdx = ColumnNameToIndex(rCol);
+                if (lColIdx > rColIdx || lRow > rRow)
+                {
+                    throw new ArgumentException(
+                        $"Invalid merge ref '{newRangeRef}': range must read top-left to bottom-right. " +
+                        $"Pass the canonical orientation (e.g. 'A1:B2', not 'B2:A1').");
+                }
+            }
+            catch (ArgumentException) { throw; }
+            catch { /* parse failure already handled by SingleMergeRefPattern above */ }
+        }
     }
 
     private static void InsertMergeCellChecked(MergeCells mergeCells, string newRangeRef, WorksheetPart? worksheetPart = null)
@@ -2945,9 +2997,8 @@ public partial class ExcelHandler
                 case "color":
                 {
                     rPr.RemoveAllChildren<Drawing.SolidFill>();
-                    var (cRgb, _) = ParseHelpers.SanitizeColorForOoxml(value);
                     OfficeCli.Core.DrawingEffectsHelper.InsertFillInRunProperties(rPr,
-                        new Drawing.SolidFill(new Drawing.RgbColorModelHex { Val = cRgb }));
+                        DrawingColorBuilder.BuildSolidFill(value));
                     break;
                 }
                 case "underline":
@@ -4697,6 +4748,10 @@ public partial class ExcelHandler
         {
             var name = child.LocalName;
             if (string.IsNullOrEmpty(name)) continue;
+            // OpenXmlMiscNode (XML comments, processing instructions, CDATA)
+            // surfaces with synthetic LocalNames like "#comment" / "#text". They
+            // are not OOXML elements and must not appear as Format keys.
+            if (name.StartsWith("#") || child is DocumentFormat.OpenXml.OpenXmlMiscNode) continue;
             if (curatedNames.Contains(name)) continue;
             var key = prefix + name;
             if (node.Format.ContainsKey(key)) continue;

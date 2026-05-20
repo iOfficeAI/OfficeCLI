@@ -419,7 +419,7 @@ internal static partial class PivotTableHelper
     // talking to OOXML so the final XML and visual match Excel UI.
     //
     // Both default to true. We only write the attribute when the user
-    // explicitly opts out (matches how real Excel + LibreOffice serialize).
+    // explicitly opts out (matches how real Excel serialize).
     [ThreadStatic] private static bool? _rowGrandTotals;
     [ThreadStatic] private static bool? _colGrandTotals;
 
@@ -1152,7 +1152,7 @@ internal static partial class PivotTableHelper
 
             // The pivotCacheDefinition element MUST carry an r:id attribute pointing to the
             // records part — Excel uses it to find records, not the package _rels alone.
-            // LibreOffice writes this in xepivotxml.cxx:280 (FSNS(XML_r, XML_id)). Without
+            // Without
             // this attribute the file looks structurally complete but Excel rejects it.
             cacheDef.Id = cachePart.GetIdOfPart(recordsPart);
             cachePart.PivotCacheDefinition.Save();

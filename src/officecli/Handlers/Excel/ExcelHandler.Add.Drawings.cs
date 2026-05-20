@@ -486,6 +486,8 @@ public partial class ExcelHandler
                 }
                 else
                 {
+                    // CONSISTENCY(hyperlink-scheme-allowlist).
+                    Core.HyperlinkUriValidator.RequireSafeScheme(picHlink, "link");
                     var hlUri = new Uri(picHlink, UriKind.RelativeOrAbsolute);
                     var hlRel = picDrawingsPart.AddHyperlinkRelationship(hlUri, isExternal: true);
                     hlClick = new Drawing.HyperlinkOnClick { Id = hlRel.Id };
@@ -625,9 +627,7 @@ public partial class ExcelHandler
                 spPr.AppendChild(new Drawing.NoFill());
             else
             {
-                var (rgb, alpha) = ParseHelpers.SanitizeColorForOoxml(shpFill);
-                var solidFill = new Drawing.SolidFill(new Drawing.RgbColorModelHex { Val = rgb });
-                spPr.AppendChild(solidFill);
+                spPr.AppendChild(DrawingColorBuilder.BuildSolidFill(shpFill));
             }
         }
 
@@ -638,8 +638,7 @@ public partial class ExcelHandler
                 spPr.AppendChild(new Drawing.Outline(new Drawing.NoFill()));
             else
             {
-                var (lRgb, _) = ParseHelpers.SanitizeColorForOoxml(shpLine);
-                spPr.AppendChild(new Drawing.Outline(new Drawing.SolidFill(new Drawing.RgbColorModelHex { Val = lRgb })));
+                spPr.AppendChild(new Drawing.Outline(DrawingColorBuilder.BuildSolidFill(shpLine)));
             }
         }
 
@@ -708,7 +707,7 @@ public partial class ExcelHandler
         }
         var txBody = new XDR.TextBody(bodyPr, new Drawing.ListStyle());
 
-        var lines = shpText.Replace("\\n", "\n").Split('\n');
+        var lines = shpText.Split('\n');
         foreach (var line in lines)
         {
             var rPr = new Drawing.RunProperties { Language = "en-US" };
@@ -750,8 +749,7 @@ public partial class ExcelHandler
                 ?? properties.GetValueOrDefault("font.color");
             if (rawColor != null)
             {
-                var (cRgb, _) = ParseHelpers.SanitizeColorForOoxml(rawColor);
-                rPr.AppendChild(new Drawing.SolidFill(new Drawing.RgbColorModelHex { Val = cRgb }));
+                rPr.AppendChild(DrawingColorBuilder.BuildSolidFill(rawColor));
             }
 
             // Text-level effects for fill=none shapes

@@ -467,7 +467,9 @@ public partial class ExcelHandler
         // `font.*` appear together, text wins the run payload and font.* supplies
         // the rPr. When only font.* appears (no text), preserve the existing run
         // text and just rebuild rPr.
-        string? newCmtText = properties.TryGetValue("text", out var tVal) ? tVal : null;
+        string? newCmtText = properties.TryGetValue("text", out var tVal)
+            ? (tVal ?? string.Empty).Replace("\r\n", "\n")
+            : null;
         bool hasFontProp = properties.Keys.Any(k =>
             k.StartsWith("font.", StringComparison.OrdinalIgnoreCase));
         if (newCmtText != null || hasFontProp)
@@ -638,7 +640,7 @@ public partial class ExcelHandler
                     var x14Db = rule != null ? ResolveX14DataBar(ws, rule) : null;
                     if (x14Db != null)
                     {
-                        var dirNorm = value.ToLowerInvariant().Replace("-", "").Replace("_", "");
+                        var dirNorm = SchemaKeyNormalizer.Normalize(value);
                         x14Db.Direction = dirNorm switch
                         {
                             "lefttoright" or "ltr" => X14.DataBarDirectionValues.LeftToRight,

@@ -3,6 +3,7 @@
 
 using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
 using OfficeCli.Core;
 using Drawing = DocumentFormat.OpenXml.Drawing;
@@ -11,33 +12,128 @@ namespace OfficeCli.Handlers;
 
 public partial class PowerPointHandler
 {
-    private string AddShape(string parentPath, int? index, Dictionary<string, string> properties)
+    private string AddShape(string parentPath, int? index, Dictionary<string, string> properties,
+                            string? elementTypeHint = null)
     {
-                var slideMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]$");
-                if (!slideMatch.Success)
-                    throw new ArgumentException($"Shapes must be added to a slide: /slide[N]");
+                // CONSISTENCY(master-layout-shape-edit): a shape parent may be a
+                // slide (/slide[N]) or a master/layout part. Master/layout shapes
+                // power branding workflows (logo on every slide, watermarks).
+                // Resolve once here; downstream code branches on slidePart != null
+                // for the few slide-only features (morph rename, animation,
+                // hyperlink relationship). Path forms accepted:
+                //   /slide[N]
+                //   /slidemaster[N]
+                //   /slidelayout[N]
+                //   /slidemaster[N]/slidelayout[L]
+                SlidePart? slidePart = null;
+                List<SlidePart>? slideParts = null;
+                int slideIdx = 0;
+                ShapeTree shapeTree;
+                OpenXmlPart ownerPart;
+                OpenXmlPartRootElement ownerRoot;
+                string returnPathPrefix;
+                // CONSISTENCY(group-inner-shape-add): when the parent is a group,
+                // newShape is appended to the GroupShape rather than the slide's
+                // ShapeTree. shapeTree still points at the slide root for helpers
+                // that need slide-wide context (shape-id allocation, query for
+                // morph naming); insertContainer is what InsertAtPosition writes to.
+                OpenXmlCompositeElement? insertContainer = null;
+                string? groupResultPathPrefix = null;
 
-                var slideIdx = int.Parse(slideMatch.Groups[1].Value);
-                var slideParts = GetSlideParts().ToList();
-                if (slideIdx < 1 || slideIdx > slideParts.Count)
-                    throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
+                var masterOrLayout = TryResolveMasterOrLayoutShapeParent(parentPath);
+                if (masterOrLayout is not null)
+                {
+                    var ml = masterOrLayout.Value;
+                    shapeTree = ml.shapeTree;
+                    ownerPart = ml.part;
+                    ownerRoot = ml.root;
+                    returnPathPrefix = ml.canonicalPrefix;
+                }
+                else
+                {
+                    // /slide[N]/group[K] — add the shape inside the group, not at
+                    // slide root. Required by dump-replay: empty groups are emitted
+                    // first, then per-child `add shape parent=/slide/group[K]`.
+                    var groupParentMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]/group\[(\d+)\]$");
+                    if (groupParentMatch.Success)
+                    {
+                        slideIdx = int.Parse(groupParentMatch.Groups[1].Value);
+                        var grpIdx = int.Parse(groupParentMatch.Groups[2].Value);
+                        slideParts = GetSlideParts().ToList();
+                        if (slideIdx < 1 || slideIdx > slideParts.Count)
+                            throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
+                        slidePart = slideParts[slideIdx - 1];
+                        var slideG = GetSlide(slidePart);
+                        shapeTree = slideG.CommonSlideData?.ShapeTree
+                            ?? throw new InvalidOperationException("Slide has no shape tree");
+                        var groups = shapeTree.Elements<GroupShape>().ToList();
+                        if (grpIdx < 1 || grpIdx > groups.Count)
+                            throw new ArgumentException($"Group {grpIdx} not found on slide {slideIdx} (total: {groups.Count})");
+                        insertContainer = groups[grpIdx - 1];
+                        ownerPart = slidePart;
+                        ownerRoot = slideG;
+                        returnPathPrefix = $"/slide[{slideIdx}]";
+                        groupResultPathPrefix = $"/slide[{slideIdx}]/group[{grpIdx}]";
+                    }
+                    else
+                    {
+                        var slideMatch = Regex.Match(parentPath, @"^/slide\[(\d+)\]$");
+                        if (!slideMatch.Success)
+                            throw new ArgumentException(
+                                $"Shapes must be added to a slide, master, layout, or group: /slide[N], /slide[N]/group[K], /slidemaster[N], /slidelayout[N], or /slidemaster[N]/slidelayout[L]");
 
-                var slidePart = slideParts[slideIdx - 1];
-                var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree
-                    ?? throw new InvalidOperationException("Slide has no shape tree");
+                        slideIdx = int.Parse(slideMatch.Groups[1].Value);
+                        slideParts = GetSlideParts().ToList();
+                        if (slideIdx < 1 || slideIdx > slideParts.Count)
+                            throw new ArgumentException($"Slide {slideIdx} not found (total: {slideParts.Count})");
+
+                        slidePart = slideParts[slideIdx - 1];
+                        var slide = GetSlide(slidePart);
+                        shapeTree = slide.CommonSlideData?.ShapeTree
+                            ?? throw new InvalidOperationException("Slide has no shape tree");
+                        ownerPart = slidePart;
+                        ownerRoot = slide;
+                        returnPathPrefix = $"/slide[{slideIdx}]";
+                    }
+                }
 
                 var text = properties.GetValueOrDefault("text", "");
-                var shapeId = GenerateUniqueShapeId(shapeTree);
+                XmlTextValidator.ValidateOrThrow(text, "text");
+                var shapeId = AcquireShapeId(shapeTree, properties);
                 var shapeName = properties.GetValueOrDefault("name", $"TextBox {shapeTree.Elements<Shape>().Count() + 1}");
 
                 // Auto-add !! prefix if the slide (or the next slide) has a morph transition
-                if (!shapeName.StartsWith("!!") && !shapeName.StartsWith("TextBox ") && !shapeName.StartsWith("Content ") && shapeName != "")
+                // (slide-only — master/layout shapes are not part of slide-to-slide
+                // morph continuity).
+                if (slidePart != null && slideParts != null
+                    && !shapeName.StartsWith("!!") && !shapeName.StartsWith("TextBox ") && !shapeName.StartsWith("Content ") && shapeName != "")
                 {
                     if (SlideHasMorphContext(slidePart, slideParts))
                         shapeName = "!!" + shapeName;
                 }
 
-                var newShape = CreateTextShape(shapeId, shapeName, text, false);
+                // Classify: explicit `--type textbox` always produces a textbox
+                // (writes <p:cNvSpPr txBox="1"/>). For `--type shape` (and the
+                // legacy default where the dispatch doesn't pass a hint), fall
+                // back to a heuristic: explicit geometry (shape=/preset=/
+                // geometry=/customGeometryXml=) → real shape; bare `text=` →
+                // textbox shorthand; otherwise → real shape (matches the
+                // `--type shape` direct intuition).
+                var hasGeometryProp = properties.ContainsKey("shape")
+                    || properties.ContainsKey("preset")
+                    || properties.ContainsKey("geometry")
+                    || properties.ContainsKey("customGeometryXml");
+                var hasTextProp = properties.ContainsKey("text");
+                // `--type textbox` is the explicit textbox path and always
+                // wins (covers the dump-emitter replay case where text is
+                // split into separate paragraph/run adds, so hasTextProp here
+                // is false). `--type shape` keeps the legacy "text= shorthand"
+                // — bare text with no geometry is still classified as
+                // textbox, since users (and earlier tests) treat that as the
+                // textbox shortcut.
+                bool isTextBoxFlavor = elementTypeHint == "textbox"
+                    || (!hasGeometryProp && hasTextProp);
+                var newShape = CreateTextShape(shapeId, shapeName, text, false, isTextBoxFlavor);
 
                 // CONSISTENCY(font-dotted-alias): mirror Set's font.<attr> aliases
                 // (commit 80fb739e). Without these, `add shape --prop font.name=Arial`
@@ -269,6 +365,13 @@ public partial class PowerPointHandler
 
                     if (capValue != null)
                     {
+                        // ST_TextCapsType enum is lowercase {none, small, all}.
+                        // Mixed-case input ("SMALL", "ALL") written verbatim
+                        // produces schema-invalid OOXML — PowerPoint then
+                        // refuses to open the file. Normalize on write.
+                        capValue = capValue.ToLowerInvariant();
+                        if (capValue is not ("none" or "small" or "all"))
+                            throw new ArgumentException($"Invalid cap value: '{capValue}'. Valid values: none, small, all.");
                         foreach (var run in newShape.Descendants<Drawing.Run>())
                         {
                             var rProps = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
@@ -335,17 +438,34 @@ public partial class PowerPointHandler
                 {
                     long xEmu = 0, yEmu = 0;
                     long cxEmu = 3600000, cyEmu = 1800000; // default: 10cm x 5cm (avoid full-slide overlap when width unspecified)
-                    if (properties.TryGetValue("x", out var xStr) || properties.TryGetValue("left", out xStr)) xEmu = ParseEmu(xStr);
-                    if (properties.TryGetValue("y", out var yStr) || properties.TryGetValue("top", out yStr)) yEmu = ParseEmu(yStr);
+                    // Unified bounds check: PowerPoint truncates EMU coordinates
+                    // past INT32_MAX (cx/cy schema-typed as int32 in practice).
+                    // Error prefix "Invalid" so OutputFormatter routes the
+                    // ArgumentException to invalid_value, mirroring Set's path.
+                    static long ParseEmuBounded(string raw, string field, bool allowNegative)
+                    {
+                        var v = ParseEmu(raw);
+                        if (!allowNegative && v < 0)
+                            throw new ArgumentException($"Invalid {field} '{raw}': negative values are not allowed.");
+                        if (v > int.MaxValue)
+                            throw new ArgumentException($"Invalid {field} '{raw}': exceeds the maximum supported shape coordinate (INT32_MAX EMU).");
+                        if (allowNegative && v < int.MinValue)
+                            throw new ArgumentException($"Invalid {field} '{raw}': below the minimum supported shape coordinate (INT32_MIN EMU).");
+                        return v;
+                    }
+                    if (properties.TryGetValue("x", out var xStr) || properties.TryGetValue("left", out xStr)) xEmu = ParseEmuBounded(xStr, "x", allowNegative: true);
+                    if (properties.TryGetValue("y", out var yStr) || properties.TryGetValue("top", out yStr)) yEmu = ParseEmuBounded(yStr, "y", allowNegative: true);
                     if (properties.TryGetValue("width", out var wStr) || properties.TryGetValue("w", out wStr))
                     {
-                        cxEmu = ParseEmu(wStr);
-                        if (cxEmu < 0) throw new ArgumentException($"Negative width is not allowed: '{wStr}'.");
+                        // Zero is legitimate (PowerPoint hides 0×0 shapes — used for invisible
+                        // decorative lines). Dump-replay must round-trip zero-sized shapes that
+                        // were authored that way; the prior strict reject broke real-world
+                        // round-trips.
+                        cxEmu = ParseEmuBounded(wStr, "width", allowNegative: false);
                     }
                     if (properties.TryGetValue("height", out var hStr) || properties.TryGetValue("h", out hStr))
                     {
-                        cyEmu = ParseEmu(hStr);
-                        if (cyEmu < 0) throw new ArgumentException($"Negative height is not allowed: '{hStr}'.");
+                        cyEmu = ParseEmuBounded(hStr, "height", allowNegative: false);
                     }
 
                     var xfrm = new Drawing.Transform2D
@@ -355,18 +475,47 @@ public partial class PowerPointHandler
                     };
                     if (properties.TryGetValue("rotation", out var rotVal) || properties.TryGetValue("rotate", out rotVal))
                     {
-                        if (!double.TryParse(rotVal, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var rotDbl) || double.IsNaN(rotDbl) || double.IsInfinity(rotDbl))
-                            throw new ArgumentException($"Invalid 'rotation' value: '{rotVal}'. Expected a finite number in degrees (e.g. 45, -90, 180.5).");
+                        var rotDbl = ParseHelpers.SafeParseRotationDegrees(rotVal!, "rotation");
                         xfrm.Rotation = (int)(rotDbl * 60000);
                     }
                     newShape.ShapeProperties!.Transform2D = xfrm;
 
-                    var presetName = properties.TryGetValue("preset", out var pn) ? pn
-                        : properties.TryGetValue("geometry", out pn) ? pn
-                        : properties.GetValueOrDefault("shape", "rect");
-                    newShape.ShapeProperties.AppendChild(
-                        new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = ParsePresetShape(presetName) }
-                    );
+                    // Custom geometry takes precedence — replay of dump-emitted
+                    // custom-shape paths comes through as customGeometryXml (raw
+                    // OOXML <a:custGeom>) which we splice in verbatim. Fallback
+                    // to preset name when no custom-geometry signal is present.
+                    if (properties.TryGetValue("customGeometryXml", out var custXml) && custXml.Length > 0)
+                    {
+                        // OuterXml round-trip: load the raw <a:custGeom> string,
+                        // pull its children as InnerXml. System.Xml.Linq tolerates
+                        // namespace declarations on the root and preserves them on
+                        // the children when re-serialized.
+                        var doc = System.Xml.Linq.XDocument.Parse(custXml);
+                        var custElem = new Drawing.CustomGeometry();
+                        custElem.InnerXml = string.Concat(doc.Root!.Nodes().Select(n => n.ToString(System.Xml.Linq.SaveOptions.DisableFormatting)));
+                        newShape.ShapeProperties.AppendChild(custElem);
+                    }
+                    else
+                    {
+                        var presetName = properties.TryGetValue("preset", out var pn) ? pn
+                            : properties.TryGetValue("geometry", out pn) ? pn
+                            : properties.GetValueOrDefault("shape", "rect");
+                        // "custom" is a Get-side marker for "this was custGeom but we
+                        // couldn't round-trip the path" — degrade to rect rather than
+                        // erroring out (we'd lose the shape entirely otherwise).
+                        if (presetName.Equals("custom", StringComparison.OrdinalIgnoreCase))
+                            presetName = "rect";
+                        // Validate the preset name so an unknown geometry
+                        // surfaces unsupported_property instead of silently
+                        // degrading to rect. Mirrors the Set path
+                        // (ShapeProperties.cs uses TryParsePresetShape for
+                        // the same reason).
+                        if (!TryParsePresetShape(presetName, out var presetGeom))
+                            throw new ArgumentException($"Unknown shape geometry: '{presetName}'");
+                        newShape.ShapeProperties.AppendChild(
+                            new Drawing.PresetGeometry(new Drawing.AdjustValueList()) { Preset = presetGeom }
+                        );
+                    }
                 }
 
                 // Shape fill (after xfrm and prstGeom to maintain schema order)
@@ -408,7 +557,15 @@ public partial class PowerPointHandler
                             "so the alpha value has a color element to attach to.");
                     if (double.TryParse(opacityVal, System.Globalization.CultureInfo.InvariantCulture, out var alphaNum))
                     {
-                        if (alphaNum > 1.0) alphaNum /= 100.0; // treat >1 as percentage (e.g. 30 → 0.30)
+                        // CONSISTENCY(opacity-clamp): (1, 2) ambiguous; see
+                        // the shape Set path. Reject before the /100.
+                        if (alphaNum > 1.0 && alphaNum < 2.0)
+                            throw new ArgumentException(
+                                $"Invalid 'opacity' value: '{opacityVal}'. Expected 0.0-1.0 as decimal or 2-100 as percent (values in (1, 2) are ambiguous).");
+                        if (alphaNum > 1.0) alphaNum /= 100.0; // treat >=2 as percentage (e.g. 30 → 0.30)
+                        if (alphaNum < 0.0 || alphaNum > 1.0)
+                            throw new ArgumentException(
+                                $"Invalid 'opacity' value: '{opacityVal}'. Expected 0.0-1.0 (or 0-100 as percent).");
                         var alphaPct = (int)(alphaNum * 100000);
                         var solidFill = newShape.ShapeProperties?.GetFirstChild<Drawing.SolidFill>();
                         if (solidFill != null)
@@ -439,8 +596,14 @@ public partial class PowerPointHandler
                 }
 
                 // Line/border (after fill per schema: xfrm → prstGeom → fill → ln)
+                // Schema documents compound form 'color[:width[:style]]'
+                // (schemas/help/_shared/shape.json) — split here so the
+                // single-part code paths handle each component uniformly.
+                string? compoundLineWidth = null;
+                string? compoundLineDash = null;
                 if (properties.TryGetValue("line", out var lineColor) || properties.TryGetValue("linecolor", out lineColor) || properties.TryGetValue("lineColor", out lineColor) || properties.TryGetValue("line.color", out lineColor) || properties.TryGetValue("border", out lineColor) || properties.TryGetValue("border.color", out lineColor))
                 {
+                    (lineColor, compoundLineWidth, compoundLineDash) = SplitCompoundLineValue(lineColor);
                     var outline = EnsureOutline(newShape.ShapeProperties!);
                     if (lineColor.Equals("none", StringComparison.OrdinalIgnoreCase))
                         outline.AppendChild(new Drawing.NoFill());
@@ -452,6 +615,31 @@ public partial class PowerPointHandler
                     var outline = EnsureOutline(newShape.ShapeProperties!);
                     outline.Width = Core.EmuConverter.ParseLineWidth(lwStr);
                 }
+                else if (compoundLineWidth != null)
+                {
+                    var outline = EnsureOutline(newShape.ShapeProperties!);
+                    outline.Width = Core.EmuConverter.ParseLineWidth(compoundLineWidth);
+                }
+                // Stash the compound dash so the lineDash branch in
+                // SetRunOrShapeProperties below picks it up via the
+                // shared effectProps dispatch.
+                if (compoundLineDash != null
+                    && !properties.ContainsKey("linedash")
+                    && !properties.ContainsKey("lineDash")
+                    && !properties.ContainsKey("line.dash"))
+                {
+                    properties["lineDash"] = compoundLineDash;
+                }
+
+                // Outline policy: "user didn't ask = we don't write". Earlier the
+                // handler auto-injected a 0.75pt #595959 outline whenever the caller
+                // picked a geometry and gave no fill+line, mimicking PowerPoint's
+                // "Insert Shape" UI default. That phantom border survived through
+                // dump→replay: NodeBuilder reported lineColor=595959, the batch
+                // emitter forwarded it, and every round-trip grew a darker border on
+                // a shape the user never asked to outline. The visibility regression
+                // (presets render with no stroke) is the lesser harm; defer the
+                // default-outline UX to a caller-driven `line=default`/UI layer.
 
                 // List style (bullet/numbered)
                 if (properties.TryGetValue("list", out var listVal) || properties.TryGetValue("liststyle", out listVal))
@@ -463,11 +651,26 @@ public partial class PowerPointHandler
                     }
                 }
 
-                InsertAtPosition(shapeTree, newShape, index);
+                if (insertContainer != null)
+                {
+                    // Group container — InsertAtPosition over a GroupShape: the
+                    // existing helper is shape-tree generic so it works here too.
+                    InsertAtPosition(insertContainer, newShape, index);
+                }
+                else
+                {
+                    InsertAtPosition(shapeTree, newShape, index);
+                }
 
-                // Hyperlink on shape
+                // Hyperlink on shape — slide-only. ApplyShapeHyperlink uses
+                // SlidePart.AddHyperlinkRelationship; master/layout owner parts
+                // would need a parallel relationship API. Out of scope for the
+                // initial master/layout shape support.
                 if (properties.TryGetValue("link", out var linkVal))
                 {
+                    if (slidePart == null)
+                        throw new ArgumentException(
+                            "'link' is not yet supported on master/layout shapes — set it on slide-level shapes instead.");
                     var tooltipVal = properties.GetValueOrDefault("tooltip");
                     ApplyShapeHyperlink(slidePart, newShape, linkVal, tooltipVal);
                 }
@@ -484,6 +687,15 @@ public partial class PowerPointHandler
                       "baseline", "superscript", "subscript",
                       "textwarp", "wordart", "autofit",
                       "lineopacity", "line.opacity",
+                      "linegradient", "line.gradient",
+                      // previously dropped silently — route through Set
+                      // so OOXML attributes actually get emitted.
+                      "linecap", "lineCap", "line.cap",
+                      "linejoin", "lineJoin", "line.join",
+                      "cmpd", "compoundline", "compoundLine", "line.compound",
+                      "linealign", "lineAlign", "line.align",
+                      "headend", "headEnd", "arrowstart", "arrowStart",
+                      "tailend", "tailEnd", "arrowend", "arrowEnd",
                       "image", "imagefill",
                       // CONSISTENCY(rpr-attr-fallback / R21-fuzzer-1+2): drawingML
                       // run-property attributes must reach SetRunOrShapeProperties
@@ -492,19 +704,55 @@ public partial class PowerPointHandler
                       "lang", "lang.latin", "altLang", "altlang", "spc", "kern", "cap",
                       "kumimoji", "normalizeH", "normalizeh", "noProof", "noproof",
                       "dirty", "smtClean", "smtclean", "smtId", "smtid", "err" };
-                var effectProps = properties
-                    .Where(kv => effectKeys.Contains(kv.Key))
-                    .ToDictionary(kv => kv.Key, kv => kv.Value);
+                // CONSISTENCY(tracking-prop): explicit TryGetValue per known
+                // key instead of `.Where(...)` iteration. Foreach over the
+                // TrackingPropertyDictionary marks every entry as consumed
+                // (see Core/TrackingPropertyDictionary.cs), which would
+                // silently swallow user typos (xyzNeverExisted, anchor, …)
+                // and make Add asymmetric with Set on the unsupported_property
+                // contract. TryGetValue records only the keys we actually
+                // looked up, leaving genuine typos visible to CommandBuilder.
+                var effectProps = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var ek in effectKeys)
+                {
+                    if (properties.TryGetValue(ek, out var ev))
+                        effectProps[ek] = ev;
+                }
                 if (effectProps.Count > 0)
-                    SetRunOrShapeProperties(effectProps, GetAllRuns(newShape), newShape, slidePart);
+                    SetRunOrShapeProperties(effectProps, GetAllRuns(newShape), newShape, ownerPart);
 
-                // Animation
+                // Animation — slide-only (timing lives on <p:sld>/timing).
                 if (properties.TryGetValue("animation", out var animVal) ||
                     properties.TryGetValue("animate", out animVal))
+                {
+                    if (slidePart == null)
+                        throw new ArgumentException(
+                            "'animation' is not supported on master/layout shapes — slide timing trees live on /slide[N].");
                     ApplyShapeAnimation(slidePart, newShape, animVal);
+                }
 
-                GetSlide(slidePart).Save();
-                return $"/slide[{slideIdx}]/{BuildElementPathSegment("shape", newShape, shapeTree.Elements<Shape>().Count())}";
+                // Z-order — slide-only. NodeBuilder emits the 1-based position
+                // among content elements; without consuming it here every Add
+                // appended at the end of the shape tree and dump-replay lost
+                // the original stacking order.
+                if (slidePart != null && (
+                    properties.TryGetValue("zorder", out var zVal)
+                    || properties.TryGetValue("z-order", out zVal)
+                    || properties.TryGetValue("order", out zVal)))
+                {
+                    ApplyZOrder(slidePart, newShape, zVal);
+                }
+
+                ownerRoot.Save();
+                if (groupResultPathPrefix != null && insertContainer != null)
+                {
+                    // Positional within the group container: 1-based shape index
+                    // among Shape children of the GroupShape, matching the format
+                    // emitted by Get for /slide/group/shape paths.
+                    var inGroupIdx = insertContainer.Elements<Shape>().Count();
+                    return $"{groupResultPathPrefix}/{BuildElementPathSegment("shape", newShape, inGroupIdx)}";
+                }
+                return $"{returnPathPrefix}/{BuildElementPathSegment("shape", newShape, shapeTree.Elements<Shape>().Count())}";
     }
 
 

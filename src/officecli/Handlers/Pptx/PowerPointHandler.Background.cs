@@ -104,6 +104,15 @@ public partial class PowerPointHandler
         else if (value.StartsWith("image:", StringComparison.OrdinalIgnoreCase))
         {
             var imagePath = value[6..].Trim();
+            // Reject HTTP(S) URLs upfront. ImageSource.Resolve would attempt a
+            // network fetch and surface raw HttpClient exceptions; that turns a
+            // foreseeable network dependency into a noisy stack trace. Require
+            // the caller to download the file first so failures are local-only.
+            if (imagePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                imagePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException(
+                    $"background=image:<URL> is not supported (got '{imagePath}'). " +
+                    "Download the file to a local path first, then pass background=image:/local/path.");
             prepared = PrepareBackgroundImage(imagePath, imgOpts);
         }
         else
@@ -320,6 +329,25 @@ public partial class PowerPointHandler
             ?? throw new ArgumentException(
                 "background.mode/alpha/scale requires an existing image background; " +
                 "set background=image:<path> first");
+
+        // Symmetric Get/Set: Get readback emits background.alpha for translucent
+        // solid backgrounds (a:srgbClr/a:alpha), so Set must accept the same key
+        // on a solid bg. Rewrite the solid color's alpha child rather than
+        // demanding an image bg. Mode/scale remain image-only.
+        var solidFill = bgPr.GetFirstChild<Drawing.SolidFill>();
+        if (solidFill != null && opts.Mode == null && opts.Scale == null && opts.Alpha is int sAlpha)
+        {
+            if (sAlpha < 0 || sAlpha > 100)
+                throw new ArgumentException($"background.alpha must be 0..100, got {sAlpha}");
+            var colorEl = (OpenXmlElement?)solidFill.GetFirstChild<Drawing.RgbColorModelHex>()
+                       ?? solidFill.GetFirstChild<Drawing.SchemeColor>();
+            if (colorEl == null) return;
+            colorEl.Elements<Drawing.Alpha>().ToList().ForEach(e => e.Remove());
+            if (sAlpha < 100)
+                colorEl.AppendChild(new Drawing.Alpha { Val = sAlpha * 1000 });
+            return;
+        }
+
         var blipFill = bgPr.GetFirstChild<Drawing.BlipFill>()
             ?? throw new ArgumentException(
                 "background.mode/alpha/scale requires an image background, but the current " +
@@ -397,7 +425,7 @@ public partial class PowerPointHandler
                 Alignment = Drawing.RectangleAlignmentValues.TopLeft,
                 Flip = Drawing.TileFlipValues.None,
             },
-            // Center = tile anchored at center with no scaling. Matches LibreOffice's
+            // Center = tile anchored at center with no scaling. Matches the
             // FillBitmapMode_NO_REPEAT → oox export pattern (WriteXGraphicTile algn=ctr).
             "center" => new Drawing.Tile
             {
@@ -528,7 +556,7 @@ public partial class PowerPointHandler
             var tile = blipFill.GetFirstChild<Drawing.Tile>();
             if (tile != null)
             {
-                // LibreOffice convention: algn=ctr + sx=sy=100000 → "center",
+                // convention: algn=ctr + sx=sy=100000 → "center",
                 // anything else with tile → "tile".
                 var algn = tile.Alignment?.Value;
                 var sx = tile.HorizontalRatio?.Value ?? 100000;
@@ -568,6 +596,27 @@ public partial class PowerPointHandler
     /// </summary>
     private static string NormalizeGradientValue(string value)
     {
+        // CONSISTENCY(gradient-angle-separator): chart series gradients emit
+        // `C1-C2:ANGLE` (colon-separated angle) while shape gradients use the
+        // dash-separated `C1-C2-ANGLE` form. Users (and dump→batch replay)
+        // legitimately confuse the two — accept the colon form on shape input
+        // and normalize to the canonical dash form so the existing linear
+        // parser unwraps it. Get/dump still emit each surface's canonical
+        // separator unchanged (dash for shape, colon for chart) to preserve
+        // round-trip and schema expectations.
+        if (!value.StartsWith("radial:", StringComparison.OrdinalIgnoreCase)
+            && !value.StartsWith("path:", StringComparison.OrdinalIgnoreCase)
+            && !value.StartsWith("linear;", StringComparison.OrdinalIgnoreCase))
+        {
+            var colonIdx = value.LastIndexOf(':');
+            if (colonIdx > 0 && colonIdx < value.Length - 1)
+            {
+                var tail = value[(colonIdx + 1)..];
+                if (int.TryParse(tail, out var angleDeg) && angleDeg >= -360 && angleDeg <= 360)
+                    value = value[..colonIdx] + "-" + tail;
+            }
+        }
+
         // Detect semicolon-separated format: TYPE;C1;C2[;angle/focus]
         if (!value.Contains(';')) return value;
 
@@ -616,7 +665,24 @@ public partial class PowerPointHandler
             return v.Length > 5;
 
         var parts = v.Split('-');
-        return parts.Length >= 2 && IsHexColorString(parts[0]);
+        return parts.Length >= 2 && IsGradientStopFirstToken(parts[0]);
+    }
+
+    /// <summary>
+    /// First token in a "C1-C2[-...]" gradient string can be either an inline
+    /// hex color or a scheme color name (accent1, dark1, hyperlink, …). The
+    /// hex check alone caused scheme-color gradients to be routed to the
+    /// solid-fill path with the bare "accent1-accent2" string, which then
+    /// failed sanitization. Treat any recognized OOXML scheme color as a
+    /// gradient color, so detection matches what BuildGradientFill accepts.
+    /// </summary>
+    private static bool IsGradientStopFirstToken(string s)
+    {
+        if (IsHexColorString(s)) return true;
+        // Strip @position suffix used for gradient stops (e.g. "accent1@50").
+        var at = s.IndexOf('@');
+        var name = at >= 0 ? s[..at] : s;
+        return ParseHelpers.IsSchemeColorName(name);
     }
 
     private static bool IsHexColorString(string s)
@@ -642,6 +708,14 @@ public partial class PowerPointHandler
     /// </summary>
     internal static Drawing.GradientFill BuildGradientFill(string value)
     {
+        // ReadGradientString emits semicolon-separated form
+        // ("linear;#C1;#C2;angle") for round-trip. Translate to the canonical
+        // dash form so dump-replay accepts what dump just produced. The
+        // `linear;` prefix is the marker; `radial:` / `path:` already use
+        // their own colon-prefix syntax which uses dashes between colors.
+        if (value.StartsWith("linear;", StringComparison.OrdinalIgnoreCase))
+            value = value[7..].Replace(';', '-');
+
         // Check for radial/path prefix
         string? gradientType = null;
         string colorSpec = value;

@@ -52,7 +52,13 @@ public partial class PowerPointHandler
         {
             "slide" => AddSlide(parentPath, index, properties),
             "shape" or "textbox" when properties != null && properties.ContainsKey("formula") => AddEquation(parentPath, index, properties),
-            "shape" or "textbox" => AddShape(parentPath, index, properties ?? new()),
+            // Forward the requested element type so AddShape can distinguish
+            // `--type shape` (geometry shape) from `--type textbox` (writes
+            // <p:cNvSpPr txBox="1"/>) even when neither geometry nor text props
+            // are supplied. The dump emitter splits text into separate
+            // paragraph/run adds, so the AddShape call carries no `text=` —
+            // without this hint, replay can't tell the two flavors apart.
+            "shape" or "textbox" => AddShape(parentPath, index, properties ?? new(), type.ToLowerInvariant()),
             "picture" or "image" or "img" => AddPicture(parentPath, index, properties),
             "ole" or "oleobject" or "object" or "embed" => AddOle(parentPath, index, properties ?? new()),
             "chart" => AddChart(parentPath, index, properties),
@@ -73,6 +79,12 @@ public partial class PowerPointHandler
             "3dmodel" or "model3d" or "model" or "glb" => AddModel3D(parentPath, index, properties),
             // BUG-R36-B11: legacy slide comments lifecycle.
             "comment" or "note-comment" => AddSlideComment(parentPath, index, properties),
+            // Modern p188 (Office 2018/8) threaded comments — distinct OOXML
+            // element living in PowerPointCommentPart (/ppt/comments/…). Top-
+            // level threads and replies share the dispatch (parent= prop
+            // discriminates).
+            "moderncomment" or "modern-comment" or "thread" or "threadedcomment"
+                => AddModernComment(parentPath, index, properties),
             _ => AddDefault(parentPath, index, properties, type)
         };
     }

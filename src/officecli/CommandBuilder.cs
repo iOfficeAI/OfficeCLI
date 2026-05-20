@@ -138,6 +138,7 @@ static partial class CommandBuilder
         rootCommand.Add(BuildImportCommand(jsonOption));
         rootCommand.Add(BuildCreateCommand(jsonOption));
         rootCommand.Add(BuildMergeCommand(jsonOption));
+        rootCommand.Add(BuildPluginsCommand(jsonOption));
 
         foreach (var stub in BuildIntegrationStubCommands())
             rootCommand.Add(stub);
@@ -363,6 +364,13 @@ static partial class CommandBuilder
     }
 
 
+    // ContainsNullByte — defensive guard for batch input. OOXML / xml-1.0
+    // forbids U+0000 in any element or attribute content; an unfiltered NUL
+    // reaches the SDK's xml writer at save time and throws an XmlException
+    // that aborts the in-flight session and corrupts the resident's view.
+    // Keep this as a tiny string check so it can run on every batch item.
+    private static bool ContainsNullByte(string? s) => s != null && s.IndexOf('\0') >= 0;
+
     internal static int SafeRun(Func<int> action, bool json = false)
     {
         if (!OfficeCli.Core.CliLogger.Enabled)
@@ -434,6 +442,32 @@ static partial class CommandBuilder
         var format = json ? OfficeCli.Core.OutputFormat.Json : OfficeCli.Core.OutputFormat.Text;
         var props = item.Props ?? new Dictionary<string, string>();
 
+        // Reject null bytes (U+0000) anywhere in caller-controlled strings —
+        // path, selector, text, and prop values. OOXML xml writers throw
+        // System.Xml.XmlException ("'.', hexadecimal value 0x00, is an
+        // invalid character.") deep inside the SDK's Save path, AFTER prior
+        // batch items have already mutated the document. The exception
+        // bubbles up past the handler's Save and leaves the resident in a
+        // state where the next close throws again — silently losing every
+        // successful mutation in the same session. Reject at the boundary
+        // with a stable code so the batch driver records ONE failed step
+        // and keeps the rest of the document intact.
+        if (ContainsNullByte(item.Path))
+            throw new CliException($"path contains a NUL byte (\\u0000), which is invalid in OOXML.")
+                { Code = "invalid_input" };
+        if (ContainsNullByte(item.Selector))
+            throw new CliException($"selector contains a NUL byte (\\u0000), which is invalid in OOXML.")
+                { Code = "invalid_input" };
+        if (ContainsNullByte(item.Text))
+            throw new CliException($"text contains a NUL byte (\\u0000), which is invalid in OOXML.")
+                { Code = "invalid_input" };
+        foreach (var (pk, pv) in props)
+        {
+            if (ContainsNullByte(pk) || ContainsNullByte(pv))
+                throw new CliException($"prop '{pk}' contains a NUL byte (\\u0000), which is invalid in OOXML.")
+                    { Code = "invalid_input" };
+        }
+
         switch (item.Command.ToLowerInvariant())
         {
             case "get":
@@ -470,7 +504,19 @@ static partial class CommandBuilder
                     throw new ArgumentException("'set' command requires 'path' field. Example: {\"command\": \"set\", \"path\": \"/slide[1]\", \"props\": {\"bold\": \"true\"}}");
                 var path = item.Path;
                 var unsupported = handler.Set(path, props);
-                var applied = props.Where(kv => !unsupported.Contains(kv.Key)).ToList();
+                // Mirror standalone `set` (CommandBuilder.Set.cs): handler.Set
+                // may return entries with help text like "key (valid props ...)"
+                // or "key=value (reason)". Trim trailing text before the
+                // membership test so a rejected prop is not also counted as
+                // applied — without this, batch reported success=true with a
+                // warning, diverging from standalone set's exit-2 verdict.
+                var unsupportedKeys = unsupported.Select(u =>
+                {
+                    var head = u.Contains(' ') ? u[..u.IndexOf(' ')] : u;
+                    var eq = head.IndexOf('=');
+                    return eq >= 0 ? head[..eq] : head;
+                }).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var applied = props.Where(kv => !unsupportedKeys.Contains(kv.Key)).ToList();
                 var parts = new List<string>();
                 if (applied.Count > 0)
                 {
@@ -512,6 +558,16 @@ static partial class CommandBuilder
                         };
                         parts.Add(FormatUnsupported(unsupported, batchScope));
                     }
+                    // Mirror standalone `set`'s allFailed semantics: if every
+                    // requested property was rejected (nothing applied), the
+                    // step is a failure, not a successful no-op. Without
+                    // this, batch swallowed unsupported_property into an inner
+                    // success=true while the same set issued via the
+                    // standalone set command returned success=false exit 2.
+                    // Per-step verdict flips to false; outer batch envelope
+                    // still rides on the existing partial-success rule.
+                    if (applied.Count == 0)
+                        throw new CliException(string.Join("\n", parts)) { Code = "unsupported_property" };
                 }
                 return string.Join("\n", parts);
             }
@@ -667,7 +723,27 @@ static partial class CommandBuilder
                 throw new ArgumentException(
                     $"Invalid --prop '{prop}': key is empty. Use key=value (e.g. --prop name=Title).");
             if (eqIdx > 0)
-                dict[prop[..eqIdx]] = prop[(eqIdx + 1)..];
+            {
+                var key = prop[..eqIdx];
+                var value = prop[(eqIdx + 1)..];
+                // CONSISTENCY(text-escape-boundary): C-style escape resolution
+                // (\\n, \\t, \\r, \\\\) is a CLI-input concern only. The shell
+                // gives us the literal four-character sequence `\\n` which a
+                // user typing `--prop text='line1\\nline2'` plainly wants as
+                // a newline. Handlers no longer call TextEscape.Resolve
+                // internally — that double-resolution mangled batch JSON
+                // payloads, where `"text": "hello\\nworld"` already arrives
+                // as `hello\\nworld` literal after JSON parsing and must NOT
+                // be turned into a newline. Only `text` and `value` are
+                // affected; other props (colors, paths, numbers) are passed
+                // through untouched.
+                if (key.Equals("text", StringComparison.OrdinalIgnoreCase)
+                    || key.Equals("value", StringComparison.OrdinalIgnoreCase))
+                {
+                    value = OfficeCli.Core.TextEscape.Resolve(value);
+                }
+                dict[key] = value;
+            }
         }
         return dict;
     }
