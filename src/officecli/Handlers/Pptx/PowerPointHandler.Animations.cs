@@ -104,6 +104,75 @@ public partial class PowerPointHandler
         _ = ParseHelpers.IsTruthy(autoReverse);
     }
 
+    // Chart-internal build animation. Drives the <a:bldChart @bld> enum inside
+    // <p:bldGraphic><p:bldSub>. Canonical values mirror OOXML directly; common
+    // aliases (byCategory / bySeries / byCategoryEl / bySeriesEl) accepted on
+    // input. asWhole is the default (no bldChart emitted; chart enters as one
+    // graphic frame, same as a regular shape animation).
+    private static readonly Dictionary<string, string> _chartBuildCanonical =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["asWhole"] = "asWhole",
+            ["allAtOnce"] = "asWhole",
+            ["whole"] = "asWhole",
+            ["series"] = "series",
+            ["bySeries"] = "series",
+            ["category"] = "category",
+            ["byCategory"] = "category",
+            ["seriesEl"] = "seriesEl",
+            ["bySeriesEl"] = "seriesEl",
+            ["seriesElement"] = "seriesEl",
+            ["bySeriesElement"] = "seriesEl",
+            ["categoryEl"] = "categoryEl",
+            ["byCategoryEl"] = "categoryEl",
+            ["categoryElement"] = "categoryEl",
+            ["byCategoryElement"] = "categoryEl",
+        };
+
+    internal static string? NormalizeChartBuild(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return null;
+        if (_chartBuildCanonical.TryGetValue(value.Trim(), out var canon)) return canon;
+        return null;
+    }
+
+    internal static void ValidateAnimationChartBuild(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return;
+        if (NormalizeChartBuild(value) == null)
+            throw new ArgumentException(
+                $"Invalid animation chartBuild: '{value}'. Valid values: asWhole, series, category, seriesEl, categoryEl "
+                + "(aliases: bySeries, byCategory, bySeriesEl, byCategoryEl).");
+    }
+
+    // Resolve the OOXML id attribute (used as <p:spTgt @spid>) for any shape-tree
+    // element that can host an animation: <p:sp>, <p:graphicFrame> (chart, smartArt,
+    // OLE), <p:pic>, <p:cxnSp>, <p:grpSp>. CONSISTENCY(animation-target): the
+    // timing tree binds purely by this id string — the underlying element type
+    // doesn't matter past this lookup.
+    internal static uint? GetAnimationTargetSpId(OpenXmlElement target) => target switch
+    {
+        Shape sp => sp.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value,
+        GraphicFrame gf => gf.NonVisualGraphicFrameProperties?.NonVisualDrawingProperties?.Id?.Value,
+        Picture pic => pic.NonVisualPictureProperties?.NonVisualDrawingProperties?.Id?.Value,
+        ConnectionShape cx => cx.NonVisualConnectionShapeProperties?.NonVisualDrawingProperties?.Id?.Value,
+        GroupShape grp => grp.NonVisualGroupShapeProperties?.NonVisualDrawingProperties?.Id?.Value,
+        _ => null
+    };
+
+    // True iff the GraphicFrame embeds a chart (c:chart or cx:chart reference).
+    // SmartArt / OLE GraphicFrames return false. CONSISTENCY(animation-chart-detect):
+    // mirrors ResolveChart's filter in Resolve.cs.
+    internal static bool IsChartGraphicFrame(OpenXmlElement target)
+    {
+        if (target is not GraphicFrame gf) return false;
+        var gd = gf.Graphic?.GraphicData;
+        if (gd == null) return false;
+        if (gd.Descendants<Drawing.Charts.ChartReference>().Any()) return true;
+        const string cxNs = "http://schemas.microsoft.com/office/drawing/2014/chartex";
+        return gd.ChildElements.Any(e => e.LocalName == "chart" && e.NamespaceUri == cxNs);
+    }
+
     // Canonicalize a restart input string to the matching enum value. Returns
     // null when not present (caller leaves the cTn attribute unset).
     private static TimeNodeRestartValues? ParseAnimRestart(string? value)
@@ -572,11 +641,17 @@ public partial class PowerPointHandler
     /// Examples: "fade", "fly-entrance", "zoom-exit-800", "fade-in-500-after",
     ///           "wipe-entrance-1000-with", "fade-entrance-500-click", "none"
     /// </summary>
-    private static void ApplyShapeAnimation(SlidePart slidePart, Shape shape, string value)
+    private static void ApplyShapeAnimation(SlidePart slidePart, OpenXmlElement target, string value)
     {
         var slide = slidePart.Slide ?? throw new InvalidOperationException("Corrupt file");
-        var shapeId = shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value
-            ?? throw new ArgumentException("Shape has no ID");
+        var shapeId = GetAnimationTargetSpId(target)
+            ?? throw new ArgumentException("Animation target has no OOXML id (NonVisualDrawingProperties/@id missing).");
+        // CONSISTENCY(animation-target): chart graphicFrames bind by the same id
+        // as a plain <p:sp> shape, so the timing tree code below is type-agnostic.
+        // Only the <p:bldLst> entry differs: chart targets emit <p:bldGraphic>
+        // (optionally with <a:bldChart bld=...> for per-series/category builds);
+        // everything else emits <p:bldP>.
+        var isChartTarget = IsChartGraphicFrame(target);
 
         if (value.Equals("none", StringComparison.OrdinalIgnoreCase) ||
             value.Equals("false", StringComparison.OrdinalIgnoreCase))
@@ -598,6 +673,9 @@ public partial class PowerPointHandler
         string? repeatRaw = null;
         string? restartRaw = null;
         bool? autoReverse = null;
+        // chartBuild rides outside the cTn — emitted as <p:bldGraphic>/<a:bldChart>
+        // alongside the click group. Only meaningful when target is a chart.
+        string? chartBuildRaw = null;
         var unrecognized = new List<string>();
 
         // bt-1 / fuzz-1 fix: top-level animation= prop bypasses the
@@ -658,7 +736,7 @@ public partial class PowerPointHandler
                 // value string — `seg` was lowered but we want canonical
                 // enum spelling for restart and the literal "indefinite"
                 // for repeat). Re-extract from the un-lowered `parts`.
-                if (kKey is "repeat" or "restart" or "autoreverse")
+                if (kKey is "repeat" or "restart" or "autoreverse" or "chartbuild")
                 {
                     var origSeg = parts[i];
                     var origEq = origSeg.IndexOf('=');
@@ -668,6 +746,7 @@ public partial class PowerPointHandler
                         case "repeat": repeatRaw = origRaw; break;
                         case "restart": restartRaw = origRaw; break;
                         case "autoreverse": autoReverse = ParseHelpers.IsTruthy(origRaw); break;
+                        case "chartbuild": chartBuildRaw = origRaw; break;
                     }
                 }
                 else if (int.TryParse(kRaw, out var kVal))
@@ -770,14 +849,50 @@ public partial class PowerPointHandler
             mainSeqCTn.ChildTimeNodeList!.AppendChild(clickGroup);
         }
 
-        // Update bldLst if not already there
+        // Update bldLst if not already there.
+        // Shape targets get <p:bldP>; chart targets get <p:bldGraphic>, optionally
+        // carrying <p:bldSub><a:bldChart bld="..."/> for per-series/category builds.
+        // chartBuild is only valid against a chart graphicFrame — reject early
+        // rather than silently dropping the build directive.
         var shapeIdStr = shapeId.ToString();
+        if (!string.IsNullOrEmpty(chartBuildRaw) && !isChartTarget)
+            throw new ArgumentException(
+                "chartBuild is only valid when the animation target is a chart graphicFrame "
+                + "(/slide[N]/chart[M]). Plain shapes don't support per-series/category builds.");
+        var chartBuildCanon = NormalizeChartBuild(chartBuildRaw);
         if (bldLst == null)
         {
             bldLst = new BuildList();
             slide.GetFirstChild<Timing>()!.BuildList = bldLst;
         }
-        if (!bldLst.Elements<BuildParagraph>()
+        if (isChartTarget)
+        {
+            // Replace any existing BuildGraphics for this spid so chartBuild
+            // override on a re-Add reflects in the file. (Shape <p:bldP> path
+            // below leaves existing entries alone — matches prior behaviour.)
+            // NB: SDK class is BuildGraphics (plural); wire element is <p:bldGraphic>.
+            var existingGraphics = bldLst.Elements<BuildGraphics>()
+                .Where(b => b.ShapeId?.Value == shapeIdStr)
+                .ToList();
+            foreach (var eg in existingGraphics) eg.Remove();
+            var bldGraphic = new BuildGraphics
+            {
+                ShapeId = shapeIdStr,
+                GroupId = new UInt32Value((uint)grpId)
+            };
+            if (chartBuildCanon != null && chartBuildCanon != "asWhole")
+            {
+                // SDK exposes <a:bldChart @bld> as a StringValue (not the typed
+                // AnimationBuildValues enum) — write the canonical OOXML token
+                // directly so PowerPoint reads it back unchanged.
+                var bldSub = new BuildSubElement();
+                var bldChart = new Drawing.BuildChart { Build = chartBuildCanon };
+                bldSub.AppendChild(bldChart);
+                bldGraphic.AppendChild(bldSub);
+            }
+            bldLst.AppendChild(bldGraphic);
+        }
+        else if (!bldLst.Elements<BuildParagraph>()
                 .Any(b => b.ShapeId?.Value == shapeIdStr))
         {
             bldLst.AppendChild(new BuildParagraph
@@ -1681,9 +1796,9 @@ public partial class PowerPointHandler
         };
     }
 
-    private static void ReadShapeAnimation(SlidePart slidePart, Shape shape, OfficeCli.Core.DocumentNode node)
+    private static void ReadShapeAnimation(SlidePart slidePart, OpenXmlElement target, OfficeCli.Core.DocumentNode node)
     {
-        var shapeId = shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value;
+        var shapeId = GetAnimationTargetSpId(target);
         if (shapeId == null) return;
 
         var timing = slidePart.Slide?.GetFirstChild<Timing>();
@@ -1771,6 +1886,24 @@ public partial class PowerPointHandler
                     }
                 }
                 cur = cur.Parent;
+            }
+        }
+
+        // chartBuild read-back: chart graphicFrames carry an extra <p:bldGraphic>
+        // entry in <p:bldLst>, optionally with <p:bldSub><a:bldChart bld="..."/>
+        // when the build is per-series/category. Surface as Format["chartBuild"].
+        // CONSISTENCY(animation-target): only relevant when the target is a chart
+        // graphicFrame; plain shapes get <p:bldP> and have no chartBuild key.
+        if (IsChartGraphicFrame(target))
+        {
+            var bldGraphic = timing.BuildList?
+                .Elements<BuildGraphics>()
+                .FirstOrDefault(b => b.ShapeId?.Value == shapeIdStr);
+            if (bldGraphic != null)
+            {
+                var bldChart = bldGraphic.BuildSubElement?.BuildChart;
+                var bldVal = bldChart?.Build?.Value;
+                node.Format["chartBuild"] = string.IsNullOrEmpty(bldVal) ? "asWhole" : bldVal;
             }
         }
     }

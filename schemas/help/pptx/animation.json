@@ -2,7 +2,7 @@
   "$schema": "../_schema.json",
   "format": "pptx",
   "element": "animation",
-  "parent": "shape",
+  "parent": ["shape", "chart"],
   "operations": {
     "add": true,
     "set": true,
@@ -11,9 +11,12 @@
     "remove": true
   },
   "paths": {
-    "positional": ["/slide[N]/shape[M]/animation[K]"]
+    "positional": [
+      "/slide[N]/shape[M]/animation[K]",
+      "/slide[N]/chart[M]/animation[K]"
+    ]
   },
-  "note": "Animation attached to a specific shape. Effect name drives the timing preset; trigger controls sequencing (onClick / withPrevious / afterPrevious). On Get, returns individual keys: effect (preset name), class (entrance/emphasis/exit), presetId (numeric), trigger (onClick/afterPrevious/withPrevious), duration (ms integer), and (when set) repeat / restart / autoReverse. No composite 'animation' key is emitted. The `direction` parameter is consumed at Add time and not surfaced on Get.",
+  "note": "Animation attached to a shape or a chart graphicFrame. Effect name drives the timing preset; trigger controls sequencing (onClick / withPrevious / afterPrevious). On Get, returns individual keys: effect (preset name), class (entrance/emphasis/exit), presetId (numeric), trigger (onClick/afterPrevious/withPrevious), duration (ms integer), and (when set) repeat / restart / autoReverse. Chart targets additionally surface chartBuild (asWhole | series | category | seriesEl | categoryEl) to control per-series/category build animation — written into <p:bldGraphic><p:bldSub><a:bldChart bld=.../> alongside the timing tree. No composite 'animation' key is emitted. The `direction` parameter is consumed at Add time and not surfaced on Get.",
   "properties": {
     "effect": {
       "type": "enum",
@@ -117,6 +120,19 @@
     },
     "easein":     { "type":"number", "add":false, "set":false, "get":true, "description":"acceleration percentage (0..100) — fraction of the duration spent ramping up.", "readback":"integer percent", "enforcement":"report" },
     "easeout":    { "type":"number", "add":false, "set":false, "get":true, "description":"deceleration percentage (0..100) — fraction of the duration spent ramping down.", "readback":"integer percent", "enforcement":"report" },
-    "motionPath": { "type":"string", "add":false, "set":false, "get":true, "description":"motion-path SVG-like path string (animMotion @path) for path animations.", "readback":"OOXML animMotion path string", "enforcement":"report" }
+    "motionPath": { "type":"string", "add":false, "set":false, "get":true, "description":"motion-path SVG-like path string (animMotion @path) for path animations.", "readback":"OOXML animMotion path string", "enforcement":"report" },
+    "chartBuild": {
+      "type": "enum",
+      "description": "Chart-internal build animation (only valid when the parent path is /slide[N]/chart[M]). Controls how chart elements appear under the entrance effect: asWhole (default — entire chart as one), series (one series at a time), category (one category at a time), seriesEl (each data point per series), categoryEl (each data point per category). Aliases accepted on input: bySeries, byCategory, bySeriesEl, byCategoryEl. Writes <a:bldChart bld='...'/> inside <p:bldGraphic><p:bldSub>. To change chartBuild after creation, re-Add the animation on the chart — re-Add replaces the BuildGraphics entry. Set on /slide[N]/chart[M]/animation[K] is not yet routed.",
+      "values": ["asWhole", "series", "category", "seriesEl", "categoryEl"],
+      "aliases": ["bySeries", "byCategory", "bySeriesEl", "byCategoryEl"],
+      "add": true, "set": false, "get": true,
+      "examples": [
+        "--prop \"effect=fade;class=entrance;chartBuild=byCategory\"",
+        "--prop \"effect=wipe;chartBuild=series;trigger=afterPrevious;duration=500\""
+      ],
+      "readback": "asWhole | series | category | seriesEl | categoryEl",
+      "enforcement": "report"
+    }
   }
 }

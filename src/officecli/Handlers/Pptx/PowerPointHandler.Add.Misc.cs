@@ -890,14 +890,44 @@ public partial class PowerPointHandler
 
     private string AddAnimation(string parentPath, int? index, Dictionary<string, string> properties)
     {
-                // Add animation to a shape: parentPath must be /slide[N]/shape[M]
+                // Add animation to a shape (/slide[N]/shape[M]) or chart graphicFrame
+                // (/slide[N]/chart[M]). Chart targets accept the additional chartBuild
+                // prop (per-series/category build) and emit <p:bldGraphic> instead of
+                // <p:bldP> in the slide's <p:bldLst>.
+                // CONSISTENCY(animation-target): the timing tree binds by spid only —
+                // both element kinds resolve to one through GetAnimationTargetSpId.
                 var animMatch = System.Text.RegularExpressions.Regex.Match(parentPath, @"^/slide\[(\d+)\]/shape\[(\d+)\]$");
-                if (!animMatch.Success)
-                    throw new ArgumentException("Animations must be added to a shape: /slide[N]/shape[M]");
+                var animChartMatch = System.Text.RegularExpressions.Regex.Match(parentPath, @"^/slide\[(\d+)\]/chart\[(\d+)\]$");
+                if (!animMatch.Success && !animChartMatch.Success)
+                    throw new ArgumentException("Animations must be added to a shape or chart: /slide[N]/shape[M] or /slide[N]/chart[M]");
 
-                var animSlideIdx = int.Parse(animMatch.Groups[1].Value);
-                var animShapeIdx = int.Parse(animMatch.Groups[2].Value);
-                var (animSlidePart, animShape) = ResolveShape(animSlideIdx, animShapeIdx);
+                SlidePart animSlidePart;
+                DocumentFormat.OpenXml.OpenXmlElement animTarget;
+                bool isChartTarget = false;
+                if (animChartMatch.Success)
+                {
+                    var slideIdx = int.Parse(animChartMatch.Groups[1].Value);
+                    var chartIdx = int.Parse(animChartMatch.Groups[2].Value);
+                    var (sp, gf, _, _) = ResolveChart(slideIdx, chartIdx);
+                    animSlidePart = sp;
+                    animTarget = gf;
+                    isChartTarget = true;
+                }
+                else
+                {
+                    var animSlideIdx = int.Parse(animMatch.Groups[1].Value);
+                    var animShapeIdx = int.Parse(animMatch.Groups[2].Value);
+                    var (sp, sh) = ResolveShape(animSlideIdx, animShapeIdx);
+                    animSlidePart = sp;
+                    animTarget = sh;
+                    // chartBuild is meaningless on plain shapes — hard-reject up
+                    // front so the user finds the mistake at Add time instead of
+                    // ApplyShapeAnimation deep inside the call stack.
+                    if (properties.ContainsKey("chartBuild") || properties.ContainsKey("chartbuild"))
+                        throw new ArgumentException(
+                            "chartBuild only applies to chart targets. Use /slide[N]/chart[M] "
+                            + "or remove the chartBuild prop.");
+                }
 
                 // L3 sub-B: class=motion routes to motion-path animation instead
                 // of preset entrance/exit/emphasis. Preset path lookup ("line",
@@ -906,7 +936,11 @@ public partial class PowerPointHandler
                 if (properties.TryGetValue("class", out var maybeMotionCls)
                     && maybeMotionCls.Equals("motion", StringComparison.OrdinalIgnoreCase))
                 {
-                    return AddMotionAnimation(parentPath, animSlidePart, animShape, properties);
+                    if (isChartTarget)
+                        throw new ArgumentException(
+                            "Motion-path animations on a chart graphicFrame are not supported. "
+                            + "Use class=entrance/exit/emphasis with optional chartBuild=series|category|...");
+                    return AddMotionAnimation(parentPath, animSlidePart, (Shape)animTarget, properties);
                 }
 
                 // Build animation value string from properties
@@ -985,16 +1019,27 @@ public partial class PowerPointHandler
                     || properties.TryGetValue("autoreverse", out arProp))
                     animValue += $"-autoReverse={arProp}";
 
-                ApplyShapeAnimation(animSlidePart, animShape, animValue);
+                // Validate + thread chartBuild on chart targets. Routed through
+                // the composite animValue string so ApplyShapeAnimation's existing
+                // parser picks it up alongside repeat / restart / autoReverse.
+                if (isChartTarget
+                    && (properties.TryGetValue("chartBuild", out var rawChartBuild)
+                        || properties.TryGetValue("chartbuild", out rawChartBuild)))
+                {
+                    ValidateAnimationChartBuild(rawChartBuild);
+                    animValue += $"-chartBuild={rawChartBuild}";
+                }
+
+                ApplyShapeAnimation(animSlidePart, animTarget, animValue);
                 GetSlide(animSlidePart).Save();
 
-                // Count animations on this shape — must match Get's enumeration
+                // Count animations on this target — must match Get's enumeration
                 // (effect-bearing CommonTimeNodes), not raw ShapeTarget references.
                 // CONSISTENCY(animation-index): mirror EnumerateShapeAnimationCTns
                 // in Query.cs — counting ShapeTargets over-counts effects like
                 // fly/swivel that emit multiple p:anim per single user effect,
                 // returning a stale path like animation[2] for the first add.
-                var animCount = EnumerateShapeAnimationCTns(animSlidePart, animShape).Count;
+                var animCount = EnumerateShapeAnimationCTns(animSlidePart, animTarget).Count;
                 return $"{parentPath}/animation[{animCount}]";
     }
 

@@ -1891,9 +1891,9 @@ public partial class PowerPointHandler
     /// enumeration order — keep the predicate in sync with what each writer
     /// emits (ApplyShapeAnimation + AppendMotionPathAnimation).
     /// </summary>
-    private List<CommonTimeNode> EnumerateShapeAnimationCTns(SlidePart slidePart, Shape shape)
+    private List<CommonTimeNode> EnumerateShapeAnimationCTns(SlidePart slidePart, OpenXmlElement target)
     {
-        var shapeId = shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value;
+        var shapeId = GetAnimationTargetSpId(target);
         if (shapeId == null) return [];
         var timing = GetSlide(slidePart).GetFirstChild<Timing>();
         if (timing == null) return [];

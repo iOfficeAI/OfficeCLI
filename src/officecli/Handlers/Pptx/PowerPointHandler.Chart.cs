@@ -231,6 +231,12 @@ public partial class PowerPointHandler
             catch { }
         }
 
+        // Animation: chart graphicFrames participate in the timing tree the
+        // same way shapes do. ReadShapeAnimation surfaces effect / class /
+        // duration / trigger / delay / chartBuild (last is chart-only — comes
+        // from <p:bldGraphic> rather than <p:bldP>).
+        ReadShapeAnimation(slidePart, gf, node);
+
         return node;
     }
 }
