@@ -1,0 +1,16 @@
+ppt /opendesign/
+.claude/
+.DS_Store
+
+# .NET 编译产物
+src/officecli/bin/
+src/officecli/obj/
+
+# 本地素材
+assets/morph-ppt-balanced-aionui.gif
+assets/ppt-assistant-aionui.gif
+assets/ppt助手-生产级ppt_副本.mp4
+assets/showcase/excel-assistant-aionui.gif
+assets/showcase/excel-generate-aionui.gif
+assets/showcase/word-academic-paper-aionui.gif
+assets/showcase/word-write-paper-aionui.gif

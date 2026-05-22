@@ -43,9 +43,9 @@
 
 <table>
 <tr>
-<td width="33%"><img src="assets/showcase/word1.gif" alt="OfficeCLI 학술 논문 (Word)"></td>
-<td width="33%"><img src="assets/showcase/word2.gif" alt="OfficeCLI 프로젝트 제안서 (Word)"></td>
-<td width="33%"><img src="assets/showcase/word3.gif" alt="OfficeCLI 연간 보고서 (Word)"></td>
+<td width="33%"><img src="assets/showcase/git/word-1-officecli.gif" alt="OfficeCLI 학술 논문 (Word)"></td>
+<td width="33%"><img src="assets/showcase/git/word-2-officecli.gif" alt="OfficeCLI 프로젝트 제안서 (Word)"></td>
+<td width="33%"><img src="assets/showcase/git/word-3-officecli.gif" alt="OfficeCLI 연간 보고서 (Word)"></td>
 </tr>
 </table>
 
@@ -54,9 +54,9 @@
 
 <table>
 <tr>
-<td width="33%"><img src="assets/showcase/excel1.gif" alt="OfficeCLI 예산 관리 (Excel)"></td>
-<td width="33%"><img src="assets/showcase/excel2.gif" alt="OfficeCLI 성적 관리 (Excel)"></td>
-<td width="33%"><img src="assets/showcase/excel3.gif" alt="OfficeCLI 매출 대시보드 (Excel)"></td>
+<td width="33%"><img src="assets/showcase/git/excel-1.gif" alt="OfficeCLI 예산 관리 (Excel)"></td>
+<td width="33%"><img src="assets/showcase/git/excel-2.gif" alt="OfficeCLI 성적 관리 (Excel)"></td>
+<td width="33%"><img src="assets/showcase/git/excel-3.gif" alt="OfficeCLI 매출 대시보드 (Excel)"></td>
 </tr>
 </table>
 

@@ -43,9 +43,9 @@ Open-source. Single binary. No Office installation. No dependencies. Works every
 
 <table>
 <tr>
-<td width="33%"><img src="assets/showcase/word1.gif" alt="OfficeCLI academic paper (Word)"></td>
-<td width="33%"><img src="assets/showcase/word2.gif" alt="OfficeCLI project proposal (Word)"></td>
-<td width="33%"><img src="assets/showcase/word3.gif" alt="OfficeCLI annual report (Word)"></td>
+<td width="33%"><img src="assets/showcase/git/word-1-officecli.gif" alt="OfficeCLI academic paper (Word)"></td>
+<td width="33%"><img src="assets/showcase/git/word-2-officecli.gif" alt="OfficeCLI project proposal (Word)"></td>
+<td width="33%"><img src="assets/showcase/git/word-3-officecli.gif" alt="OfficeCLI annual report (Word)"></td>
 </tr>
 </table>
 
@@ -54,9 +54,9 @@ Open-source. Single binary. No Office installation. No dependencies. Works every
 
 <table>
 <tr>
-<td width="33%"><img src="assets/showcase/excel1.gif" alt="OfficeCLI budget tracker (Excel)"></td>
-<td width="33%"><img src="assets/showcase/excel2.gif" alt="OfficeCLI gradebook (Excel)"></td>
-<td width="33%"><img src="assets/showcase/excel3.gif" alt="OfficeCLI sales dashboard (Excel)"></td>
+<td width="33%"><img src="assets/showcase/git/excel-1.gif" alt="OfficeCLI budget tracker (Excel)"></td>
+<td width="33%"><img src="assets/showcase/git/excel-2.gif" alt="OfficeCLI gradebook (Excel)"></td>
+<td width="33%"><img src="assets/showcase/git/excel-3.gif" alt="OfficeCLI sales dashboard (Excel)"></td>
 </tr>
 </table>
 

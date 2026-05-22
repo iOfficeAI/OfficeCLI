@@ -43,9 +43,9 @@
 
 <table>
 <tr>
-<td width="33%"><img src="assets/showcase/word1.gif" alt="OfficeCLI 学術論文 (Word)"></td>
-<td width="33%"><img src="assets/showcase/word2.gif" alt="OfficeCLI プロジェクト提案書 (Word)"></td>
-<td width="33%"><img src="assets/showcase/word3.gif" alt="OfficeCLI 年次報告書 (Word)"></td>
+<td width="33%"><img src="assets/showcase/git/word-1-officecli.gif" alt="OfficeCLI 学術論文 (Word)"></td>
+<td width="33%"><img src="assets/showcase/git/word-2-officecli.gif" alt="OfficeCLI プロジェクト提案書 (Word)"></td>
+<td width="33%"><img src="assets/showcase/git/word-3-officecli.gif" alt="OfficeCLI 年次報告書 (Word)"></td>
 </tr>
 </table>
 
@@ -54,9 +54,9 @@
 
 <table>
 <tr>
-<td width="33%"><img src="assets/showcase/excel1.gif" alt="OfficeCLI 予算管理 (Excel)"></td>
-<td width="33%"><img src="assets/showcase/excel2.gif" alt="OfficeCLI 成績管理 (Excel)"></td>
-<td width="33%"><img src="assets/showcase/excel3.gif" alt="OfficeCLI 売上ダッシュボード (Excel)"></td>
+<td width="33%"><img src="assets/showcase/git/excel-1.gif" alt="OfficeCLI 予算管理 (Excel)"></td>
+<td width="33%"><img src="assets/showcase/git/excel-2.gif" alt="OfficeCLI 成績管理 (Excel)"></td>
+<td width="33%"><img src="assets/showcase/git/excel-3.gif" alt="OfficeCLI 売上ダッシュボード (Excel)"></td>
 </tr>
 </table>
 
