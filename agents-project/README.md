@@ -17,6 +17,20 @@ or, if you prefer npm:
 npm run import
 ```
 
+Automatic discovery
+
+- To automatically locate a nearby `agents.zip` (common locations like the workspace root, `/tmp`, or `~/Downloads`) and import it, run:
+
+```
+sh auto_import.sh
+```
+
+Or with npm:
+
+```
+npm run auto-import
+```
+
 Result
 
 - The archive will be extracted into the `agents/` directory.
