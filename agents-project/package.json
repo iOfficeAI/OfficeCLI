@@ -1,0 +1,8 @@
+{
+  "name": "agents-project",
+  "version": "0.1.0",
+  "description": "Helper project to import agents.zip into an agents/ folder",
+  "scripts": {
+    "import": "sh import_agents.sh"
+  }
+}
