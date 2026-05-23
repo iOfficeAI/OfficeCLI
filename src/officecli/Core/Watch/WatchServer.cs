@@ -1726,6 +1726,27 @@ internal class WatchServer : IDisposable
                 return;
             }
 
+            if (requestLine.StartsWith("POST /api/revision/accept", StringComparison.Ordinal))
+            {
+                await HandleRevisionAcceptAsync(stream, headers, bodyPrefix, token);
+                client.Close();
+                return;
+            }
+
+            if (requestLine.StartsWith("POST /api/revision/reject", StringComparison.Ordinal))
+            {
+                await HandleRevisionRejectAsync(stream, headers, bodyPrefix, token);
+                client.Close();
+                return;
+            }
+
+            if (requestLine.StartsWith("GET /api/revision/count", StringComparison.Ordinal))
+            {
+                await HandleRevisionCountAsync(stream, headers, bodyPrefix, token);
+                client.Close();
+                return;
+            }
+
             // BUG-TESTER-R503: GET/PUT/etc on /api/selection must return 405,
             // not fall through to the HTML preview. Without this, an API
             // client that uses the wrong verb gets back a 200 HTML page and
@@ -2012,6 +2033,127 @@ internal class WatchServer : IDisposable
         await stream.WriteAsync(resp, token);
     }
 
+    /// <summary>
+    /// Handle POST /api/revision/accept — accept all tracked changes.
+    /// Spawns officecli set with acceptallchanges=all, waits for completion,
+    /// then signals SSE clients with a "full" refresh.
+    /// </summary>
+    private async Task HandleRevisionAcceptAsync(NetworkStream stream, Dictionary<string, string> headers, string bodyPrefix, CancellationToken token)
+    {
+        await RunRevisionActionAsync(stream, "acceptallchanges=all", token);
+    }
+
+    /// <summary>
+    /// Handle POST /api/revision/reject — reject all tracked changes.
+    /// Spawns officecli set with rejectallchanges=all, waits for completion,
+    /// then signals SSE clients with a "full" refresh.
+    /// </summary>
+    private async Task HandleRevisionRejectAsync(NetworkStream stream, Dictionary<string, string> headers, string bodyPrefix, CancellationToken token)
+    {
+        await RunRevisionActionAsync(stream, "rejectallchanges=all", token);
+    }
+
+    /// <summary>
+    /// Common helper for revision accept/reject actions.
+    /// Spawns officecli set with the given prop, returns 204 on success.
+    /// After the command completes, sends a "full" SSE event to trigger
+    /// a page refresh on all connected browsers.
+    /// </summary>
+    private async Task RunRevisionActionAsync(NetworkStream stream, string propArg, CancellationToken token)
+    {
+        int statusCode = 204;
+        string statusText = "No Content";
+        try
+        {
+            var exe = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName
+                ?? (OperatingSystem.IsWindows() ? "officecli.exe" : "officecli");
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = exe,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            psi.ArgumentList.Add("set");
+            psi.ArgumentList.Add(_filePath);
+            psi.ArgumentList.Add("/");
+            psi.ArgumentList.Add("--prop");
+            psi.ArgumentList.Add(propArg);
+            using var proc = System.Diagnostics.Process.Start(psi);
+            if (proc != null)
+            {
+                await proc.WaitForExitAsync(token);
+                // After the set command completes, notify SSE clients to refresh
+                _version++;
+                SendSseEvent("full", 0, null, null, _version);
+            }
+        }
+        catch
+        {
+            statusCode = 400; statusText = "Bad Request";
+        }
+        var resp = Encoding.UTF8.GetBytes(
+            $"HTTP/1.1 {statusCode} {statusText}\r\nContent-Length: 0\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\n\r\n");
+        await stream.WriteAsync(resp, token);
+    }
+
+    /// <summary>
+    /// Handle GET /api/revision/count — query revision count.
+    /// Spawns officecli query with the revision argument, captures output,
+    /// and returns the count as JSON: {"count": N}
+    /// </summary>
+    private async Task HandleRevisionCountAsync(NetworkStream stream, Dictionary<string, string> headers, string bodyPrefix, CancellationToken token)
+    {
+        int statusCode = 200;
+        string statusText = "OK";
+        string jsonBody = "{\"count\":0}";
+        try
+        {
+            var exe = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName
+                ?? (OperatingSystem.IsWindows() ? "officecli.exe" : "officecli");
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = exe,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            psi.ArgumentList.Add("query");
+            psi.ArgumentList.Add(_filePath);
+            psi.ArgumentList.Add("revision");
+            using var proc = System.Diagnostics.Process.Start(psi);
+            if (proc != null)
+            {
+                var output = await proc.StandardOutput.ReadToEndAsync(token);
+                await proc.WaitForExitAsync(token);
+                proc.Close();
+                // "officecli query <file> revision" outputs one line per revision.
+                // Count non-empty lines to get the revision count.
+                if (string.IsNullOrWhiteSpace(output))
+                {
+                    jsonBody = "{\"count\":0}";
+                }
+                else
+                {
+                    var lineCount = output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length;
+                    jsonBody = $"{{\"count\":{lineCount}}}";
+                }
+            }
+        }
+        catch
+        {
+            statusCode = 500; statusText = "Internal Server Error";
+            jsonBody = "{\"count\":0,\"error\":\"query failed\"}";
+        }
+        var bodyBytes = Encoding.UTF8.GetBytes(jsonBody);
+        var resp = Encoding.UTF8.GetBytes(
+            $"HTTP/1.1 {statusCode} {statusText}\r\nContent-Type: application/json\r\nContent-Length: {bodyBytes.Length}\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\n\r\n");
+        await stream.WriteAsync(resp, token);
+        await stream.WriteAsync(bodyBytes, token);
+    }
+
     private void BroadcastSelectionUpdate(List<string> paths)
     {
         var sb = new StringBuilder();
@@ -2116,10 +2258,65 @@ internal class WatchServer : IDisposable
     private static string InjectSseScript(string html)
     {
         var script = _sseScriptBlock.Value;
+        // Inject revision toolbar (HTML+CSS+JS) alongside the existing SSE scripts.
+        // Only activates for Word documents (detected by "data-block" markers).
+        // The toolbar fetches /api/revision/count, shows Accept All/Reject All buttons.
+        var revisionToolbar = """
+<script>
+(function() {
+    // Only show revision toolbar for Word documents (detected by data-block markers)
+    if (document.body && document.body.innerHTML.indexOf('data-block="1"') < 0) return;
+    var toolbar = document.createElement('div');
+    toolbar.id = 'officecli-revision-toolbar';
+    toolbar.style.cssText = 'position:fixed;top:12px;right:12px;z-index:9999;font-family:system-ui;' +
+        'background:rgba(255,255,255,0.95);border:1px solid #ddd;border-radius:8px;' +
+        'padding:8px 12px;display:none;align-items:center;gap:10px;' +
+        'box-shadow:0 2px 12px rgba(0,0,0,0.12);font-size:13px;transition:opacity .3s;';
+    toolbar.innerHTML = '<span id="officecli-revision-count" style="font-weight:600;color:#444;"></span>' +
+        '<button id="officecli-revision-accept" style="background:#22c55e;color:#fff;border:none;' +
+        'border-radius:5px;padding:5px 12px;cursor:pointer;font-size:12px;font-weight:500;">Accept All</button>' +
+        '<button id="officecli-revision-reject" style="background:#ef4444;color:#fff;border:none;' +
+        'border-radius:5px;padding:5px 12px;cursor:pointer;font-size:12px;font-weight:500;">Reject All</button>';
+    document.body.appendChild(toolbar);
+
+    var countSpan = document.getElementById('officecli-revision-count');
+    var acceptBtn = document.getElementById('officecli-revision-accept');
+    var rejectBtn = document.getElementById('officecli-revision-reject');
+
+    function fetchRevisionCount() {
+        fetch('/api/revision/count').then(function(r){return r.json();}).then(function(data){
+            var c = data && typeof data.count === 'number' ? data.count : 0;
+            countSpan.textContent = c > 0 ? '\u{1F4DD} ' + c + ' revision' + (c === 1 ? '' : 's') : '';
+            toolbar.style.display = c > 0 ? 'flex' : 'none';
+        }).catch(function(){toolbar.style.display='none';});
+    }
+
+    acceptBtn.addEventListener('click', function(){
+        acceptBtn.disabled = true; acceptBtn.textContent = 'Accepting...';
+        rejectBtn.disabled = true;
+        fetch('/api/revision/accept',{method:'POST'}).then(function(){location.reload();})
+        .catch(function(){acceptBtn.disabled=false;acceptBtn.textContent='Accept All';rejectBtn.disabled=false;});
+    });
+
+    rejectBtn.addEventListener('click', function(){
+        rejectBtn.disabled = true; rejectBtn.textContent = 'Rejecting...';
+        acceptBtn.disabled = true;
+        fetch('/api/revision/reject',{method:'POST'}).then(function(){location.reload();})
+        .catch(function(){rejectBtn.disabled=false;rejectBtn.textContent='Reject All';acceptBtn.disabled=false;});
+    });
+
+    fetchRevisionCount();
+    // Re-fetch on any SSE update
+    if (window._watchEs) {
+        window._watchEs.addEventListener('update', fetchRevisionCount);
+    }
+})();
+</script>
+""";
         var idx = html.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
         if (idx >= 0)
-            return html[..idx] + script + html[idx..];
-        return html + script;
+            return html[..idx] + script + revisionToolbar + html[idx..];
+        return html + script + revisionToolbar;
     }
 
     public void Dispose()
