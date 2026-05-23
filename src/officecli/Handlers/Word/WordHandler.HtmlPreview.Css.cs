@@ -2573,6 +2573,9 @@ public partial class WordHandler
         th, td {{ border: none; padding: 0 5.4pt; text-align: inherit; vertical-align: top; break-inside: auto; }}
         tr {{ break-inside: auto; }}
         th {{ font-weight: 600; }}
+        .track-format {{ background: #FFF9C4; border-left: 4px solid #FFC107; }}
+        .track-ins-row {{ background: #E8F5E9; }}
+        .track-del-row {{ background: #FFEBEE; text-decoration: line-through; color: #C62828; }}
         @media print {{ body {{ background: white; padding: 0; }}
             .page {{ box-shadow: none; margin: 0; max-width: none; transform: none !important; }}
             hr.page-break {{ page-break-after: always; border: none; margin: 0; }} }}";

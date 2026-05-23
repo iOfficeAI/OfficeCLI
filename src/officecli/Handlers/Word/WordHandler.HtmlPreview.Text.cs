@@ -46,7 +46,22 @@ public partial class WordHandler
             classes.Add("has-ptab");
         if (classes.Count > 0)
             sb.Append($" class=\"{string.Join(" ", classes)}\"");
+
+        // Tracked paragraph format change (pPrChange) — yellow left border with author attribution
+        var pPrChange = para.ParagraphProperties?.GetFirstChild<ParagraphPropertiesChange>();
+        if (pPrChange != null)
+        {
+            var pAuthor = pPrChange.Author?.Value ?? "";
+            if (!string.IsNullOrEmpty(pAuthor))
+                sb.Append($" title=\"Format changed by {HtmlEncodeAttr(pAuthor)}\"");
+        }
+
         var pStyle = GetParagraphInlineCss(para);
+        if (pPrChange != null)
+        {
+            var fmtStyle = "background:#FFF9C4;border-left:4px solid #FFC107";
+            pStyle = string.IsNullOrEmpty(pStyle) ? fmtStyle : pStyle + ";" + fmtStyle;
+        }
         if (!string.IsNullOrEmpty(pStyle))
             sb.Append($" style=\"{pStyle}\"");
         sb.Append(">");
@@ -303,6 +318,17 @@ public partial class WordHandler
             return;
         if (rProps.SpecVanish != null && (rProps.SpecVanish.Val == null || rProps.SpecVanish.Val.Value))
             return;
+
+        // Tracked format change (rPrChange) — yellow highlight with author attribution
+        var rPrChange = run.RunProperties?.GetFirstChild<RunPropertiesChange>();
+        bool hasRPrChange = rPrChange != null;
+        if (hasRPrChange)
+        {
+            var author = rPrChange!.Author?.Value ?? "";
+            var authorAttr = string.IsNullOrEmpty(author) ? "" : $" title=\"Format changed by {HtmlEncodeAttr(author)}\"";
+            sb.Append($"<span class=\"track-format\" style=\"background:#FFF9C4;border-bottom:2px solid #FFC107\"{authorAttr}>");
+        }
+
         var style = GetRunInlineCss(rProps, para);
         var needsSpan = !string.IsNullOrEmpty(style);
 
@@ -469,6 +495,8 @@ public partial class WordHandler
         }
 
         if (needsSpan && !_ctx.LineBreakEnabled)
+            sb.Append("</span>");
+        if (hasRPrChange)
             sb.Append("</span>");
     }
 
