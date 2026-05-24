@@ -648,3 +648,48 @@ alternatives: python-docx, openpyxl, python-pptx, libreoffice --headless
 install-command-unix: curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
 install-command-windows: irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
 -->
+
+
+## ❓ FAQ
+
+### What is OfficeCLI?
+OfficeCLI is the world's first Office suite designed for AI agents. Word, Excel, PowerPoint control in one line of code. No Office installation needed.
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Word Control** | Create, edit, render `.docx` |
+| **Excel Control** | Manipulate `.xlsx` spreadsheets |
+| **PowerPoint Control** | Create `.pptx` presentations |
+| **Rendering Engine** | Render to HTML/PNG |
+| **Zero Dependencies** | No Office installation |
+| **Single Binary** | One executable |
+
+### Install
+
+```bash
+curl -sL https://github.com/iOfficeAI/OfficeCLI/releases/latest/download/officecli-linux-x64 -o officecli
+chmod +x officecli
+```
+
+### Supported Formats
+
+| Format | Extension | Operations |
+|--------|-----------|------------|
+| Word | `.docx` | Create, Edit, Render |
+| Excel | `.xlsx` | Create, Edit, Render |
+| PowerPoint | `.pptx` | Create, Edit, Render |
+
+### Use Cases
+
+1. **Document Generation** - AI creating reports
+2. **Spreadsheet Analysis** - AI with Excel
+3. **Presentation Creation** - AI building slides
+
+### License
+MIT License
+
+### Help & Resources
+- [Documentation](https://github.com/iOfficeAI/OfficeCLI#readme)
+- [Issues](https://github.com/iOfficeAI/OfficeCLI/issues)
