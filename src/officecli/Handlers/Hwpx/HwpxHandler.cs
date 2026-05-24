@@ -302,9 +302,16 @@ public partial class HwpxHandler : IDocumentHandler
         return LoadDocument(archive);
     }
 
+    public void Save()
+    {
+        if (!_dirty || !_editable) return;
+        _doc.Archive.Dispose();
+        _stream.Flush();
+        _dirty = false;
+    }
+
     public void Dispose()
     {
-        // Plan 99.9.E6: Ensure no lingering temp files
         _doc.Archive.Dispose();
         _stream.Dispose();
     }

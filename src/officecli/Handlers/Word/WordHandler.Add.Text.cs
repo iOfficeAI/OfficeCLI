@@ -831,6 +831,7 @@ public partial class WordHandler
             // duplicate that round-trips out as a separate run-level shading
             // command on dump replay.
 
+            var run = new Run();
             run.AppendChild(rProps);
             AppendTextWithPageFields(para, run, rProps, text);
         }
