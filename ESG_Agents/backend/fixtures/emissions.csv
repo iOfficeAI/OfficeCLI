@@ -1,0 +1,5 @@
+scope,type,amount_tCO2e
+scope1,fuel,1200
+scope2,grid,800
+scope3,upstream_transport,3400
+scope3,purchased_goods,5600
