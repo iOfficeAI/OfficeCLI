@@ -8,11 +8,12 @@
 // every sheet-level structure that anchors on an A1 ref/sqref/range:
 //
 //   - mergeCells
-//   - conditionalFormatting (sqref list)
-//   - dataValidations (sqref list)
+//   - conditionalFormatting (sqref list + rule <formula> text)
+//   - dataValidations (sqref list + formula1/formula2 text)
 //   - autoFilter (single ref)
 //   - hyperlinks (per-cell anchor)
-//   - table ref + autoFilter ref (in TableDefinitionPart)
+//   - table ref + autoFilter ref + calc-column/totals-row formula text
+//     (in TableDefinitionPart)
 //   - cell formulas (CellFormula.Text and the shared/array CellFormula.Reference)
 //   - workbook-level definedNames text (for refs that target this sheet)
 //
@@ -75,9 +76,15 @@ public partial class ExcelHandler
             if (!mergeCells.HasChildren) mergeCells.Remove();
         }
 
-        // 2. conditionalFormatting sqref
+        // 2. conditionalFormatting sqref + rule formulas
         foreach (var cf in ws.Elements<ConditionalFormatting>().ToList())
         {
+            // cellIs/formula rules carry cell refs inside <formula> (e.g. $C2>5)
+            // that must follow the displacement, same as cell formulas.
+            if (formulaTextMapper != null)
+                foreach (var rule in cf.Elements<ConditionalFormattingRule>())
+                    foreach (var f in rule.Elements<Formula>())
+                        if (!string.IsNullOrEmpty(f.Text)) f.Text = formulaTextMapper(f.Text);
             if (cf.SequenceOfReferences?.HasValue != true) continue;
             var newRefs = cf.SequenceOfReferences.Items
                 .Where(r => r.Value != null)
@@ -93,6 +100,14 @@ public partial class ExcelHandler
         {
             foreach (var dv in dvs.Elements<DataValidation>().ToList())
             {
+                // Relative refs inside the validation formula (e.g. INDIRECT(B2))
+                // must follow the displacement too. Literal lists ("Yes,No") carry
+                // no refs and pass through the shifter unchanged.
+                if (formulaTextMapper != null)
+                {
+                    if (!string.IsNullOrEmpty(dv.Formula1?.Text)) dv.Formula1.Text = formulaTextMapper(dv.Formula1.Text);
+                    if (!string.IsNullOrEmpty(dv.Formula2?.Text)) dv.Formula2.Text = formulaTextMapper(dv.Formula2.Text);
+                }
                 if (dv.SequenceOfReferences?.HasValue != true) continue;
                 var newRefs = dv.SequenceOfReferences.Items
                     .Where(r => r.Value != null)
@@ -149,6 +164,25 @@ public partial class ExcelHandler
                 {
                     tbl.AutoFilter.Reference = shifted;
                     tblDirty = true;
+                }
+            }
+            // Calculated-column and totals-row formulas carry cell refs (e.g.
+            // SUM(B3:B5)) that must follow the displacement. Structured refs
+            // (Table1[Col]) are name-based and pass through the shifter unchanged.
+            if (formulaTextMapper != null && tbl.TableColumns != null)
+            {
+                foreach (var tc in tbl.TableColumns.Elements<TableColumn>())
+                {
+                    if (!string.IsNullOrEmpty(tc.CalculatedColumnFormula?.Text))
+                    {
+                        tc.CalculatedColumnFormula.Text = formulaTextMapper(tc.CalculatedColumnFormula.Text);
+                        tblDirty = true;
+                    }
+                    if (!string.IsNullOrEmpty(tc.TotalsRowFormula?.Text))
+                    {
+                        tc.TotalsRowFormula.Text = formulaTextMapper(tc.TotalsRowFormula.Text);
+                        tblDirty = true;
+                    }
                 }
             }
             if (tblDirty) tbl.Save();
