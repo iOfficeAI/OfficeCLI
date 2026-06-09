@@ -71,9 +71,12 @@ build_config() {
         fi
 
         # Ad-hoc codesign on macOS (required by AppleSystemPolicy).
+        # The JIT entitlement is required for CoreCLR to allocate executable
+        # memory under hardened runtime; without it the process fails with
+        # "Failed to create CoreCLR, HRESULT: 0x80070008".
         # Done on the staged .new copy so the live binary is never mutated in place.
         if [ "$(uname -s)" = "Darwin" ] && [[ "$RID" == osx-* ]]; then
-            codesign -s - -f "$OUTPUT/$NAME.new" 2>/dev/null || true
+            codesign -s - -f --entitlements officecli.entitlements "$OUTPUT/$NAME.new" 2>/dev/null || true
         fi
 
         mv -f "$OUTPUT/$NAME.new" "$OUTPUT/$NAME"

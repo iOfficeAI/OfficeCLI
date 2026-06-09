@@ -159,7 +159,17 @@ chmod +x "$INSTALL_DIR/$BINARY_NAME.new"
 if [ "$(uname -s)" = "Darwin" ]; then
     xattr -d com.apple.quarantine "$INSTALL_DIR/$BINARY_NAME.new" 2>/dev/null || true
     if ! codesign -v --strict "$INSTALL_DIR/$BINARY_NAME.new" 2>/dev/null; then
-        codesign -s - -f "$INSTALL_DIR/$BINARY_NAME.new" 2>/dev/null || true
+        # The JIT entitlement is required for CoreCLR to allocate executable
+        # memory under hardened runtime; without it the process fails with
+        # "Failed to create CoreCLR, HRESULT: 0x80070008".
+        ENTITLEMENTS_URL="https://raw.githubusercontent.com/$REPO/main/officecli.entitlements"
+        ENTITLEMENTS_FILE="/tmp/officecli.entitlements"
+        if curl -fsSL --max-time 10 "$ENTITLEMENTS_URL" -o "$ENTITLEMENTS_FILE" 2>/dev/null; then
+            codesign -s - -f --entitlements "$ENTITLEMENTS_FILE" "$INSTALL_DIR/$BINARY_NAME.new" 2>/dev/null || true
+            rm -f "$ENTITLEMENTS_FILE"
+        else
+            codesign -s - -f "$INSTALL_DIR/$BINARY_NAME.new" 2>/dev/null || true
+        fi
     fi
 fi
 
