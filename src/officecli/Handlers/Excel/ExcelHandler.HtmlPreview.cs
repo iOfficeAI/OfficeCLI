@@ -1091,6 +1091,7 @@ public partial class ExcelHandler
         if (dxfs == null || dxfs.Length == 0) return result;
 
         var evaluator = new Core.FormulaEvaluator(sheetData, workbookPart);
+        var (cfBoundRow, cfBoundCol) = UsedBounds(sheetData);
 
         foreach (var cf in cfElements)
         {
@@ -1146,7 +1147,7 @@ public partial class ExcelHandler
                 // Expand sqref and evaluate each cell
                 foreach (var rangeStr in sqref)
                 {
-                    var cells = ExpandSqref(rangeStr.Value ?? "");
+                    var cells = ExpandSqref(rangeStr.Value ?? "", cfBoundRow, cfBoundCol);
                     foreach (var (cellRef, row, col) in cells)
                     {
                         if (result.ContainsKey(cellRef)) continue; // first matching rule wins
@@ -1172,6 +1173,7 @@ public partial class ExcelHandler
     private void AddColorScaleBackgrounds(
         List<ConditionalFormatting> cfElements, SheetData sheetData, Dictionary<string, string> result)
     {
+        var (cfBoundRow, cfBoundCol) = UsedBounds(sheetData);
         foreach (var cf in cfElements)
         {
             var sqref = cf.SequenceOfReferences?.Items?.ToList();
@@ -1191,7 +1193,7 @@ public partial class ExcelHandler
                 var cells = new List<(string cellRef, double value)>();
                 foreach (var rangeStr in sqref)
                 {
-                    foreach (var (cellRef, row, col) in ExpandSqref(rangeStr.Value ?? ""))
+                    foreach (var (cellRef, row, col) in ExpandSqref(rangeStr.Value ?? "", cfBoundRow, cfBoundCol))
                     {
                         var cell = sheetData.Descendants<Cell>()
                             .FirstOrDefault(c => string.Equals(c.CellReference?.Value, cellRef, StringComparison.OrdinalIgnoreCase));
@@ -1258,6 +1260,7 @@ public partial class ExcelHandler
     private Dictionary<string, string> BuildDataBarMap(Worksheet ws, SheetData sheetData)
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var (cfBoundRow, cfBoundCol) = UsedBounds(sheetData);
         foreach (var cf in ws.Elements<ConditionalFormatting>())
         {
             foreach (var rule in cf.Elements<ConditionalFormattingRule>())
@@ -1277,7 +1280,7 @@ public partial class ExcelHandler
                 var cells = new List<(string cellRef, double value)>();
                 foreach (var rangeStr in sqref)
                 {
-                    foreach (var (cellRef, row, col) in ExpandSqref(rangeStr.Value ?? ""))
+                    foreach (var (cellRef, row, col) in ExpandSqref(rangeStr.Value ?? "", cfBoundRow, cfBoundCol))
                     {
                         var cell = sheetData.Descendants<Cell>()
                             .FirstOrDefault(c => string.Equals(c.CellReference?.Value, cellRef, StringComparison.OrdinalIgnoreCase));
@@ -1358,6 +1361,7 @@ public partial class ExcelHandler
     private Dictionary<string, string> BuildIconSetMap(Worksheet ws, SheetData sheetData)
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var (cfBoundRow, cfBoundCol) = UsedBounds(sheetData);
         foreach (var cf in ws.Elements<ConditionalFormatting>())
         {
             foreach (var rule in cf.Elements<ConditionalFormattingRule>())
@@ -1376,7 +1380,7 @@ public partial class ExcelHandler
                 var cells = new List<(string cellRef, double value)>();
                 foreach (var rangeStr in sqref)
                 {
-                    foreach (var (cellRef, row, col) in ExpandSqref(rangeStr.Value ?? ""))
+                    foreach (var (cellRef, row, col) in ExpandSqref(rangeStr.Value ?? "", cfBoundRow, cfBoundCol))
                     {
                         var cell = sheetData.Descendants<Cell>()
                             .FirstOrDefault(c => string.Equals(c.CellReference?.Value, cellRef, StringComparison.OrdinalIgnoreCase));
@@ -1832,7 +1836,26 @@ public partial class ExcelHandler
         return cells;
     }
 
-    private List<(string cellRef, int row, int col)> ExpandSqref(string sqref)
+    // Used extent of populated cells (capped by the html render caps). The CF
+    // passes only need cells that actually render; expanding a full-column or
+    // full-sheet sqref past the data would cost ~1M+ cells and hang the render.
+    private (int maxRow, int maxCol) UsedBounds(SheetData sheetData)
+    {
+        int maxRow = 0, maxCol = 0;
+        foreach (var row in sheetData.Elements<Row>())
+            foreach (var cell in row.Elements<Cell>())
+            {
+                var cr = cell.CellReference?.Value;
+                if (string.IsNullOrEmpty(cr)) continue;
+                var (colName, r) = ParseCellReference(cr);
+                if (r > maxRow) maxRow = r;
+                var ci = ColumnNameToIndex(colName);
+                if (ci > maxCol) maxCol = ci;
+            }
+        return (Math.Min(maxRow, GetHtmlRowCap()), Math.Min(maxCol, 200));
+    }
+
+    private List<(string cellRef, int row, int col)> ExpandSqref(string sqref, int maxRow, int maxCol)
     {
         var result = new List<(string, int, int)>();
         foreach (var part in sqref.Split(' '))
@@ -1842,8 +1865,12 @@ public partial class ExcelHandler
                 var sides = part.Split(':');
                 var (startColName, startRow) = ParseCellReference(sides[0]);
                 var (endColName, endRow) = ParseCellReference(sides[1]);
+                // Clamp to the sheet's used extent (both dims). CF cells beyond
+                // the rendered grid never display, and a full-column/full-sheet
+                // sqref would otherwise expand to ~1M+ cells and hang the render.
+                endRow = Math.Min(endRow, maxRow);
                 var startCol = ColumnNameToIndex(startColName);
-                var endCol = ColumnNameToIndex(endColName);
+                var endCol = Math.Min(ColumnNameToIndex(endColName), maxCol);
                 for (int r = startRow; r <= endRow; r++)
                     for (int c = startCol; c <= endCol; c++)
                         result.Add(($"{IndexToColumnName(c)}{r}", r, c));
