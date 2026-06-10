@@ -263,7 +263,7 @@ static partial class CommandBuilder
             // re-serialize that dominates large replays. Save-once is the
             // documented intent of this path; per-op Save was redundant given
             // the Dispose-time flush.
-            using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
+            using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true, password: result.GetValue(PasswordOption));
             if (handler is OfficeCli.Handlers.WordHandler batchWh) batchWh.DeferSave = true;
             // Protection gate against the just-opened in-memory DOM (one check
             // for the whole batch; no second file open).

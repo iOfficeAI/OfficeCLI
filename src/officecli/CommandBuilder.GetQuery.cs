@@ -42,7 +42,7 @@ static partial class CommandBuilder
             // for the currently-selected element paths and resolve them to nodes.
             if (string.Equals(path, "selected", StringComparison.OrdinalIgnoreCase))
             {
-                return GetSelectedAction(file.FullName, depth, json);
+                return GetSelectedAction(file.FullName, depth, json, result.GetValue(PasswordOption));
             }
 
             if (TryResident(file.FullName, req =>
@@ -54,7 +54,7 @@ static partial class CommandBuilder
                 if (!string.IsNullOrEmpty(savePath)) req.Args["save"] = savePath;
             }, json) is {} rc) return rc;
 
-            using var handler = DocumentHandlerFactory.Open(file.FullName);
+            using var handler = DocumentHandlerFactory.Open(file.FullName, password: result.GetValue(PasswordOption));
             var node = handler.Get(path, depth);
 
             // CONSISTENCY(get-not-found-exit): some handler Get paths surface
@@ -109,7 +109,7 @@ static partial class CommandBuilder
         return getCommand;
     }
 
-    private static int GetSelectedAction(string filePath, int depth, bool json)
+    private static int GetSelectedAction(string filePath, int depth, bool json, string? password = null)
     {
         var paths = WatchNotifier.QuerySelection(filePath);
         if (paths == null)
@@ -127,7 +127,7 @@ static partial class CommandBuilder
         var nodes = new List<OfficeCli.Core.DocumentNode>();
         if (paths.Length > 0)
         {
-            using var handler = DocumentHandlerFactory.Open(filePath);
+            using var handler = DocumentHandlerFactory.Open(filePath, password: password);
             foreach (var p in paths)
             {
                 try
@@ -194,7 +194,7 @@ static partial class CommandBuilder
 
             var format = json ? OutputFormat.Json : OutputFormat.Text;
 
-            using var handler = DocumentHandlerFactory.Open(file.FullName);
+            using var handler = DocumentHandlerFactory.Open(file.FullName, password: result.GetValue(PasswordOption));
             // CONSISTENCY(cell-selector-alias): the Excel cell selector accepts short
             // aliases (bold -> font.bold, size -> font.size, ...). FilterSelector
             // applies the same normalization, runs the boolean and/or engine, and

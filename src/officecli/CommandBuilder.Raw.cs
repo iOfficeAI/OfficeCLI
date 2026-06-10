@@ -47,7 +47,7 @@ static partial class CommandBuilder
 
             var rawCols = rawColsStr != null ? new HashSet<string>(rawColsStr.Split(',').Select(c => c.Trim().ToUpperInvariant())) : null;
 
-            using var handler = DocumentHandlerFactory.Open(file.FullName);
+            using var handler = DocumentHandlerFactory.Open(file.FullName, password: result.GetValue(PasswordOption));
             var xml = handler.Raw(partPath, startRow, endRow, rawCols);
             if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(xml));
             else Console.WriteLine(xml);
@@ -90,7 +90,7 @@ static partial class CommandBuilder
                 if (xml != null) req.Args["xml"] = xml;
             }, json) is {} rc) return rc;
 
-            using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
+            using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true, password: result.GetValue(PasswordOption));
             var errorsBefore = handler.Validate().Select(e => e.Description).ToHashSet();
             handler.RawSet(partPath, xpath, action, xml);
             var warnings = ReportNewErrorsAsWarnings(handler, errorsBefore);
@@ -132,7 +132,7 @@ static partial class CommandBuilder
                 req.Args["type"] = type;
             }, json) is {} rc) return rc;
 
-            using var handler = DocumentHandlerFactory.Open(file, editable: true);
+            using var handler = DocumentHandlerFactory.Open(file, editable: true, password: result.GetValue(PasswordOption));
             var errorsBefore = handler.Validate().Select(e => e.Description).ToHashSet();
             var (relId, partPath) = handler.AddPart(parent, type);
             var warnings = ReportNewErrorsAsWarnings(handler, errorsBefore);

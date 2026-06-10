@@ -125,7 +125,7 @@ static partial class CommandBuilder
             var format = json ? OutputFormat.Json : OutputFormat.Text;
             var cols = colsStr != null ? new HashSet<string>(colsStr.Split(',').Select(c => c.Trim().ToUpperInvariant())) : null;
 
-            using var handler = DocumentHandlerFactory.Open(file.FullName);
+            using var handler = DocumentHandlerFactory.Open(file.FullName, password: result.GetValue(PasswordOption));
 
             if (mode.ToLowerInvariant() is "html" or "h")
             {

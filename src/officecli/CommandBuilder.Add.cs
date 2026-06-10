@@ -147,7 +147,7 @@ static partial class CommandBuilder
                     if (position?.Before != null) req.Args["before"] = position.Before;
                 }, json) is {} rc) return rc != 0 ? rc : (hadWarnings ? 2 : 0);
 
-                using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
+                using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true, password: result.GetValue(PasswordOption));
                 var oldCount = (handler as OfficeCli.Handlers.PowerPointHandler)?.GetSlideCount() ?? 0;
                 var resultPath = handler.CopyFrom(from, parentPath, position);
                 var message = $"Copied to {resultPath}";
@@ -186,7 +186,7 @@ static partial class CommandBuilder
                 // CONSISTENCY(schema-prop-validation): same approach mirrored
                 // in ResidentServer.ExecuteAdd.
                 var tracking = new OfficeCli.Core.TrackingPropertyDictionary(properties);
-                using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
+                using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true, password: result.GetValue(PasswordOption));
                 var oldCount = (handler as OfficeCli.Handlers.PowerPointHandler)?.GetSlideCount() ?? 0;
                 var resultPath = handler.Add(parentPath, type!, position, tracking);
                 var unsupported = tracking.UnusedKeys.ToList();
@@ -336,7 +336,7 @@ static partial class CommandBuilder
                 if (parsedProps != null) req.Props = parsedProps;
             }, json) is {} rc) return rc;
 
-            using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
+            using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true, password: result.GetValue(PasswordOption));
             var oldCount = (handler as OfficeCli.Handlers.PowerPointHandler)?.GetSlideCount() ?? 0;
             string? warning;
             if (!string.IsNullOrEmpty(shift))
@@ -426,7 +426,7 @@ static partial class CommandBuilder
                 if (moveProps.Count > 0) req.Props = moveProps;
             }, json) is {} rc) return rc;
 
-            using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
+            using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true, password: result.GetValue(PasswordOption));
             var resultPath = handler.Move(path, to, position, moveProps.Count > 0 ? moveProps : null);
             var message = $"Moved to {resultPath}";
             if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(message));
@@ -463,7 +463,7 @@ static partial class CommandBuilder
                 req.Args["to"] = path2;
             }, json) is {} rc) return rc;
 
-            using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
+            using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true, password: result.GetValue(PasswordOption));
             var (p1, p2) = handler switch
             {
                 OfficeCli.Handlers.PowerPointHandler ppt => ppt.Swap(path1, path2),

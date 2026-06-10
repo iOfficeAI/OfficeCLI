@@ -11,7 +11,7 @@ namespace OfficeCli.Handlers;
 
 public static class DocumentHandlerFactory
 {
-    public static IDocumentHandler Open(string filePath, bool editable = false)
+    public static IDocumentHandler Open(string filePath, bool editable = false, string? password = null)
     {
         if (!File.Exists(filePath))
             throw new CliException($"File not found: {filePath}")
@@ -36,6 +36,13 @@ public static class DocumentHandlerFactory
             };
 
         var ext = Path.GetExtension(filePath).ToLowerInvariant();
+
+        // Password-protected OOXML is not a zip but an OLE/CDFV2 compound file
+        // (D0 CF 11 E0…) wrapping an encrypted package. Detect it up front and
+        // route through the decrypt-to-temp path; otherwise the zip-based guards
+        // and the Open XML SDK below would only ever see "corrupted data".
+        if (ext is ".docx" or ".xlsx" or ".pptx" && StartsWithCfbMagic(filePath))
+            return OpenEncrypted(filePath, ext, editable, password);
 
         // CONSISTENCY(dos-hardening): reject decompression bombs before the
         // Open XML SDK / System.IO.Packaging touches the package. A few KB of
@@ -164,6 +171,93 @@ public static class DocumentHandlerFactory
             _      => TryOpenViaPlugin(filePath, ext, editable)
                    ?? throw UnsupportedTypeException(ext)
         };
+    }
+
+    /// <summary>True if the file begins with the OLE/CDFV2 magic — i.e. it is a
+    /// compound file (a password-encrypted OOXML, or an OLE-wrapped legacy doc),
+    /// not a plain zip-based .docx/.xlsx/.pptx.</summary>
+    private static bool StartsWithCfbMagic(string filePath)
+    {
+        Span<byte> head = stackalloc byte[8];
+        try
+        {
+            using var fs = File.OpenRead(filePath);
+            if (fs.Read(head) < 8) return false;
+        }
+        catch { return false; }
+        ReadOnlySpan<byte> magic = stackalloc byte[] { 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1 };
+        return head.SequenceEqual(magic);
+    }
+
+    /// <summary>
+    /// Open a password-protected (Agile-encrypted) OOXML file: decrypt the
+    /// package to a temporary plaintext copy, open a normal handler on it, and
+    /// wrap it so any save re-encrypts back to the original path. The temp copy
+    /// is deleted when the handler is disposed.
+    /// </summary>
+    private static IDocumentHandler OpenEncrypted(string filePath, string ext, bool editable, string? password)
+    {
+        byte[] cfb = File.ReadAllBytes(filePath);
+        switch (MsOffCrypto.Classify(cfb))
+        {
+            case MsOffCrypto.Scheme.StandardUnsupported:
+                throw new CliException(
+                    $"Cannot open {Path.GetFileName(filePath)}: it uses the legacy 'Standard' " +
+                    $"encryption scheme, which officecli does not support (only modern 'Agile' encryption).")
+                {
+                    Code = "unsupported_encryption",
+                    Suggestion = "Re-save it with a password from Office 2013+ (Agile), or remove the password."
+                };
+            case MsOffCrypto.Scheme.NotEncrypted:
+                // CDFV2 but not an encrypted OOXML (e.g. a real OLE/.doc binary
+                // mislabeled .docx). Fall through to the normal corrupt-file UX.
+                throw new CliException(
+                    $"Cannot open {Path.GetFileName(filePath)}: not a valid OOXML package " +
+                    $"(OLE compound file without an EncryptionInfo stream).")
+                {
+                    Code = "corrupt_file",
+                    Suggestion = "Verify the file is a genuine .docx/.xlsx/.pptx."
+                };
+        }
+
+        if (string.IsNullOrEmpty(password))
+            throw new CliException(
+                $"{Path.GetFileName(filePath)} is password-protected. Re-run with --password <password>.")
+            {
+                Code = "password_required",
+                Suggestion = "officecli <command> <file> --password <password>"
+            };
+
+        byte[] plain;
+        try
+        {
+            plain = MsOffCrypto.Decrypt(cfb, password);
+        }
+        catch (MsOffCrypto.WrongPasswordException)
+        {
+            throw new CliException($"Incorrect password for {Path.GetFileName(filePath)}.")
+            {
+                Code = "wrong_password",
+                Suggestion = "Check the password and try again."
+            };
+        }
+
+        // Decrypted plaintext goes to a private temp file with the right
+        // extension so the existing handlers + bomb guard work unchanged.
+        var tempPlain = Path.Combine(Path.GetTempPath(), $"officecli-dec-{Guid.NewGuid():N}{ext}");
+        File.WriteAllBytes(tempPlain, plain);
+
+        try
+        {
+            GuardDecompressionBomb(tempPlain);   // the decrypted package is a real zip
+            var inner = OpenHandler(tempPlain, ext, editable);
+            return new EncryptedDocumentHandler(inner, tempPlain, filePath, password, editable);
+        }
+        catch
+        {
+            try { File.Delete(tempPlain); } catch { /* best-effort */ }
+            throw;
+        }
     }
 
     /// <summary>
