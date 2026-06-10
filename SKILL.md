@@ -97,6 +97,8 @@ officecli query <file> <selector>     # CSS-like query
 officecli validate <file>             # Validate against OpenXML schema
 ```
 
+**Encrypted files:** add `--password <pwd>` to any command (Agile/Office-2013+ only; reads decrypt, edits re-save still-encrypted). Missing → `password_required`.
+
 ### view modes
 
 | Mode | Description | Useful flags |
