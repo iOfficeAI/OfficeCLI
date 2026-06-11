@@ -547,7 +547,7 @@ internal partial class ChartSvgRenderer
         string? dropLineColor = null, double dropLineWidth = 0.7, string? dropLineDash = null,
         string? highLowLineColor = null, double highLowLineWidth = 1,
         List<TrendlineInfo?>? trendlines = null, List<ErrorBarInfo?>? errorBars = null,
-        bool scatterMarkersOnly = false)
+        bool scatterMarkersOnly = false, bool isScatterValueX = false)
     {
         bool isLog = logBase.HasValue && logBase.Value > 1;
 
@@ -564,6 +564,24 @@ internal partial class ChartSvgRenderer
             : allValues.Min();
         if (dataMax <= 0 && isLog) dataMax = 1;
         var catCount = Math.Max(categories.Length, series.Max(s => s.values.Length));
+
+        // Scatter (XY): position points by their numeric X value on a value axis
+        // instead of at evenly-spaced category slots. Falls back to category
+        // spacing when the X labels aren't all numeric.
+        double[]? scatterX = null;
+        double scatterXMax = 0, scatterXStep = 0; int scatterXTicks = 0;
+        if (isScatterValueX && categories.Length > 0)
+        {
+            var parsed = categories.Select(c => double.TryParse(c,
+                System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var pv) ? (double?)pv : null).ToArray();
+            if (parsed.All(v => v.HasValue))
+            {
+                scatterX = parsed.Select(v => v!.Value).ToArray();
+                (scatterXMax, scatterXStep, scatterXTicks) = ComputeNiceAxis(scatterX.Max());
+            }
+        }
+        double MapX(double x) => ox + (scatterXMax > 0 ? Math.Max(0, Math.Min(1, x / scatterXMax)) : 0) * pw;
 
         // Compute axis scale
         double niceMax, niceMin, tickStep;
@@ -646,7 +664,9 @@ internal partial class ChartSvgRenderer
             var pts = new List<(double x, double y, double val)>();
             for (int c = 0; c < series[s].values.Length && c < catCount; c++)
             {
-                var px = ox + (catCount > 1 ? (double)pw * c / (catCount - 1) : pw / 2.0);
+                var px = scatterX != null && c < scatterX.Length
+                    ? MapX(scatterX[c])
+                    : ox + (catCount > 1 ? (double)pw * c / (catCount - 1) : pw / 2.0);
                 var py = MapY(series[s].values[c]);
                 pts.Add((px, py, series[s].values[c]));
             }
@@ -972,12 +992,24 @@ internal partial class ChartSvgRenderer
             }
         }
 
-        // Category labels
-        for (int c = 0; c < catCount; c++)
+        // Category labels — or, for an XY scatter, numeric ticks along the value X axis
+        if (scatterX != null)
         {
-            var label = c < categories.Length ? categories[c] : "";
-            var lx = ox + (catCount > 1 ? (double)pw * c / (catCount - 1) : pw / 2.0);
-            sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 16}\" fill=\"{CatColor}\" font-size=\"{CatFontPx}\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
+            for (int t = 0; t <= scatterXTicks; t++)
+            {
+                var tickVal = scatterXStep * t;
+                var lx = MapX(tickVal);
+                sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 16}\" fill=\"{CatColor}\" font-size=\"{CatFontPx}\" text-anchor=\"middle\">{FormatAxisValue(tickVal, null)}</text>");
+            }
+        }
+        else
+        {
+            for (int c = 0; c < catCount; c++)
+            {
+                var label = c < categories.Length ? categories[c] : "";
+                var lx = ox + (catCount > 1 ? (double)pw * c / (catCount - 1) : pw / 2.0);
+                sb.AppendLine($"        <text x=\"{lx:0.#}\" y=\"{oy + ph + 16}\" fill=\"{CatColor}\" font-size=\"{CatFontPx}\" text-anchor=\"middle\">{HtmlEncode(label)}</text>");
+            }
         }
 
         // Value axis labels
@@ -2460,7 +2492,8 @@ internal partial class ChartSvgRenderer
                     info.ReferenceLines, info.Smooth, info.LineDashes, info.LineWidths,
                     info.DropLineColor, info.DropLineWidth, info.DropLineDash,
                     info.HighLowLineColor, info.HighLowLineWidth,
-                    info.Trendlines, info.ErrorBars, info.ScatterMarkersOnly);
+                    info.Trendlines, info.ErrorBars, info.ScatterMarkersOnly,
+                    info.ChartType == "scatter");
         }
         else
         {
