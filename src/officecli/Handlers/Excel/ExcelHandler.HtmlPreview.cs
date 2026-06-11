@@ -3971,7 +3971,10 @@ public partial class ExcelHandler
         }
         /* Chart containers */
         .chart-container {
-            margin: 16px auto;
+            /* No margin: charts are absolutely positioned inside their anchor box,
+               so any margin offsets the visible card off its cell anchor (it landed
+               a row low) and overflows the box bottom. */
+            margin: 0;
             background: #fff;
             border: 1px solid #e0e0e0;
             border-radius: 6px;
