@@ -728,7 +728,11 @@ public partial class ExcelHandler
             if (ctx.HiddenRows.Contains(r)) { sb.AppendLine($"<tr data-row=\"{ctx.SheetIdx}-{r}\" style=\"display:none\"></tr>"); continue; }
             bool isRowFrozen = ctx.FrozenRows > 0 && r <= ctx.FrozenRows;
             var rowStyles = new List<string>();
-            if (ctx.RowHeights.TryGetValue(r, out var rh)) rowStyles.Add($"height:{rh:0.##}pt");
+            // Every row gets a height (explicit, else the sheet default ~15pt) so
+            // empty rows don't collapse — matching Excel and keeping the grid's row
+            // positions consistent with the chart anchor math (which uses the same).
+            var rh = ctx.RowHeights.TryGetValue(r, out var explicitRh) ? explicitRh : ctx.DefaultRowHeightPt;
+            rowStyles.Add($"height:{rh:0.##}pt");
             if (isRowFrozen) rowStyles.Add("background:#fff");
             var rowStyle = rowStyles.Count > 0 ? $" style=\"{string.Join(";", rowStyles)}\"" : "";
             var frozenAttr = isRowFrozen ? " data-frozen=\"1\"" : "";
@@ -3924,7 +3928,7 @@ public partial class ExcelHandler
                via the :first-child rules below. Scoped to table:not(.no-grid) so
                sheets with showGridLines=false suppress the default gridlines while
                still honouring explicit OOXML cell borders (inline styles). */
-            padding: 2px 4px;
+            padding: 1px 4px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
