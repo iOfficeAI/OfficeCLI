@@ -22,9 +22,9 @@ public partial class ExcelHandler
     /// anchor row/col positions (same tuple shape as CollectSheetCharts so the
     /// existing overlay positioning code can consume the result).
     /// </summary>
-    private List<(int fromRow, int toRow, int fromCol, int toCol, string html)> CollectSheetShapes(WorksheetPart worksheetPart)
+    private List<(int fromRow, int toRow, int fromCol, int toCol, int widthPtHint, string html)> CollectSheetShapes(WorksheetPart worksheetPart)
     {
-        var result = new List<(int fromRow, int toRow, int fromCol, int toCol, string html)>();
+        var result = new List<(int fromRow, int toRow, int fromCol, int toCol, int widthPtHint, string html)>();
         var drawingsPart = worksheetPart.DrawingsPart;
         if (drawingsPart?.WorksheetDrawing == null) return result;
 
@@ -60,7 +60,8 @@ public partial class ExcelHandler
 
             var sb = new StringBuilder();
             RenderShape(sb, shape);
-            result.Add((fromRow, toRow, fromCol, toCol, sb.ToString()));
+            // 0 = no width hint; the overlay loop falls back to its column-sum.
+            result.Add((fromRow, toRow, fromCol, toCol, 0, sb.ToString()));
         }
 
         return result;

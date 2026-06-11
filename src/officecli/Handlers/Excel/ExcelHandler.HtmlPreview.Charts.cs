@@ -22,7 +22,7 @@ public partial class ExcelHandler
     private void RenderSheetCharts(StringBuilder sb, WorksheetPart worksheetPart)
     {
         var charts = CollectSheetCharts(worksheetPart);
-        foreach (var (_, _, _, _, html) in charts)
+        foreach (var (_, _, _, _, _, html) in charts)
             sb.Append(html);
     }
 
@@ -30,9 +30,9 @@ public partial class ExcelHandler
     /// Pre-render all charts and return them with their anchor row/col positions.
     /// Charts with overlapping row ranges are grouped into flex rows.
     /// </summary>
-    private List<(int fromRow, int toRow, int fromCol, int toCol, string html)> CollectSheetCharts(WorksheetPart worksheetPart, string sheetName = "")
+    private List<(int fromRow, int toRow, int fromCol, int toCol, int widthPtHint, string html)> CollectSheetCharts(WorksheetPart worksheetPart, string sheetName = "")
     {
-        var result = new List<(int fromRow, int toRow, int fromCol, int toCol, string html)>();
+        var result = new List<(int fromRow, int toRow, int fromCol, int toCol, int widthPtHint, string html)>();
         var drawingsPart = worksheetPart.DrawingsPart;
         if (drawingsPart?.WorksheetDrawing == null) return result;
 
@@ -62,11 +62,17 @@ public partial class ExcelHandler
         }).OrderBy(x => x.fromRow).ThenBy(x => x.fromCol).ToList();
 
         // Each chart gets its own overlay (no flex grouping) so drag-to-move works independently
+        var anchorColWidths = GetColumnWidths(GetSheet(worksheetPart));
         foreach (var (gf, fromRow, toRow, fromCol, toCol) in chartAnchors)
         {
             var chartSb = new StringBuilder();
             RenderExcelChart(chartSb, gf, drawingsPart, worksheetPart, sheetName, gfIndexMap.GetValueOrDefault(gf));
-            result.Add((fromRow, toRow, fromCol, toCol, chartSb.ToString()));
+            // The overlay box width must match the chart's own EstimateChartSize (the
+            // value behind the chart-container's max-width) — the column-sum used in
+            // the anchor loop drops the partial-column EMU offset, leaving the card
+            // clamped narrower than Excel. Pass the estimate as the box-width hint.
+            var (estWidthPt, _) = EstimateChartSize(gf, anchorColWidths);
+            result.Add((fromRow, toRow, fromCol, toCol, estWidthPt, chartSb.ToString()));
         }
 
         return result;
@@ -180,38 +186,55 @@ public partial class ExcelHandler
         var legendFontPt = 8.0;
         if (!string.IsNullOrEmpty(info.LegendFontSize) && double.TryParse(info.LegendFontSize.Replace("pt", ""), out var lfp))
             legendFontPt = lfp;
-        var legendH = info.HasLegend ? (int)(legendFontPt * 1.6 + 12) : 0;
+        // Legend position drives layout. A left/right legend sits BESIDE the plot
+        // (flex row) — it takes width, not height; top/bottom legends take height.
+        var legendSide = info.HasLegend && info.LegendPos is "r" or "l";
+        var legendTop  = info.HasLegend && info.LegendPos is "t" or "tr";
+        var legendH = (info.HasLegend && !legendSide) ? (int)(legendFontPt * 1.6 + 12) : 0;
         var chartSvgH = svgH - titleH - legendH;
         if (chartSvgH < 80) return;
 
+        // For a side legend, shrink the plot's viewBox to the actual plot area
+        // (full width minus an estimated legend width) so the meet-fit fills the
+        // box without letterboxing.
+        var plotW = svgW;
+        if (legendSide)
+        {
+            var labels = info.ChartType.Contains("pie") || info.ChartType.Contains("doughnut")
+                ? info.Categories : info.Series.Select(s => s.name).ToArray();
+            var maxChars = labels.Length > 0 ? labels.Max(l => (l ?? "").Length) : 6;
+            var legendWpt = (int)((28 + maxChars * 0.5 * legendFontPt * 1.333) * 0.75);
+            plotW = Math.Max(svgW - legendWpt, 160);
+        }
+
         var bgStyle = info.ChartFillColor != null ? $"background:#{info.ChartFillColor};" : "";
-        // Use estimated width as max-width, but allow stretching to fill parent (e.g. colspan td)
         var chartDataPath = chartIdx > 0 && !string.IsNullOrEmpty(sheetName) ? $" data-path=\"/{HtmlEncode(sheetName)}/chart[{chartIdx}]\"" : "";
-        sb.AppendLine($"<div class=\"chart-container\"{chartDataPath} style=\"max-width:max({svgW}pt,100%);flex:1;min-width:200pt;{bgStyle}\">");
+        // height:100% + flex column makes the chart FILL its anchor box: the plot
+        // grows into the height left after the title/legend instead of being sized
+        // from its width alone (which left a gap below the chart).
+        sb.AppendLine($"<div class=\"chart-container\"{chartDataPath} style=\"max-width:max({svgW}pt,100%);flex:1;min-width:200pt;height:100%;display:flex;flex-direction:column;{bgStyle}\">");
 
         var titleColor = info.TitleFontColor != null ? ChartSvgRenderer.CssHexColor(info.TitleFontColor) : "#333";
         if (!string.IsNullOrEmpty(info.Title))
-            sb.AppendLine($"  <div style=\"text-align:center;font-size:{info.TitleFontSize};font-weight:bold;padding:6px 0;color:{titleColor}\">{HtmlEncode(info.Title)}</div>");
+            sb.AppendLine($"  <div style=\"flex-shrink:0;text-align:center;font-size:{info.TitleFontSize};font-weight:bold;padding:6px 0;color:{titleColor}\">{HtmlEncode(info.Title)}</div>");
 
         var legendColor = info.LegendFontColor != null ? ChartSvgRenderer.CssHexColor(info.LegendFontColor) : "#555";
-        // Legend position drives the plot+legend container layout, mirroring the
-        // Word path. right="r" → row, legend after plot; left="l" → row, legend
-        // before; top="t"/"tr" → column, legend before; bottom (default) → below.
-        var legendSide = info.HasLegend && info.LegendPos is "r" or "l";
-        var legendTop  = info.HasLegend && info.LegendPos is "t" or "tr";
 
         if (legendTop)
             renderer.RenderLegendHtml(sb, info, legendColor);
 
+        // The plot area takes the remaining height (flex:1). Side legends wrap it
+        // in a row [plot | legend]; otherwise the plot fills directly.
         if (legendSide)
         {
             var flexDir = info.LegendPos == "l" ? "row-reverse" : "row";
-            sb.AppendLine($"  <div style=\"display:flex;flex-direction:{flexDir};align-items:center;gap:8px\">");
+            sb.AppendLine($"  <div style=\"flex:1;min-height:0;display:flex;flex-direction:{flexDir};align-items:center;gap:8px\">");
         }
 
-        sb.AppendLine($"  <svg viewBox=\"0 0 {svgW} {chartSvgH}\" style=\"width:100%;height:auto\" preserveAspectRatio=\"xMidYMin meet\">");
+        var svgFill = legendSide ? "flex:1;min-width:0;height:100%" : "flex:1;min-height:0;width:100%";
+        sb.AppendLine($"  <svg viewBox=\"0 0 {plotW} {chartSvgH}\" style=\"{svgFill}\" preserveAspectRatio=\"xMidYMid meet\">");
 
-        renderer.RenderChartSvgContent(sb, info, svgW, chartSvgH);
+        renderer.RenderChartSvgContent(sb, info, plotW, chartSvgH);
 
         sb.AppendLine("  </svg>");
 
@@ -253,10 +276,13 @@ public partial class ExcelHandler
         var fromRowOff = long.TryParse(from.RowOffset?.Text, out var fro) ? fro : 0;
         var toRowOff = long.TryParse(to.RowOffset?.Text, out var tro) ? tro : 0;
 
-        // Sum actual column widths; fall back to 48pt for columns without explicit width
+        // Sum actual column widths; fall back to the grid's default column width
+        // (8.43 chars * 7.0017 px/char * 0.75 px→pt ≈ 44.27pt / 59px) for columns
+        // without an explicit width — matching how the grid renders them and how
+        // Excel positions the chart. (A 48pt fallback over-widened it ~half a column.)
         double totalWidth = 0;
         for (int c = fromCol + 1; c <= toCol; c++)
-            totalWidth += (colWidths != null && colWidths.TryGetValue(c, out var w)) ? w : 48.0;
+            totalWidth += (colWidths != null && colWidths.TryGetValue(c, out var w)) ? w : 8.43 * 7.0017 * 0.75;
         totalWidth += (toColOff - fromColOff) / EmuConverter.EmuPerPointF;
 
         // Default row height ~15pt; offsets in EMU (1pt = 12700 EMU)

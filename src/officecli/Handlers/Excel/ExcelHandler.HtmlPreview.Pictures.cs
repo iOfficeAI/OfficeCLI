@@ -21,9 +21,9 @@ public partial class ExcelHandler
     /// existing overlay positioning code can consume the result). The image
     /// part is inlined as a data: URI.
     /// </summary>
-    private List<(int fromRow, int toRow, int fromCol, int toCol, string html)> CollectSheetPictures(WorksheetPart worksheetPart)
+    private List<(int fromRow, int toRow, int fromCol, int toCol, int widthPtHint, string html)> CollectSheetPictures(WorksheetPart worksheetPart)
     {
-        var result = new List<(int fromRow, int toRow, int fromCol, int toCol, string html)>();
+        var result = new List<(int fromRow, int toRow, int fromCol, int toCol, int widthPtHint, string html)>();
         var drawingsPart = worksheetPart.DrawingsPart;
         if (drawingsPart?.WorksheetDrawing == null) return result;
 
@@ -59,7 +59,8 @@ public partial class ExcelHandler
 
             var sb = new StringBuilder();
             sb.Append($"<img class=\"xlsx-picture\" src=\"{dataUri}\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none\"/>");
-            result.Add((fromRow, toRow, fromCol, toCol, sb.ToString()));
+            // 0 = no width hint; the overlay loop falls back to its column-sum.
+            result.Add((fromRow, toRow, fromCol, toCol, 0, sb.ToString()));
         }
 
         return result;

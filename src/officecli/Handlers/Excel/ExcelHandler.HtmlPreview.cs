@@ -270,7 +270,7 @@ public partial class ExcelHandler
     // ==================== Sheet Rendering ====================
 
     private void RenderSheetTable(StringBuilder sb, string sheetName, WorksheetPart worksheetPart, Stylesheet? stylesheet,
-        List<(int fromRow, int toRow, int fromCol, int toCol, string html)>? charts = null, int sheetIdx = 0,
+        List<(int fromRow, int toRow, int fromCol, int toCol, int widthPtHint, string html)>? charts = null, int sheetIdx = 0,
         bool showGridLines = true)
     {
         var ws = GetSheet(worksheetPart);
@@ -369,7 +369,7 @@ public partial class ExcelHandler
         // Extend maxRow/maxCol from chart anchors even when no cell data
         if (charts != null)
         {
-            foreach (var (fromRow, toRow, fromCol, toCol, _) in charts)
+            foreach (var (fromRow, toRow, fromCol, toCol, _, _) in charts)
             {
                 if (toRow > maxRow) maxRow = toRow;
                 if (toCol > maxCol) maxCol = toCol;
@@ -414,7 +414,7 @@ public partial class ExcelHandler
 
         // Extend maxRow/maxCol to include chart anchor ranges
         if (charts != null)
-            foreach (var (_, toRow, fromCol, toCol, _) in charts)
+            foreach (var (_, toRow, fromCol, toCol, _, _) in charts)
             {
                 if (toCol > maxCol) maxCol = toCol;
                 if (toRow > maxRow) maxRow = toRow;
@@ -529,7 +529,7 @@ public partial class ExcelHandler
         // Build chart lookup: fromRow → chart info for inline insertion
         var chartAtRow = new Dictionary<int, (int toRow, int fromCol, int toCol, string html)>();
         if (charts != null)
-            foreach (var (fromRow, toRow, fromCol, toCol, html) in charts)
+            foreach (var (fromRow, toRow, fromCol, toCol, _, html) in charts)
                 chartAtRow[fromRow] = (toRow, fromCol, toCol, html);
 
         // Compute total table width so the table sizes to its content (not the wrapper).
@@ -607,7 +607,7 @@ public partial class ExcelHandler
         if (charts != null)
         {
             var rowHeaderWidthPt = 30.0; // matches .row-header-col CSS
-            foreach (var (fromRow, toRow, fromCol, toCol, html) in charts)
+            foreach (var (fromRow, toRow, fromCol, toCol, widthPtHint, html) in charts)
             {
                 // Compute left position: sum of column widths from col 1 to fromCol + row header
                 double leftPt = rowHeaderWidthPt;
@@ -651,8 +651,13 @@ public partial class ExcelHandler
                     if (widthPt < 1) widthPt = defaultColWidthPt;
                     if (heightPt < 1) heightPt = defaultRowHeightPt;
                 }
+                // Charts supply their EstimateChartSize width (which includes the
+                // partial-column EMU offset this column-sum drops); honour it so the
+                // card matches Excel's width instead of being clamped a column short.
+                // Pictures/shapes pass 0, so this only affects charts.
+                if (widthPtHint > 0) widthPt = widthPtHint;
 
-                sb.AppendLine($"<div style=\"position:absolute;left:{leftPt:0.##}pt;top:{topPt:0.##}pt;width:{widthPt:0.##}pt;height:{heightPt:0.##}pt;z-index:10;pointer-events:auto\" data-from-col=\"{fromCol}\" data-from-row=\"{fromRow}\">");
+                sb.AppendLine($"<div style=\"position:absolute;left:{leftPt:0.##}pt;top:{topPt:0.##}pt;width:{widthPt:0.##}pt;height:{heightPt:0.##}pt;z-index:10;pointer-events:auto;display:flex\" data-from-col=\"{fromCol}\" data-from-row=\"{fromRow}\">");
                 sb.Append(html);
                 sb.AppendLine("</div>");
             }
