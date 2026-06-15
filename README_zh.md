@@ -1,5 +1,13 @@
 # OfficeCLI
 
+> **这是 [iOfficeAI/OfficeCLI](https://github.com/iOfficeAI/OfficeCLI) 的一个 fork**，由 [@NextDoorLaoHuang-HF](https://github.com/NextDoorLaoHuang-HF) 维护，为 [AionUI](https://github.com/iOfficeAI/AionUi) 预览体验优化。
+>
+> **相对于上游的差异：**
+> - **HTML 预览：修订模式（Track Changes）渲染** — 插入/删除/格式/移动标记在 `view html` 和 Watch 模式中以独立 CSS 样式可视化渲染
+> - **Watch 服务：修订 API 端点** — `POST /api/revision/accept`、`POST /api/revision/reject`、`GET /api/revision/count`，支持浏览器内接受/拒绝修订
+> - **修订工具栏** — Watch HTML 中注入浮动工具栏，显示修订计数徽章和接受/拒绝按钮
+>
+> 所有改动干净地 rebase 在上游 `main` 之上（领先 3 个提交）。构建方式不变：`dotnet publish -c Release -r osx-arm64 --self-contained -o out`。
 > **OfficeCLI 是全球首个、也是最好的专为 AI 智能体设计的 Office 套件。**
 
 **让任何 AI 智能体完全掌控 Word、Excel 和 PowerPoint——只需一行代码。**
@@ -76,7 +84,7 @@ curl -fsSL https://officecli.ai/SKILL.md
 
 **方式 A — 图形界面：** 安装 [**AionUi**](https://github.com/iOfficeAI/AionUi) — 一款桌面应用，用自然语言就能创建和编辑 Office 文档，底层由 OfficeCLI 驱动。只需描述你想要什么，AionUi 帮你搞定。
 
-**方式 B — 命令行：** 从 [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases) 下载对应平台的二进制文件，然后运行：
+**方式 B — 命令行：** 从源码构建（见下方[安装](#安装)），然后运行：
 
 ```bash
 officecli install
@@ -84,12 +92,21 @@ officecli install
 
 该命令会将二进制文件复制到 PATH，并自动将 **officecli 技能文件**安装到检测到的所有 AI 编程助手 — Claude Code、Cursor、Windsurf、GitHub Copilot 等。您的智能体可以立即创建、读取和编辑 Office 文档，无需额外配置。
 
+**AionUI 用户** — 一条命令启用修订模式（Track Changes）：
+
+```bash
+officecli setup-aionui
+```
+
+这会安装 `officecli-track-changes` 技能并在 AionUI 中注册 **Word 修订助手**。重启 AionUI 后即可在助手列表中看到 — 适用于合同审查、修订标记等工作流。
+
 ## 开发者 — 30 秒亲眼看到效果
 
 ```bash
-# 1. 安装（macOS / Linux）
-curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
-# Windows (PowerShell): irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+# 1. 构建并安装（macOS / Linux）
+git clone https://github.com/NextDoorLaoHuang-HF/OfficeCLI.git && cd OfficeCLI
+dotnet publish src/officecli/officecli.csproj -c Release -r osx-arm64 --self-contained -o out
+sudo cp out/officecli /usr/local/bin/
 
 # 2. 创建一个空白 PowerPoint
 officecli create deck.pptx
@@ -198,39 +215,23 @@ officecli add deck.pptx / --type slide --prop title="Q4 Report"
 
 ## 安装
 
-单一自包含可执行文件，.NET 运行时已内嵌 -- 无需安装任何依赖，无需管理运行时。
+本 fork 不发布独立 release。请从源码构建：
 
-**一键安装：**
+**前置条件：**
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 
 ```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
-
-# Windows (PowerShell)
-irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+git clone https://github.com/NextDoorLaoHuang-HF/OfficeCLI.git
+cd OfficeCLI
+dotnet publish src/officecli/officecli.csproj -c Release -r osx-arm64 --self-contained -o out
+sudo cp out/officecli /usr/local/bin/
 ```
 
-**或手动下载** [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases)：
-
-| 平台 | 文件名 |
-|------|--------|
-| macOS Apple Silicon | `officecli-mac-arm64` |
-| macOS Intel | `officecli-mac-x64` |
-| Linux x64 | `officecli-linux-x64` |
-| Linux ARM64 | `officecli-linux-arm64` |
-| Windows x64 | `officecli-win-x64.exe` |
-| Windows ARM64 | `officecli-win-arm64.exe` |
+**其他平台：** 将 `osx-arm64` 替换为 `osx-x64`、`linux-x64`、`linux-arm64`、`win-x64` 或 `win-arm64`。
 
 验证安装：`officecli --version`
 
-**或从已下载的二进制文件自安装（直接运行 `officecli` 也会触发安装）：**
-
-```bash
-officecli install    # 显式安装
-officecli            # 直接运行也会触发安装
-```
-
-OfficeCLI 会在后台自动检查更新。通过 `officecli config autoUpdate false` 关闭，或通过 `OFFICECLI_SKIP_UPDATE=1` 跳过单次检查。配置文件位于 `~/.officecli/config.json`。
+> **提示：** 如需上游原始 release（含预编译二进制），请见 [iOfficeAI/OfficeCLI](https://github.com/iOfficeAI/OfficeCLI#安装)。
 
 ## 核心功能
 

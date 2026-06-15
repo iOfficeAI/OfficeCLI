@@ -48,6 +48,7 @@ internal static class SkillInstaller
         ["academic-paper"]  = "officecli-academic-paper",
         ["data-dashboard"]  = "officecli-data-dashboard",
         ["financial-model"] = "officecli-financial-model",
+        ["track-changes"]   = "officecli-track-changes",
     };
 
     /// <summary>

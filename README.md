@@ -1,7 +1,14 @@
 # OfficeCLI
+> **This is a fork** of [iOfficeAI/OfficeCLI](https://github.com/iOfficeAI/OfficeCLI) maintained by [@NextDoorLaoHuang-HF](https://github.com/NextDoorLaoHuang-HF), optimized for [AionUI](https://github.com/iOfficeAI/AionUi) preview.
+>
+> **Differences from upstream:**
+> - **HTML preview: Track Changes rendering** — revision marks (ins/del/format/move) are visually rendered in `view html` and Watch mode with distinct CSS styling
+> - **Watch server: Revision API endpoints** — `POST /api/revision/accept`, `POST /api/revision/reject`, `GET /api/revision/count` for in-browser accept/reject controls
+> - **Revision toolbar** — floating toolbar injected into Watch HTML with revision count badge and accept/reject buttons
+>
+> All changes are cleanly rebased on upstream `main` (3 commits ahead). Build as usual: `dotnet publish -c Release -r osx-arm64 --self-contained -o out`.
 
 > **OfficeCLI is the world's first and the best Office suite designed for AI agents.**
-
 **Give any AI agent full control over Word, Excel, and PowerPoint — in one line of code.**
 
 Open-source. Single binary. No Office installation. No dependencies. Works everywhere.
@@ -76,7 +83,7 @@ That's it. The skill file teaches the agent how to install the binary and use al
 
 **Option A — GUI:** Install [**AionUi**](https://github.com/iOfficeAI/AionUi) — a desktop app that lets you create and edit Office documents through natural language, powered by OfficeCLI under the hood. Just describe what you want, and AionUi handles the rest.
 
-**Option B — CLI:** Download the binary for your platform from [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases), then run:
+**Option B — CLI:** Build from source (see [Installation](#installation) below), then run:
 
 ```bash
 officecli install
@@ -84,12 +91,21 @@ officecli install
 
 This copies the binary to your PATH and installs the **officecli skill** into every AI coding agent it detects — Claude Code, Cursor, Windsurf, GitHub Copilot, and more. Your agent can immediately create, read, and edit Office documents on your behalf, no extra configuration needed.
 
+**AionUI users** — get Track Changes / revision mode with one command:
+
+```bash
+officecli setup-aionui
+```
+
+This installs the `officecli-track-changes` skill and registers the **Word 修订助手** assistant in AionUI. Restart AionUI and you'll see it in the assistant list — ready for contract review, redlining, and revision workflows.
+
 ## For Developers — See It Live in 30 Seconds
 
 ```bash
-# 1. Install (macOS / Linux)
-curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
-# Windows (PowerShell): irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+# 1. Build and install (macOS / Linux)
+git clone https://github.com/NextDoorLaoHuang-HF/OfficeCLI.git && cd OfficeCLI
+dotnet publish src/officecli/officecli.csproj -c Release -r osx-arm64 --self-contained -o out
+sudo cp out/officecli /usr/local/bin/
 
 # 2. Create a blank PowerPoint
 officecli create deck.pptx
@@ -201,39 +217,23 @@ officecli add deck.pptx / --type slide --prop title="Q4 Report"
 
 ## Installation
 
-Ships as a single self-contained binary. The .NET runtime is embedded -- nothing to install, no runtime to manage.
+This fork does not publish its own releases. Build from source:
 
-**One-line install:**
+**Prerequisites:**
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 
 ```bash
-# macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
-
-# Windows (PowerShell)
-irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+git clone https://github.com/NextDoorLaoHuang-HF/OfficeCLI.git
+cd OfficeCLI
+dotnet publish src/officecli/officecli.csproj -c Release -r osx-arm64 --self-contained -o out
+sudo cp out/officecli /usr/local/bin/
 ```
 
-**Or download manually** from [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases):
-
-| Platform | Binary |
-|----------|--------|
-| macOS Apple Silicon | `officecli-mac-arm64` |
-| macOS Intel | `officecli-mac-x64` |
-| Linux x64 | `officecli-linux-x64` |
-| Linux ARM64 | `officecli-linux-arm64` |
-| Windows x64 | `officecli-win-x64.exe` |
-| Windows ARM64 | `officecli-win-arm64.exe` |
+**Other platforms:** replace `osx-arm64` with `osx-x64`, `linux-x64`, `linux-arm64`, `win-x64`, or `win-arm64`.
 
 Verify installation: `officecli --version`
 
-**Or self-install from a downloaded binary (or run bare `officecli` to auto-install):**
-
-```bash
-officecli install    # explicit
-officecli            # bare invocation also triggers install
-```
-
-Updates are checked automatically in the background. Disable with `officecli config autoUpdate false` or skip per-invocation with `OFFICECLI_SKIP_UPDATE=1`. Configuration lives under `~/.officecli/config.json`.
+> **Tip:** For the original upstream release with prebuilt binaries, see [iOfficeAI/OfficeCLI](https://github.com/iOfficeAI/OfficeCLI#installation).
 
 ## Key Features
 

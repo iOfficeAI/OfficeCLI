@@ -94,6 +94,12 @@ if (args.Length >= 1 && args[0] == "mcp")
     return 1;
 }
 
+// Setup AionUI command: officecli setup-aionui [--verbose] [--dry-run] [--force]
+if (args.Length >= 1 && args[0] == "setup-aionui")
+{
+    return OfficeCli.Core.AionuiInstaller.Run(args.Skip(1).ToArray());
+}
+
 // Install command: officecli install [target]
 if (args.Length >= 1 && args[0] == "install")
 {
