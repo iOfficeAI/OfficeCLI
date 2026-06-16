@@ -1,0 +1,3 @@
+agents/
+node_modules/
+*.log

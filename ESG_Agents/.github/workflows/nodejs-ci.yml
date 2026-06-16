@@ -1,0 +1,75 @@
+name: Node.js CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        npm ci
+    - name: Run backend tests
+      run: |
+        cd backend
+        npm test
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+  frontend-e2e:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    - name: Install backend and start server
+      run: |
+        cd backend
+        npm ci
+        # start backend in background and wait for /startup to return healthy details
+        nohup npm start > backend.log 2>&1 &
+        for i in $(seq 1 30); do
+          echo "checking /startup (attempt $i)"
+          resp=$(curl -sS http://localhost:4000/startup || true)
+          if [ -n "$resp" ]; then
+            echo "$resp"
+            # validate uploads writable and port available via node
+            echo "$resp" | node -e "try{const s=JSON.parse(require('fs').readFileSync(0,'utf8')); if(s.uploads && s.uploads.writable && s.port && s.port.available){process.exit(0)} else {console.error('startup check failed'); process.exit(2)}}catch(e){console.error(e); process.exit(3)}"
+            if [ $? -eq 0 ]; then
+              echo "backend startup OK"
+              break
+            fi
+          fi
+          sleep 1
+        done
+        # final verification: attempt one last /startup and fail if still not ok
+        final=$(curl -sS http://localhost:4000/startup || true)
+        if [ -z "$final" ]; then
+          echo "No startup response from backend:"; tail -n +1 backend.log; exit 4
+        fi
+        echo "$final" | node -e "try{const s=JSON.parse(require('fs').readFileSync(0,'utf8')); if(s.uploads && s.uploads.writable && s.port && s.port.available){process.exit(0)} else {console.error('startup final check failed'); process.exit(5)}}catch(e){console.error(e); process.exit(6)}"
+    - name: Install frontend dependencies
+      run: |
+        cd frontend
+        npm ci
+    - name: Install Playwright browsers
+      run: |
+        cd frontend
+        npx playwright install --with-deps
+    - name: Run frontend e2e tests
+      run: |
+        cd frontend
+        npx playwright test --reporter=list
