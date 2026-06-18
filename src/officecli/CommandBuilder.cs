@@ -20,7 +20,7 @@ static partial class CommandBuilder
     /// builder having to thread it through its signature.
     /// </summary>
     internal static readonly Option<string?> PasswordOption =
-        new("--password") { Description = "Password for an encrypted (Agile) OOXML document", Recursive = true };
+        new("--password") { Description = "Password for an encrypted (Agile) OOXML document (or set OFFICECLI_PASSWORD)", Recursive = true };
 
     public static RootCommand BuildRootCommand()
     {

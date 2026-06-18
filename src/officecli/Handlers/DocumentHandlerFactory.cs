@@ -220,12 +220,18 @@ public static class DocumentHandlerFactory
                 };
         }
 
+        // --password wins; otherwise fall back to the OFFICECLI_PASSWORD env var.
+        // The env path keeps the secret out of argv (visible in `ps`) — better
+        // for unattended/agent use, where the password comes from a secret store.
+        if (string.IsNullOrEmpty(password))
+            password = Environment.GetEnvironmentVariable("OFFICECLI_PASSWORD");
+
         if (string.IsNullOrEmpty(password))
             throw new CliException(
-                $"{Path.GetFileName(filePath)} is password-protected. Re-run with --password <password>.")
+                $"{Path.GetFileName(filePath)} is password-protected. Re-run with --password <password> (or set OFFICECLI_PASSWORD).")
             {
                 Code = "password_required",
-                Suggestion = "officecli <command> <file> --password <password>"
+                Suggestion = "officecli <command> <file> --password <password>   # or: OFFICECLI_PASSWORD=<password> officecli <command> <file>"
             };
 
         byte[] plain;
