@@ -101,7 +101,7 @@ static partial class CommandBuilder
             // raw OOXML SDK exception out of programmatic callers (tests,
             // resident batch) — SafeRun catches it at the CLI surface but
             // any in-process consumer sees the unwrapped form.
-            using var handler = DocumentHandlerFactory.Open(file.FullName, editable: false);
+            using var handler = DocumentHandlerFactory.Open(file.FullName, editable: false, password: result.GetValue(PasswordOption));
             if (ext == ".docx")
             {
                 var word = (WordHandler)handler;

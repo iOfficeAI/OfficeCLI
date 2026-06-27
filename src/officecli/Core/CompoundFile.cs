@@ -204,6 +204,223 @@ internal static class CompoundFile
         BinaryPrimitives.WriteUInt64LittleEndian(buf.AsSpan(offset + 120), (ulong)size);
     }
 
+    // ==================== Multi-stream / nested writer ====================
+
+    private sealed class DirNode
+    {
+        public string Name = "";
+        public bool IsStorage;
+        public byte[] Data = Array.Empty<byte>();
+        public readonly List<DirNode> Children = new();
+        public int Index = -1;
+        // Resolved directory pointers (entry indices, or NOSTREAM).
+        public uint Left = NOSTREAM, Right = NOSTREAM, Child = NOSTREAM;
+        // Stream placement.
+        public uint Start = ENDOFCHAIN;
+        public long Size;
+    }
+
+    /// <summary>
+    /// Build a V3 CFB byte array containing an arbitrary set of named streams,
+    /// optionally nested inside storages. Each entry's <c>path</c> is
+    /// '/'-separated: all but the last segment are storages, the last is the
+    /// stream (segment names may include the control-char prefixes Office uses,
+    /// e.g. <c>"DataSpaces/Version"</c>).
+    ///
+    /// Used to assemble password-encrypted OOXML (EncryptionInfo +
+    /// EncryptedPackage + the DataSpaces transform tree). Small streams
+    /// (&lt; 4096 bytes) are consolidated into the root mini stream via the mini
+    /// FAT; larger ones use regular FAT sectors — exactly like a real Office
+    /// container, so spec-compliant readers (Excel, LibreOffice) accept it.
+    /// Siblings within each storage form a balanced BST ordered by the
+    /// [MS-CFB] §2.6.4 name comparison, so directory lookups resolve correctly.
+    /// </summary>
+    public static byte[] WriteStreams(IEnumerable<(string path, byte[] data)> entries)
+    {
+        const int sectorSize = 512;
+
+        // ── 1. Build the storage/stream tree from the flat paths. ──────────
+        var root = new DirNode { Name = "Root Entry", IsStorage = true };
+        foreach (var (path, data) in entries)
+        {
+            var segs = path.Split('/');
+            var cur = root;
+            for (int i = 0; i < segs.Length; i++)
+            {
+                bool leaf = i == segs.Length - 1;
+                var existing = cur.Children.Find(c => c.Name == segs[i]);
+                if (existing == null)
+                {
+                    existing = new DirNode { Name = segs[i], IsStorage = !leaf };
+                    if (leaf) existing.Data = data ?? Array.Empty<byte>();
+                    cur.Children.Add(existing);
+                }
+                cur = existing;
+            }
+        }
+
+        // ── 2. Assign directory indices (Root == 0, then pre-order). ───────
+        var nodes = new List<DirNode>();
+        void Index(DirNode n) { n.Index = nodes.Count; nodes.Add(n); foreach (var c in n.Children) Index(c); }
+        Index(root);
+
+        // ── 3. Per storage, order children + build a balanced sibling BST. ──
+        foreach (var n in nodes)
+        {
+            if (!n.IsStorage || n.Children.Count == 0) continue;
+            var kids = new List<DirNode>(n.Children);
+            kids.Sort((a, b) => CfbNameCompare(a.Name, b.Name));
+            n.Child = (uint)BuildBst(kids, 0, kids.Count - 1).Index;
+        }
+
+        // ── 4. Lay out streams: small → mini stream, large → regular FAT. ──
+        var sectors = new List<byte[]>();
+        var fat = new List<uint>();
+        int WriteChain(byte[] blob)
+        {
+            int count = Math.Max(1, (blob.Length + sectorSize - 1) / sectorSize);
+            int start = sectors.Count;
+            for (int i = 0; i < count; i++)
+            {
+                var s = new byte[sectorSize];
+                int off = i * sectorSize, len = Math.Min(sectorSize, blob.Length - off);
+                if (len > 0) Array.Copy(blob, off, s, 0, len);
+                sectors.Add(s);
+                fat.Add(i == count - 1 ? ENDOFCHAIN : 0);
+            }
+            for (int i = 0; i < count - 1; i++) fat[start + i] = (uint)(start + i + 1);
+            return start;
+        }
+
+        var miniStream = new List<byte>();
+        var miniChainNext = new List<uint>();   // mini FAT (per 64-byte mini-sector)
+        foreach (var n in nodes)
+        {
+            if (n.IsStorage) continue;
+            n.Size = n.Data.Length;
+            if (n.Data.Length == 0) { n.Start = ENDOFCHAIN; continue; }
+            if (n.Data.Length < MiniStreamCutoff)
+            {
+                int firstMini = miniStream.Count / MiniSectorSize;
+                int need = (n.Data.Length + MiniSectorSize - 1) / MiniSectorSize;
+                miniStream.AddRange(n.Data);
+                int pad = need * MiniSectorSize - n.Data.Length;
+                for (int i = 0; i < pad; i++) miniStream.Add(0);
+                for (int i = 0; i < need; i++)
+                    miniChainNext.Add(i == need - 1 ? ENDOFCHAIN : (uint)(firstMini + i + 1));
+                n.Start = (uint)firstMini;
+            }
+            else
+            {
+                n.Start = (uint)WriteChain(n.Data);
+            }
+        }
+
+        // Mini stream is itself a regular stream owned by Root Entry.
+        uint rootStart = ENDOFCHAIN; long rootSize = 0;
+        uint firstMiniFat = ENDOFCHAIN; uint numMiniFat = 0;
+        if (miniStream.Count > 0)
+        {
+            rootStart = (uint)WriteChain(miniStream.ToArray());
+            rootSize = miniStream.Count;
+
+            int miniFatSectors = Math.Max(1, (miniChainNext.Count + 127) / 128);
+            var miniFatBlob = new byte[miniFatSectors * sectorSize];
+            for (int i = 0; i < miniFatBlob.Length; i += 4)
+                BinaryPrimitives.WriteUInt32LittleEndian(miniFatBlob.AsSpan(i), FREESECT);
+            for (int i = 0; i < miniChainNext.Count; i++)
+                BinaryPrimitives.WriteUInt32LittleEndian(miniFatBlob.AsSpan(i * 4), miniChainNext[i]);
+            firstMiniFat = (uint)WriteChain(miniFatBlob);
+            numMiniFat = (uint)miniFatSectors;
+        }
+        root.Start = rootStart;
+        root.Size = rootSize;
+
+        // ── 5. Directory stream: one 128-byte entry per node, sector-padded. ─
+        int dirEntries = nodes.Count;
+        int dirSectors = Math.Max(1, (dirEntries + 3) / 4);
+        var dir = new byte[dirSectors * sectorSize];
+        foreach (var n in nodes)
+        {
+            byte objType = n == root ? (byte)5 : n.IsStorage ? (byte)1 : (byte)2;
+            WriteDirEntry(dir, n.Index * DirEntrySize, n.Name, objType,
+                n.Left, n.Right, n.Child, n.Start, n.Size);
+        }
+        int dirStart = WriteChain(dir);
+
+        // ── 6. Allocate FAT sectors last (they must self-represent). ────────
+        int dataSectors = sectors.Count;
+        int numFat = Math.Max(1, (dataSectors + 126) / 127);
+        while (dataSectors + numFat > numFat * 128) numFat++;
+        if (numFat > HeaderDifatCount)
+            throw new NotSupportedException("Encrypted payload too large to wrap (would need DIFAT sectors).");
+
+        var fatSectorIds = new int[numFat];
+        for (int i = 0; i < numFat; i++)
+        {
+            fatSectorIds[i] = sectors.Count;
+            sectors.Add(new byte[sectorSize]);
+            fat.Add(FATSECT);
+        }
+
+        var fatBytes = new byte[numFat * sectorSize];
+        for (int i = 0; i < fatBytes.Length; i += 4)
+            BinaryPrimitives.WriteUInt32LittleEndian(fatBytes.AsSpan(i), FREESECT);
+        for (int s = 0; s < fat.Count; s++)
+            BinaryPrimitives.WriteUInt32LittleEndian(fatBytes.AsSpan(s * 4), fat[s]);
+        for (int i = 0; i < numFat; i++)
+            Array.Copy(fatBytes, i * sectorSize, sectors[fatSectorIds[i]], 0, sectorSize);
+
+        // ── 7. Header + sectors. ───────────────────────────────────────────
+        var header = new byte[sectorSize];
+        Array.Copy(Magic, header, Magic.Length);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(24), 0x003E);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(26), 0x0003); // V3
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(28), 0xFFFE);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(30), 0x0009); // 512-byte sectors
+        BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(32), 0x0006); // 64-byte mini sectors
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(44), (uint)numFat);
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(48), (uint)dirStart);
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(56), MiniStreamCutoff);
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(60), firstMiniFat);
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(64), numMiniFat);
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(68), ENDOFCHAIN);
+        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(72), 0);
+        for (int i = 0; i < HeaderDifatCount; i++)
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                header.AsSpan(76 + i * 4), i < numFat ? (uint)fatSectorIds[i] : FREESECT);
+
+        var output = new byte[sectorSize + sectors.Count * sectorSize];
+        Array.Copy(header, 0, output, 0, sectorSize);
+        for (int i = 0; i < sectors.Count; i++)
+            Array.Copy(sectors[i], 0, output, sectorSize + i * sectorSize, sectorSize);
+        return output;
+    }
+
+    /// <summary>Build a height-balanced BST from name-sorted children, wiring
+    /// each node's Left/Right to its subtree roots; returns the subtree root.</summary>
+    private static DirNode BuildBst(List<DirNode> sorted, int lo, int hi)
+    {
+        int mid = (lo + hi) / 2;
+        var node = sorted[mid];
+        node.Left = lo <= mid - 1 ? (uint)BuildBst(sorted, lo, mid - 1).Index : NOSTREAM;
+        node.Right = mid + 1 <= hi ? (uint)BuildBst(sorted, mid + 1, hi).Index : NOSTREAM;
+        return node;
+    }
+
+    /// <summary>[MS-CFB] §2.6.4 directory name order: by UTF-16 length first,
+    /// then by uppercased UTF-16 code units.</summary>
+    private static int CfbNameCompare(string a, string b)
+    {
+        if (a.Length != b.Length) return a.Length - b.Length;
+        for (int i = 0; i < a.Length; i++)
+        {
+            int ca = char.ToUpperInvariant(a[i]), cb = char.ToUpperInvariant(b[i]);
+            if (ca != cb) return ca - cb;
+        }
+        return 0;
+    }
+
     // ==================== Reader ====================
 
     /// <summary>

@@ -12,6 +12,16 @@ namespace OfficeCli;
 
 static partial class CommandBuilder
 {
+    /// <summary>
+    /// Password for an encrypted (Agile) OOXML document. Declared once as a
+    /// recursive option so every subcommand that opens a document can read it
+    /// (via <c>result.GetValue(PasswordOption)</c>) and pass it to
+    /// <see cref="OfficeCli.Handlers.DocumentHandlerFactory.Open"/> without each
+    /// builder having to thread it through its signature.
+    /// </summary>
+    internal static readonly Option<string?> PasswordOption =
+        new("--password") { Description = "Password for an encrypted (Agile) OOXML document (or set OFFICECLI_PASSWORD)", Recursive = true };
+
     public static RootCommand BuildRootCommand()
     {
         var jsonOption = new Option<bool>("--json") { Description = "Output as JSON (AI-friendly)" };
@@ -23,6 +33,7 @@ static partial class CommandBuilder
             See the Commands section below for the full list of subcommands.
             """);
         rootCommand.Add(jsonOption);
+        rootCommand.Add(PasswordOption);
 
         // ==================== open command (start resident) ====================
         var openFileArg = new Argument<FileInfo>("file") { Description = "Office document path (required even with open/close mode)" };

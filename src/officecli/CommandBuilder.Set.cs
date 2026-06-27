@@ -209,7 +209,7 @@ static partial class CommandBuilder
             // stay in sync.
             var properties = ParsePropsArray(props);
 
-            using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
+            using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true, password: result.GetValue(PasswordOption));
 
             var unsupported = handler.Set(path, properties);
 

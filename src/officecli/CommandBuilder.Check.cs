@@ -25,7 +25,7 @@ static partial class CommandBuilder
                 req.Json = json;
             }, json) is {} rc) return rc;
 
-            using var handler = DocumentHandlerFactory.Open(file.FullName);
+            using var handler = DocumentHandlerFactory.Open(file.FullName, password: result.GetValue(PasswordOption));
             var errors = handler.Validate();
             if (json)
             {
