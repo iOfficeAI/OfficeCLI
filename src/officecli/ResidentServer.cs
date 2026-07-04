@@ -1044,6 +1044,18 @@ public class ResidentServer : IDisposable
     // (and batch failure rows are written to stdout).
     private bool _lastBatchHadFailure;
 
+    // Batch verbs that never mutate the DOM. ExecuteBatch notifies any live
+    // watch session after applying the items — parity with the per-verb
+    // NotifyWatch* calls in ExecuteCommand (issue #169). A batch made up
+    // entirely of these read-only verbs skips the full-refresh to avoid a
+    // needless re-render + SSE push. Any verb NOT listed here (including
+    // unknown / future ones) fails open to "notify", so a new mutating verb
+    // is never silently dropped from the preview.
+    private static readonly HashSet<string> ReadOnlyBatchVerbs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "get", "query", "view", "validate", "dump", "raw"
+    };
+
     private void ExecuteBatch(ResidentRequest request)
     {
         _lastBatchHadFailure = false;
@@ -1143,6 +1155,18 @@ public class ResidentServer : IDisposable
         // as the single-shot resident add/set path (EmitUnrecognizedLatex) does.
         foreach (var tok in batchUnrecognizedLatex)
             Console.Error.WriteLine($"  WARNING: {UnrecognizedLatexMarker} {tok}");
+
+        // Notify any live watch session so the preview reflects the batch.
+        // Single add/set/move/remove/etc. each call a NotifyWatch* helper in
+        // ExecuteCommand; batch applied its items directly above and must do
+        // the same, otherwise the watched DOM stays stale until the watch is
+        // manually restarted (issue #169). A batch can span many
+        // slides/sheets/pages with mixed verbs, so a targeted per-slide patch
+        // isn't derivable — a full refresh mirrors swap / refresh / raw-set /
+        // add-part. Skip only provably read-only batches to avoid a needless
+        // re-render; unknown verbs fail open to notify.
+        if (items.Any(it => !ReadOnlyBatchVerbs.Contains(it.Command ?? "")))
+            NotifyWatchFullRefresh();
     }
 
     // ==================== Watch notification helpers ====================
