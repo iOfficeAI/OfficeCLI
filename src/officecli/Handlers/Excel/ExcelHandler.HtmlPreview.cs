@@ -21,6 +21,38 @@ public partial class ExcelHandler
     // defaultColWidth> — Excel's 8.43-char standard (≈ 44.27pt / 59px).
     private const double ExcelDefaultColWidthPt = 8.43 * ColWidthCharToPt;
 
+    // PERFORMANCE: the HTML preview resolves a CSS style for every cell by looking
+    // up the cell's CellFormat, then its Font/Fill/Border by id. Each
+    // `.Elements<T>().Count()` / `.ElementAt(i)` is an O(N) live walk over the
+    // stylesheet child elements. For a style-bloated workbook (e.g. one produced
+    // by a generator that appends a new style per cell instead of deduping) the
+    // style table can hold thousands of entries, making the render O(cells x
+    // styles).
+    //
+    // The stylesheet instance is the same for the whole sheet render, so we
+    // materialize each typed child collection into an array ONCE (first access)
+    // and reuse it for every subsequent cell. ConditionalWeakTable keys the
+    // cache on the collection instance and does not pin it (GC-friendly). The
+    // elements and their order are identical to `.Elements<T>()`, so lookups are
+    // byte-for-byte equivalent to the prior `.ElementAt(i)` — this is a pure
+    // access-cost change, not a semantic change.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CellFormats, CellFormat[]> CellFormatArrayCache = new();
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Fonts, Font[]> FontArrayCache = new();
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Fills, Fill[]> FillArrayCache = new();
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Borders, Border[]> BorderArrayCache = new();
+
+    private static CellFormat[] CellFormatsOf(CellFormats? cellFormats)
+        => cellFormats is null ? Array.Empty<CellFormat>() : CellFormatArrayCache.GetValue(cellFormats, c => c.Elements<CellFormat>().ToArray());
+
+    private static Font[] FontsOf(Fonts? fonts)
+        => fonts is null ? Array.Empty<Font>() : FontArrayCache.GetValue(fonts, c => c.Elements<Font>().ToArray());
+
+    private static Fill[] FillsOf(Fills? fills)
+        => fills is null ? Array.Empty<Fill>() : FillArrayCache.GetValue(fills, c => c.Elements<Fill>().ToArray());
+
+    private static Border[] BordersOf(Borders? borders)
+        => borders is null ? Array.Empty<Border>() : BorderArrayCache.GetValue(borders, c => c.Elements<Border>().ToArray());
+
     // Wire the formula evaluator's TEXT() up to the cell number-format engine so
     // TEXT(value, format) applies date/time/percent/currency codes identically to
     // a cell carrying that numFmt. Core cannot reference Handlers, so the hook is
@@ -302,10 +334,14 @@ public partial class ExcelHandler
 
         // Read default font size from stylesheet
         var defaultFontPt = 11.0;
-        if (stylesheet?.Fonts != null && stylesheet.Fonts.Elements<Font>().Any())
+        if (stylesheet?.Fonts != null)
         {
-            var defFont = stylesheet.Fonts.Elements<Font>().First();
-            defaultFontPt = defFont.FontSize?.Val?.Value ?? 11.0;
+            var fontsArr = FontsOf(stylesheet.Fonts);
+            if (fontsArr.Length > 0)
+            {
+                var defFont = fontsArr[0];
+                defaultFontPt = defFont.FontSize?.Val?.Value ?? 11.0;
+            }
         }
 
         // Create formula evaluator for this sheet to compute uncached formula values
@@ -505,13 +541,15 @@ public partial class ExcelHandler
                     foreach (var cell in cellMap.Where(kv => kv.Key.row == fr).Select(kv => kv.Value))
                     {
                         var si = cell.StyleIndex?.Value ?? 0;
-                        if (stylesheet?.CellFormats != null && si < (uint)stylesheet.CellFormats.Elements<CellFormat>().Count())
+                        var xfsArr = CellFormatsOf(stylesheet?.CellFormats);
+                        if (si < (uint)xfsArr.Length)
                         {
-                            var xf = stylesheet.CellFormats.Elements<CellFormat>().ElementAt((int)si);
+                            var xf = xfsArr[(int)si];
                             var fontId = xf.FontId?.Value ?? 0;
-                            if (stylesheet.Fonts != null && fontId < (uint)stylesheet.Fonts.Elements<Font>().Count())
+                            var fontsArr = FontsOf(stylesheet?.Fonts);
+                            if (fontId < (uint)fontsArr.Length)
                             {
-                                var font = stylesheet.Fonts.Elements<Font>().ElementAt((int)fontId);
+                                var font = fontsArr[(int)fontId];
                                 var sz = font.FontSize?.Val?.Value ?? defaultFontPt;
                                 if (sz > maxFontPt) maxFontPt = sz;
                             }
@@ -907,8 +945,9 @@ public partial class ExcelHandler
     {
         if (cell == null || stylesheet?.CellFormats == null) return 0;
         var si = (int)(cell.StyleIndex?.Value ?? 0);
-        if (si >= stylesheet.CellFormats.Elements<CellFormat>().Count()) return 0;
-        var xf = stylesheet.CellFormats.Elements<CellFormat>().ElementAt(si);
+        var xfsArr = CellFormatsOf(stylesheet.CellFormats);
+        if (si >= xfsArr.Length) return 0;
+        var xf = xfsArr[si];
         var rot = xf.Alignment?.TextRotation?.Value;
         // Only steep rotations (near-vertical) materially grow the row. Excel:
         // 1–90 = CCW, 91–180 = CW, 255 = stacked vertical. Treat >=75° / 165–180 /
@@ -924,8 +963,9 @@ public partial class ExcelHandler
         // Font size for this cell.
         double fontPt = defaultFontPt;
         var fontId = xf.FontId?.Value ?? 0;
-        if (stylesheet.Fonts != null && fontId < (uint)stylesheet.Fonts.Elements<Font>().Count())
-            fontPt = stylesheet.Fonts.Elements<Font>().ElementAt((int)fontId).FontSize?.Val?.Value ?? defaultFontPt;
+        var fontsArr = FontsOf(stylesheet.Fonts);
+        if (fontId < (uint)fontsArr.Length)
+            fontPt = fontsArr[(int)fontId].FontSize?.Val?.Value ?? defaultFontPt;
 
         // Vertical text stacks glyphs along the column: extent ≈ chars × glyph advance.
         // ~0.62em per glyph advance matches the spill width heuristic's char model;
@@ -954,8 +994,8 @@ public partial class ExcelHandler
         if (ctx.Stylesheet?.CellFormats != null)
         {
             var si = (int)(cell.StyleIndex?.Value ?? 0);
-            var xfs = ctx.Stylesheet.CellFormats.Elements<CellFormat>().ToList();
-            if (si >= 0 && si < xfs.Count)
+            var xfs = CellFormatsOf(ctx.Stylesheet.CellFormats);
+            if (si >= 0 && si < xfs.Length)
             {
                 var al = xfs[si].Alignment;
                 wrapText = al?.WrapText?.Value == true;
@@ -1004,8 +1044,8 @@ public partial class ExcelHandler
         if (ctx.Stylesheet?.CellFormats == null) return 0;
 
         var si = (int)(cell.StyleIndex?.Value ?? 0);
-        var xfs = ctx.Stylesheet.CellFormats.Elements<CellFormat>().ToList();
-        if (si < 0 || si >= xfs.Count) return 0;
+        var xfs = CellFormatsOf(ctx.Stylesheet.CellFormats);
+        if (si < 0 || si >= xfs.Length) return 0;
         var xf = xfs[si];
         if (xf.Alignment?.ShrinkToFit?.Value != true) return 0;
         if (xf.Alignment?.WrapText?.Value == true) return 0; // wrap takes precedence
@@ -1013,8 +1053,9 @@ public partial class ExcelHandler
         // Base font size for this cell.
         double basePt = 11.0;
         var fontId = xf.FontId?.Value ?? 0;
-        if (ctx.Stylesheet.Fonts != null && fontId < (uint)ctx.Stylesheet.Fonts.Elements<Font>().Count())
-            basePt = ctx.Stylesheet.Fonts.Elements<Font>().ElementAt((int)fontId).FontSize?.Val?.Value ?? 11.0;
+        var fontsArr = FontsOf(ctx.Stylesheet.Fonts);
+        if (fontId < (uint)fontsArr.Length)
+            basePt = fontsArr[(int)fontId].FontSize?.Val?.Value ?? 11.0;
 
         double colWidthPt = ctx.ColWidths.TryGetValue(c, out var w) ? w : ctx.DefaultColWidthPt;
         if (colWidthPt <= 0) return 0;
@@ -2202,10 +2243,10 @@ public partial class ExcelHandler
         var styleIndex = cell.StyleIndex?.Value ?? 0;
 
         {
-            var cellFormats = stylesheet.CellFormats;
-            if (cellFormats != null && styleIndex < (uint)cellFormats.Elements<CellFormat>().Count())
+            var xfsArr = CellFormatsOf(stylesheet.CellFormats);
+            if (styleIndex < (uint)xfsArr.Length)
             {
-                var xf = cellFormats.Elements<CellFormat>().ElementAt((int)styleIndex);
+                var xf = xfsArr[(int)styleIndex];
                 BuildFontCss(xf, stylesheet, styles);
                 BuildFillCss(xf, stylesheet, styles);
                 BuildBorderCss(xf, stylesheet, styles, mergePerimeter, rightBorderCell, bottomBorderCell);
@@ -2267,10 +2308,10 @@ public partial class ExcelHandler
     private void BuildFontCss(CellFormat xf, Stylesheet stylesheet, List<string> styles)
     {
         var fontId = xf.FontId?.Value ?? 0;
-        var fonts = stylesheet.Fonts;
-        if (fonts == null || fontId >= (uint)fonts.Elements<Font>().Count()) return;
+        var fontsArr = FontsOf(stylesheet.Fonts);
+        if (fontId >= (uint)fontsArr.Length) return;
 
-        var font = fonts.Elements<Font>().ElementAt((int)fontId);
+        var font = fontsArr[(int)fontId];
 
         if (font.Bold != null && font.Bold.Val?.Value != false) styles.Add("font-weight:bold");
         if (font.Italic != null && font.Italic.Val?.Value != false) styles.Add("font-style:italic");
@@ -2315,11 +2356,13 @@ public partial class ExcelHandler
     {
         if (cell == null || stylesheet?.CellFormats == null || stylesheet.Fonts == null) return null;
         var styleIndex = cell.StyleIndex?.Value ?? 0;
-        if (styleIndex >= (uint)stylesheet.CellFormats.Elements<CellFormat>().Count()) return null;
-        var xf = stylesheet.CellFormats.Elements<CellFormat>().ElementAt((int)styleIndex);
+        var xfsArr = CellFormatsOf(stylesheet.CellFormats);
+        if (styleIndex >= (uint)xfsArr.Length) return null;
+        var xf = xfsArr[(int)styleIndex];
         var fontId = xf.FontId?.Value ?? 0;
-        if (fontId >= (uint)stylesheet.Fonts.Elements<Font>().Count()) return null;
-        var font = stylesheet.Fonts.Elements<Font>().ElementAt((int)fontId);
+        var fontsArr = FontsOf(stylesheet.Fonts);
+        if (fontId >= (uint)fontsArr.Length) return null;
+        var font = fontsArr[(int)fontId];
         var v = font.GetFirstChild<VerticalTextAlignment>()?.Val?.Value;
         if (v == VerticalAlignmentRunValues.Superscript) return "super";
         if (v == VerticalAlignmentRunValues.Subscript) return "sub";
@@ -2344,10 +2387,10 @@ public partial class ExcelHandler
         var fillId = xf.FillId?.Value ?? 0;
         if (fillId <= 1) return; // 0=none, 1=gray125 pattern (default)
 
-        var fills = stylesheet.Fills;
-        if (fills == null || fillId >= (uint)fills.Elements<Fill>().Count()) return;
+        var fillsArr = FillsOf(stylesheet.Fills);
+        if (fillId >= (uint)fillsArr.Length) return;
 
-        var fill = fills.Elements<Fill>().ElementAt((int)fillId);
+        var fill = fillsArr[(int)fillId];
 
         // Gradient fill
         var gf = fill.GetFirstChild<GradientFill>();
@@ -2382,9 +2425,9 @@ public partial class ExcelHandler
         bool mergePerimeter = false, Cell? rightBorderCell = null, Cell? bottomBorderCell = null)
     {
         var borderId = xf.BorderId?.Value ?? 0;
-        var borders = stylesheet.Borders;
-        Border? border = (borderId != 0 && borders != null && borderId < (uint)borders.Elements<Border>().Count())
-            ? borders.Elements<Border>().ElementAt((int)borderId)
+        var bordersArr = BordersOf(stylesheet.Borders);
+        Border? border = (borderId != 0 && borderId < (uint)bordersArr.Length)
+            ? bordersArr[(int)borderId]
             : null;
 
         // top/left always come from the anchor cell (top-left member of the merge).
@@ -2405,13 +2448,13 @@ public partial class ExcelHandler
     private Border? GetCellBorder(Cell cell, Stylesheet stylesheet)
     {
         var styleIndex = cell.StyleIndex?.Value ?? 0;
-        var cellFormats = stylesheet.CellFormats;
-        if (cellFormats == null || styleIndex >= (uint)cellFormats.Elements<CellFormat>().Count()) return null;
-        var xf = cellFormats.Elements<CellFormat>().ElementAt((int)styleIndex);
+        var xfsArr = CellFormatsOf(stylesheet.CellFormats);
+        if (styleIndex >= (uint)xfsArr.Length) return null;
+        var xf = xfsArr[(int)styleIndex];
         var borderId = xf.BorderId?.Value ?? 0;
-        var borders = stylesheet.Borders;
-        if (borderId == 0 || borders == null || borderId >= (uint)borders.Elements<Border>().Count()) return null;
-        return borders.Elements<Border>().ElementAt((int)borderId);
+        var bordersArr = BordersOf(stylesheet.Borders);
+        if (borderId == 0 || borderId >= (uint)bordersArr.Length) return null;
+        return bordersArr[(int)borderId];
     }
 
     /// <summary>
@@ -2426,15 +2469,15 @@ public partial class ExcelHandler
     {
         if (cell == null || stylesheet == null) return null;
         var styleIndex = cell.StyleIndex?.Value ?? 0;
-        var cellFormats = stylesheet.CellFormats;
-        if (cellFormats == null || styleIndex >= (uint)cellFormats.Elements<CellFormat>().Count())
+        var xfsArr = CellFormatsOf(stylesheet.CellFormats);
+        if (styleIndex >= (uint)xfsArr.Length)
             return null;
-        var xf = cellFormats.Elements<CellFormat>().ElementAt((int)styleIndex);
+        var xf = xfsArr[(int)styleIndex];
         var borderId = xf.BorderId?.Value ?? 0;
-        var borders = stylesheet.Borders;
-        if (borders == null || borderId == 0 || borderId >= (uint)borders.Elements<Border>().Count())
+        var bordersArr = BordersOf(stylesheet.Borders);
+        if (borderId == 0 || borderId >= (uint)bordersArr.Length)
             return null;
-        var border = borders.Elements<Border>().ElementAt((int)borderId);
+        var border = bordersArr[(int)borderId];
 
         bool down = border.DiagonalDown?.Value == true;
         bool up = border.DiagonalUp?.Value == true;
@@ -2586,8 +2629,8 @@ public partial class ExcelHandler
         if (alignment.Indent?.HasValue == true && alignment.Indent.Value > 0)
         {
             // 1 indent level ≈ width of "0" in default font ≈ fontSize × 0.6
-            var defFontSz = _doc.WorkbookPart?.WorkbookStylesPart?.Stylesheet
-                ?.Fonts?.Elements<Font>().FirstOrDefault()?.FontSize?.Val?.Value ?? 11.0;
+            var defFontSz = FontsOf(_doc.WorkbookPart?.WorkbookStylesPart?.Stylesheet?.Fonts)
+                .FirstOrDefault()?.FontSize?.Val?.Value ?? 11.0;
             var indentPt = alignment.Indent.Value * defFontSz * 0.6;
             styles.Add($"padding-left:{indentPt:0.#}pt");
         }
@@ -2854,11 +2897,11 @@ public partial class ExcelHandler
         var styleIndex = cell.StyleIndex?.Value ?? 0;
         if (styleIndex == 0 || stylesheet == null) return null;
 
-        var cellFormats = stylesheet.CellFormats;
-        if (cellFormats == null || styleIndex >= (uint)cellFormats.Elements<CellFormat>().Count())
+        var xfsArr = CellFormatsOf(stylesheet.CellFormats);
+        if (styleIndex >= (uint)xfsArr.Length)
             return null;
 
-        var xf = cellFormats.Elements<CellFormat>().ElementAt((int)styleIndex);
+        var xf = xfsArr[(int)styleIndex];
         var numFmtId = xf.NumberFormatId?.Value ?? 0;
         if (numFmtId == 0) return null;
 
@@ -3834,11 +3877,13 @@ public partial class ExcelHandler
         var defFontName = OfficeDefaultFonts.MinorLatin;
         var defFontSize = OfficeDefaultFonts.ExcelBodySizePt;
         var stylesheet = _doc.WorkbookPart?.WorkbookStylesPart?.Stylesheet;
-        if (stylesheet?.Fonts != null && stylesheet.Fonts.Elements<Font>().Any())
         {
-            var f0 = stylesheet.Fonts.Elements<Font>().First();
-            if (f0.FontName?.Val?.Value != null) defFontName = CssSanitize(f0.FontName.Val.Value);
-            if (f0.FontSize?.Val?.Value != null) defFontSize = f0.FontSize.Val.Value.ToString("0.##");
+            var f0 = FontsOf(stylesheet?.Fonts).FirstOrDefault();
+            if (f0 != null)
+            {
+                if (f0.FontName?.Val?.Value != null) defFontName = CssSanitize(f0.FontName.Val.Value);
+                if (f0.FontSize?.Val?.Value != null) defFontSize = f0.FontSize.Val.Value.ToString("0.##");
+            }
         }
         return $$"""
         * { margin: 0; padding: 0; box-sizing: border-box; }
