@@ -254,20 +254,24 @@ When both exist, the default footer is `/footer[2]`; alone it is `/footer[1]`. *
 
 ### Table of Contents
 
-For any document with 3+ headings:
+For any document with 3+ headings, first verify that the requested range has real sources. A TOC source must use a built-in Heading style or a custom paragraph style with `outlineLvl`; bold or large Normal text is not a source. If no eligible source exists, stop and fix the heading structure instead of inserting a TOC that renders "Error! No table of contents entries found."
 
 ```bash
+# Built-in Heading styles are TOC sources.
+officecli add "$FILE" /body --type paragraph --prop text="Introduction" --prop style=Heading1
+# Custom paragraph styles need an outline level (0 = Heading 1).
+officecli add "$FILE" /styles --type style --prop id=ThesisH1 --prop type=paragraph --prop outlineLvl=0
+# Add the TOC only after its sources exist.
 officecli add "$FILE" /body --type toc --prop levels="1-3" --prop title="Table of Contents" --prop hyperlinks=true --index 0
 ```
 
-Page numbers render automatically (`--prop pageNumbers=true` toggles them explicitly). Address the TOC directly: `/toc[1]` or `/tableofcontents` resolve to the first TOC field for `get`/`set`/`remove` without hand-walking XPath.
+Page numbers need pagination; OfficeCLI cannot calculate TOC page numbers itself. Set `updateFields=true` so Word recomputes the TOC (and all fields) on open. Without a Word-compatible field engine, report the TOC as dynamic and uncomputed; do not claim ready page numbers or guess a static TOC.
 
-**TOC delivery step (mandatory before handoff).** The live TOC field is a placeholder until recalculated. Some viewers populate it on first open; others show the literal `Update field to see table of contents` until the reader recalculates. Pick by recipient:
+```bash
+officecli set "$FILE" /settings --prop updateFields=true
+```
 
-- **Will recalculate (or press F9):** run `officecli set "$FILE" /settings --prop updateFields=true` so Word recomputes the TOC (and all fields) on open, and/or add a visible "Press F9 to refresh the TOC and page numbers" instruction. Done.
-- **Cannot / will not recalculate:** use the **static TOC fallback — recipe (f)** (the live field renders a placeholder until recalculated; no headless pipeline can pre-populate it).
-
-Ship-check: `officecli query "$FILE" 'p:contains("Update field to see")'` must return empty whenever the reader won't recalculate. A match means switch to recipe (f).
+Address the TOC directly with `/toc[1]` or `/tableofcontents` for `get`/`set`/`remove`.
 
 ### Images
 
@@ -315,16 +319,16 @@ officecli set "$FILE" / --prop pageWidth=12240 --prop pageHeight=15840 --prop ma
 officecli set "$FILE" / --prop columns=2 --prop columnSpace=720
 ```
 
-### Forcing page breaks — belt-and-suspenders
+### Forcing page breaks
 
-Two mechanisms exist; **neither alone is reliable across every viewer**. Depending on viewer and preceding content, `<w:pageBreakBefore/>` may be ignored OR `<w:br w:type="page"/>` rendered as a soft break — opposite failures. Apply BOTH on every H1 you want on a fresh page, the TOC heading, and the cover-closing paragraph:
+Use exactly one page-break mechanism per logical boundary. The default is `pageBreakBefore=true` on the target heading. Alternatively, insert one explicit `pagebreak` before the heading. Never combine both mechanisms for the same boundary: the resulting double break can create a blank page. Never set `pageBreakBefore` on `p[last()]` immediately after adding a `pagebreak`.
 
 ```bash
-officecli add "$FILE" /body --type pagebreak --index <N>          # 1. pagebreak element BEFORE the heading
-officecli set "$FILE" "/body/p[<N+1>]" --prop pageBreakBefore=true # 2. on the heading itself
+# Default: apply the break directly to the heading.
+officecli add "$FILE" /body --type paragraph --prop text="Introduction" --prop style=Heading1 --prop pageBreakBefore=true
 ```
 
-`--prop break=newPage` is a shorter alias for `pageBreakBefore=true` (accepts `newPage|page|nextPage|pageBreak`). Same XML, same belt-and-suspenders rule. Preview with `view html` and count pages.
+`--prop break=newPage` is an alias for `pageBreakBefore=true`. Preview with `view html` and check for blank pages.
 
 ### Report-level recipes
 
@@ -339,8 +343,7 @@ officecli add "$FILE" /body --type paragraph --prop text="FY26 Outlook and Scena
 officecli add "$FILE" /body --type paragraph --prop text='Prepared for: Acme Corp. Leadership Team' --prop align=center --prop size=11pt
 officecli add "$FILE" /body --type paragraph --prop text='Engagement: 2026-04 — 2026-06' --prop align=center --prop size=11pt --prop spaceAfter=36pt
 officecli add "$FILE" /body --type paragraph --prop text="Key themes: 1) margin resilience, 2) EMEA expansion, 3) capital allocation." --prop align=center --prop italic=true --prop size=10pt
-officecli add "$FILE" /body --type pagebreak
-officecli set "$FILE" "/body/p[last()]" --prop pageBreakBefore=true
+officecli add "$FILE" /body --type paragraph --prop text="Executive Summary" --prop style=Heading1 --prop pageBreakBefore=true
 ```
 
 **(b) Page X of Y footer — composite PAGE + NUMPAGES.** Add the footer paragraph, then three child ops build `Page <X> of <Y>` live. The official `help docx footer` recipe.
@@ -389,15 +392,7 @@ officecli set "$FILE" "/body/tbl[1]/tr[1]/tc[1]/p[1]" --prop listStyle=bullet
 
 If the seeded line lands at the bottom, re-order: `officecli move "$FILE" "/body/tbl[1]/tr[1]/tc[1]/p[N]" --index 0`.
 
-**(f) Static TOC fallback (cross-viewer reliability).** When delivering to viewers that don't auto-recalculate, the live TOC field renders the literal `Update field to see table of contents`. No CLI-only pipeline can pre-populate a TOC field the way Word does on save. Workaround: remove the TOC field, keep a visible heading, hand-write one dot-leader line per heading.
-
-```bash
-officecli query "$FILE" 'p:contains("Update field to see")'        # note the /body/p[N] paths, then:
-officecli remove "$FILE" "/body/p[N]"                              # repeat per hit
-officecli add "$FILE" /body --type paragraph --prop text="Contents" --prop style=TOCHeading --prop size=14pt --prop bold=true --index <pos>
-officecli add "$FILE" /body --type paragraph --prop text="1. Executive Summary ......................................... 3" --prop size=11pt --index <pos+1>
-# … one per heading. Page numbers manual; eyeball positions via view html. Live --type toc remains correct for recipients who recalculate.
-```
+**(f) TOC without a field engine.** A CLI-only pipeline cannot calculate reliable page numbers. Keep the live TOC, set `updateFields=true`, and tell the recipient to open the document in Word or another compatible field engine. Do not replace it with guessed static page numbers.
 
 ### Template delivery — separating Template Notes from end-user content
 
@@ -460,9 +455,10 @@ officecli close "$FILE" 2>/dev/null
 officecli validate "$FILE" | grep -q "no errors found" || { echo "REJECT Gate 1: validate failed"; exit 1; }
 echo "Gate 1 OK"
 
-# Gate 2 — token leak (shell-escape / template tokens / TOC placeholder / literal \$ \t \n). grep -c never false-PASSes.
-LEAK=$(officecli view "$FILE" text | grep -cE '(\$[A-Za-z_]+\$|\{\{[^}]+\}\}|<TODO>|xxxx|lorem|Update field to see|\\[\$tn])')
-[ "$LEAK" -eq 0 ] && echo "Gate 2 OK" || { echo "REJECT Gate 2: $LEAK leak line(s)"; officecli view "$FILE" text | grep -nE '(\$[A-Za-z_]+\$|\{\{[^}]+\}\}|<TODO>|xxxx|lorem|Update field to see|\\[\$tn])'; exit 1; }
+# Gate 2 — token leak (shell-escape / template tokens / literal \$ \t \n). grep -c never false-PASSes.
+LEAK=$(officecli view "$FILE" text | grep -cE '(\$[A-Za-z_]+\$|\{\{[^}]+\}\}|<TODO>|xxxx|lorem|\\[\$tn])')
+[ "$LEAK" -eq 0 ] && echo "Gate 2 OK" || { echo "REJECT Gate 2: $LEAK leak line(s)"; officecli view "$FILE" text | grep -nE '(\$[A-Za-z_]+\$|\{\{[^}]+\}\}|<TODO>|xxxx|lorem|\\[\$tn])'; exit 1; }
+# A TOC placeholder is valid before a Word-compatible field engine updates it; confirm the TOC field and updateFields setting structurally instead.
 
 # Gate 3 — live PAGE field exists when a footer is expected.
 FLD=$(officecli query "$FILE" 'field[fieldType=page]' --json | jq '.data.results | length')
@@ -514,7 +510,7 @@ Before calling a color/field/chart broken, open the file in the user's target vi
 | `listStyle` on a run | It's a paragraph property |
 | Indent via leading spaces | `indent=720` / `firstLineIndent=360` / `hangingIndent=720` (dotted `ind.left` / `ind.firstLine` also work) |
 | Cover page-number suppression via `set differentFirstPage=true` | UNSUPPORTED — add a first-type footer: `--type footer --prop type=first --prop text=""` |
-| `--type pagebreak` OR `pageBreakBefore` alone not breaking | Apply BOTH (see Forcing page breaks) |
+| Need a fresh chapter page | Use `pageBreakBefore=true` on the heading; use an explicit `pagebreak` only as an alternative, never both |
 | Multiple bullet paragraphs in one cell | `c1="a\nb"` makes a `<w:br/>` line break (one paragraph); for separate bullet paragraphs use recipe (e) |
 | `raw-set` when dotted-attr would work | Prefer L2 dotted-attr over L3 raw-set |
 | Next paragraph inherits the previous Heading style | Set explicit `--prop style=Normal` on the following paragraph |
