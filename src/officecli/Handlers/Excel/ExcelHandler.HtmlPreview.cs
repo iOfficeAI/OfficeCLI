@@ -29,29 +29,26 @@ public partial class ExcelHandler
     // style table can hold thousands of entries, making the render O(cells x
     // styles).
     //
-    // The stylesheet instance is the same for the whole sheet render, so we
-    // materialize each typed child collection into an array ONCE (first access)
-    // and reuse it for every subsequent cell. ConditionalWeakTable keys the
-    // cache on the collection instance and does not pin it (GC-friendly). The
-    // elements and their order are identical to `.Elements<T>()`, so lookups are
-    // byte-for-byte equivalent to the prior `.ElementAt(i)` — this is a pure
-    // access-cost change, not a semantic change.
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CellFormats, CellFormat[]> CellFormatArrayCache = new();
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Fonts, Font[]> FontArrayCache = new();
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Fills, Fill[]> FillArrayCache = new();
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Borders, Border[]> BorderArrayCache = new();
+    // Materialize the stylesheet's typed child collections once per ViewAsHtml()
+    // invocation. The document DOM can remain alive and gain styles between
+    // commands, so these arrays must never outlive the render that created them.
+    // Their element order is identical to `.Elements<T>()`, making indexed lookups
+    // byte-for-byte equivalent to the prior `.ElementAt(i)` calls.
+    internal sealed class RenderStyleArrays
+    {
+        public CellFormat[] CellFormats { get; }
+        public Font[] Fonts { get; }
+        public Fill[] Fills { get; }
+        public Border[] Borders { get; }
 
-    private static CellFormat[] CellFormatsOf(CellFormats? cellFormats)
-        => cellFormats is null ? Array.Empty<CellFormat>() : CellFormatArrayCache.GetValue(cellFormats, c => c.Elements<CellFormat>().ToArray());
-
-    private static Font[] FontsOf(Fonts? fonts)
-        => fonts is null ? Array.Empty<Font>() : FontArrayCache.GetValue(fonts, c => c.Elements<Font>().ToArray());
-
-    private static Fill[] FillsOf(Fills? fills)
-        => fills is null ? Array.Empty<Fill>() : FillArrayCache.GetValue(fills, c => c.Elements<Fill>().ToArray());
-
-    private static Border[] BordersOf(Borders? borders)
-        => borders is null ? Array.Empty<Border>() : BorderArrayCache.GetValue(borders, c => c.Elements<Border>().ToArray());
+        public RenderStyleArrays(Stylesheet? stylesheet)
+        {
+            CellFormats = stylesheet?.CellFormats?.Elements<CellFormat>().ToArray() ?? Array.Empty<CellFormat>();
+            Fonts = stylesheet?.Fonts?.Elements<Font>().ToArray() ?? Array.Empty<Font>();
+            Fills = stylesheet?.Fills?.Elements<Fill>().ToArray() ?? Array.Empty<Fill>();
+            Borders = stylesheet?.Borders?.Elements<Border>().ToArray() ?? Array.Empty<Border>();
+        }
+    }
 
     // Wire the formula evaluator's TEXT() up to the cell number-format engine so
     // TEXT(value, format) applies date/time/percent/currency codes identically to
@@ -200,6 +197,7 @@ public partial class ExcelHandler
             // pivot refresh are visible to the HTML renderer.
             stylesheet = pivotDoc.WorkbookPart?.WorkbookStylesPart?.Stylesheet;
         }
+        var renderStyles = new RenderStyleArrays(stylesheet);
 
         sb.AppendLine("<!DOCTYPE html>");
         sb.AppendLine("<html>");
@@ -208,7 +206,7 @@ public partial class ExcelHandler
         sb.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
         sb.AppendLine($"<title>{HtmlEncode(Path.GetFileName(_filePath))}</title>");
         sb.AppendLine("<style>");
-        sb.AppendLine(GenerateExcelCss());
+        sb.AppendLine(GenerateExcelCss(renderStyles));
         sb.AppendLine("</style>");
         sb.AppendLine("</head>");
         sb.AppendLine("<body>");
@@ -244,7 +242,7 @@ public partial class ExcelHandler
             var pictures = CollectSheetPictures(worksheetPart);
             if (pictures.Count > 0)
                 charts.AddRange(pictures);
-            RenderSheetTable(sb, sheetName, renderPart, stylesheet, charts, sheetIdx, showGridLines);
+            RenderSheetTable(sb, sheetName, renderPart, stylesheet, renderStyles, charts, sheetIdx, showGridLines);
             sb.AppendLine("</div>");
         }
         sb.AppendLine("</div>");
@@ -311,7 +309,7 @@ public partial class ExcelHandler
 
     // ==================== Sheet Rendering ====================
 
-    private void RenderSheetTable(StringBuilder sb, string sheetName, WorksheetPart worksheetPart, Stylesheet? stylesheet,
+    private void RenderSheetTable(StringBuilder sb, string sheetName, WorksheetPart worksheetPart, Stylesheet? stylesheet, RenderStyleArrays renderStyles,
         List<(int fromRow, int toRow, int fromCol, int toCol, double colOffsetPt, string html)>? charts = null, int sheetIdx = 0,
         bool showGridLines = true)
     {
@@ -336,7 +334,7 @@ public partial class ExcelHandler
         var defaultFontPt = 11.0;
         if (stylesheet?.Fonts != null)
         {
-            var fontsArr = FontsOf(stylesheet.Fonts);
+            var fontsArr = renderStyles.Fonts;
             if (fontsArr.Length > 0)
             {
                 var defFont = fontsArr[0];
@@ -517,7 +515,7 @@ public partial class ExcelHandler
         // estimation heuristics elsewhere in this renderer.
         foreach (var ((r, _), cell) in cellMap)
         {
-            var extent = EstimateRotatedCellHeightPt(cell, stylesheet, defaultFontPt);
+            var extent = EstimateRotatedCellHeightPt(cell, stylesheet, renderStyles, defaultFontPt);
             if (extent <= 0) continue;
             if (!rowHeights.TryGetValue(r, out var existing) || existing < extent)
                 rowHeights[r] = extent;
@@ -541,12 +539,12 @@ public partial class ExcelHandler
                     foreach (var cell in cellMap.Where(kv => kv.Key.row == fr).Select(kv => kv.Value))
                     {
                         var si = cell.StyleIndex?.Value ?? 0;
-                        var xfsArr = CellFormatsOf(stylesheet?.CellFormats);
+                        var xfsArr = renderStyles.CellFormats;
                         if (si < (uint)xfsArr.Length)
                         {
                             var xf = xfsArr[(int)si];
                             var fontId = xf.FontId?.Value ?? 0;
-                            var fontsArr = FontsOf(stylesheet?.Fonts);
+                            var fontsArr = renderStyles.Fonts;
                             if (fontId < (uint)fontsArr.Length)
                             {
                                 var font = fontsArr[(int)fontId];
@@ -646,7 +644,7 @@ public partial class ExcelHandler
         var ctx = new SheetRenderContext(sheetName, sheetIdx, cellMap, maxRow, maxCol,
             rowHeights, hiddenRows, hiddenCols, mergeMap, frozenRows, frozenCols,
             frozenLeftOffsets, frozenTopOffsets, cfMap, dataBarMap, iconSetMap, sparklineMap,
-            tableStyleMap, autoFilterCells, stylesheet, evaluator, defaultColWidthPt, defaultRowHeightPt, colWidths);
+            tableStyleMap, autoFilterCells, stylesheet, renderStyles, evaluator, defaultColWidthPt, defaultRowHeightPt, colWidths);
         RenderTbody(sb, ctx);
         sb.AppendLine("</table>");
 
@@ -744,6 +742,7 @@ public partial class ExcelHandler
         Dictionary<string, string> TableStyleMap,
         HashSet<string> AutoFilterCells,
         Stylesheet? Stylesheet,
+        RenderStyleArrays RenderStyles,
         Core.FormulaEvaluator? Evaluator,
         double DefaultColWidthPt,
         double DefaultRowHeightPt,
@@ -829,8 +828,8 @@ public partial class ExcelHandler
                 // member. The anchor's own right/bottom edges are interior to the merge.
                 var rightMember = ctx.CellMap.TryGetValue((r, c + mergeInfo.ColSpan - 1), out var rmc) ? rmc : null;
                 var bottomMember = ctx.CellMap.TryGetValue((r + mergeInfo.RowSpan - 1, c), out var bmc) ? bmc : null;
-                var style = GetCellStyleCss(cell, ctx.Stylesheet, ctx.FrozenRows, ctx.FrozenCols, r, c, ctx.FrozenLeftOffsets, ctx.FrozenTopOffsets, ctx.CfMap, ctx.DataBarMap, ctx.IconSetMap, ctx.TableStyleMap, mergePerimeter: true, rightBorderCell: rightMember, bottomBorderCell: bottomMember);
-                var value = cell != null ? GetFormattedCellValue(cell, ctx.Stylesheet, ctx.Evaluator) : "";
+                var style = GetCellStyleCss(cell, ctx.Stylesheet, ctx.RenderStyles, ctx.FrozenRows, ctx.FrozenCols, r, c, ctx.FrozenLeftOffsets, ctx.FrozenTopOffsets, ctx.CfMap, ctx.DataBarMap, ctx.IconSetMap, ctx.TableStyleMap, mergePerimeter: true, rightBorderCell: rightMember, bottomBorderCell: bottomMember);
+                var value = cell != null ? GetFormattedCellValue(cell, ctx.Stylesheet, ctx.Evaluator, ctx.RenderStyles) : "";
                 var richHtml = cell != null ? TryBuildRichTextHtml(cell) : null;
                 var adjColSpan = mergeInfo.ColSpan;
                 if (adjColSpan > 1 && ctx.HiddenCols.Count > 0)
@@ -847,17 +846,17 @@ public partial class ExcelHandler
                     : richHtml != null && !ctx.DataBarMap.ContainsKey(cellRef) && !ctx.IconSetMap.ContainsKey(cellRef)
                     ? richHtml
                     : BuildCellContent(cellRef, value, ctx.DataBarMap, ctx.IconSetMap);
-                content = WrapVerticalAlign(content, GetCellVerticalAlign(cell, ctx.Stylesheet), richHtml);
+                content = WrapVerticalAlign(content, GetCellVerticalAlign(cell, ctx.Stylesheet, ctx.RenderStyles), richHtml);
                 if (ctx.SparklineMap.TryGetValue(cellRef, out var spkSvg)) content = spkSvg + content;
-                var diagSvg = TryBuildCellDiagonalSvg(cell, ctx.Stylesheet) ?? "";
+                var diagSvg = TryBuildCellDiagonalSvg(cell, ctx.Stylesheet, ctx.RenderStyles) ?? "";
                 if (ctx.AutoFilterCells.Contains(cellRef)) content += AutoFilterIndicatorHtml;
                 rowSb.Append($"<td data-path=\"/{HtmlEncode(ctx.SheetName)}/{cellRef}\"{GetFormulaAttr(cell)}{spanAttrs}{style}>{diagSvg}{content}</td>");
             }
             else
             {
                 var cell = ctx.CellMap.TryGetValue((r, c), out var nc) ? nc : null;
-                var style = GetCellStyleCss(cell, ctx.Stylesheet, ctx.FrozenRows, ctx.FrozenCols, r, c, ctx.FrozenLeftOffsets, ctx.FrozenTopOffsets, ctx.CfMap, ctx.DataBarMap, ctx.IconSetMap, ctx.TableStyleMap);
-                var value = cell != null ? GetFormattedCellValue(cell, ctx.Stylesheet, ctx.Evaluator) : "";
+                var style = GetCellStyleCss(cell, ctx.Stylesheet, ctx.RenderStyles, ctx.FrozenRows, ctx.FrozenCols, r, c, ctx.FrozenLeftOffsets, ctx.FrozenTopOffsets, ctx.CfMap, ctx.DataBarMap, ctx.IconSetMap, ctx.TableStyleMap);
+                var value = cell != null ? GetFormattedCellValue(cell, ctx.Stylesheet, ctx.Evaluator, ctx.RenderStyles) : "";
                 var richHtml = cell != null ? TryBuildRichTextHtml(cell) : null;
                 var hlinkHtml = TryBuildHyperlinkFormulaHtml(cell, value);
                 var content = hlinkHtml != null && !ctx.DataBarMap.ContainsKey(cellRef) && !ctx.IconSetMap.ContainsKey(cellRef)
@@ -865,9 +864,9 @@ public partial class ExcelHandler
                     : richHtml != null && !ctx.DataBarMap.ContainsKey(cellRef) && !ctx.IconSetMap.ContainsKey(cellRef)
                     ? richHtml
                     : BuildCellContent(cellRef, value, ctx.DataBarMap, ctx.IconSetMap);
-                content = WrapVerticalAlign(content, GetCellVerticalAlign(cell, ctx.Stylesheet), richHtml);
+                content = WrapVerticalAlign(content, GetCellVerticalAlign(cell, ctx.Stylesheet, ctx.RenderStyles), richHtml);
                 if (ctx.SparklineMap.TryGetValue(cellRef, out var spkSvg)) content = spkSvg + content;
-                var diagSvg = TryBuildCellDiagonalSvg(cell, ctx.Stylesheet) ?? "";
+                var diagSvg = TryBuildCellDiagonalSvg(cell, ctx.Stylesheet, ctx.RenderStyles) ?? "";
                 // Text-spill emulation (Excel-fidelity): a non-wrapped left/general
                 // aligned text cell with empty right-neighbours paints its overflow
                 // across those neighbours, clipping at the first occupied cell. The
@@ -941,11 +940,11 @@ public partial class ExcelHandler
     // CSS transform:rotate alone does not. Returns 0 when the cell isn't (near-)
     // vertically rotated or has no text. Approximation only — like the spill/width
     // heuristics, the goal is "not clipped", matching Excel's auto-expand.
-    private double EstimateRotatedCellHeightPt(Cell? cell, Stylesheet? stylesheet, double defaultFontPt)
+    private double EstimateRotatedCellHeightPt(Cell? cell, Stylesheet? stylesheet, RenderStyleArrays renderStyles, double defaultFontPt)
     {
         if (cell == null || stylesheet?.CellFormats == null) return 0;
         var si = (int)(cell.StyleIndex?.Value ?? 0);
-        var xfsArr = CellFormatsOf(stylesheet.CellFormats);
+        var xfsArr = renderStyles.CellFormats;
         if (si >= xfsArr.Length) return 0;
         var xf = xfsArr[si];
         var rot = xf.Alignment?.TextRotation?.Value;
@@ -957,13 +956,13 @@ public partial class ExcelHandler
         if (!vertical) return 0;
 
         // Cell text length: shared-string / inline-string / raw value.
-        string text = GetFormattedCellValue(cell, stylesheet);
+        string text = GetFormattedCellValue(cell, stylesheet, styleArrays: renderStyles);
         if (string.IsNullOrEmpty(text)) return 0;
 
         // Font size for this cell.
         double fontPt = defaultFontPt;
         var fontId = xf.FontId?.Value ?? 0;
-        var fontsArr = FontsOf(stylesheet.Fonts);
+        var fontsArr = renderStyles.Fonts;
         if (fontId < (uint)fontsArr.Length)
             fontPt = fontsArr[(int)fontId].FontSize?.Val?.Value ?? defaultFontPt;
 
@@ -994,7 +993,7 @@ public partial class ExcelHandler
         if (ctx.Stylesheet?.CellFormats != null)
         {
             var si = (int)(cell.StyleIndex?.Value ?? 0);
-            var xfs = CellFormatsOf(ctx.Stylesheet.CellFormats);
+            var xfs = ctx.RenderStyles.CellFormats;
             if (si >= 0 && si < xfs.Length)
             {
                 var al = xfs[si].Alignment;
@@ -1044,7 +1043,7 @@ public partial class ExcelHandler
         if (ctx.Stylesheet?.CellFormats == null) return 0;
 
         var si = (int)(cell.StyleIndex?.Value ?? 0);
-        var xfs = CellFormatsOf(ctx.Stylesheet.CellFormats);
+        var xfs = ctx.RenderStyles.CellFormats;
         if (si < 0 || si >= xfs.Length) return 0;
         var xf = xfs[si];
         if (xf.Alignment?.ShrinkToFit?.Value != true) return 0;
@@ -1053,7 +1052,7 @@ public partial class ExcelHandler
         // Base font size for this cell.
         double basePt = 11.0;
         var fontId = xf.FontId?.Value ?? 0;
-        var fontsArr = FontsOf(ctx.Stylesheet.Fonts);
+        var fontsArr = ctx.RenderStyles.Fonts;
         if (fontId < (uint)fontsArr.Length)
             basePt = fontsArr[(int)fontId].FontSize?.Val?.Value ?? 11.0;
 
@@ -2182,7 +2181,7 @@ public partial class ExcelHandler
     // perimeter member cells — not the anchor (whose right/bottom are interior to the
     // merge). Callers pass rightBorderCell (right-column member) and bottomBorderCell
     // (bottom-row member); default null = same as the anchor (non-merge path unchanged).
-    private string GetCellStyleCss(Cell? cell, Stylesheet? stylesheet, int frozenRows, int frozenCols, int row, int col,
+    private string GetCellStyleCss(Cell? cell, Stylesheet? stylesheet, RenderStyleArrays renderStyles, int frozenRows, int frozenCols, int row, int col,
         Dictionary<int, double>? frozenLeftOffsets = null, Dictionary<int, double>? frozenTopOffsets = null,
         Dictionary<string, string>? cfMap = null, Dictionary<string, string>? dataBarMap = null,
         Dictionary<string, string>? iconSetMap = null,
@@ -2243,14 +2242,14 @@ public partial class ExcelHandler
         var styleIndex = cell.StyleIndex?.Value ?? 0;
 
         {
-            var xfsArr = CellFormatsOf(stylesheet.CellFormats);
+            var xfsArr = renderStyles.CellFormats;
             if (styleIndex < (uint)xfsArr.Length)
             {
                 var xf = xfsArr[(int)styleIndex];
-                BuildFontCss(xf, stylesheet, styles);
-                BuildFillCss(xf, stylesheet, styles);
-                BuildBorderCss(xf, stylesheet, styles, mergePerimeter, rightBorderCell, bottomBorderCell);
-                BuildAlignmentCss(xf, styles, cell);
+                BuildFontCss(xf, styles, renderStyles);
+                BuildFillCss(xf, styles, renderStyles);
+                BuildBorderCss(xf, styles, renderStyles, mergePerimeter, rightBorderCell, bottomBorderCell);
+                BuildAlignmentCss(xf, styles, cell, renderStyles);
 
                 // Number-format [Color] section (e.g. "$#,##0.00;[Red](...)" colors
                 // negatives red). Applies to numeric cells only; the section is
@@ -2264,7 +2263,7 @@ public partial class ExcelHandler
 
                 // Diagonal border needs the TD to be a positioning context for the
                 // inline SVG overlay emitted into the cell content (BuildRowInnerHtml).
-                if (TryBuildCellDiagonalSvg(cell, stylesheet) != null
+                if (TryBuildCellDiagonalSvg(cell, stylesheet, renderStyles) != null
                     && !styles.Any(s => s.StartsWith("position:")))
                     styles.Add("position:relative");
             }
@@ -2305,10 +2304,10 @@ public partial class ExcelHandler
         return styles.Count > 0 ? $" style=\"{string.Join(";", styles)}\"" : "";
     }
 
-    private void BuildFontCss(CellFormat xf, Stylesheet stylesheet, List<string> styles)
+    private void BuildFontCss(CellFormat xf, List<string> styles, RenderStyleArrays renderStyles)
     {
         var fontId = xf.FontId?.Value ?? 0;
-        var fontsArr = FontsOf(stylesheet.Fonts);
+        var fontsArr = renderStyles.Fonts;
         if (fontId >= (uint)fontsArr.Length) return;
 
         var font = fontsArr[(int)fontId];
@@ -2352,15 +2351,15 @@ public partial class ExcelHandler
     /// Used to wrap cell content in a <sup>/<sub> inline element — vertical-align
     /// on the <td> itself has no baseline-shifting effect on cell content.
     /// </summary>
-    private static string? GetCellVerticalAlign(Cell? cell, Stylesheet? stylesheet)
+    private static string? GetCellVerticalAlign(Cell? cell, Stylesheet? stylesheet, RenderStyleArrays renderStyles)
     {
         if (cell == null || stylesheet?.CellFormats == null || stylesheet.Fonts == null) return null;
         var styleIndex = cell.StyleIndex?.Value ?? 0;
-        var xfsArr = CellFormatsOf(stylesheet.CellFormats);
+        var xfsArr = renderStyles.CellFormats;
         if (styleIndex >= (uint)xfsArr.Length) return null;
         var xf = xfsArr[(int)styleIndex];
         var fontId = xf.FontId?.Value ?? 0;
-        var fontsArr = FontsOf(stylesheet.Fonts);
+        var fontsArr = renderStyles.Fonts;
         if (fontId >= (uint)fontsArr.Length) return null;
         var font = fontsArr[(int)fontId];
         var v = font.GetFirstChild<VerticalTextAlignment>()?.Val?.Value;
@@ -2382,12 +2381,12 @@ public partial class ExcelHandler
         return $"<{tag}>{content}</{tag}>";
     }
 
-    private void BuildFillCss(CellFormat xf, Stylesheet stylesheet, List<string> styles)
+    private void BuildFillCss(CellFormat xf, List<string> styles, RenderStyleArrays renderStyles)
     {
         var fillId = xf.FillId?.Value ?? 0;
         if (fillId <= 1) return; // 0=none, 1=gray125 pattern (default)
 
-        var fillsArr = FillsOf(stylesheet.Fills);
+        var fillsArr = renderStyles.Fills;
         if (fillId >= (uint)fillsArr.Length) return;
 
         var fill = fillsArr[(int)fillId];
@@ -2421,11 +2420,11 @@ public partial class ExcelHandler
         }
     }
 
-    private void BuildBorderCss(CellFormat xf, Stylesheet stylesheet, List<string> styles,
+    private void BuildBorderCss(CellFormat xf, List<string> styles, RenderStyleArrays renderStyles,
         bool mergePerimeter = false, Cell? rightBorderCell = null, Cell? bottomBorderCell = null)
     {
         var borderId = xf.BorderId?.Value ?? 0;
-        var bordersArr = BordersOf(stylesheet.Borders);
+        var bordersArr = renderStyles.Borders;
         Border? border = (borderId != 0 && borderId < (uint)bordersArr.Length)
             ? bordersArr[(int)borderId]
             : null;
@@ -2438,21 +2437,21 @@ public partial class ExcelHandler
         // Excel sources from the perimeter member cell — not the (interior) anchor edge.
         // If the member cell is absent (or carries no border) the region has NO border on
         // that edge. Non-merge path (mergePerimeter=false) keeps the anchor's own edges.
-        var rightBorder = mergePerimeter ? (rightBorderCell != null ? GetCellBorder(rightBorderCell, stylesheet) : null) : border;
-        var bottomBorder = mergePerimeter ? (bottomBorderCell != null ? GetCellBorder(bottomBorderCell, stylesheet) : null) : border;
+        var rightBorder = mergePerimeter ? (rightBorderCell != null ? GetCellBorder(rightBorderCell, renderStyles) : null) : border;
+        var bottomBorder = mergePerimeter ? (bottomBorderCell != null ? GetCellBorder(bottomBorderCell, renderStyles) : null) : border;
         AddBorderSideCss(rightBorder?.RightBorder, "right", styles);
         AddBorderSideCss(bottomBorder?.BottomBorder, "bottom", styles);
     }
 
     // Resolve a cell's <border> element via its style index, or null if none.
-    private Border? GetCellBorder(Cell cell, Stylesheet stylesheet)
+    private static Border? GetCellBorder(Cell cell, RenderStyleArrays renderStyles)
     {
         var styleIndex = cell.StyleIndex?.Value ?? 0;
-        var xfsArr = CellFormatsOf(stylesheet.CellFormats);
+        var xfsArr = renderStyles.CellFormats;
         if (styleIndex >= (uint)xfsArr.Length) return null;
         var xf = xfsArr[(int)styleIndex];
         var borderId = xf.BorderId?.Value ?? 0;
-        var bordersArr = BordersOf(stylesheet.Borders);
+        var bordersArr = renderStyles.Borders;
         if (borderId == 0 || borderId >= (uint)bordersArr.Length) return null;
         return bordersArr[(int)borderId];
     }
@@ -2465,16 +2464,16 @@ public partial class ExcelHandler
     /// null when the cell has no diagonal border. The TD must be position:relative
     /// for the overlay to anchor to the cell (added in GetCellStyleCss).
     /// </summary>
-    private string? TryBuildCellDiagonalSvg(Cell? cell, Stylesheet? stylesheet)
+    private string? TryBuildCellDiagonalSvg(Cell? cell, Stylesheet? stylesheet, RenderStyleArrays renderStyles)
     {
         if (cell == null || stylesheet == null) return null;
         var styleIndex = cell.StyleIndex?.Value ?? 0;
-        var xfsArr = CellFormatsOf(stylesheet.CellFormats);
+        var xfsArr = renderStyles.CellFormats;
         if (styleIndex >= (uint)xfsArr.Length)
             return null;
         var xf = xfsArr[(int)styleIndex];
         var borderId = xf.BorderId?.Value ?? 0;
-        var bordersArr = BordersOf(stylesheet.Borders);
+        var bordersArr = renderStyles.Borders;
         if (borderId == 0 || borderId >= (uint)bordersArr.Length)
             return null;
         var border = bordersArr[(int)borderId];
@@ -2555,7 +2554,7 @@ public partial class ExcelHandler
             styles.Add("text-align:right");
     }
 
-    private void BuildAlignmentCss(CellFormat xf, List<string> styles, Cell? cell = null)
+    private void BuildAlignmentCss(CellFormat xf, List<string> styles, Cell? cell, RenderStyleArrays renderStyles)
     {
         var alignment = xf.Alignment;
         bool hasExplicitHAlign = alignment?.Horizontal?.HasValue == true;
@@ -2629,8 +2628,7 @@ public partial class ExcelHandler
         if (alignment.Indent?.HasValue == true && alignment.Indent.Value > 0)
         {
             // 1 indent level ≈ width of "0" in default font ≈ fontSize × 0.6
-            var defFontSz = FontsOf(_doc.WorkbookPart?.WorkbookStylesPart?.Stylesheet?.Fonts)
-                .FirstOrDefault()?.FontSize?.Val?.Value ?? 11.0;
+            var defFontSz = renderStyles.Fonts.FirstOrDefault()?.FontSize?.Val?.Value ?? 11.0;
             var indentPt = alignment.Indent.Value * defFontSz * 0.6;
             styles.Add($"padding-left:{indentPt:0.#}pt");
         }
@@ -2713,7 +2711,7 @@ public partial class ExcelHandler
     /// Get cell display value with number formatting applied for HTML preview.
     /// Handles common formats: percentage, thousands separator, decimal places, dates.
     /// </summary>
-    private string GetFormattedCellValue(Cell cell, Stylesheet? stylesheet, Core.FormulaEvaluator? evaluator = null)
+    private string GetFormattedCellValue(Cell cell, Stylesheet? stylesheet, Core.FormulaEvaluator? evaluator = null, RenderStyleArrays? styleArrays = null)
     {
         var rawValue = GetCellDisplayValue(cell);
 
@@ -2760,7 +2758,7 @@ public partial class ExcelHandler
             // the @-section of the format only to text values.
             if (cell.DataType?.Value != CellValues.Error)
             {
-                var textFmt = ResolveCellFormatCode(cell, stylesheet);
+                var textFmt = ResolveCellFormatCode(cell, stylesheet, styleArrays);
                 if (textFmt != null && ContainsCharOutsideQuotes(textFmt, '@'))
                     return ApplyTextFormat(rawValue, textFmt);
             }
@@ -2779,7 +2777,7 @@ public partial class ExcelHandler
                 double.TryParse(serialText, System.Globalization.NumberStyles.Any,
                     System.Globalization.CultureInfo.InvariantCulture, out var serial))
             {
-                var dateFmt = ResolveCellFormatCode(cell, stylesheet);
+                var dateFmt = ResolveCellFormatCode(cell, stylesheet, styleArrays);
                 if (dateFmt != null && ContainsDateTokenOutsideQuotes(dateFmt))
                     return ApplyNumberFormat(serial, dateFmt);
             }
@@ -2798,7 +2796,7 @@ public partial class ExcelHandler
             : cleanVal.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         // Look up number format
-        var fmtCode = ResolveCellFormatCode(cell, stylesheet);
+        var fmtCode = ResolveCellFormatCode(cell, stylesheet, styleArrays);
         if (fmtCode == null) return FormatGeneralNumber(numVal, rawValue);
 
         return ApplyNumberFormat(numVal, fmtCode);
@@ -2892,12 +2890,12 @@ public partial class ExcelHandler
     /// Resolve a cell's number format code (custom &lt;numFmt&gt; first, then built-in).
     /// Returns null when the cell has no explicit (non-General) format.
     /// </summary>
-    private static string? ResolveCellFormatCode(Cell cell, Stylesheet? stylesheet)
+    private static string? ResolveCellFormatCode(Cell cell, Stylesheet? stylesheet, RenderStyleArrays? styleArrays = null)
     {
         var styleIndex = cell.StyleIndex?.Value ?? 0;
-        if (styleIndex == 0 || stylesheet == null) return null;
+        if (styleIndex == 0 || stylesheet == null || styleArrays == null) return null;
 
-        var xfsArr = CellFormatsOf(stylesheet.CellFormats);
+        var xfsArr = styleArrays.CellFormats;
         if (styleIndex >= (uint)xfsArr.Length)
             return null;
 
@@ -3871,14 +3869,13 @@ public partial class ExcelHandler
 
     // ==================== CSS ====================
 
-    private string GenerateExcelCss()
+    private string GenerateExcelCss(RenderStyleArrays renderStyles)
     {
         // Read default font from workbook styles (font index 0)
         var defFontName = OfficeDefaultFonts.MinorLatin;
         var defFontSize = OfficeDefaultFonts.ExcelBodySizePt;
-        var stylesheet = _doc.WorkbookPart?.WorkbookStylesPart?.Stylesheet;
         {
-            var f0 = FontsOf(stylesheet?.Fonts).FirstOrDefault();
+            var f0 = renderStyles.Fonts.FirstOrDefault();
             if (f0 != null)
             {
                 if (f0.FontName?.Val?.Value != null) defFontName = CssSanitize(f0.FontName.Val.Value);
