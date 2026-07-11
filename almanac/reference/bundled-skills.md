@@ -64,7 +64,7 @@ Skill installation writes to detected agent skill directories under the user's h
 | NanoBot | `nanobot` | `~/.nanobot/workspace/skills` [@skill-installer] |
 | ZeroClaw | `zeroclaw` | `~/.zeroclaw/workspace/skills` [@skill-installer] |
 
-`officecli skills install` and `officecli skills install all` install the umbrella skill to all detected agents [@skill-installer]. `officecli skills install <name>` installs all embedded files for one named sub-skill to all detected agents, and `officecli skills install <skill> <agent>` or the reversed argument order installs one named skill to one supported agent target [@skill-installer].
+`officecli skills install` installs the umbrella skill to all detected agents; the legacy equivalent is `officecli skills all` [@skill-installer]. `officecli skills install <name>` installs all embedded files for one named sub-skill to all detected agents, and `officecli skills install <skill> <agent>` or the reversed argument order installs one named skill to one supported agent target [@skill-installer].
 
 ## Installed file handling
 

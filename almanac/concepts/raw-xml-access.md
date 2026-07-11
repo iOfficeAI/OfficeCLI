@@ -21,7 +21,7 @@ Raw XML access is the universal fallback under OfficeCLI's curated document comm
 
 ## The Command Layer
 
-`raw` takes a file and a part path, with optional row and column filters for Excel sheets [@raw-command]. `raw-set` takes a file, part path, XPath, action, and optional XML fragment or attribute assignment [@raw-command]. Supported raw-set actions include append, prepend, insert-before, insert-after, replace, remove, and set-attribute operations [@raw-helper].
+`raw` takes a file and a part path, with optional row and column filters for Excel sheets [@raw-command]. `raw-set` takes a file, part path, XPath, action, and optional XML fragment or attribute assignment [@raw-command]. Its accepted action tokens are `append`, `prepend`, `insertbefore`, `insertafter`, `replace`, `remove`, and `setattr` [@raw-helper].
 
 The command builder still uses the normal OfficeCLI safety frame. It tries resident delivery first, opens the handler directly when no resident owns the file, validates before and after mutation, reports new validation problems as warnings, and notifies live watch previews after a raw edit [@raw-command]. That makes raw access a low-level command layer, not a separate toolchain.
 
