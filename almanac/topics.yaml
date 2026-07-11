@@ -1,0 +1,109 @@
+topics:
+  - slug: concepts
+    title: Concepts
+    description: Core vocabulary and mental models for this codebase.
+    parents: []
+  - slug: architecture
+    title: Architecture
+    description: System areas, runtime boundaries, and cross-file flows.
+    parents: []
+  - slug: guides
+    title: Guides
+    description: Task-focused procedures for maintainers and integrators.
+    parents: []
+  - slug: decisions
+    title: Decisions
+    description: Durable architectural choices and their consequences.
+    parents: []
+  - slug: reference
+    title: Reference
+    description: Exact lookup material for commands, schemas, fields, and contracts.
+    parents: []
+  - slug: cli
+    title: CLI
+    description: Command dispatch, command families, help, and public command contracts.
+    parents: [architecture]
+  - slug: batch
+    title: Batch
+    description: Batch item shape, replay behavior, and multi-command workflows.
+    parents: [cli]
+  - slug: runtime
+    title: Runtime
+    description: Long-lived process behavior, pipes, liveness, and runtime policy.
+    parents: [architecture]
+  - slug: resident
+    title: Resident
+    description: Per-file resident sessions, deferred flush, and resident pipe clients.
+    parents: [runtime]
+  - slug: mcp
+    title: MCP
+    description: Model Context Protocol integration and its single-tool command bridge.
+    parents: [runtime, agent]
+  - slug: agent
+    title: Agent Integration
+    description: Agent-facing skills, MCP, SDKs, and workflow guidance.
+    parents: [architecture]
+  - slug: skills
+    title: Skills
+    description: Bundled OfficeCLI skill catalog and lazy agent workflow guides.
+    parents: [agent]
+  - slug: sdk
+    title: SDK
+    description: Node and Python resident clients and SDK usage boundaries.
+    parents: [agent, resident]
+  - slug: handlers
+    title: Handlers
+    description: Word, Excel, PowerPoint, and shared document handler behavior.
+    parents: [architecture]
+  - slug: selectors
+    title: Selectors
+    description: Selector grammars and their relationship to slash paths.
+    parents: [handlers, cli]
+  - slug: rendering
+    title: Rendering
+    description: Preview, screenshot, and renderer behavior.
+    parents: [handlers]
+  - slug: preview
+    title: Preview
+    description: Live and static document preview workflows.
+    parents: [rendering]
+  - slug: watch
+    title: Watch
+    description: Live preview server, marks, goto, and update notifications.
+    parents: [preview]
+  - slug: charts
+    title: Charts
+    description: Shared rich-object chart helpers and chart rendering.
+    parents: [handlers]
+  - slug: schemas
+    title: Schemas
+    description: Embedded help schemas, schema rendering, and schema fingerprints.
+    parents: [cli]
+  - slug: plugins
+    title: Plugins
+    description: Plugin protocol, discovery, manifests, and sidecar process flows.
+    parents: [architecture]
+  - slug: build
+    title: Build
+    description: Self-contained binary construction and embedded resources.
+    parents: [architecture]
+  - slug: install
+    title: Install
+    description: Installer behavior, platform detection, and installation surfaces.
+    parents: [build]
+  - slug: release
+    title: Release
+    description: Release assets, checksums, signing, and package publishing.
+    parents: [build]
+  - slug: examples
+    title: Examples
+    description: Example corpus and generated Office document demonstrations.
+    parents: [guides]
+  - slug: security
+    title: Security
+    description: Vulnerability reporting and runtime safety guards.
+    parents: [reference]
+  - slug: wiki
+    title: Wiki
+    description: CodeAlmanac build metadata and local wiki maintenance.
+    parents: [reference]
