@@ -330,6 +330,28 @@ def handle_info() -> Dict[str, Any]:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == '--info':
+        manifest = {
+            'name': 'officecli-hwpx',
+            'version': '0.1.0',
+            'protocol': 1,
+            'kinds': ['format-handler'],
+            'extensions': ['.hwpx'],
+            'runtime': 'python',
+            'idle_timeout_seconds': {'default': 60, 'verbs': {'save': 120}},
+            'description': 'HWPX format-handler plugin for OfficeCLI.',
+            'tier': 'community',
+            'vocabulary': {
+                'addable_types': ['paragraph'],
+                'settable_props': {
+                    'paragraph': ['text']
+                },
+                'path_segments': ['section', 'paragraph', 'run', 'chars']
+            }
+        }
+        _emit(_result(manifest))
+        return
+
     doc: Optional[HwpxDocument] = None
     for raw in sys.stdin:
         line = raw.strip()

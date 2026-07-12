@@ -65,8 +65,8 @@ internal sealed class FormatHandlerSession : IDisposable
         var utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
         var psi = new ProcessStartInfo
         {
-            FileName = _plugin.ExecutablePath,
-            ArgumentList = { "open", _filePath },
+            FileName = ResolveExecutableForLaunch(_plugin.ExecutablePath),
+            ArgumentList = { ResolveArgumentsForLaunch(_plugin.ExecutablePath, "open", Path.GetFullPath(_filePath)) },
             UseShellExecute = false,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
@@ -297,11 +297,11 @@ internal sealed class FormatHandlerSession : IDisposable
                 _broken = true;
                 TryKill();
                 throw new CliException(
-                    $"Format-handler plugin '{_plugin.Manifest.Name}' produced no activity for {idleTimeoutSec}s (command={verbForError}).")
+                        $"Format-handler plugin '{_plugin.Manifest.Name}' produced no activity for {idleTimeoutSec}s (command={verbForError}).")
                 {
                     Code = "plugin_idle_timeout",
                     Suggestion = $"Raise `idle_timeout_seconds.verbs.{verbForError}` in the plugin's manifest, " +
-                                 "emit periodic `{\"heartbeat\":true}` on stderr during long jobs, or pass --timeout 0 to disable.",
+                             "emit periodic `{\"heartbeat\":true}` on stderr during long jobs, or pass --timeout 0 to disable.",
                 };
             }
         }
@@ -376,4 +376,90 @@ internal sealed class FormatHandlerSession : IDisposable
 
     private static string Truncate(string s, int max) =>
         s.Length <= max ? s : s.Substring(0, max) + "...";
+
+    /// <summary>
+    /// Resolve the executable to actually launch. On Windows, `.bat`/`.cmd`
+    /// require `cmd.exe /c` wrappers when `UseShellExecute` is false; `.py`
+    /// needs the interpreter from PATH (or `PY_PYTHON`); real executables
+    /// pass through unchanged.
+    /// </summary>
+    private static string ResolveExecutableForLaunch(string path)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            if (path.EndsWith(".bat", StringComparison.OrdinalIgnoreCase) ||
+                path.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase))
+            {
+                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
+            }
+            if (path.EndsWith(".py", StringComparison.OrdinalIgnoreCase))
+            {
+                var py = Environment.GetEnvironmentVariable("PY_PYTHON")
+                    ?? Environment.GetEnvironmentVariable("PYTHON");
+                if (!string.IsNullOrWhiteSpace(py))
+                {
+                    var pyPath = py!.Trim().Trim('"');
+                    if (!Path.IsPathRooted(pyPath))
+                        pyPath = ResolveOnPath(pyPath);
+                    if (!string.IsNullOrEmpty(pyPath))
+                        return pyPath;
+                }
+
+                if (TryResolve("python") is string pyExe)
+                    return pyExe;
+                if (TryResolve("python3") is string pyExe3)
+                    return pyExe3;
+            }
+        }
+
+        return path;
+    }
+
+    /// <summary>
+    /// Resolve the argument list to actually launch. For .bat wrappers we
+    /// emit a single quoted string after `cmd.exe /c`. For .py we emit
+    /// the script path followed by the original args. For executables we
+    /// pass the original args through unchanged.
+    /// </summary>
+    private static string[] ResolveArgumentsForLaunch(string executablePath, string verb, string filePath)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            if (executablePath.EndsWith(".bat", StringComparison.OrdinalIgnoreCase) ||
+                executablePath.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase))
+            {
+                return new[] { "/c", $"\"{executablePath}\" {verb} \"{filePath}\"" };
+            }
+            if (executablePath.EndsWith(".py", StringComparison.OrdinalIgnoreCase))
+            {
+                return new[] { executablePath, verb, filePath };
+            }
+        }
+
+        return new[] { verb, filePath };
+    }
+
+    private static string? TryResolve(string exe)
+    {
+        var dirs = (Environment.GetEnvironmentVariable("PATH") ?? "")
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
+
+        var candidates = OperatingSystem.IsWindows() switch
+        {
+            true => new[] { exe + ".exe", exe, exe + ".cmd", exe + ".bat" },
+            false => new[] { exe }
+        };
+
+        foreach (var dir in dirs)
+        {
+            foreach (var name in candidates)
+            {
+                var candidate = Path.Combine(dir, name);
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+        }
+
+        return null;
+    }
 }

@@ -260,12 +260,23 @@ public static class PluginRegistry
         manifest = new PluginManifest();
         try
         {
+            var fileName = executablePath;
+            var arguments = "--info";
+
+            // Windows: .bat files require cmd.exe /c when UseShellExecute is false.
+            if (OperatingSystem.IsWindows()
+                && fileName.EndsWith(".bat", StringComparison.OrdinalIgnoreCase))
+            {
+                fileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
+                arguments = "/c \"" + executablePath + "\" --info";
+            }
+
             using var p = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = executablePath,
-                    Arguments = "--info",
+                    FileName = fileName,
+                    Arguments = arguments,
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
