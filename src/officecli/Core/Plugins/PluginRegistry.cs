@@ -143,6 +143,11 @@ public static class PluginRegistry
         {
             yield return "plugin.exe";
             yield return "plugin";
+            // Windows discovery also accepts non-.exe wrappers so Python/BAT
+            // plugins can live under the standard <kind>/<ext> plugin dirs
+            // without renaming them into an .exe shim.
+            yield return "plugin.bat";
+            yield return "plugin.py";
         }
         else
         {
