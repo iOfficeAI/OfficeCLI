@@ -851,7 +851,7 @@ internal static partial class ChartHelper
                     if (value.Contains('!'))
                     {
                         // Cell reference: e.g. Sheet1!B2:B4
-                        var builtVals = BuildValuesRef(value);
+                        var builtVals = BuildValuesRef(NormalizeRangeReference(value));
                         foreach (var child in builtVals.ChildElements.ToList())
                             valEl.AppendChild(child.CloneNode(true));
                     }

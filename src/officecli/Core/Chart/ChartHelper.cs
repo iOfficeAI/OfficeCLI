@@ -117,12 +117,35 @@ internal static partial class ChartHelper
             @"^(?:'[^']+'!|[A-Za-z_][\w\.]*!)\$?[A-Za-z]+\$?\d+(?::\$?[A-Za-z]+\$?\d+)?$");
     }
 
+
+
+    /// <summary>
+    /// Wraps a sheet-name prefix (the part ending with '!') in single quotes.
+    /// ECMA-376 permits sheet-name prefixes to be quoted unconditionally, and
+    /// Office/WPS accepts references such as 'Sheet1'!A1, '测试'!A1, and
+    /// '1透视'!A1 without issue. Already-quoted prefixes are left unchanged.
+    /// </summary>
+    private static string QuoteSheetNamePrefix(string sheetPartWithBang)
+    {
+        if (string.IsNullOrEmpty(sheetPartWithBang)) return sheetPartWithBang;
+        // sheetPartWithBang ends with '!'
+        var prefix = sheetPartWithBang[..^1];
+        if (string.IsNullOrEmpty(prefix)) return sheetPartWithBang;
+
+        // Already quoted — leave as-is.
+        if (prefix.Length >= 2 && prefix[0] == '\'' && prefix[^1] == '\'')
+            return sheetPartWithBang;
+
+        // Escape embedded single quotes by doubling them, then wrap the whole
+        // prefix in single quotes. This is valid for any sheet name per ECMA-376.
+        var escaped = prefix.Replace("'", "''");
+        return "'" + escaped + "'!";
+    }
+
     /// <summary>
     /// Normalizes a single-cell reference for use inside a chart's c:strRef/c:f.
-    /// Ensures absolute ($col$row) form and preserves any sheet prefix. If the
-    /// input is a A1:A1 style single-cell range, the range form is kept so the
-    /// output matches what Excel writes when a user points the Name field at a
-    /// single cell via the dialog.
+    /// Ensures absolute ($col$row) form, preserves any sheet prefix, and quotes
+    /// the sheet prefix unconditionally per ECMA-376.
     /// </summary>
     internal static string NormalizeCellReference(string value)
     {
@@ -138,12 +161,14 @@ internal static partial class ChartHelper
         var parts = cellPart.Split(':');
         for (int i = 0; i < parts.Length; i++)
             parts[i] = AddAbsoluteMarkers(parts[i]);
-        return sheetPart + string.Join(":", parts);
+        return QuoteSheetNamePrefix(sheetPart) + string.Join(":", parts);
     }
+
 
     /// <summary>
     /// Normalizes a range reference by adding $ signs for absolute references.
-    /// If no sheet prefix, prepends defaultSheet.
+    /// If no sheet prefix, prepends defaultSheet. Sheet-name prefixes are quoted
+    /// unconditionally per ECMA-376.
     /// </summary>
     internal static string NormalizeRangeReference(string value, string? defaultSheet = null)
     {
@@ -167,7 +192,7 @@ internal static partial class ChartHelper
         for (int i = 0; i < parts.Length; i++)
             parts[i] = AddAbsoluteMarkers(parts[i]);
 
-        return sheetPart + string.Join(":", parts);
+        return QuoteSheetNamePrefix(sheetPart) + string.Join(":", parts);
     }
 
     private static string AddAbsoluteMarkers(string cellRef)
