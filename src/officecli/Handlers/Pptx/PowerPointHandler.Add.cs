@@ -38,6 +38,13 @@ public partial class PowerPointHandler
         parentPath = ResolveIdPath(parentPath);
         parentPath = ResolveLastPredicates(parentPath);
 
+        // Reject negative --index up front with a clean message instead of
+        // letting it fall through and surface as a raw .NET
+        // ArgumentOutOfRangeException from collection indexing. Matches
+        // the guard in WordHandler.Add.
+        if (position?.Index.HasValue == true && position.Index.Value < 0)
+            throw new ArgumentException("--index must be non-negative.");
+
         // Resolve --after/--before to index (handles find: prefix)
         var index = ResolveAnchorPosition(parentPath, position);
 
