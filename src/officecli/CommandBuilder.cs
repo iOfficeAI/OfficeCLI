@@ -116,13 +116,19 @@ static partial class CommandBuilder
 
         // ==================== __resident-serve__ (internal, hidden) ====================
         var serveFileArg = new Argument<FileInfo>("file") { Description = "Office document path (required even with open/close mode)" };
+        var serveIdleOption = new Option<int?>("--idle-seconds")
+        {
+            Description = "Initial idle timeout in seconds (1..86400)"
+        };
         var serveCommand = new Command("__resident-serve__", "Internal: run resident server (do not call directly)");
         serveCommand.Hidden = true;
         serveCommand.Add(serveFileArg);
+        serveCommand.Add(serveIdleOption);
 
         serveCommand.SetAction(result =>
         {
             var file = result.GetValue(serveFileArg)!;
+            var idleSeconds = result.GetValue(serveIdleOption);
             // Per-file singleton guard. TryResident's probe-then-spawn has an
             // inherent race: N clients probing an un-owned file concurrently
             // all fail the ping and all spawn a resident. Each spawned server
@@ -156,7 +162,10 @@ static partial class CommandBuilder
             }
             if (residentLock == null) return;
             using var heldLock = residentLock;
-            using var server = new ResidentServer(file.FullName);
+            TimeSpan? initialIdle = idleSeconds.HasValue
+                ? TimeSpan.FromSeconds(idleSeconds.Value)
+                : null;
+            using var server = new ResidentServer(file.FullName, initialIdleTimeout: initialIdle);
             server.RunAsync().GetAwaiter().GetResult();
         });
 
@@ -210,9 +219,9 @@ static partial class CommandBuilder
     // pipe to respond, so callers get a definitive success/fail answer.
     //
     // `idleSeconds` overrides the child's idle-exit timeout via the
-    // OFFICECLI_RESIDENT_IDLE_SECONDS env var (1..86400). Passing null
-    // inherits the server default (12 minutes). `create` passes 60 so
-    // an auto-started resident that nobody follows up on exits quickly.
+    // --idle-seconds command-line option (1..86400). Passing null inherits
+    // the server default (12 minutes). `create` passes 60 so an auto-started
+    // resident that nobody follows up on exits quickly.
     //
     // Caller must first verify no resident is already running for this
     // file (e.g. via ResidentClient.TryConnect) — this helper always
@@ -227,66 +236,76 @@ static partial class CommandBuilder
             return false;
         }
 
-        // On Windows, .NET's UseShellExecute=false always calls CreateProcess
-        // with bInheritHandles=TRUE (even without explicit redirects), which
-        // leaks the caller's pipe handles into the resident child.  When the
-        // caller's stdout is a pipe ($(), | cat, CI, SDK), the pipe never
-        // gets EOF until the resident exits (~60s idle), blocking the caller.
+        bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+
+        // On Windows, .NET's UseShellExecute=false calls CreateProcess with
+        // bInheritHandles=TRUE, leaking the caller's pipe handles into the
+        // resident child. When the caller's stdout is a pipe ($(), | cat,
+        // CI, SDK), the pipe never gets EOF until the resident exits (~60s
+        // idle), blocking the caller.
         //
-        // Fix: temporarily mark our own std handles as non-inheritable before
-        // spawning, then restore.  This prevents the shell's pipe handles
-        // from leaking into the resident while still allowing .NET's internal
-        // handle plumbing to work.
+        // Fix: on Windows use UseShellExecute=true, which routes through the
+        // shell and does NOT inherit handles. Trade-offs:
+        //   - RedirectStandardOutput/Error cannot be used, so the parent cannot
+        //     read the child's stderr directly. Startup errors are still surfaced
+        //     via the process exit code and are logged to the optional CLI log.
+        //   - ProcessStartInfo.Environment cannot be used, so the idle timeout
+        //     is passed via the --idle-seconds command-line argument.
+        //   - In restricted/sandboxed environments where shell execution is
+        //     blocked, TryStartResidentProcess fails with an actionable error
+        //     that tells the user to set OFFICECLI_NO_AUTO_RESIDENT=1 or start
+        //     the resident manually via __resident-serve__.
         //
         // On macOS/Linux, posix_spawn inherits fds unless the child's
-        // stdout/stderr are explicitly redirected.  RedirectStandardOutput /
+        // stdout/stderr are explicitly redirected. RedirectStandardOutput /
         // RedirectStandardError = true makes .NET plumb a fresh pipe from
-        // parent to child, so the caller's shell pipe (e.g. `| tail -1`,
-        // $(...)) is NOT inherited and EOFs promptly when the client exits.
-        // See ResidentStdoutInheritanceTests for the regression lock-in.
-        // CONSISTENCY(child-process-args): forward verb + path via ArgumentList,
-        // not a hand-quoted Arguments string. .NET re-parses the Arguments
-        // string with Windows-style quoting rules even on Unix, so a filePath
-        // containing a literal '"' (legal on macOS/Linux) or a trailing '\'
-        // would split into stray argv and the resident would reject startup.
-        // ArgumentList passes argv losslessly. Matches BlankDocCreator /
-        // FormatHandlerSession, which fork this same exe the same way.
+        // parent to child, so the caller's shell pipe is NOT inherited and
+        // EOFs promptly when the client exits. See
+        // ResidentStdoutInheritanceTests for the regression lock-in.
         var startInfo = new ProcessStartInfo
         {
             FileName = exePath,
-            ArgumentList = { "__resident-serve__", filePath },
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
+            UseShellExecute = isWindows,
+            CreateNoWindow = true
         };
 
-        if (idleSeconds.HasValue)
-            startInfo.Environment["OFFICECLI_RESIDENT_IDLE_SECONDS"] = idleSeconds.Value.ToString();
-
-        // Prevent the shell's pipe handles from leaking into the resident.
-        bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-        nint hStdOut = 0, hStdErr = 0, hStdIn = 0;
         if (isWindows)
         {
-            hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
-            hStdErr = GetStdHandle(STD_ERROR_HANDLE);
-            hStdIn  = GetStdHandle(STD_INPUT_HANDLE);
-            SetHandleInformation(hStdOut, HANDLE_FLAG_INHERIT, 0);
-            SetHandleInformation(hStdErr, HANDLE_FLAG_INHERIT, 0);
-            SetHandleInformation(hStdIn,  HANDLE_FLAG_INHERIT, 0);
+            // Windows: UseShellExecute=true requires a hand-quoted Arguments
+            // string. Quote the file path safely; literal '"' and trailing
+            // '\' are legal on NTFS and must be escaped per CommandLineToArgvW.
+            var args = new List<string> { "__resident-serve__", filePath };
+            if (idleSeconds.HasValue)
+            {
+                args.Add("--idle-seconds");
+                args.Add(idleSeconds.Value.ToString());
+            }
+            startInfo.Arguments = string.Join(" ", args.Select(EscapeWindowsArgument));
+        }
+        else
+        {
+            // Unix: UseShellExecute=false with ArgumentList gives lossless argv.
+            startInfo.RedirectStandardOutput = true;
+            startInfo.RedirectStandardError = true;
+            startInfo.ArgumentList.Add("__resident-serve__");
+            startInfo.ArgumentList.Add(filePath);
+            if (idleSeconds.HasValue)
+            {
+                startInfo.ArgumentList.Add("--idle-seconds");
+                startInfo.ArgumentList.Add(idleSeconds.Value.ToString());
+            }
         }
 
         Process? process;
         try { process = Process.Start(startInfo); }
-        finally
+        catch (Exception ex)
         {
-            if (isWindows)
-            {
-                SetHandleInformation(hStdOut, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-                SetHandleInformation(hStdErr, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-                SetHandleInformation(hStdIn,  HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-            }
+            // Surface a concise, actionable message to the user while preserving
+            // the full exception in the optional CLI log for diagnostics in
+            // restricted / sandboxed environments where UseShellExecute may fail.
+            CliLogger.LogError($"TryStartResidentProcess failed: {ex}");
+            error = $"Failed to start resident process: {ex.Message}. Auto-start via shell failed — you can disable auto-resident with OFFICECLI_NO_AUTO_RESIDENT=1 or start the resident manually: officecli __resident-serve__ <file> --idle-seconds N.";
+            return false;
         }
 
         if (process == null)
@@ -306,12 +325,14 @@ static partial class CommandBuilder
             }
             if (process.HasExited)
             {
-                var stderr = process.StandardError.ReadToEnd();
+                var stderr = startInfo.RedirectStandardError
+                    ? process.StandardError.ReadToEnd()
+                    : "";
                 // CONSISTENCY(cli-error-first-line): the resident process dumps its
                 // full call stack on a startup crash; surface only the first line
                 // (typically the exception message). The stack is still in the
-                // resident's own log if needed for diagnostics — keeping it out
-                // of the user-facing CLI error avoids burying the actual cause.
+                // resident's own log if needed for diagnostics — keeping it out of
+                // the user-facing CLI error avoids burying the actual cause.
                 var firstLine = string.IsNullOrEmpty(stderr)
                     ? ""
                     : stderr.Split('\n', 2)[0].TrimEnd('\r').Trim();
@@ -328,19 +349,54 @@ static partial class CommandBuilder
         return false;
     }
 
-    // ==================== Win32 P/Invoke for handle inheritance control ==========
+    /// <summary>
+    /// Escapes a single argv token for the Windows command line so that
+    /// CommandLineToArgvW round-trips it exactly. Handles spaces, quotes and
+    /// trailing backslashes.
+    /// </summary>
+    private static string EscapeWindowsArgument(string arg)
+    {
+        if (string.IsNullOrEmpty(arg)) return "\"\"";
 
-    private const int STD_INPUT_HANDLE  = -10;
-    private const int STD_OUTPUT_HANDLE = -11;
-    private const int STD_ERROR_HANDLE  = -12;
-    private const uint HANDLE_FLAG_INHERIT = 0x00000001;
+        bool needsQuotes = false;
+        foreach (char c in arg)
+        {
+            if (c == ' ' || c == '\t' || c == '"')
+            {
+                needsQuotes = true;
+                break;
+            }
+        }
+        if (!needsQuotes) return arg;
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern nint GetStdHandle(int nStdHandle);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetHandleInformation(nint hObject, uint dwMask, uint dwFlags);
+        var sb = new StringBuilder();
+        sb.Append('"');
+        int backslashCount = 0;
+        foreach (char c in arg)
+        {
+            if (c == '\\')
+            {
+                backslashCount++;
+            }
+            else if (c == '"')
+            {
+                // Backslashes preceding a quote are doubled, then add the escape.
+                sb.Append('\\', backslashCount * 2 + 1);
+                sb.Append('"');
+                backslashCount = 0;
+            }
+            else
+            {
+                sb.Append('\\', backslashCount);
+                sb.Append(c);
+                backslashCount = 0;
+            }
+        }
+        // Backslashes at the very end are doubled before the closing quote.
+        sb.Append('\\', backslashCount * 2);
+        sb.Append('"');
+        return sb.ToString();
+    }
 
     // ==================== Helper: try forwarding to resident ====================
     //

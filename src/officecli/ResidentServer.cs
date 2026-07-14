@@ -92,18 +92,29 @@ public class ResidentServer : IDisposable
     private const int MaxIdleSeconds = 86400;
     private static readonly TimeSpan DefaultIdleTimeout = TimeSpan.FromMinutes(12);
 
-    // Initial idle timeout: env var (OFFICECLI_RESIDENT_IDLE_SECONDS) takes
-    // precedence, tests/CI use this to exercise short timeouts in seconds.
+    // Initial idle timeout resolution order:
+    //   1. explicit override from __resident-serve__ --idle-seconds (used on
+    //      Windows where env vars can't be passed to a UseShellExecute=true
+    //      child),
+    //   2. OFFICECLI_RESIDENT_IDLE_SECONDS env var for tests/CI,
+    //   3. the 12-minute default.
     // Future "open file → auto-start resident" UX can tune how aggressively
-    // the background process exits by starting the child with this env var.
-    private static TimeSpan ResolveIdleTimeout()
+    // the background process exits by starting the child with this value.
+    private static TimeSpan ResolveIdleTimeout(TimeSpan? explicitOverride = null)
     {
+        if (explicitOverride.HasValue)
+        {
+            var explicitSecs = (int)explicitOverride.Value.TotalSeconds;
+            if (explicitSecs >= MinIdleSeconds && explicitSecs <= MaxIdleSeconds)
+                return TimeSpan.FromSeconds(explicitSecs);
+        }
+
         var raw = Environment.GetEnvironmentVariable("OFFICECLI_RESIDENT_IDLE_SECONDS");
         if (!string.IsNullOrWhiteSpace(raw)
-            && int.TryParse(raw, out var secs)
-            && secs >= MinIdleSeconds && secs <= MaxIdleSeconds)
+            && int.TryParse(raw, out var envSecs)
+            && envSecs >= MinIdleSeconds && envSecs <= MaxIdleSeconds)
         {
-            return TimeSpan.FromSeconds(secs);
+            return TimeSpan.FromSeconds(envSecs);
         }
         return DefaultIdleTimeout;
     }
@@ -210,11 +221,12 @@ public class ResidentServer : IDisposable
     // PromoteToEditable(); the promotion is sticky for the resident's
     // lifetime, matching the pre-existing reopen pattern used by
     // view-screenshot/page-count/refresh.
-    public ResidentServer(string filePath, bool editable = false)
+    public ResidentServer(string filePath, bool editable = false, TimeSpan? initialIdleTimeout = null)
     {
         _filePath = Path.GetFullPath(filePath);
         _pipeName = GetPipeName(_filePath);
         _editable = editable;
+        _idleTimeoutTicks = ResolveIdleTimeout(initialIdleTimeout).Ticks;
 
         // Capture Console.Error during handler open so any warnings emitted
         // by the dump-reader / format-handler open path (which run before
