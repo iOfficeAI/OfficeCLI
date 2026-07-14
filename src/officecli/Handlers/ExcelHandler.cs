@@ -96,10 +96,17 @@ public partial class ExcelHandler : IDocumentHandler, Rendering.IRenderModelHost
                     .Where(n => !string.IsNullOrEmpty(n)) ?? Enumerable.Empty<string>(),
                 StringComparer.OrdinalIgnoreCase);
         }
-        catch (DocumentFormat.OpenXml.Packaging.OpenXmlPackageException ex)
+        catch
         {
-            throw new InvalidOperationException(
-                $"Cannot open {Path.GetFileName(filePath)}: {ex.Message}", ex);
+            // A failed open must not leak the backing FileStream — the
+            // factory's repair-and-retry paths (FixXmlEncoding /
+            // StripDanglingPackageRels) reopen the file for in-place fixes
+            // and would hit "file is being used by another process".
+            // Matches the cleanup pattern in WordHandler's constructor.
+            _doc?.Dispose();
+            _filteredPackageStream?.Dispose();
+            _backingStream?.Dispose();
+            throw;
         }
     }
 
