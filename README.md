@@ -10,6 +10,7 @@ Open-source. Single binary. No Office installation. No dependencies. Works every
 
 [![GitHub Release](https://img.shields.io/github/v/release/iOfficeAI/OfficeCLI)](https://github.com/iOfficeAI/OfficeCLI/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+![tokens](https://img.shields.io/endpoint?url=https://gittokens.rsamf.com/badge/iOfficeAI/OfficeCLI)
 
 **English** | [中文](README_zh.md) | [日本語](README_ja.md) | [한국어](README_ko.md)
 
