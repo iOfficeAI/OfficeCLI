@@ -74,7 +74,7 @@ internal partial class FormulaEvaluator
             "PI" => FR(Math.PI),
             "SIN" => FR(Math.Sin(num(0))), "COS" => FR(Math.Cos(num(0))), "TAN" => FR(Math.Tan(num(0))),
             "ASIN" => FR(Math.Asin(num(0))), "ACOS" => FR(Math.Acos(num(0))), "ATAN" => FR(Math.Atan(num(0))),
-            "ATAN2" => FR(Math.Atan2(num(0), num(1))),
+            "ATAN2" => FR(Math.Atan2(num(1), num(0))),
             "SINH" => FR(Math.Sinh(num(0))), "COSH" => FR(Math.Cosh(num(0))), "TANH" => FR(Math.Tanh(num(0))),
             "ASINH" => FR(Math.Asinh(num(0))), "ACOSH" => FR(Math.Acosh(num(0))), "ATANH" => FR(Math.Atanh(num(0))),
             "DEGREES" => FR(num(0) * 180.0 / Math.PI),
