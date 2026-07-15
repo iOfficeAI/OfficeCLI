@@ -60,7 +60,7 @@ internal partial class FormulaEvaluator
             "ODD" => FR(OddF(num(0))),
             "PRODUCT" => CheckRangeErrors(args) ?? FR(nums().Aggregate(1.0, (a, b) => a * b)),
             "QUOTIENT" => num(1) != 0 ? FR(Math.Truncate(num(0) / num(1))) : FormulaResult.Error("#DIV/0!"),
-            "MROUND" => num(1) != 0 ? FR(Math.Round(num(0) / num(1)) * num(1)) : FormulaResult.Error("#NUM!"),
+            "MROUND" => num(1) != 0 ? FR(Math.Round(num(0) / num(1), MidpointRounding.AwayFromZero) * num(1)) : FormulaResult.Error("#NUM!"),
             "ROMAN" => FR_S(ToRoman((int)num(0))),
             "ARABIC" => FR(FromRoman(str(0))),
             "BASE" => FR_S(Convert.ToString((long)num(0), (int)num(1)).ToUpperInvariant()),
