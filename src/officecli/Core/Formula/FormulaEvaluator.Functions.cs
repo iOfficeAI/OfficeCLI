@@ -187,7 +187,8 @@ internal partial class FormulaEvaluator
             "RIGHT" => FR_S(str(0).Length >= (int)num(1) ? str(0)[^(int)num(1)..] : str(0)),
             "MID" => EvalMid(args),
             "LEN" => FR(str(0).Length),
-            "TRIM" => FR_S(Regex.Replace(str(0).Trim(), @"\s+", " ")),
+            // Excel TRIM only removes ASCII spaces (U+0020); tabs and newlines are data.
+            "TRIM" => FR_S(Regex.Replace(str(0).Trim(' '), " {2,}", " ")),
             "CLEAN" => FR_S(Regex.Replace(str(0), @"[\x00-\x1F]", "")),
             "UPPER" => FR_S(str(0).ToUpperInvariant()),
             "LOWER" => FR_S(str(0).ToLowerInvariant()),
