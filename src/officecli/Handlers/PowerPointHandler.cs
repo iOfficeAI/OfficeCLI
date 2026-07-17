@@ -115,9 +115,23 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
         var share = editable ? FileShare.Read : FileShare.ReadWrite;
         var access = editable ? FileAccess.ReadWrite : FileAccess.Read;
         _backingStream = new FileStream(filePath, FileMode.Open, access, share);
-        _doc = PresentationDocument.Open(_backingStream, editable);
-        if (editable)
-            InitShapeIdCounter();
+        try
+        {
+            _doc = PresentationDocument.Open(_backingStream, editable);
+            if (editable)
+                InitShapeIdCounter();
+        }
+        catch
+        {
+            // A failed open must not leak the backing FileStream — the
+            // factory's repair-and-retry paths (FixXmlEncoding /
+            // StripDanglingPackageRels) reopen the file for in-place fixes
+            // and would hit "file is being used by another process".
+            // Matches the cleanup pattern in WordHandler's constructor.
+            _doc?.Dispose();
+            _backingStream?.Dispose();
+            throw;
+        }
     }
 
     /// <summary>
