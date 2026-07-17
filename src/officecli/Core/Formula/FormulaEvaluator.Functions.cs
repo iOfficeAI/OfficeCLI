@@ -1367,8 +1367,9 @@ internal partial class FormulaEvaluator
         if (args.Count < 3) return null;
         double rate = args[0] is FormulaResult r ? r.AsNumber() : 0, nper = args[1] is FormulaResult r2 ? r2.AsNumber() : 0, pv = args[2] is FormulaResult r3 ? r3.AsNumber() : 0;
         var fv = args.Count > 3 && args[3] is FormulaResult r4 ? r4.AsNumber() : 0;
+        var type = args.Count > 4 && args[4] is FormulaResult r5 && r5.AsNumber() != 0 ? 1 : 0;
         if (rate == 0) return FR(-(pv + fv) / nper);
-        return FR(-(rate * (pv * Math.Pow(1 + rate, nper) + fv) / (Math.Pow(1 + rate, nper) - 1)));
+        return FR(-(rate * (pv * Math.Pow(1 + rate, nper) + fv) / (Math.Pow(1 + rate, nper) - 1)) / (1 + rate * type));
     }
 
     private static FormulaResult? EvalFv(List<object> args)
@@ -1376,8 +1377,9 @@ internal partial class FormulaEvaluator
         if (args.Count < 3) return null;
         double rate = args[0] is FormulaResult r ? r.AsNumber() : 0, nper = args[1] is FormulaResult r2 ? r2.AsNumber() : 0, pmt = args[2] is FormulaResult r3 ? r3.AsNumber() : 0;
         var pv = args.Count > 3 && args[3] is FormulaResult r4 ? r4.AsNumber() : 0;
+        var type = args.Count > 4 && args[4] is FormulaResult r5 && r5.AsNumber() != 0 ? 1 : 0;
         if (rate == 0) return FR(-(pv + pmt * nper));
-        return FR(-(pv * Math.Pow(1 + rate, nper) + pmt * (Math.Pow(1 + rate, nper) - 1) / rate));
+        return FR(-(pv * Math.Pow(1 + rate, nper) + pmt * (1 + rate * type) * (Math.Pow(1 + rate, nper) - 1) / rate));
     }
 
     private static FormulaResult? EvalPv(List<object> args)
@@ -1385,8 +1387,9 @@ internal partial class FormulaEvaluator
         if (args.Count < 3) return null;
         double rate = args[0] is FormulaResult r ? r.AsNumber() : 0, nper = args[1] is FormulaResult r2 ? r2.AsNumber() : 0, pmt = args[2] is FormulaResult r3 ? r3.AsNumber() : 0;
         var fv = args.Count > 3 && args[3] is FormulaResult r4 ? r4.AsNumber() : 0;
+        var type = args.Count > 4 && args[4] is FormulaResult r5 && r5.AsNumber() != 0 ? 1 : 0;
         if (rate == 0) return FR(-(fv + pmt * nper));
-        return FR(-(fv / Math.Pow(1 + rate, nper) + pmt * (1 - Math.Pow(1 + rate, -nper)) / rate));
+        return FR(-(fv / Math.Pow(1 + rate, nper) + pmt * (1 + rate * type) * (1 - Math.Pow(1 + rate, -nper)) / rate));
     }
 
     private static FormulaResult? EvalNper(List<object> args)
@@ -1394,8 +1397,10 @@ internal partial class FormulaEvaluator
         if (args.Count < 3) return null;
         double rate = args[0] is FormulaResult r ? r.AsNumber() : 0, pmt = args[1] is FormulaResult r2 ? r2.AsNumber() : 0, pv = args[2] is FormulaResult r3 ? r3.AsNumber() : 0;
         var fv = args.Count > 3 && args[3] is FormulaResult r4 ? r4.AsNumber() : 0;
+        var type = args.Count > 4 && args[4] is FormulaResult r5 && r5.AsNumber() != 0 ? 1 : 0;
         if (rate == 0) return pmt != 0 ? FR(-(pv + fv) / pmt) : null;
-        return FR(Math.Log((-fv * rate + pmt) / (pv * rate + pmt)) / Math.Log(1 + rate));
+        var pmtEff = pmt * (1 + rate * type);
+        return FR(Math.Log((-fv * rate + pmtEff) / (pv * rate + pmtEff)) / Math.Log(1 + rate));
     }
 
     private static FormulaResult? EvalNpv(List<object> args)
@@ -1431,7 +1436,7 @@ internal partial class FormulaEvaluator
         // as nper).
         var pmtArgs = new List<object> { args[0], args[2], args[3] };
         if (args.Count > 4) pmtArgs.Add(args[4]);
-        if (args.Count > 5) pmtArgs.Add(args[5]);
+        // Annuity-due support for PPMT/IPMT is out of scope; do not half-apply it through PMT.
         var pmt = EvalPmt(pmtArgs)?.AsNumber() ?? 0;
         var ipmt = EvalIpmt(args)?.AsNumber() ?? 0;
         return FR(pmt - ipmt);
