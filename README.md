@@ -604,18 +604,26 @@ officecli validate report.docx && officecli view report.docx issues --json
 
 ```python
 # Python — `pip install officecli-sdk`
-from officecli import Doc
-with Doc("deck.pptx") as d:
-    d.add("/", type="slide", title="Q4 Report")
-    print(d.get("/slide[1]"))
+import officecli
+
+with officecli.create("deck.pptx", "--force") as doc:
+    doc.send({"command": "add", "parent": "/", "type": "slide",
+              "props": {"title": "Q4 Report"}})
+    print(doc.send({"command": "get", "path": "/slide[1]"}))
 ```
 
 ```javascript
 // Node.js — `npm install @officecli/sdk`
-import { Doc } from "@officecli/sdk";
-await using d = await Doc.open("deck.pptx");
-await d.add("/", { type: "slide", title: "Q4 Report" });
-console.log(await d.get("/slide[1]"));
+const oc = require("@officecli/sdk");
+
+const doc = await oc.create("deck.pptx", ["--force"]);
+try {
+  await doc.send({ command: "add", parent: "/", type: "slide",
+                   props: { title: "Q4 Report" } });
+  console.log(await doc.send({ command: "get", path: "/slide[1]" }));
+} finally {
+  await doc.close();
+}
 ```
 
 Both SDKs auto-provision the native CLI when missing (mirror-first, Windows-capable) and announce the install rather than doing it silently.
