@@ -492,12 +492,16 @@ public partial class ExcelHandler
 
         // Row height and hidden row lookup
         var rowHeights = new Dictionary<int, double>();
+        var customHeightRows = new HashSet<int>();
         var hiddenRows = new HashSet<int>();
         foreach (var row in rows)
         {
             var rowIdx = (int)(row.RowIndex?.Value ?? 0);
             if (row.CustomHeight?.Value == true && row.Height?.Value != null)
+            {
                 rowHeights[rowIdx] = row.Height.Value;
+                customHeightRows.Add(rowIdx);
+            }
             // A row with height 0 is a hidden row in real Excel (mirrors the
             // hidden-column treatment, which drops width<=0 columns). Emit it
             // display:none rather than as a ~16px gap. The original row numbers
@@ -507,14 +511,15 @@ public partial class ExcelHandler
                 hiddenRows.Add(rowIdx);
         }
 
-        // Rotated-text rows auto-grow in real Excel so the vertical string is
-        // visible. The HTML <td> only carries transform:rotate, which keeps the
-        // glyph box at its un-rotated width — the row stays at default height and
-        // clips. Bump the row's min-height to the rotated text extent (approx
-        // text-length × font-size for ~90°), consistent with the spill/width
-        // estimation heuristics elsewhere in this renderer.
+        // Rotated-text rows with automatic height grow in real Excel so the
+        // vertical string is visible. The HTML <td> only carries transform:rotate,
+        // which keeps the glyph box at its un-rotated width — the row stays at
+        // default height and clips. Bump the row's min-height to the rotated text
+        // extent (approx text-length × font-size for ~90°), but never override an
+        // OOXML customHeight row: that height is an explicit user constraint.
         foreach (var ((r, _), cell) in cellMap)
         {
+            if (customHeightRows.Contains(r)) continue;
             var extent = EstimateRotatedCellHeightPt(cell, stylesheet, renderStyles, defaultFontPt);
             if (extent <= 0) continue;
             if (!rowHeights.TryGetValue(r, out var existing) || existing < extent)
