@@ -494,6 +494,7 @@ public partial class ExcelHandler
         var rowHeights = new Dictionary<int, double>();
         var customHeightRows = new HashSet<int>();
         var hiddenRows = new HashSet<int>();
+        var customHeightRows = new HashSet<int>();
         foreach (var row in rows)
         {
             var rowIdx = (int)(row.RowIndex?.Value ?? 0);
@@ -519,6 +520,9 @@ public partial class ExcelHandler
         // OOXML customHeight row: that height is an explicit user constraint.
         foreach (var ((r, _), cell) in cellMap)
         {
+            // An explicit customHeight wins over the rotated-text auto-grow —
+            // Excel keeps the user's height (and lets the glyphs clip / use the
+            // vertical merge span) rather than expanding the row.
             if (customHeightRows.Contains(r)) continue;
             var extent = EstimateRotatedCellHeightPt(cell, stylesheet, renderStyles, defaultFontPt);
             if (extent <= 0) continue;

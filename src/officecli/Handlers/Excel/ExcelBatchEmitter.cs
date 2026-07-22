@@ -57,7 +57,8 @@ public static partial class ExcelBatchEmitter
     {
         "type", "formula", "cachedValue", "computedValue", "evaluated", "empty",
         "merge", "link", "tooltip", "display", "arrayformula", "arrayref", "numFmtId",
-        "quotePrefix", "phonetic", "__raw", "__richruns",
+        "quotePrefix", "phonetic", "image.contentType", "image.fileSize", "alt",
+        "__raw", "__richruns", "__imageDataUri",
     };
 
     // Sheet-level Format(Get) key → Set key mapping. Only pairs verified on
@@ -736,6 +737,30 @@ public static partial class ExcelBatchEmitter
                     ["runs"] = runsJson,
                 },
             });
+            return null;
+        }
+
+        // In-cell images cannot ride the CSV value baseline. Replay their
+        // package bytes through the existing set image=<data-uri> vocabulary.
+        if (type == "Image")
+        {
+            if (cell.Format.TryGetValue("__imageDataUri", out var imageValue)
+                && imageValue is string imageDataUri && imageDataUri.Length > 0)
+            {
+                var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["image"] = imageDataUri,
+                };
+                if (cell.Format.TryGetValue("alt", out var altValue)
+                    && altValue is string alt && alt.Length > 0)
+                    props["alt"] = alt;
+                corrective.Add(new BatchItem { Command = "set", Path = cell.Path, Props = props });
+            }
+            else
+            {
+                warnings.Add(new UnsupportedWarning("cell.image", cell.Path ?? "",
+                    "in-cell image part could not be read; skipped"));
+            }
             return null;
         }
 

@@ -1,5 +1,10 @@
 $repo = "iOfficeAI/OfficeCLI"
-$asset = "officecli-win-x64.exe"
+# Select the native asset for the machine architecture. PROCESSOR_ARCHITECTURE
+# reports the *current process* arch (x86/AMD64 when an emulated 32/64-bit
+# PowerShell runs on ARM64); PROCESSOR_ARCHITEW6432 then reveals the real ARM64
+# host, so prefer it when present.
+$arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+$asset = if ($arch -eq "ARM64") { "officecli-win-arm64.exe" } else { "officecli-win-x64.exe" }
 $binary = "officecli.exe"
 
 # Mirror primary, github fallback. The mirror is exercised first so issues

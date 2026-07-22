@@ -179,7 +179,7 @@ internal partial class FormulaEvaluator
             "T_INV" => args.Count >= 2 ? FR(TInv(num(0), num(1))) : null,
             "T_INV_2T" or "TINV" => args.Count >= 2 ? FR(TInv2T(num(0), num(1))) : null,
             "F_DIST" => EvalFDist(args),
-            "F_DIST_RT" or "FDIST" => args.Count >= 3 ? FR(1 - FDistCdf(num(0), num(1), num(2))) : null,
+            "F_DIST_RT" or "FDIST" => args.Count >= 3 ? FR(FDistRightTail(num(0), num(1), num(2))) : null,
             "F_INV" => args.Count >= 3 ? FR(FInv(num(0), num(1), num(2))) : null,
             "F_INV_RT" or "FINV" => args.Count >= 3 ? FR(FInv(1 - num(0), num(1), num(2))) : null,
             "BINOM_DIST" or "BINOMDIST" => EvalBinomDist(args),
@@ -240,11 +240,11 @@ internal partial class FormulaEvaluator
             "RIGHT" => EvalLeftRight(str(0), args.Count >= 2 ? (int)num(1) : 1, false),
             "MID" => EvalMid(args),
             "LEN" => FR(str(0).Length),
-            "TRIM" => FR_S(Regex.Replace(str(0).Trim(), @"\s+", " ")),
-            "CLEAN" => FR_S(Regex.Replace(str(0), @"[\x00-\x1F]", "")),
+            "TRIM" => FR_S(Regex.Replace(str(0).Trim(' '), " +", " ")),   // spaces (char 32) only; tabs/newlines are CLEAN's job
+            "CLEAN" => FR_S(Regex.Replace(str(0), @"[\x00-\x1F\x7F]", "")),   // DEL included, matching Excel
             "UPPER" => FR_S(str(0).ToUpperInvariant()),
             "LOWER" => FR_S(str(0).ToLowerInvariant()),
-            "PROPER" => FR_S(CultureInfo.InvariantCulture.TextInfo.ToTitleCase(str(0).ToLowerInvariant())),
+            "PROPER" => FR_S(ProperCase(str(0))),
             "REPT" => (int)num(1) < 0 || (long)str(0).Length * (int)num(1) > 32767 ? FormulaResult.Error("#VALUE!") : FR_S(string.Concat(Enumerable.Repeat(str(0), (int)num(1)))),
             // CHAR is defined only for codes 1..255; out-of-range is #VALUE!.
             "CHAR" => (int)num(0) is >= 1 and <= 255 ? FR_S(((char)(int)num(0)).ToString()) : FormulaResult.Error("#VALUE!"),
@@ -840,6 +840,10 @@ internal partial class FormulaEvaluator
         string dec = args.Count > 1 && args[1] is FormulaResult d && d.AsString() != "" ? d.AsString() : ".";
         string grp = args.Count > 2 && args[2] is FormulaResult g && g.AsString() != "" ? g.AsString() : ",";
         s = s.Trim().Replace(" ", "");
+        // currency symbols parse in Excel ($5, -$5, 5€); InvariantCulture's
+        // symbol is ¤, so strip the common ones around the number ourselves
+        s = Regex.Replace(s, @"^([+-]?)[\$€¥£]+", "$1");
+        s = Regex.Replace(s, @"[\$€¥£]+$", "");
         s = s.Replace(grp[0].ToString(), "");        // drop group separators
         s = s.Replace(dec[0].ToString(), ".");       // decimal separator -> '.'
         int pct = 0;
@@ -954,7 +958,7 @@ internal partial class FormulaEvaluator
         // logical / info
         "NOT", "ISNUMBER", "ISBLANK", "ISTEXT", "ISNONTEXT", "ISLOGICAL", "ISERR",
         "ISERROR", "ISNA", "ISEVEN", "ISODD", "ISREF", "ISFORMULA", "N", "TYPE",
-        "ERROR_TYPE", "CHOOSE", "IFERROR", "IFNA",
+        "ERROR_TYPE", "CHOOSE", "IFERROR", "IFNA", "IF",
         // date / time
         "DAY", "MONTH", "YEAR", "HOUR", "MINUTE", "SECOND", "WEEKDAY", "WEEKNUM",
         "ISOWEEKNUM", "EDATE", "EOMONTH", "DATEVALUE", "TIMEVALUE", "DATE", "TIME",
@@ -1064,8 +1068,12 @@ internal partial class FormulaEvaluator
 
         if (matchType == 0)
         {
+            // Exact match supports wildcards (* and ?) when the lookup is text.
+            bool wild = lookup.IsString && (lookup.StringValue!.Contains('*') || lookup.StringValue.Contains('?'));
+            var rx = wild ? "^" + WildcardToRegex(lookup.AsString()) + "$" : null;
             for (int i = 0; i < cells.Count; i++)
-                if (cells[i] != null && CompareValues(cells[i]!, lookup) == 0) return FR(i + 1);
+                if (cells[i] != null && (wild ? Regex.IsMatch(cells[i]!.AsString(), rx!, RegexOptions.IgnoreCase)
+                                              : CompareValues(cells[i]!, lookup) == 0)) return FR(i + 1);
             return FormulaResult.Error("#N/A");
         }
         // Approximate: matchType 1 = largest value <= lookup (ascending data);
@@ -1743,12 +1751,14 @@ internal partial class FormulaEvaluator
             days += DateTime.DaysInMonth(prev.Year, prev.Month);
         }
         if (months < 0) { months += 12; years--; }
-        // YD: days ignoring whole years. Place d1's month/day in d2's year (or
-        // the prior year when d1's month/day falls after d2's), so a leap day
-        // lying between the two dates is counted (per OOXML/ODF day-count).
-        int ydYear = d2.Month > d1.Month || (d2.Month == d1.Month && d2.Day >= d1.Day) ? d2.Year : d2.Year - 1;
-        int ydDay = Math.Min(d1.Day, DateTime.DaysInMonth(ydYear, d1.Month));
-        var anchor = new DateTime(ydYear, d1.Month, ydDay);
+        // YD: days ignoring whole years. Excel anchors in d1's year — d2's
+        // month/day is placed into d1's year (or the following year when it
+        // falls before d1's), so the leap day is counted exactly when the
+        // start year is leap: DATEDIF(2020-01-15, 2022-03-20, "YD") = 65,
+        // while a 2021 start gives 64.
+        int ydYear = d2.Month > d1.Month || (d2.Month == d1.Month && d2.Day >= d1.Day) ? d1.Year : d1.Year + 1;
+        int ydDay = Math.Min(d2.Day, DateTime.DaysInMonth(ydYear, d2.Month));
+        var ydTarget = new DateTime(ydYear, d2.Month, ydDay);
         return unit switch
         {
             "Y" => FR(years),
@@ -1756,7 +1766,7 @@ internal partial class FormulaEvaluator
             "D" => FR((d2 - d1).Days),
             "MD" => FR(days),
             "YM" => FR(months),
-            "YD" => FR((d2 - anchor).Days),
+            "YD" => FR((ydTarget - d1).Days),
             _ => FormulaResult.Error("#NUM!"),
         };
     }

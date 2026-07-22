@@ -56,7 +56,8 @@ public partial class ExcelHandler
         "<key name=\"_ClassificationId\"><flag name=\"ExcludeFromCalcComparison\" value=\"1\"/></key>" +
         "</keyFlags></global></rvTypesInfo>";
 
-    internal readonly record struct InCellImageInfo(string ContentType, long FileSize, string? Alt, string RelId);
+    internal readonly record struct InCellImageInfo(
+        string ContentType, long FileSize, string? Alt, string RelId, OpenXmlPart Part);
 
     // ==================== write ====================
 
@@ -314,7 +315,7 @@ public partial class ExcelHandler
 
             long size;
             using (var s = imgPart.GetStream(FileMode.Open, FileAccess.Read)) size = s.Length;
-            info = new InCellImageInfo(imgPart.ContentType, size, alt, relId);
+            info = new InCellImageInfo(imgPart.ContentType, size, alt, relId, imgPart);
             return true;
         }
         catch (Exception)

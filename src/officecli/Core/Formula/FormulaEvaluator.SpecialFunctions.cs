@@ -131,7 +131,14 @@ internal partial class FormulaEvaluator
     // erf / erfc via the incomplete gamma relation (high precision):
     // erf(x) = P(1/2, x²) for x ≥ 0.
     internal static double Erf(double x) => x < 0 ? -RegGammaP(0.5, x * x) : RegGammaP(0.5, x * x);
-    internal static double Erfc(double x) => 1.0 - Erf(x);
+    // Q(1/2,x²) keeps the far tail (erfc(7)≈4e-23) instead of the 1-Erf form,
+    // which cancels to exactly 0 once Erf rounds to 1 at x ≳ 6.
+    internal static double Erfc(double x) => x < 0 ? 2.0 - RegGammaQ(0.5, x * x) : RegGammaQ(0.5, x * x);
+
+    // e^x − 1 without cancellation near 0 (BCL has no Math.Expm1); the cubic
+    // series term keeps full double precision over the small-|x| branch.
+    internal static double Expm1(double x) =>
+        Math.Abs(x) < 1e-4 ? x * (1 + x * (0.5 + x / 6)) : Math.Exp(x) - 1;
 
     internal static double NormPdf(double z) => Math.Exp(-0.5 * z * z) / Sqrt2Pi;
     internal static double NormCdf(double z) => 0.5 * Erfc(-z / Sqrt2);
@@ -206,7 +213,25 @@ internal partial class FormulaEvaluator
     internal static double Binom(double n, double k)
     {
         if (k < 0 || k > n) return 0;
-        return Math.Round(Math.Exp(GammaLn(n + 1) - GammaLn(k + 1) - GammaLn(n - k + 1)));
+        return Math.Round(Math.Exp(BinomLn(n, k)));
+    }
+
+    // ln C(n,k) — kept in log space so pmf terms can cancel a huge coefficient
+    // against underflowed p-powers before exponentiating (C(10000,5000) alone
+    // overflows double, yet BINOM.DIST(5000,10000,0.5,FALSE) ≈ 0.008).
+    internal static double BinomLn(double n, double k) =>
+        k < 0 || k > n ? double.NegativeInfinity
+                       : GammaLn(n + 1) - GammaLn(k + 1) - GammaLn(n - k + 1);
+
+    // C(n,k)·p^k·(1−p)^(n−k). Small n keeps the direct product (digit-exact);
+    // large n assembles the term in log space.
+    internal static double BinomPmf(double n, double k, double p)
+    {
+        if (k < 0 || k > n) return 0;
+        if (p <= 0) return k == 0 ? 1 : 0;
+        if (p >= 1) return k == n ? 1 : 0;
+        if (n <= 170) return Binom(n, k) * Math.Pow(p, k) * Math.Pow(1 - p, n - k);
+        return Math.Exp(BinomLn(n, k) + k * Math.Log(p) + (n - k) * Math.Log(1 - p));
     }
 
     private static double BetaCF(double x, double a, double b)

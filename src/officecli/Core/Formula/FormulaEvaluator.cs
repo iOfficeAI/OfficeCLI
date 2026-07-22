@@ -704,29 +704,34 @@ internal partial class FormulaEvaluator
     // / SUM / multiplication consume the result).
     private FormulaResult? ApplyComparison(FormulaResult left, FormulaResult right, string op)
     {
-        // Lift to per-element FormulaResult arrays so CompareValues sees
-        // proper typed cells (string vs number) instead of collapsed doubles.
-        var la = AsResultArray(left); var ra = AsResultArray(right);
-        int n = Math.Max(la?.Length ?? 1, ra?.Length ?? 1);
-        var o = new double[n];
-        for (int i = 0; i < n; i++)
-        {
-            var l = la != null ? (i < la.Length ? la[i] : null) : left;
-            var r = ra != null ? (i < ra.Length ? ra[i] : null) : right;
-            if (l == null || r == null) { o[i] = 0; continue; }
-            var cmp = CompareValues(l, r);
-            o[i] = op switch
+        // Preserve the operand's 2-D shape (a column stays a column) so the result
+        // pairs element-wise with other arrays — a flat 1-D result would be read
+        // as a row and broadcast into a matrix (breaking SUMPRODUCT((col>0)*col)).
+        // 0/1 doubles keep the `*1` conditional-count idiom in the numeric domain.
+        var lg = AsGrid(left); var rg = AsGrid(right);
+        int rows = Math.Max(lg?.GetLength(0) ?? 1, rg?.GetLength(0) ?? 1);
+        int cols = Math.Max(lg?.GetLength(1) ?? 1, rg?.GetLength(1) ?? 1);
+        var grid = new FormulaResult?[rows, cols];
+        for (int i = 0; i < rows; i++)
+            for (int j = 0; j < cols; j++)
             {
-                "=" => cmp == 0 ? 1 : 0,
-                "<>" => cmp != 0 ? 1 : 0,
-                "<" => cmp < 0 ? 1 : 0,
-                ">" => cmp > 0 ? 1 : 0,
-                "<=" => cmp <= 0 ? 1 : 0,
-                ">=" => cmp >= 0 ? 1 : 0,
-                _ => 0
-            };
-        }
-        return FormulaResult.Array(o);
+                var l = CellAt(lg, left, i, j);
+                var r = CellAt(rg, right, i, j);
+                if (l.IsError) { grid[i, j] = l; continue; }
+                if (r.IsError) { grid[i, j] = r; continue; }
+                var cmp = CompareValues(l, r);
+                grid[i, j] = FormulaResult.Number(op switch
+                {
+                    "=" => cmp == 0 ? 1 : 0,
+                    "<>" => cmp != 0 ? 1 : 0,
+                    "<" => cmp < 0 ? 1 : 0,
+                    ">" => cmp > 0 ? 1 : 0,
+                    "<=" => cmp <= 0 ? 1 : 0,
+                    ">=" => cmp >= 0 ? 1 : 0,
+                    _ => 0
+                });
+            }
+        return FormulaResult.Area(new RangeData(grid));
     }
 
     private static FormulaResult?[]? AsResultArray(FormulaResult r)
