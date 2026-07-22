@@ -53,7 +53,18 @@ internal static class AtomicPackageWriter
             postProcessTemp?.Invoke(tmp);
             releaseLock();
             released = true;
-            File.Replace(tmp, path, destinationBackupFileName: null);
+            // File.Replace requires the destination to exist; if the target was
+            // renamed or deleted out from under the session (external `mv`, a
+            // sibling process, a test moving the file), it throws
+            // FileNotFoundException and the catch below would delete the temp —
+            // silently discarding every in-memory edit. Recreate the target
+            // with a plain move in that case: the temp is already fully written
+            // and fsync-flushed, so this is just as crash-safe as the replace,
+            // and the session's managed path (`path`) is what gets the data.
+            if (File.Exists(path))
+                File.Replace(tmp, path, destinationBackupFileName: null);
+            else
+                File.Move(tmp, path);
         }
         catch
         {

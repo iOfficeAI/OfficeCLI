@@ -493,11 +493,15 @@ public partial class ExcelHandler
         // Row height and hidden row lookup
         var rowHeights = new Dictionary<int, double>();
         var hiddenRows = new HashSet<int>();
+        var customHeightRows = new HashSet<int>();
         foreach (var row in rows)
         {
             var rowIdx = (int)(row.RowIndex?.Value ?? 0);
             if (row.CustomHeight?.Value == true && row.Height?.Value != null)
+            {
                 rowHeights[rowIdx] = row.Height.Value;
+                customHeightRows.Add(rowIdx);
+            }
             // A row with height 0 is a hidden row in real Excel (mirrors the
             // hidden-column treatment, which drops width<=0 columns). Emit it
             // display:none rather than as a ~16px gap. The original row numbers
@@ -515,6 +519,10 @@ public partial class ExcelHandler
         // estimation heuristics elsewhere in this renderer.
         foreach (var ((r, _), cell) in cellMap)
         {
+            // An explicit customHeight wins over the rotated-text auto-grow —
+            // Excel keeps the user's height (and lets the glyphs clip / use the
+            // vertical merge span) rather than expanding the row.
+            if (customHeightRows.Contains(r)) continue;
             var extent = EstimateRotatedCellHeightPt(cell, stylesheet, renderStyles, defaultFontPt);
             if (extent <= 0) continue;
             if (!rowHeights.TryGetValue(r, out var existing) || existing < extent)

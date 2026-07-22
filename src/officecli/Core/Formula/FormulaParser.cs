@@ -1580,13 +1580,16 @@ internal static class FormulaParser
                         "lvert" => "|",
                         "lVert" => "\u2016",
                         "|" => "\u2016",
+                        "Vert" => "\u2016",   // tokenizer emits \| as Command("Vert")
                         _ => null
                     };
                     if (mapped != null) { openChar = mapped; pos++; }
                 }
                 else if (pos < tokens.Count && tokens[pos].Type == TokenType.Text)
                 {
-                    openChar = tokens[pos].Value[..1];
+                    // \left. is LaTeX's invisible delimiter \u2014 OOXML wants an
+                    // empty begChr, not a literal dot
+                    openChar = tokens[pos].Value[..1] == "." ? "" : tokens[pos].Value[..1];
                     if (tokens[pos].Value.Length > 1)
                         tokens[pos] = new Token(TokenType.Text, tokens[pos].Value[1..]);
                     else
@@ -1619,13 +1622,15 @@ internal static class FormulaParser
                                 "rvert" => "|",
                                 "rVert" => "\u2016",
                                 "|" => "\u2016",
+                                "Vert" => "\u2016",   // tokenizer emits \| as Command("Vert")
                                 _ => null
                             };
                             if (rMapped != null) { closeChar = rMapped; pos++; }
                         }
                         else if (pos < tokens.Count && tokens[pos].Type == TokenType.Text)
                         {
-                            closeChar = tokens[pos].Value[..1];
+                            // \right. \u2014 invisible delimiter, empty endChr
+                            closeChar = tokens[pos].Value[..1] == "." ? "" : tokens[pos].Value[..1];
                             if (tokens[pos].Value.Length > 1)
                                 tokens[pos] = new Token(TokenType.Text, tokens[pos].Value[1..]);
                             else
@@ -1642,9 +1647,9 @@ internal static class FormulaParser
                     // Reuse main parsing logic for each element
                     if (tokens[pos].Type == TokenType.Text)
                     {
-                        var textEl = MakeMathRun(tokens[pos].Value);
+                        OpenXmlElement textEl = MakeMathRun(tokens[pos].Value);
                         pos++;
-                        textEl = (M.Run)TryAttachScript(tokens, ref pos, textEl);
+                        textEl = TryAttachScript(tokens, ref pos, textEl);
                         content.Add(textEl);
                     }
                     else if (tokens[pos].Type == TokenType.LBrace)
@@ -1671,9 +1676,9 @@ internal static class FormulaParser
                     else if (tokens[pos].Type == TokenType.LBracket || tokens[pos].Type == TokenType.RBracket)
                     {
                         var bracketText = tokens[pos].Type == TokenType.LBracket ? "[" : "]";
-                        var bracketRun = MakeMathRun(bracketText);
+                        OpenXmlElement bracketRun = MakeMathRun(bracketText);
                         pos++;
-                        bracketRun = (M.Run)TryAttachScript(tokens, ref pos, bracketRun);
+                        bracketRun = TryAttachScript(tokens, ref pos, bracketRun);
                         content.Add(bracketRun);
                     }
                     else
@@ -2008,15 +2013,19 @@ internal static class FormulaParser
                 OpenXmlElement? subArg = null;
                 OpenXmlElement? supArg = null;
 
-                if (pos < tokens.Count && tokens[pos].Type == TokenType.Sub)
+                // Either order: \sum_{i=1}^{n} and \sum^{n}_{i=1} are both valid
+                for (int lim = 0; lim < 2; lim++)
                 {
-                    pos++;
-                    subArg = ParseSingleArg(tokens, ref pos);
-                }
-                if (pos < tokens.Count && tokens[pos].Type == TokenType.Sup)
-                {
-                    pos++;
-                    supArg = ParseSingleArg(tokens, ref pos);
+                    if (pos < tokens.Count && tokens[pos].Type == TokenType.Sub && subArg == null)
+                    {
+                        pos++;
+                        subArg = ParseSingleArg(tokens, ref pos);
+                    }
+                    else if (pos < tokens.Count && tokens[pos].Type == TokenType.Sup && supArg == null)
+                    {
+                        pos++;
+                        supArg = ParseSingleArg(tokens, ref pos);
+                    }
                 }
 
                 // Hide sub/sup limits when not provided to avoid empty boxes

@@ -134,6 +134,22 @@ public partial class ExcelHandler
                 var raw = cell.CellValue?.Text;
                 if (!string.IsNullOrEmpty(raw))
                     cellNode.Format["__raw"] = raw;
+                // CONSISTENCY(picture-inline-base64): in-cell image bytes ride
+                // the same inline `data:<contentType>;base64,<bytes>` carrier as
+                // the pptx/word picture round-trip (PptxBatchEmitter.Media.cs) —
+                // no sidecar file, so a dump script stays self-contained.
+                // Image bytes are dump-only: normal Get keeps its compact
+                // metadata surface instead of embedding a large data URI.
+                if (cellNode.Format.TryGetValue("type", out var cellType)
+                    && cellType is string typeName && typeName == "Image"
+                    && TryGetInCellImage(cell, out var imageInfo))
+                {
+                    using var imageStream = imageInfo.Part.GetStream(FileMode.Open, FileAccess.Read);
+                    using var imageBytes = new MemoryStream();
+                    imageStream.CopyTo(imageBytes);
+                    cellNode.Format["__imageDataUri"] =
+                        $"data:{imageInfo.ContentType};base64,{Convert.ToBase64String(imageBytes.ToArray())}";
+                }
                 // Rich-text carrier: inline-string runs or a rich shared-string
                 // entry can't ride the CSV baseline. Serialize the runs into
                 // the `runs=<json>` shape ApplyRichTextToCell consumes so the
@@ -742,6 +758,11 @@ public partial class ExcelHandler
     /// SVG dual-representation aware: when the blip carries an
     /// asvg:svgBlip extension, the TRUE source is the SVG part (the r:embed
     /// PNG is just the fallback AddPicture regenerates on replay).
+    ///
+    /// CONSISTENCY(picture-inline-base64): floating-picture bytes ride the same
+    /// inline `data:<contentType>;base64,<bytes>` carrier as the in-cell image
+    /// and the pptx/word picture round-trip (PptxBatchEmitter.Media.cs) — no
+    /// sidecar file, so a dump script stays self-contained.
     /// </summary>
     public string? GetDumpPictureDataUri(string sheetName, int index)
     {

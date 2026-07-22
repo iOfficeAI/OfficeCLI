@@ -160,6 +160,34 @@ public partial class PowerPointHandler
             // chain (first run size > placeholder/default > 18pt body default).
             var spcFontHundredths = para.Elements<Drawing.Run>().FirstOrDefault()?.RunProperties?.FontSize?.Value
                 ?? defaultFontSizeHundredths ?? 1800;
+
+            // Issue #236: the paragraph div carries the line-height, so it must
+            // also carry a font-size — otherwise the CSS strut resolves against
+            // the inherited root size and every line box collapses to the root
+            // font size regardless of the runs' actual sizes (6.5pt text got an
+            // 18pt line box; 24pt text got a 1.0× box). Size the strut to the
+            // tallest run in the paragraph, mirroring PowerPoint's line box.
+            int paraMaxFontHundredths = 0;
+            foreach (var r0 in para.Elements<Drawing.Run>())
+            {
+                int sz = r0.RunProperties?.FontSize?.Value ?? defaultFontSizeHundredths ?? 1800;
+                if (sz > paraMaxFontHundredths) paraMaxFontHundredths = sz;
+            }
+            if (paraMaxFontHundredths == 0) paraMaxFontHundredths = defaultFontSizeHundredths ?? 1800;
+            paraStyles.Add($"font-size:{paraMaxFontHundredths / 100.0 * fontScale:0.##}pt");
+            // PowerPoint single spacing is the font's line pitch (hhea/OS2
+            // ascent+descent+lineGap ≈ 1.2× for Latin faces, ~1.32× for CJK
+            // faces like Microsoft YaHei), not 1.0× the font size. Resolve the
+            // ratio from the paragraph's first run typeface; unresolvable fonts
+            // fall back to the 1.2 Latin norm (GetRatio returns 1.0 on failure,
+            // which is never a real line pitch).
+            var firstRp = para.Elements<Drawing.Run>().FirstOrDefault()?.RunProperties;
+            var paraTypeface = firstRp?.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value
+                ?? firstRp?.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value;
+            if (paraTypeface != null && paraTypeface.StartsWith("+", StringComparison.Ordinal))
+                paraTypeface = ResolveThemeFontToken(placeholderPart, paraTypeface) ?? themeFontFallback;
+            paraTypeface ??= themeFontFallback;
+            double singleRatio = SingleSpacingPitch(paraTypeface);
             // R26-2: spaceBefore — explicit slide pPr wins; otherwise inherit the
             // master/layout lvlNpPr spcBef via the placeholder cascade.
             var sbElem = pProps?.GetFirstChild<Drawing.SpaceBefore>()
@@ -188,19 +216,31 @@ public partial class PowerPointHandler
             // Line spacing. R10-1: scale percent/default line-heights by the
             // normAutofit lnSpcReduction factor (fixed-pt line-heights are absolute
             // and unaffected, matching PowerPoint).
+            // Issue #236: percent spacing (and the single-spacing default) is
+            // relative to the font's line pitch, so every unitless multiplier is
+            // scaled by singleRatio; fixed-pt spacing stays absolute.
             var lsPct = pProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
-            if (lsPct.HasValue) paraStyles.Add($"line-height:{lsPct.Value / 100000.0 * lnSpcFactor:0.##}");
+            if (lsPct.HasValue) paraStyles.Add($"line-height:{lsPct.Value / 100000.0 * lnSpcFactor * singleRatio:0.##}");
             var lsPts = pProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
             if (lsPts.HasValue) paraStyles.Add($"line-height:{lsPts.Value / 100.0:0.##}pt");
             // R7-3: no explicit lnSpc on the paragraph — inherit the master/layout
-            // bodyStyle lvl lnSpc resolved via the placeholder cascade.
+            // bodyStyle lvl lnSpc resolved via the placeholder cascade. The
+            // fragment is "line-height:N" (unitless multiplier — scale it) or
+            // "line-height:Npt" (fixed — keep absolute).
             else if (!lsPct.HasValue && inheritedLineSpacing != null)
-                paraStyles.Add(inheritedLineSpacing);
-            // R10-1: paragraph has no explicit/inherited line spacing but the body
-            // has a lnSpcReduction — emit the reduced default multiplier so the
-            // reduction is visible in the render.
-            else if (!lsPct.HasValue && inheritedLineSpacing == null && lnSpcFactor < 1.0)
-                paraStyles.Add($"line-height:{lnSpcFactor:0.##}");
+            {
+                if (!inheritedLineSpacing.EndsWith("pt", StringComparison.Ordinal)
+                    && double.TryParse(inheritedLineSpacing["line-height:".Length..],
+                        System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var inhMul))
+                    paraStyles.Add($"line-height:{inhMul * singleRatio:0.##}");
+                else
+                    paraStyles.Add(inheritedLineSpacing);
+            }
+            // Default single spacing (incl. R10-1 lnSpcReduction): emit the
+            // metric-derived multiplier — the bare `.para { line-height: 1 }`
+            // stylesheet default understates every line box (issue #236).
+            else if (!lsPct.HasValue && inheritedLineSpacing == null)
+                paraStyles.Add($"line-height:{lnSpcFactor * singleRatio:0.##}");
 
             // Indent / left margin. OOXML hanging-indent idiom (bullet outside, text inside)
             // is marL>=0 paired with indent<0 (|indent|==marL). We translate marL to CSS
@@ -495,13 +535,14 @@ public partial class PowerPointHandler
             var paraXml = para.OuterXml;
             if (paraXml.Contains("oMath"))
             {
-                // AlternateContent is opaque to Descendants() — parse from XML
-                var mathMatch = System.Text.RegularExpressions.Regex.Match(paraXml,
+                // AlternateContent is opaque to Descendants() — parse from XML.
+                // A paragraph can interleave several a14:m equations with its text
+                // runs; emit every match, not just the first (#228 dropped the
+                // second equation of a two-equation paragraph).
+                foreach (System.Text.RegularExpressions.Match mathMatch in System.Text.RegularExpressions.Regex.Matches(paraXml,
                     @"<m:oMathPara[^>]*>.*?</m:oMathPara>|<m:oMath[^>]*>.*?</m:oMath>",
-                    System.Text.RegularExpressions.RegexOptions.Singleline);
-                if (mathMatch.Success)
+                    System.Text.RegularExpressions.RegexOptions.Singleline))
                 {
-                    var mathXml = $"<wrapper xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\">{mathMatch.Value}</wrapper>";
                     try
                     {
                         var wrapper = new OpenXmlUnknownElement("wrapper");

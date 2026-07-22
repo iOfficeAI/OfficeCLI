@@ -160,20 +160,55 @@ internal static class Installer
         }
 
         Directory.CreateDirectory(BinDir);
-        File.Copy(src, TargetPath, overwrite: true);
 
-        // Preserve executable permission on Unix
+        // Stage beside the target, then swap by rename — never copy ONTO the
+        // live path. File.Copy(overwrite) truncates the destination inode in
+        // place, so every process currently executing that binary (MCP
+        // servers, residents, watch) has its text pages pulled out from under
+        // it and dies (observed downstream: ~10 resident officecli processes
+        // killed, exit 137, when a new build was cp'd over a shared install).
+        // A rename leaves the old inode intact for as long as those processes
+        // hold it open, and the new binary is visible atomically to the next
+        // exec. Mirrors UpdateChecker.TryApplyPendingUpdate's swap, including
+        // the move-aside step (Windows cannot rename ONTO a running image,
+        // but can rename the running image away).
+        var stagePath = TargetPath + ".new-" + Guid.NewGuid().ToString("N")[..8];
+        File.Copy(src, stagePath, overwrite: true);
+
+        // Set the mode on the staged file so the binary is never momentarily
+        // present at TargetPath without its executable bit.
         if (!OperatingSystem.IsWindows())
         {
             try
             {
-                File.SetUnixFileMode(TargetPath,
+                File.SetUnixFileMode(stagePath,
                     UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
                     UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
                     UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
             }
             catch { /* best effort */ }
         }
+
+        var asidePath = TargetPath + ".old";
+        var movedAside = false;
+        if (File.Exists(TargetPath))
+        {
+            try { File.Delete(asidePath); } catch { /* best effort */ }
+            try { File.Move(TargetPath, asidePath, overwrite: true); movedAside = true; }
+            catch { /* target may not be movable; the swap below still tries */ }
+        }
+        try
+        {
+            File.Move(stagePath, TargetPath, overwrite: true);
+        }
+        catch
+        {
+            if (movedAside)
+                try { File.Move(asidePath, TargetPath, overwrite: true); } catch { /* best effort */ }
+            try { File.Delete(stagePath); } catch { /* best effort */ }
+            throw;
+        }
+        try { File.Delete(asidePath); } catch { /* best effort */ }
 
         RecordInstalledVersion();
 
