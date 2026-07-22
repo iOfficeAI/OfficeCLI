@@ -58,7 +58,7 @@ public sealed class ExcelBasicRenderer : IRenderer
     {
         var h = (input as HandlerRenderInput)?.Handler as ExcelHandler
                 ?? throw new InvalidOperationException("ExcelHandler render input expected");
-        return RenderResult.Html(h.ViewAsHtml());
+        return RenderResult.Html(h.ViewAsHtml(options.CellRange));
     }
 }
 

@@ -80,13 +80,13 @@ public partial class ExcelHandler
     }
 
     /// <summary>
-    /// Parse a `view text --range` target ('Sheet1!A1:C10', '/Sheet1/A1:C10',
+    /// Parse an xlsx cell-range target ('Sheet1!A1:C10', '/Sheet1/A1:C10',
     /// or a single cell 'Sheet1!B5') into an inclusive 1-based rectangle.
     /// Corner order is normalized (C10:A1 works). The sheet must exist —
-    /// unknown names throw not_found listing the available sheets, mirroring
-    /// screenshot mode's range_target_not_found actionability.
+    /// unknown names throw not_found listing the available sheets.
+    /// Set <paramref name="ignoreInvalid"/> for callers that also accept non-cell paths.
     /// </summary>
-    private (string Sheet, int R1, int C1, int R2, int C2)? ParseViewRange(string? range)
+    private (string Sheet, int R1, int C1, int R2, int C2)? ParseViewRange(string? range, bool ignoreInvalid = false)
     {
         if (string.IsNullOrWhiteSpace(range)) return null;
         var c = range.Trim();
@@ -96,9 +96,12 @@ public partial class ExcelHandler
             c = "/" + c[..bang] + "/" + c[(bang + 1)..];
         var m = Regex.Match(c, @"^/([^/]+)/([A-Za-z]{1,3}\d+)(?::([A-Za-z]{1,3}\d+))?$");
         if (!m.Success)
+        {
+            if (ignoreInvalid) return null;
             throw new Core.CliException(
                 $"Invalid --range '{range}'. Expected 'Sheet1!A1:C10', '/Sheet1/A1:C10', or a single cell 'Sheet1!B5'.")
             { Code = "invalid_value" };
+        }
 
         var sheet = m.Groups[1].Value;
         var names = GetWorksheets().Select(s => s.Item1).ToList();

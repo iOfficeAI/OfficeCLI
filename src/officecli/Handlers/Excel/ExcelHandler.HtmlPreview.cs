@@ -148,8 +148,12 @@ public partial class ExcelHandler
     /// Supports cell formatting (font, fill, borders, alignment), merged cells,
     /// column widths, row heights, frozen panes, and sheet tab switching.
     /// </summary>
-    public string ViewAsHtml()
+    /// <param name="ensureRange">Optional cell range ("Sheet1!A1:J20" or "/Sheet1/A1:J20").
+    /// The named sheet's grid is extended to cover it, so screenshot --range corner
+    /// cells beyond the used range still resolve to real grid cells.</param>
+    public string ViewAsHtml(string? ensureRange = null)
     {
+        var ensure = ParseViewRange(ensureRange, ignoreInvalid: true);
         using var _cul = InvariantCultureScope.Enter();
         var sb = new StringBuilder();
         var sheets = GetWorksheets();
@@ -242,7 +246,9 @@ public partial class ExcelHandler
             var pictures = CollectSheetPictures(worksheetPart);
             if (pictures.Count > 0)
                 charts.AddRange(pictures);
-            RenderSheetTable(sb, sheetName, renderPart, stylesheet, renderStyles, charts, sheetIdx, showGridLines);
+            var ensureCell = ensure != null && string.Equals(ensure.Value.Sheet, sheetName, StringComparison.OrdinalIgnoreCase)
+                ? (ensure.Value.R2, ensure.Value.C2) : ((int, int)?)null;
+            RenderSheetTable(sb, sheetName, renderPart, stylesheet, renderStyles, charts, sheetIdx, showGridLines, ensureCell);
             sb.AppendLine("</div>");
         }
         sb.AppendLine("</div>");
@@ -307,11 +313,12 @@ public partial class ExcelHandler
         return -1;
     }
 
+
     // ==================== Sheet Rendering ====================
 
     private void RenderSheetTable(StringBuilder sb, string sheetName, WorksheetPart worksheetPart, Stylesheet? stylesheet, RenderStyleArrays renderStyles,
         List<(int fromRow, int toRow, int fromCol, int toCol, double colOffsetPt, string html)>? charts = null, int sheetIdx = 0,
-        bool showGridLines = true)
+        bool showGridLines = true, (int Row, int Col)? ensureCell = null)
     {
         var ws = GetSheet(worksheetPart);
         var sheetData = ws.GetFirstChild<SheetData>();
@@ -463,6 +470,15 @@ public partial class ExcelHandler
                 if (toCol > maxCol) maxCol = toCol;
                 if (toRow > maxRow) maxRow = toRow;
             }
+        // Extend maxRow/maxCol to cover an explicitly requested screenshot range
+        // (issue #246): its corner cells must exist in the grid or the clip-crop
+        // union collapses to whichever corner is inside the used range. Subject
+        // to the same render caps below.
+        if (ensureCell != null)
+        {
+            if (ensureCell.Value.Row > maxRow) maxRow = ensureCell.Value.Row;
+            if (ensureCell.Value.Col > maxCol) maxCol = ensureCell.Value.Col;
+        }
 
         // Column cap: >200 cols is unusable in a browser table regardless of rendering mode.
         // Row cap: default 5000; overridable via OnGetHtmlRowCap when the rendering backend

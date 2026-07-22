@@ -304,7 +304,7 @@ static partial class CommandBuilder
                     }
                 }
                 else if (handler is OfficeCli.Handlers.ExcelHandler excelHandler)
-                    html = RenderViaRegistry(excelHandler, "xlsx", new OfficeCli.Core.Rendering.RenderOptions())!;
+                    html = RenderViaRegistry(excelHandler, "xlsx", new OfficeCli.Core.Rendering.RenderOptions { CellRange = clipArg })!;
                 else if (handler is OfficeCli.Handlers.WordHandler wordHandlerGrid && gridCols != 0)
                 {
                     // Contact-sheet grid: tile every page into an N-column (or auto)

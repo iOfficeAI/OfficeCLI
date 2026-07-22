@@ -46,4 +46,9 @@ public sealed class RenderOptions
 
     /// <summary>Target raster height in px for Png/Pdf output. 0 = renderer default.</summary>
     public int RasterHeightPx { get; init; }
+
+    /// <summary>Xlsx cell range ("Sheet1!A1:J20" or "/Sheet1/A1:J20") whose cells must
+    /// exist in the rendered grid, so a screenshot --range crop can resolve corner
+    /// cells beyond the used range. Null = used range only. Non-Excel renderers ignore it.</summary>
+    public string? CellRange { get; init; }
 }
