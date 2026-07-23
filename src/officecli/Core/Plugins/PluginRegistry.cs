@@ -143,6 +143,11 @@ public static class PluginRegistry
         {
             yield return "plugin.exe";
             yield return "plugin";
+            // Windows discovery also accepts non-.exe wrappers so Python/BAT
+            // plugins can live under the standard <kind>/<ext> plugin dirs
+            // without renaming them into an .exe shim.
+            yield return "plugin.bat";
+            yield return "plugin.py";
         }
         else
         {
@@ -255,12 +260,23 @@ public static class PluginRegistry
         manifest = new PluginManifest();
         try
         {
+            var fileName = executablePath;
+            var arguments = "--info";
+
+            // Windows: .bat files require cmd.exe /c when UseShellExecute is false.
+            if (OperatingSystem.IsWindows()
+                && fileName.EndsWith(".bat", StringComparison.OrdinalIgnoreCase))
+            {
+                fileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
+                arguments = "/c \"" + executablePath + "\" --info";
+            }
+
             using var p = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = executablePath,
-                    Arguments = "--info",
+                    FileName = fileName,
+                    Arguments = arguments,
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
