@@ -1624,7 +1624,7 @@ public partial class WordHandler
             // like /<host>/textbox[N]/tbl[K]/tr[J] fail with
             // "No txbxContent found at /body".
             if (canonName == "txbxContent" || canonName == "wsp")
-                canonName = seg.Name.ToLowerInvariant();
+                canonName = seg.Name;
             if (next is Paragraph navPara && !string.IsNullOrEmpty(navPara.ParagraphId?.Value))
             {
                 parentPath += "/" + canonName + $"[@paraId={navPara.ParagraphId.Value}]";
