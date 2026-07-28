@@ -1194,6 +1194,10 @@ internal partial class FormulaEvaluator
 
     // ==================== Cell & Range Resolution ====================
 
+    // External-workbook reference marker in a stored formula (the "[1]" in
+    // "[1]Sheet!A1"); such refs can't be resolved without the linked file.
+    private static readonly Regex ExternalRefRe = new(@"\[\d+\]", RegexOptions.Compiled);
+
     internal FormulaResult? ResolveCellResult(string cellRef)
     {
         cellRef = StripDollar(cellRef).ToUpperInvariant();
@@ -1250,7 +1254,12 @@ internal partial class FormulaEvaluator
                 {
                     var circularBefore = _session.CircularHits;
                     var evaluated = EvaluateFormula(ModernFunctionQualifier.Unqualify(cell.CellFormula.Text));
-                    if (evaluated != null)
+                    // An external-workbook reference (=[1]Sheet!A1) can't be resolved without
+                    // the linked file and surfaces as #REF!. Excel keeps the last cached <v>
+                    // for such cells, so fall through to it rather than poisoning every
+                    // dependent total with #REF!. Genuine errors (no external link) still propagate.
+                    if (evaluated != null
+                        && !(evaluated.IsError && ExternalRefRe.IsMatch(cell.CellFormula.Text)))
                     {
                         // Memoize only clean results: no live bindings (see lookup
                         // guard above) and no circular fallback during this
