@@ -1355,6 +1355,9 @@ public partial class WordHandler
       else{_t=document.querySelector(_sel);if(!_t){var _ap=document.querySelectorAll('.page');_t=_ap[_ap.length-1];}}
       if(_t)_t.scrollIntoView({behavior:_beh,block:'center'});
     }
+    else if(typeof window._watchRestorePendingViewport==='function'){
+      window._watchRestorePendingViewport();
+    }
     var _frz=document.getElementById('_sse_freeze');
     if(_frz)_frz.remove();
   }
