@@ -266,9 +266,10 @@ jobs:
           echo "=== SHA256SUMS ==="
           cat SHA256SUMS
 
-      - name: Create Draft Release
+      - name: Publish Release
         uses: softprops/action-gh-release@v3
         with:
           files: artifacts/**/*
           generate_release_notes: true
-          draft: true
+          draft: false
+          fail_on_unmatched_files: true
