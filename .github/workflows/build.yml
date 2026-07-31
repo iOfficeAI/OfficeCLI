@@ -53,30 +53,6 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Setup Resource Hacker for metadata-free Windows executables
-        if: startsWith(matrix.rid, 'win-')
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $downloadUrl = 'https://angusj.com/resourcehacker/resource_hacker.zip'
-          $expectedSha256 = '52F81EE4778070D6AA72D8719A1A68FEA2F288005DEB02667542754F747776F8'
-          $toolDirectory = Join-Path $env:RUNNER_TEMP 'resource-hacker-5.2.8'
-          $archivePath = Join-Path $env:RUNNER_TEMP 'resource_hacker.zip'
-
-          Invoke-WebRequest -Uri $downloadUrl -OutFile $archivePath
-          $actualSha256 = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash
-          if ($actualSha256 -ne $expectedSha256) {
-            throw "Resource Hacker checksum mismatch: expected $expectedSha256, got $actualSha256"
-          }
-
-          Expand-Archive -LiteralPath $archivePath -DestinationPath $toolDirectory -Force
-          $resourceHackerPath = Join-Path $toolDirectory 'ResourceHacker.exe'
-          if (-not (Test-Path -LiteralPath $resourceHackerPath)) {
-            throw "Resource Hacker executable not found: $resourceHackerPath"
-          }
-
-          "RESOURCE_HACKER_PATH=$resourceHackerPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
       - name: Publish
         run: dotnet publish src/officecli/officecli.csproj -c Release -r ${{ matrix.rid }} -o publish --nologo
 
@@ -93,8 +69,7 @@ jobs:
         shell: pwsh
         run: |
           .\build\strip-exe-version-info.ps1 `
-            -TargetPath 'publish\${{ matrix.name }}' `
-            -ResourceHackerPath $env:RESOURCE_HACKER_PATH
+            -TargetPath 'publish\${{ matrix.name }}'
 
       - name: Detect macOS signing configuration
         if: startsWith(matrix.rid, 'osx-')

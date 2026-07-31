@@ -524,7 +524,8 @@ public partial class ExcelHandler
             foreach (var (otherName, otherPart) in GetWorksheets())
             {
                 if (otherPart == worksheet) continue;
-                var otherData = GetSheet(otherPart).GetFirstChild<SheetData>();
+                var otherWorksheet = GetSheet(otherPart);
+                var otherData = otherWorksheet.GetFirstChild<SheetData>();
                 if (otherData == null) continue;
                 foreach (var row in otherData.Elements<Row>())
                     foreach (var cell in row.Elements<Cell>())
@@ -535,7 +536,7 @@ public partial class ExcelHandler
                             cell.CellFormula.Text = newText;
                             InvalidateCacheIfShiftBrokeFormula(cell, oldText, newText);
                         }
-                otherPart.Worksheet.Save();
+                otherWorksheet.Save();
             }
         }
 
