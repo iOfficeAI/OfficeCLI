@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
-REPO="iOfficeAI/OfficeCLI"
+REPO="suoak/OfficeCLI"
 BINARY_NAME="officecli"
 
 # Mirror primary, github fallback. The mirror is exercised first so issues
 # surface there fast; github is the final safety net.
-MIRROR_BASE="https://d.officecli.ai"
+MIRROR_BASE="https://github.com/$REPO"
 GITHUB_RELEASE_BASE="https://github.com/$REPO/releases/latest/download"
 GITHUB_RAW_BASE="https://raw.githubusercontent.com/$REPO/main"
 

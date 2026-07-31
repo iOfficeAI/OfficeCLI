@@ -1,4 +1,4 @@
-$repo = "iOfficeAI/OfficeCLI"
+$repo = "suoak/OfficeCLI"
 # Select the native asset for the machine architecture. PROCESSOR_ARCHITECTURE
 # reports the *current process* arch (x86/AMD64 when an emulated 32/64-bit
 # PowerShell runs on ARM64); PROCESSOR_ARCHITEW6432 then reveals the real ARM64
@@ -10,7 +10,7 @@ $binary = "officecli.exe"
 # Mirror primary, github fallback. The mirror is exercised first so issues
 # surface there fast; github is the safety net when CF or the mirror is
 # unreachable.
-$mirrorBase = "https://d.officecli.ai"
+$mirrorBase = "https://github.com/$repo"
 $githubReleaseBase = "https://github.com/$repo/releases/latest/download"
 $githubRawBase = "https://raw.githubusercontent.com/$repo/main"
 
