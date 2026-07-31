@@ -59,67 +59,70 @@ function Resolve-Version {
 
 $source = $null
 
-# Resolve the latest tag up-front so we download from the IMMUTABLE versioned
-# path (/releases/download/vX.Y.Z/asset) instead of the mutable
-# /releases/latest/download/ path. The latter is CDN-cached for up to 4h, so
-# right after a release it can serve the PREVIOUS binary together with a
-# self-consistent stale SHA256SUMS — which passes checksum and installs an old
-# version despite printing success. The versioned URL is pinned + immutable.
-$version = Resolve-Version
-if ($version) {
-    Write-Host "Latest version: $version"
-    $mirrorAssetBase = "$mirrorBase/releases/download/$version"
-    $githubAssetBase = "https://github.com/$repo/releases/download/$version"
+if ($env:OFFICECLI_SKIP_DOWNLOAD -eq "1") {
+    Write-Host "Skipping remote download; using a local OfficeCLI binary."
 } else {
-    Write-Host "Could not resolve latest version; falling back to 'latest' path."
-    $mirrorAssetBase = "$mirrorBase/releases/latest/download"
-    $githubAssetBase = $githubReleaseBase
+    # Resolve the latest tag up-front so we download from the IMMUTABLE versioned
+    # path (/releases/download/vX.Y.Z/asset) instead of the mutable
+    # /releases/latest/download/ path.
+    $version = Resolve-Version
+    if ($version) {
+        Write-Host "Latest version: $version"
+        $mirrorAssetBase = "$mirrorBase/releases/download/$version"
+        $githubAssetBase = "https://github.com/$repo/releases/download/$version"
+    } else {
+        Write-Host "Could not resolve latest version; falling back to 'latest' path."
+        $mirrorAssetBase = "$mirrorBase/releases/latest/download"
+        $githubAssetBase = $githubReleaseBase
+    }
+
+    # Step 1: Try downloading (mirror first, github fallback)
+    $tempFile = "$env:TEMP\$binary"
+    Write-Host "Downloading OfficeCLI..."
+    if (Fetch-WithFallback "$mirrorAssetBase/$asset" "$githubAssetBase/$asset" $tempFile) {
+        # Verify checksum if available
+        $checksumOk = $false
+        $checksumFile = "$env:TEMP\officecli-SHA256SUMS"
+        if (Fetch-WithFallback "$mirrorAssetBase/SHA256SUMS" "$githubAssetBase/SHA256SUMS" $checksumFile) {
+            $checksumContent = Get-Content $checksumFile
+            # Match the filename column EXACTLY (not a regex/substring): `-match` is
+            # an unanchored regex where `.`/`-` are metacharacters, so it could match
+            # the wrong manifest line (or several) and pick a wrong hash — failing an
+            # otherwise-valid update. Mirrors the C# self-updater's MatchChecksumManifest.
+            $expected = $null
+            foreach ($line in $checksumContent) {
+                $parts = ($line.Trim() -split '\s+')
+                if ($parts.Length -ge 2 -and $parts[1] -eq $asset) { $expected = $parts[0]; break }
+            }
+            if ($expected) {
+                $actual = (Get-FileHash -Path $tempFile -Algorithm SHA256).Hash.ToLower()
+                if ($expected -eq $actual) {
+                    $checksumOk = $true
+                    Write-Host "Checksum verified."
+                } else {
+                    Write-Host "Checksum mismatch! Expected: $expected, Got: $actual"
+                    Remove-Item -Force $tempFile, $checksumFile -ErrorAction SilentlyContinue
+                    exit 1
+                }
+            }
+            Remove-Item -Force $checksumFile -ErrorAction SilentlyContinue
+        } else {
+            Write-Host "Checksum file not available, skipping verification."
+        }
+        $output = & $tempFile --version 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $source = $tempFile
+            Write-Host "Download verified."
+        } else {
+            Write-Host "Downloaded file is not a valid OfficeCLI binary."
+            Remove-Item -Force $tempFile -ErrorAction SilentlyContinue
+        }
+    } else {
+        Write-Host "Download failed."
+    }
 }
 
-# Step 1: Try downloading (mirror first, github fallback)
 $tempFile = "$env:TEMP\$binary"
-Write-Host "Downloading OfficeCLI..."
-if (Fetch-WithFallback "$mirrorAssetBase/$asset" "$githubAssetBase/$asset" $tempFile) {
-    # Verify checksum if available
-    $checksumOk = $false
-    $checksumFile = "$env:TEMP\officecli-SHA256SUMS"
-    if (Fetch-WithFallback "$mirrorAssetBase/SHA256SUMS" "$githubAssetBase/SHA256SUMS" $checksumFile) {
-        $checksumContent = Get-Content $checksumFile
-        # Match the filename column EXACTLY (not a regex/substring): `-match` is
-        # an unanchored regex where `.`/`-` are metacharacters, so it could match
-        # the wrong manifest line (or several) and pick a wrong hash — failing an
-        # otherwise-valid update. Mirrors the C# self-updater's MatchChecksumManifest.
-        $expected = $null
-        foreach ($line in $checksumContent) {
-            $parts = ($line.Trim() -split '\s+')
-            if ($parts.Length -ge 2 -and $parts[1] -eq $asset) { $expected = $parts[0]; break }
-        }
-        if ($expected) {
-            $actual = (Get-FileHash -Path $tempFile -Algorithm SHA256).Hash.ToLower()
-            if ($expected -eq $actual) {
-                $checksumOk = $true
-                Write-Host "Checksum verified."
-            } else {
-                Write-Host "Checksum mismatch! Expected: $expected, Got: $actual"
-                Remove-Item -Force $tempFile, $checksumFile -ErrorAction SilentlyContinue
-                exit 1
-            }
-        }
-        Remove-Item -Force $checksumFile -ErrorAction SilentlyContinue
-    } else {
-        Write-Host "Checksum file not available, skipping verification."
-    }
-    $output = & $tempFile --version 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        $source = $tempFile
-        Write-Host "Download verified."
-    } else {
-        Write-Host "Downloaded file is not a valid OfficeCLI binary."
-        Remove-Item -Force $tempFile -ErrorAction SilentlyContinue
-    }
-} else {
-    Write-Host "Download failed."
-}
 
 # Step 2: Fallback to local files
 if (-not $source) {

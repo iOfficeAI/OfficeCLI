@@ -92,66 +92,60 @@ esac
 
 SOURCE=""
 
-# Resolve the latest tag up-front so we download from the IMMUTABLE versioned
-# path (/releases/download/vX.Y.Z/asset) instead of the mutable
-# /releases/latest/download/ path. The latter is CDN-cached for up to 4h, so
-# right after a release it can serve the PREVIOUS binary together with a
-# self-consistent stale SHA256SUMS — which passes checksum and installs an old
-# version despite printing success. The versioned URL is pinned + immutable,
-# so it never mismatches the freshly-published release.
-VERSION=$(resolve_version || true)
-if [ -n "$VERSION" ]; then
-    echo "Latest version: $VERSION"
-    MIRROR_ASSET_BASE="$MIRROR_BASE/releases/download/$VERSION"
-    GITHUB_ASSET_BASE="https://github.com/$REPO/releases/download/$VERSION"
+if [ "${OFFICECLI_SKIP_DOWNLOAD:-}" = "1" ]; then
+    echo "Skipping remote download; using a local OfficeCLI binary."
 else
-    echo "Could not resolve latest version; falling back to 'latest' path."
-    MIRROR_ASSET_BASE="$MIRROR_BASE/releases/latest/download"
-    GITHUB_ASSET_BASE="$GITHUB_RELEASE_BASE"
-fi
+    # Resolve the latest tag up-front so we download from an immutable,
+    # versioned release URL instead of the mutable latest path.
+    VERSION=$(resolve_version || true)
+    if [ -n "$VERSION" ]; then
+        echo "Latest version: $VERSION"
+        MIRROR_ASSET_BASE="$MIRROR_BASE/releases/download/$VERSION"
+        GITHUB_ASSET_BASE="https://github.com/$REPO/releases/download/$VERSION"
+    else
+        echo "Could not resolve latest version; falling back to 'latest' path."
+        MIRROR_ASSET_BASE="$MIRROR_BASE/releases/latest/download"
+        GITHUB_ASSET_BASE="$GITHUB_RELEASE_BASE"
+    fi
 
-# Step 1: Try downloading (mirror first, github fallback)
-echo "Downloading OfficeCLI ($ASSET)..."
-if fetch_with_fallback \
-        "$MIRROR_ASSET_BASE/$ASSET" \
-        "$GITHUB_ASSET_BASE/$ASSET" \
-        "/tmp/$BINARY_NAME"; then
-    # Verify checksum if available
-    CHECKSUM_OK=false
+    # Step 1: Try downloading (mirror first, github fallback)
+    echo "Downloading OfficeCLI ($ASSET)..."
     if fetch_with_fallback \
-            "$MIRROR_ASSET_BASE/SHA256SUMS" \
-            "$GITHUB_ASSET_BASE/SHA256SUMS" \
-            "/tmp/officecli-SHA256SUMS"; then
-        # Match the filename column EXACTLY (field 2), not a substring: a
-        # `grep "$ASSET"` could match several lines if one asset name is a
-        # substring of another, yielding a multi-line EXPECTED that can never
-        # equal ACTUAL — failing an otherwise-valid update. Mirrors the C#
-        # self-updater's MatchChecksumManifest (exact filename column).
-        EXPECTED=$(awk -v a="$ASSET" '$2 == a { print $1; exit }' "/tmp/officecli-SHA256SUMS")
-        if [ -n "$EXPECTED" ]; then
-            if command -v sha256sum >/dev/null 2>&1; then
-                ACTUAL=$(sha256sum "/tmp/$BINARY_NAME" | awk '{print $1}')
-            else
-                ACTUAL=$(shasum -a 256 "/tmp/$BINARY_NAME" | awk '{print $1}')
+            "$MIRROR_ASSET_BASE/$ASSET" \
+            "$GITHUB_ASSET_BASE/$ASSET" \
+            "/tmp/$BINARY_NAME"; then
+        # Verify checksum if available
+        CHECKSUM_OK=false
+        if fetch_with_fallback \
+                "$MIRROR_ASSET_BASE/SHA256SUMS" \
+                "$GITHUB_ASSET_BASE/SHA256SUMS" \
+                "/tmp/officecli-SHA256SUMS"; then
+            EXPECTED=$(awk -v a="$ASSET" '$2 == a { print $1; exit }' "/tmp/officecli-SHA256SUMS")
+            if [ -n "$EXPECTED" ]; then
+                if command -v sha256sum >/dev/null 2>&1; then
+                    ACTUAL=$(sha256sum "/tmp/$BINARY_NAME" | awk '{print $1}')
+                else
+                    ACTUAL=$(shasum -a 256 "/tmp/$BINARY_NAME" | awk '{print $1}')
+                fi
+                if [ "$EXPECTED" = "$ACTUAL" ]; then
+                    CHECKSUM_OK=true
+                    echo "Checksum verified."
+                else
+                    echo "Checksum mismatch! Expected: $EXPECTED, Got: $ACTUAL"
+                    rm -f "/tmp/$BINARY_NAME" "/tmp/officecli-SHA256SUMS"
+                    exit 1
+                fi
             fi
-            if [ "$EXPECTED" = "$ACTUAL" ]; then
-                CHECKSUM_OK=true
-                echo "Checksum verified."
-            else
-                echo "Checksum mismatch! Expected: $EXPECTED, Got: $ACTUAL"
-                rm -f "/tmp/$BINARY_NAME" "/tmp/officecli-SHA256SUMS"
-                exit 1
-            fi
+            rm -f "/tmp/officecli-SHA256SUMS"
         fi
-        rm -f "/tmp/officecli-SHA256SUMS"
+        if [ "$CHECKSUM_OK" = false ]; then
+            echo "Checksum file not available, skipping verification."
+        fi
+        chmod +x "/tmp/$BINARY_NAME"
+        SOURCE="/tmp/$BINARY_NAME"
+    else
+        echo "Download failed."
     fi
-    if [ "$CHECKSUM_OK" = false ]; then
-        echo "Checksum file not available, skipping verification."
-    fi
-    chmod +x "/tmp/$BINARY_NAME"
-    SOURCE="/tmp/$BINARY_NAME"
-else
-    echo "Download failed."
 fi
 
 # Step 2: Fallback to local files

@@ -12,6 +12,7 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - rid: osx-arm64
@@ -235,10 +236,9 @@ jobs:
 
       - name: Smoke test - install.sh / install.ps1
         # Exercises the shell installers themselves (separate from the CLI's
-        # own `install` subcommand tested above). Downloads from
-        # d.officecli.ai with github fallback — validates the production
-        # mirror is reachable AND the in-repo script is syntactically and
-        # logically correct on each platform.
+        # own `install` subcommand tested above). Use this run's binary because
+        # the matching GitHub Release does not exist until every matrix job has
+        # completed successfully.
         if: >-
           (matrix.rid == 'osx-arm64' && runner.arch == 'ARM64') ||
           (matrix.rid == 'osx-x64' && runner.arch == 'X64') ||
@@ -246,9 +246,12 @@ jobs:
           (matrix.rid == 'win-x64' && runner.os == 'Windows')
         shell: bash
         env:
+          OFFICECLI_SKIP_DOWNLOAD: '1'
           MSYS_NO_PATHCONV: '1'
           MSYS2_ARG_CONV_EXCL: '*'
         run: |
+          cp "publish/${{ matrix.name }}" "./${{ matrix.name }}"
+          trap 'rm -f "./${{ matrix.name }}"' EXIT
           if [ "$RUNNER_OS" == "Windows" ]; then
             pwsh -NoProfile -ExecutionPolicy Bypass -File ./install.ps1
             test -f "$LOCALAPPDATA/OfficeCLI/officecli.exe" || { echo "FAIL: officecli.exe not installed"; exit 1; }
