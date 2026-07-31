@@ -95,8 +95,33 @@ jobs:
             -TargetPath 'publish\${{ matrix.name }}' `
             -ResourceHackerPath $env:RESOURCE_HACKER_PATH
 
-      - name: Setup macOS code signing
+      - name: Detect macOS signing configuration
         if: startsWith(matrix.rid, 'osx-')
+        id: macos_signing
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APP_SPECIFIC_PASSWORD: ${{ secrets.APP_SPECIFIC_PASSWORD }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+        run: |
+          if [[ -n "$BUILD_CERTIFICATE_BASE64" && -n "$P12_PASSWORD" && -n "$KEYCHAIN_PASSWORD" ]]; then
+            echo "signing=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signing=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::macOS signing secrets are not configured; producing an unsigned binary."
+          fi
+
+          if [[ -n "$BUILD_CERTIFICATE_BASE64" && -n "$P12_PASSWORD" && -n "$KEYCHAIN_PASSWORD" && -n "$APPLE_ID" && -n "$APP_SPECIFIC_PASSWORD" && -n "$TEAM_ID" ]]; then
+            echo "notarization=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "notarization=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::macOS notarization secrets are not configured; skipping notarization."
+          fi
+
+      - name: Setup macOS code signing
+        if: startsWith(matrix.rid, 'osx-') && steps.macos_signing.outputs.signing == 'true'
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
@@ -104,6 +129,7 @@ jobs:
         run: |
           CERT_PATH="$RUNNER_TEMP/build_certificate.p12"
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          trap 'rm -f "$CERT_PATH"' EXIT
 
           echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
 
@@ -113,10 +139,9 @@ jobs:
           security import "$CERT_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
-          rm -f "$CERT_PATH"
 
       - name: Codesign (macOS)
-        if: startsWith(matrix.rid, 'osx-')
+        if: startsWith(matrix.rid, 'osx-') && steps.macos_signing.outputs.signing == 'true'
         run: |
           IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -n 1 | sed -E 's/.*"(.+)"/\1/')
           echo "Signing with: $IDENTITY"
@@ -132,7 +157,7 @@ jobs:
           codesign -d --entitlements - --xml publish/${{ matrix.name }} | grep -q allow-jit
 
       - name: Notarize (macOS)
-        if: startsWith(matrix.rid, 'osx-')
+        if: startsWith(matrix.rid, 'osx-') && steps.macos_signing.outputs.notarization == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APP_SPECIFIC_PASSWORD: ${{ secrets.APP_SPECIFIC_PASSWORD }}
@@ -148,6 +173,10 @@ jobs:
             --password "$APP_SPECIFIC_PASSWORD" \
             --wait
           rm -f "$RUNNER_TEMP/notarize.zip"
+
+      - name: Clean up macOS signing keychain
+        if: always() && startsWith(matrix.rid, 'osx-') && steps.macos_signing.outputs.signing == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/build.keychain-db" || true
 
       - name: Smoke test - create document
         if: >-
