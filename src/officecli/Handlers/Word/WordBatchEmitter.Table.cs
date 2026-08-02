@@ -490,7 +490,7 @@ public static partial class WordBatchEmitter
         });
 
         // BUG-R3 (nested-table multi-instance): a single cell may hold MORE
-        // THAN ONE nested table stacked back-to-back (LibreOffice export
+        // THAN ONE nested table stacked back-to-back (some editors' export
         // splits a logical table across several <w:tbl> siblings). The old
         // `tbl[1]` target hardcoded the FIRST nested table for every nested
         // emit, so the 2nd..Nth tables' per-cell `set tc[K]` ops resolved

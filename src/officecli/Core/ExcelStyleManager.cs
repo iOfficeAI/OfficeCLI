@@ -183,12 +183,29 @@ internal class ExcelStyleManager
                     ? fillColor.TrimStart("gradient;".ToCharArray()).Replace(';', '-')
                     : fillColor;
                 fillId = GetOrCreateGradientFill(stylesheet, dashFormat);
+                applyFill = true;
             }
             else
             {
-                fillId = GetOrCreateFill(stylesheet, fillColor);
+                // A lone `fill=` on a cell that already carries a NON-solid
+                // pattern fill is an incremental foreground edit — mirroring
+                // the lone-fillBg branch below. Collapsing it to a solid fill
+                // silently discarded the pattern and background (and the
+                // receipt claimed only the color was applied).
+                var currentFill = stylesheet.Fills?.Elements<Fill>().ElementAtOrDefault((int)fillId);
+                var currentPattern = currentFill?.PatternFill?.PatternType;
+                if (currentPattern != null
+                    && currentPattern.Value != PatternValues.None
+                    && currentPattern.Value != PatternValues.Solid)
+                {
+                    fillId = GetOrCreatePatternFillPreserveBg(stylesheet, currentFill!.PatternFill!, fillColor);
+                }
+                else
+                {
+                    fillId = GetOrCreateFill(stylesheet, fillColor);
+                }
+                applyFill = true;
             }
-            applyFill = true;
         }
         else if (styleProps.TryGetValue("fillBg", out var loneBg) && !string.IsNullOrEmpty(loneBg))
         {
@@ -204,8 +221,12 @@ internal class ExcelStyleManager
                 && existingPattern.Value != PatternValues.None
                 && existingPattern.Value != PatternValues.Solid)
             {
-                fillId = GetOrCreatePatternFill(stylesheet, existingPattern.InnerText!,
-                    existingFill!.PatternFill!.ForegroundColor?.Rgb?.Value, loneBg);
+                // Carry the existing foreground through VERBATIM (clone) — a
+                // lone fillBg edit must never eat the foreground, and the fg
+                // can be stored in forms a string round-trip cannot express
+                // (theme+tint, indexed, auto). Only the background is rebuilt.
+                fillId = GetOrCreatePatternFillPreserveFg(stylesheet,
+                    existingFill!.PatternFill!, loneBg);
                 applyFill = true;
             }
             else
@@ -1144,6 +1165,80 @@ internal class ExcelStyleManager
 
     // ==================== Fill ====================
 
+    // CONSISTENCY(scheme-color): fill / fillBg accept scheme names
+    // ("accent1"-"accent6", "lt1"/"dk1", …) the same way font.color does.
+    // Get surfaces theme pattern fills AS scheme names, so Set must take
+    // them back — otherwise a dump→batch round-trip of a theme-filled cell
+    // rejects its own output (and, under atomic batch, rolls back the whole
+    // replay over one fill).
+    private static (string? Rgb, uint? Theme) ResolveFillColor(string value)
+    {
+        var schemeIdx = OfficeCli.Handlers.ExcelHandler.ExcelSchemeColorNameToThemeIndex(value);
+        return schemeIdx.HasValue ? (null, schemeIdx.Value) : (NormalizeColor(value), null);
+    }
+
+    private static bool ColorMatches(ColorType? c, string? rgb, uint? theme)
+        => rgb != null
+            ? string.Equals(c?.Rgb?.Value, rgb, StringComparison.OrdinalIgnoreCase)
+            : theme != null
+                ? c?.Theme?.Value == theme.Value
+                : c == null || (c.Rgb == null && c.Theme == null);
+
+    /// <summary>
+    /// Incremental fillBg edit: rebuild the pattern fill with the existing
+    /// foreground CLONED verbatim (any storage form — rgb, theme+tint,
+    /// indexed, auto) and only the background replaced. Dedup by serialized
+    /// form so repeated increments don't bloat the fills table.
+    /// </summary>
+    /// <summary>Incremental fill (foreground) edit on a non-solid pattern:
+    /// clone the pattern with its background verbatim, replace only the
+    /// foreground. Mirror image of <see cref="GetOrCreatePatternFillPreserveFg"/>.</summary>
+    private static uint GetOrCreatePatternFillPreserveBg(
+        Stylesheet stylesheet, PatternFill existing, string fgValue)
+    {
+        var fills = stylesheet.Fills!;
+        var newPf = (PatternFill)existing.CloneNode(true);
+        newPf.ForegroundColor?.Remove();
+        var (fgRgb, fgTheme) = ResolveFillColor(fgValue);
+        var fg = new ForegroundColor();
+        if (fgRgb != null) fg.Rgb = fgRgb; else fg.Theme = fgTheme;
+        // Schema order: fgColor FIRST, before any cloned bgColor.
+        newPf.InsertAt(fg, 0);
+
+        int idx = 0;
+        foreach (var fill in fills.Elements<Fill>())
+        {
+            if (fill.PatternFill?.OuterXml == newPf.OuterXml) return (uint)idx;
+            idx++;
+        }
+        fills.Append(new Fill(newPf));
+        fills.Count = (uint)fills.Elements<Fill>().Count();
+        return (uint)(fills.Elements<Fill>().Count() - 1);
+    }
+
+    private static uint GetOrCreatePatternFillPreserveFg(
+        Stylesheet stylesheet, PatternFill existing, string bgValue)
+    {
+        var fills = stylesheet.Fills!;
+        var newPf = (PatternFill)existing.CloneNode(true);
+        newPf.BackgroundColor?.Remove();
+        var (bgRgb, bgTheme) = ResolveFillColor(bgValue);
+        var bg = new BackgroundColor();
+        if (bgRgb != null) bg.Rgb = bgRgb; else bg.Theme = bgTheme;
+        // Schema order: fgColor (cloned, stays first) then bgColor.
+        newPf.Append(bg);
+
+        int idx = 0;
+        foreach (var fill in fills.Elements<Fill>())
+        {
+            if (fill.PatternFill?.OuterXml == newPf.OuterXml) return (uint)idx;
+            idx++;
+        }
+        fills.Append(new Fill(newPf));
+        fills.Count = (uint)fills.Elements<Fill>().Count();
+        return (uint)(fills.Elements<Fill>().Count() - 1);
+    }
+
     private static uint GetOrCreateFill(Stylesheet stylesheet, string hexColor)
     {
         var fills = stylesheet.Fills;
@@ -1161,7 +1256,7 @@ internal class ExcelStyleManager
                 stylesheet.Append(fills);
         }
 
-        var normalizedColor = NormalizeColor(hexColor);
+        var (rgb, theme) = ResolveFillColor(hexColor);
 
         // Search for existing match
         int idx = 0;
@@ -1169,15 +1264,15 @@ internal class ExcelStyleManager
         {
             var pf = fill.PatternFill;
             if (pf?.PatternType?.Value == PatternValues.Solid &&
-                string.Equals(pf.ForegroundColor?.Rgb?.Value, normalizedColor, StringComparison.OrdinalIgnoreCase))
+                ColorMatches(pf.ForegroundColor, rgb, theme))
                 return (uint)idx;
             idx++;
         }
 
         // Create new fill
-        fills.Append(new Fill(new PatternFill(
-            new ForegroundColor { Rgb = normalizedColor }
-        ) { PatternType = PatternValues.Solid }));
+        var fg = new ForegroundColor();
+        if (rgb != null) fg.Rgb = rgb; else fg.Theme = theme;
+        fills.Append(new Fill(new PatternFill(fg) { PatternType = PatternValues.Solid }));
         fills.Count = (uint)fills.Elements<Fill>().Count();
 
         return (uint)(fills.Elements<Fill>().Count() - 1);
@@ -1232,24 +1327,35 @@ internal class ExcelStyleManager
         }
 
         var pat = ParsePatternType(patternName) ?? PatternValues.Solid;
-        var normFg = fgHex != null ? NormalizeColor(fgHex) : null;
-        var normBg = bgHex != null ? NormalizeColor(bgHex) : null;
+        // CONSISTENCY(scheme-color): pattern fg/bg accept scheme names too.
+        var (fgRgb, fgTheme) = fgHex != null ? ResolveFillColor(fgHex) : (null, (uint?)null);
+        var (bgRgb, bgTheme) = bgHex != null ? ResolveFillColor(bgHex) : (null, (uint?)null);
 
         int idx = 0;
         foreach (var fill in fills.Elements<Fill>())
         {
             var pf = fill.PatternFill;
             if (pf?.PatternType?.Value == pat
-                && string.Equals(pf.ForegroundColor?.Rgb?.Value, normFg, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(pf.BackgroundColor?.Rgb?.Value, normBg, StringComparison.OrdinalIgnoreCase))
+                && (fgHex == null ? pf?.ForegroundColor == null : ColorMatches(pf?.ForegroundColor, fgRgb, fgTheme))
+                && (bgHex == null ? pf?.BackgroundColor == null : ColorMatches(pf?.BackgroundColor, bgRgb, bgTheme)))
                 return (uint)idx;
             idx++;
         }
 
         var newPf = new PatternFill { PatternType = pat };
         // OOXML element order: fgColor before bgColor.
-        if (normFg != null) newPf.Append(new ForegroundColor { Rgb = normFg });
-        if (normBg != null) newPf.Append(new BackgroundColor { Rgb = normBg });
+        if (fgHex != null)
+        {
+            var fg = new ForegroundColor();
+            if (fgRgb != null) fg.Rgb = fgRgb; else fg.Theme = fgTheme;
+            newPf.Append(fg);
+        }
+        if (bgHex != null)
+        {
+            var bg = new BackgroundColor();
+            if (bgRgb != null) bg.Rgb = bgRgb; else bg.Theme = bgTheme;
+            newPf.Append(bg);
+        }
         fills.Append(new Fill(newPf));
         fills.Count = (uint)fills.Elements<Fill>().Count();
         return (uint)(fills.Elements<Fill>().Count() - 1);

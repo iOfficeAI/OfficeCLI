@@ -95,6 +95,16 @@ public partial class ExcelHandler
                 rowNode.Format["outlineLevel"] = (int)rol;
             if (row.Collapsed?.Value == true)
                 rowNode.Format["collapsed"] = true;
+            // Row-level default style (CT_Row @customFormat + @s). @customFormat
+            // is the gate that makes @s the default cellXf for the row's
+            // phantom (never-materialized) cells; without it the dump dropped
+            // the row's default style entirely. Mirrors the Get readback keys.
+            if (row.CustomFormat?.Value == true)
+            {
+                rowNode.Format["customFormat"] = true;
+                if (row.StyleIndex?.Value is { } rsi)
+                    rowNode.Format["s"] = rsi.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
 
             // Column cursor for cells whose r= attribute is absent — a legal
             // OOXML variant (position is implied: one right of the previous
@@ -124,6 +134,22 @@ public partial class ExcelHandler
                 var raw = cell.CellValue?.Text;
                 if (!string.IsNullOrEmpty(raw))
                     cellNode.Format["__raw"] = raw;
+                // CONSISTENCY(picture-inline-base64): in-cell image bytes ride
+                // the same inline `data:<contentType>;base64,<bytes>` carrier as
+                // the pptx/word picture round-trip (PptxBatchEmitter.Media.cs) —
+                // no sidecar file, so a dump script stays self-contained.
+                // Image bytes are dump-only: normal Get keeps its compact
+                // metadata surface instead of embedding a large data URI.
+                if (cellNode.Format.TryGetValue("type", out var cellType)
+                    && cellType is string typeName && typeName == "Image"
+                    && TryGetInCellImage(cell, out var imageInfo))
+                {
+                    using var imageStream = imageInfo.Part.GetStream(FileMode.Open, FileAccess.Read);
+                    using var imageBytes = new MemoryStream();
+                    imageStream.CopyTo(imageBytes);
+                    cellNode.Format["__imageDataUri"] =
+                        $"data:{imageInfo.ContentType};base64,{Convert.ToBase64String(imageBytes.ToArray())}";
+                }
                 // Rich-text carrier: inline-string runs or a rich shared-string
                 // entry can't ride the CSV baseline. Serialize the runs into
                 // the `runs=<json>` shape ApplyRichTextToCell consumes so the
@@ -283,15 +309,38 @@ public partial class ExcelHandler
                 // Get reader in ExcelHandler.Query.cs).
                 if (col.Style?.Value is uint colStyleIdx && colStyleIdx != 0)
                 {
-                    var (colNumFmtId, colFmtCode) = ExcelDataFormatter.GetCellFormat(
-                        new Cell { StyleIndex = colStyleIdx }, _doc.WorkbookPart);
-                    if (colNumFmtId > 0)
+                    // A whole-column style ref (<col style="N">) can carry
+                    // font/fill/border/alignment facets, not just a number
+                    // format. The numberformat-only readback below cannot
+                    // capture those, so when the referenced cellXf applies any
+                    // non-numberformat facet, emit the raw style index (mirrors
+                    // the row @s fix). Replay realigns the index because styled
+                    // cells are emitted before column settings, so the same
+                    // cellXf is recreated at the same slot. numberformat-only
+                    // columns keep the portable code emission.
+                    var colXf = _doc.WorkbookPart?.WorkbookStylesPart?.Stylesheet?
+                        .CellFormats?.ElementAtOrDefault((int)colStyleIdx) as CellFormat;
+                    bool colHasFacets = colXf != null && (
+                        colXf.ApplyFont?.Value == true || colXf.ApplyFill?.Value == true
+                        || colXf.ApplyBorder?.Value == true || colXf.ApplyAlignment?.Value == true
+                        || (colXf.FontId?.Value ?? 0) != 0 || (colXf.FillId?.Value ?? 0) > 1
+                        || (colXf.BorderId?.Value ?? 0) != 0);
+                    if (colHasFacets)
                     {
-                        var colCode = !string.IsNullOrEmpty(colFmtCode)
-                            ? colFmtCode
-                            : ExcelDataFormatter.ResolveBuiltInFormatCode(colNumFmtId);
-                        if (!string.IsNullOrEmpty(colCode))
-                            node.Format["numberformat"] = colCode;
+                        node.Format["style"] = colStyleIdx.ToString();
+                    }
+                    else
+                    {
+                        var (colNumFmtId, colFmtCode) = ExcelDataFormatter.GetCellFormat(
+                            new Cell { StyleIndex = colStyleIdx }, _doc.WorkbookPart);
+                        if (colNumFmtId > 0)
+                        {
+                            var colCode = !string.IsNullOrEmpty(colFmtCode)
+                                ? colFmtCode
+                                : ExcelDataFormatter.ResolveBuiltInFormatCode(colNumFmtId);
+                            if (!string.IsNullOrEmpty(colCode))
+                                node.Format["numberformat"] = colCode;
+                        }
                     }
                 }
                 if (node.Format.Count > 0) nodes.Add(node);
@@ -709,6 +758,11 @@ public partial class ExcelHandler
     /// SVG dual-representation aware: when the blip carries an
     /// asvg:svgBlip extension, the TRUE source is the SVG part (the r:embed
     /// PNG is just the fallback AddPicture regenerates on replay).
+    ///
+    /// CONSISTENCY(picture-inline-base64): floating-picture bytes ride the same
+    /// inline `data:<contentType>;base64,<bytes>` carrier as the in-cell image
+    /// and the pptx/word picture round-trip (PptxBatchEmitter.Media.cs) — no
+    /// sidecar file, so a dump script stays self-contained.
     /// </summary>
     public string? GetDumpPictureDataUri(string sheetName, int index)
     {

@@ -3847,7 +3847,7 @@ internal partial class ChartSvgRenderer
         {
             // No <c:legend> element → PowerPoint/Excel render NO legend. Real
             // Office keys legend visibility strictly off the element's presence,
-            // not off a series-count heuristic (verified vs Microsoft Office:
+            // not off a series-count heuristic (verified against Office:
             // legend=none charts show no legend even with 2+ series). Guessing
             // here made legend=none still draw the Alpha/Beta swatches.
             info.HasLegend = false;

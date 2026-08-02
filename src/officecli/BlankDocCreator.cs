@@ -18,13 +18,13 @@ public static class BlankDocCreator
         switch (ext)
         {
             case ".xlsx":
-                CreateExcel(path);
+                CreateExcel(path, locale);
                 break;
             case ".docx":
                 CreateWord(path, locale, minimal);
                 break;
             case ".pptx":
-                CreatePowerPoint(path);
+                CreatePowerPoint(path, locale);
                 break;
             default:
                 if (TryCreateViaPlugin(path, ext)) break;
@@ -51,6 +51,12 @@ public static class BlankDocCreator
             ArgumentList = { "create", System.IO.Path.GetFullPath(path) },
             UseShellExecute = false,
             RedirectStandardError = true,
+            // CONSISTENCY(child-stream-encoding): pin UTF-8 on every redirected
+            // child stream. Unset, .NET decodes with the console's code page,
+            // which is the host's default (CP936/CP437) — officecli no longer
+            // switches the console to 65001 for redirected runs, so a plugin's
+            // non-ASCII diagnostics would decode wrong.
+            StandardErrorEncoding = System.Text.Encoding.UTF8,
             CreateNoWindow = true,
         };
         using var proc = System.Diagnostics.Process.Start(psi);
@@ -80,7 +86,7 @@ public static class BlankDocCreator
         return true;
     }
 
-    private static void CreateExcel(string path)
+    private static void CreateExcel(string path, string? locale = null)
     {
         using var doc = SpreadsheetDocument.Create(path, SpreadsheetDocumentType.Workbook);
         var workbookPart = doc.AddWorkbookPart();
@@ -101,8 +107,14 @@ public static class BlankDocCreator
         // write into) and left theme-colour lookups empty — a cross-format
         // parity gap. Stamp the same shared default theme here so theme.* set/get
         // works on a freshly created workbook like it does for Word/PowerPoint.
+        // Locale default fonts: Excel resolves a cell's East-Asian / complex-script
+        // glyphs through the theme's minor font, so stamping the locale EA/CS
+        // typefaces here makes CJK / Arabic text in a fresh workbook use the right
+        // default font (等线 for zh, 游明朝 for ja, …) instead of a Latin fallback —
+        // matching what a localized Excel ships. Latin stays the Office default.
+        var (_, xlEa, xlCs) = OfficeCli.Core.LocaleFontRegistry.Resolve(locale);
         var themePart = workbookPart.AddNewPart<DocumentFormat.OpenXml.Packaging.ThemePart>();
-        themePart.Theme = BuildDefaultTheme(null, null);
+        themePart.Theme = BuildDefaultTheme(xlEa, xlCs);
         themePart.Theme.Save();
 
         OfficeCliMetadata.StampOnCreate(doc);
@@ -476,8 +488,14 @@ public static class BlankDocCreator
             )
         ) { Name = "Office Theme" };
 
-    private static void CreatePowerPoint(string path)
+    private static void CreatePowerPoint(string path, string? locale = null)
     {
+        // Locale default fonts: PowerPoint resolves a shape's East-Asian /
+        // complex-script glyphs through the theme's minor/major font, so stamping
+        // the locale EA/CS typefaces into the font scheme makes CJK / Arabic text on
+        // a fresh deck use the right default font (等线 for zh, …) instead of a Latin
+        // fallback. Latin stays the Office default.
+        var (_, pptEa, pptCs) = OfficeCli.Core.LocaleFontRegistry.Resolve(locale);
         using var doc = PresentationDocument.Create(path, PresentationDocumentType.Presentation);
         var presentationPart = doc.AddPresentationPart();
 
@@ -507,13 +525,13 @@ public static class BlankDocCreator
                 new DocumentFormat.OpenXml.Drawing.FontScheme(
                     new DocumentFormat.OpenXml.Drawing.MajorFont(
                         new DocumentFormat.OpenXml.Drawing.LatinFont { Typeface = OfficeDefaultFonts.MajorLatin },
-                        new DocumentFormat.OpenXml.Drawing.EastAsianFont { Typeface = "" },
-                        new DocumentFormat.OpenXml.Drawing.ComplexScriptFont { Typeface = "" }
+                        new DocumentFormat.OpenXml.Drawing.EastAsianFont { Typeface = pptEa ?? "" },
+                        new DocumentFormat.OpenXml.Drawing.ComplexScriptFont { Typeface = pptCs ?? "" }
                     ),
                     new DocumentFormat.OpenXml.Drawing.MinorFont(
                         new DocumentFormat.OpenXml.Drawing.LatinFont { Typeface = OfficeDefaultFonts.MinorLatin },
-                        new DocumentFormat.OpenXml.Drawing.EastAsianFont { Typeface = "" },
-                        new DocumentFormat.OpenXml.Drawing.ComplexScriptFont { Typeface = "" }
+                        new DocumentFormat.OpenXml.Drawing.EastAsianFont { Typeface = pptEa ?? "" },
+                        new DocumentFormat.OpenXml.Drawing.ComplexScriptFont { Typeface = pptCs ?? "" }
                     )
                 ) { Name = "Office" },
                 new DocumentFormat.OpenXml.Drawing.FormatScheme(

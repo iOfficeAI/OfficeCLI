@@ -471,7 +471,7 @@ public partial class WordHandler
     // literal / plain text and renders as tofu (□) on any host without the
     // symbol font installed (Wingdings/Symbol are not web-safe).
     //
-    // Mappings follow Microsoft's published Wingdings/Symbol -> Unicode glyph
+    // Mappings follow the published Wingdings/Symbol -> Unicode glyph
     // tables. The PUA slots (U+F0xx) are the F000-shifted form of the font's
     // 8-bit code (e.g. Wingdings 0xFE -> U+F0FE); the low-code slot is the bare
     // 8-bit code under a symbol font (Wingdings 'o' = U+006F = empty box).

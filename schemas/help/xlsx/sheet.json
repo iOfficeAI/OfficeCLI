@@ -103,10 +103,45 @@
     },
     "password": {
       "type": "string",
-      "description": "Excel legacy password hash for sheet protection (ECMA-376 14.7.1). On Set: pass plaintext password to hash and apply, or `none` to clear. Implicitly enables protection if not already set.",
+      "description": "Excel legacy password hash for sheet protection (ECMA-376 14.7.1). On Set: pass plaintext password to hash and apply, or `none` to clear. Implicitly enables protection if not already set. Readback is exposed under 'passwordHash'.",
       "add": false, "set": true, "get": false,
       "examples": ["--prop password=secret123", "--prop password=none"],
-      "readback": "n/a (hash not exposed on Get)",
+      "readback": "n/a (use passwordHash on Get)",
+      "enforcement": "report"
+    },
+    "passwordHash": {
+      "type": "string",
+      "description": "legacy 16-bit password hash on sheetProtection (@password), as stored in the file. Get-only readback of the 'password' Set property.",
+      "add": false, "set": false, "get": true,
+      "readback": "4-hex-digit legacy hash when present",
+      "enforcement": "report"
+    },
+    "protection.algorithm": {
+      "type": "string",
+      "description": "modern (SHA-based) sheet-protection hash algorithm (sheetProtection/@algorithmName), e.g. SHA-512. Get-only; set via 'password' (legacy) or preserve as-is.",
+      "add": false, "set": false, "get": true,
+      "readback": "algorithm name when modern protection present",
+      "enforcement": "report"
+    },
+    "protection.hash": {
+      "type": "string",
+      "description": "modern sheet-protection password hash (sheetProtection/@hashValue, base64). Get-only.",
+      "add": false, "set": false, "get": true,
+      "readback": "base64 hash when modern protection present",
+      "enforcement": "report"
+    },
+    "protection.salt": {
+      "type": "string",
+      "description": "modern sheet-protection hash salt (sheetProtection/@saltValue, base64). Get-only.",
+      "add": false, "set": false, "get": true,
+      "readback": "base64 salt when modern protection present",
+      "enforcement": "report"
+    },
+    "protection.spinCount": {
+      "type": "number",
+      "description": "modern sheet-protection hash iteration count (sheetProtection/@spinCount). Get-only.",
+      "add": false, "set": false, "get": true,
+      "readback": "integer spin count when modern protection present",
       "enforcement": "report"
     },
     "printTitleRows": {

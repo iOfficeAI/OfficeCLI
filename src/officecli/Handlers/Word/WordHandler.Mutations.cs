@@ -1647,6 +1647,48 @@ public partial class WordHandler
         return ($"{parentPath}/{elem1.LocalName}[{newIdx1}]", $"{parentPath}/{elem2.LocalName}[{newIdx2}]");
     }
 
+    // Re-point every relationship-backed reference (r:embed / r:id / r:link) in
+    // a freshly cloned element from the source part's relationship ids to
+    // equivalents on the target part. Part-based targets (images, media,
+    // charts, OLE) are shared via a fresh relationship to the same part;
+    // hyperlink / external targets get an equivalent external relationship.
+    // No-op when the two parts are the same (the id already resolves there).
+    private static void RehomeCrossPartRelationships(
+        OpenXmlElement clone, OpenXmlPart sourcePart, OpenXmlPart targetPart)
+    {
+        if (ReferenceEquals(sourcePart, targetPart)) return;
+        const string rNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        foreach (var el in clone.Descendants().Prepend(clone).ToList())
+        {
+            foreach (var attr in el.GetAttributes().ToList())
+            {
+                if (attr.NamespaceUri != rNs || string.IsNullOrEmpty(attr.Value)) continue;
+                var oldRid = attr.Value;
+                string? newRid = null;
+
+                OpenXmlPart? refPart = null;
+                try { refPart = sourcePart.GetPartById(oldRid); } catch { }
+                if (refPart != null)
+                {
+                    try { newRid = targetPart.GetIdOfPart(refPart); }
+                    catch (ArgumentException) { newRid = targetPart.CreateRelationshipToPart(refPart); }
+                }
+                else if (sourcePart.HyperlinkRelationships.FirstOrDefault(r => r.Id == oldRid) is { } hl)
+                {
+                    newRid = targetPart.AddHyperlinkRelationship(hl.Uri, hl.IsExternal).Id;
+                }
+                else if (sourcePart.ExternalRelationships.FirstOrDefault(r => r.Id == oldRid) is { } ext)
+                {
+                    newRid = targetPart.AddExternalRelationship(ext.RelationshipType, ext.Uri).Id;
+                }
+
+                if (newRid != null && newRid != oldRid)
+                    el.SetAttribute(new DocumentFormat.OpenXml.OpenXmlAttribute(
+                        attr.Prefix, attr.LocalName, attr.NamespaceUri, newRid));
+            }
+        }
+    }
+
     public string CopyFrom(string sourcePath, string targetParentPath, InsertPosition? position)
     {
         using var _bodyCacheGuard = new BodyCacheGuard(this); // invalidate caches on return (AFTER the mutation)
@@ -1920,6 +1962,15 @@ public partial class WordHandler
                 }
             }
         }
+
+        // #265-class fix: a clone copied into a DIFFERENT package part
+        // (header/footer has its own .rels) still carries the SOURCE part's
+        // relationship ids on its r:embed / r:id / r:link references — a
+        // picture, hyperlink, chart or OLE cloned from the body into a header
+        // would dangle, which `validate` cannot see and Word offers to repair.
+        // Re-home the references onto the target part. No-op for the common
+        // body->body clone, where source and target share a part.
+        RehomeCrossPartRelationships(clone, ResolveHostPart(element), ResolveHostPart(targetParent));
 
         // Handle find: anchor sentinel up front — Add() uses AddAtFindPosition
         // to split the paragraph at a text-match point, but CopyFrom has no

@@ -2,7 +2,9 @@
   "$schema": "../_schema.json",
   "format": "pptx",
   "element": "diagram",
-  "elementAliases": ["flowchart"],
+  "elementAliases": [
+    "flowchart"
+  ],
   "parent": "slide",
   "operations": {
     "add": true,
@@ -16,12 +18,15 @@
       "/slide[N]"
     ]
   },
-  "note": "Renders a mermaid diagram into native, editable shapes + connectors on the slide. Aliases: flowchart. ADD-ONLY synthesizer (like 'equation'): there is no persistent 'diagram' node, but the whole diagram is wrapped in ONE group and Add returns its path (/slide[N]/group[K]), so it stays adjustable as a unit. get /slide[N]/group[K] reads it back (x/y/width/height); set /slide[N]/group[K] --prop width=… --prop height=… moves or resizes the whole diagram — child font sizes re-bake with the resize so text stays proportional; and remove /slide[N]/group[K] deletes it. Give ONE of width/height to scale proportionally (aspect preserved), or BOTH for an exact box. A human can also drag the single group object. The mermaid header selects the layout engine; supported: flowchart / graph, sequenceDiagram. Other mermaid types (gantt, pie, classDiagram, stateDiagram, erDiagram, ...) are rejected with a clear message until implemented. SIZING: by default the diagram is scaled to FIT the current slide (the slide size is never changed) and centred; give x/y/width/height to place it in an explicit box (like picture/chart). Pass poster=true to instead grow the slide to the whole diagram (export-a-diagram model). Aspect ratio is always preserved.",
+  "note": "Renders a mermaid diagram into native, editable shapes + connectors on the slide. Aliases: flowchart. ADD-ONLY synthesizer (like 'equation'): there is no persistent 'diagram' node, but the whole diagram is wrapped in ONE group and Add returns its path (/slide[N]/group[K]), so it stays adjustable as a unit. get /slide[N]/group[K] reads it back (x/y/width/height); set /slide[N]/group[K] --prop width=… --prop height=… moves or resizes the whole diagram — child font sizes re-bake with the resize so text stays proportional; and remove /slide[N]/group[K] deletes it. A lone width/height changes only that axis; add keepAspect=true to scale the other proportionally, or give BOTH for an exact box. A human can also drag the single group object. The mermaid header selects the layout engine; supported: flowchart / graph, sequenceDiagram. Other mermaid types (gantt, pie, classDiagram, stateDiagram, erDiagram, ...) are rejected with a clear message until implemented. SIZING: by default the diagram is scaled to FIT the current slide (the slide size is never changed) and centred; give x/y/width/height to place it in an explicit box (like picture/chart). Pass poster=true to instead grow the slide to the whole diagram (export-a-diagram model). Aspect ratio is always preserved.",
   "properties": {
     "mermaid": {
       "type": "string",
       "description": "Mermaid diagram source. Canonical (mirrors equation's 'formula'). Aliases: text, dsl. The first line's header (flowchart TD / sequenceDiagram / ...) selects the diagram kind.",
-      "aliases": ["text", "dsl"],
+      "aliases": [
+        "text",
+        "dsl"
+      ],
       "add": true,
       "set": false,
       "get": false,
@@ -34,7 +39,9 @@
     "src": {
       "type": "string",
       "description": "Path to a .mmd file to load the mermaid source from (used when no inline mermaid/text/dsl is given). Consistent with picture/media 'src' = a file path. Alias: path.",
-      "aliases": ["path"],
+      "aliases": [
+        "path"
+      ],
       "add": true,
       "set": false,
       "get": false,
@@ -89,25 +96,76 @@
     },
     "poster": {
       "type": "boolean",
-      "description": "When true, grow the SLIDE to the diagram's natural size instead of fitting the diagram into the slide (export-a-diagram-as-a-slide model). Ignores x/y/width/height. Default false — the slide size is preserved.",
+      "description": "Controls slide growth for a long diagram. UNSET (default) = ADAPTIVE: the diagram fits the current slide, but if fitting would shrink it below readability it auto-grows the slide to the diagram's natural size instead (clamped to PowerPoint's 56in/142.24cm max). true = always grow the slide (export-a-diagram-as-a-slide). false = always fit the current slide even if the result is tiny. Ignored when an explicit x/y/width/height box is given.",
       "add": true,
       "set": false,
       "get": false,
       "examples": [
-        "--prop poster=true"
+        "--prop poster=true",
+        "--prop poster=false"
       ],
       "enforcement": "report"
     },
     "render": {
       "type": "string",
       "description": "How to render. auto (default): use real mermaid.js via a headless browser (Chrome/Chromium/Edge) when available — covers EVERY mermaid type (gantt/pie/class/state/er/…) at full fidelity, embedded as a PNG with the mermaid source stamped into alt-text (regenerable); falls back to the native synthesizer when no browser is present. native: always the built-in editable-shape synthesizer (no browser; supported subset only; fully editable in PowerPoint). image: force the browser path (errors if no browser). mermaid.js is fetched once to a local cache (mirror d.officecli.ai, CDN fallback).",
-      "enum": ["auto", "native", "image"],
+      "enum": [
+        "auto",
+        "native",
+        "image"
+      ],
       "add": true,
       "set": false,
       "get": false,
       "examples": [
         "--prop render=native",
         "--prop render=image"
+      ],
+      "enforcement": "report"
+    },
+    "theme": {
+      "type": "string",
+      "description": "mermaid color theme (image render only): default (light), dark, neutral, forest, base. Baked into the source as frontmatter, so it round-trips in alt-text and a regenerate reproduces it. Ignored by render=native. Uses the ESM mermaid build, loaded from the CDN (a styled diagram currently needs network on render; plain diagrams stay offline-cached).",
+      "add": true,
+      "set": false,
+      "get": false,
+      "examples": [
+        "--prop theme=dark",
+        "--prop theme=forest"
+      ],
+      "enforcement": "report"
+    },
+    "layout": {
+      "type": "string",
+      "description": "flowchart layout engine (image render only): dagre (default, curved edges) or elk (Eclipse Layout Kernel — orthogonal edge routing, tighter layered placement). elk loads the @mermaid-js/layout-elk ESM package from the CDN. Ignored by render=native.",
+      "add": true,
+      "set": false,
+      "get": false,
+      "examples": [
+        "--prop layout=elk"
+      ],
+      "enforcement": "report"
+    },
+    "look": {
+      "type": "string",
+      "description": "visual style (image render only): classic (default) or handDrawn (sketchy rough.js strokes). Baked into the source frontmatter; round-trips in alt-text. Ignored by render=native.",
+      "add": true,
+      "set": false,
+      "get": false,
+      "examples": [
+        "--prop look=handDrawn"
+      ],
+      "enforcement": "report"
+    },
+    "background": {
+      "type": "string",
+      "description": "render background: transparent (default), a #hex, or a CSS color word. Applied at render time (mmdc -b / page background); does not round-trip in alt-text. Values with whitespace/quotes fall back to transparent.",
+      "add": true,
+      "set": false,
+      "get": false,
+      "examples": [
+        "--prop background=white",
+        "--prop background=#1e1e1e"
       ],
       "enforcement": "report"
     }

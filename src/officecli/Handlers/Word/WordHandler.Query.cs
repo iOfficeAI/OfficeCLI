@@ -409,12 +409,19 @@ public partial class WordHandler
             var firstName = segments[0].Name.ToLowerInvariant();
             if (firstName == "header" && segments.Count == 1)
             {
-                var hIdx = (segments[0].Index ?? 1) - 1;
+                // last() must resolve to the LAST header by enumeration
+                // (creation) order — mirroring /body/p[last()] and
+                // /section[last()]. Without this, last() (Index == null) fell
+                // through to index 0 = the FIRST header, so get/set on
+                // /header[last()] silently targeted the wrong header.
+                int hCount = _doc.MainDocumentPart?.HeaderParts.Count() ?? 0;
+                var hIdx = segments[0].StringIndex == "last()" ? hCount - 1 : (segments[0].Index ?? 1) - 1;
                 return GetHeaderNode(hIdx, path, depth);
             }
             if (firstName == "footer" && segments.Count == 1)
             {
-                var fIdx = (segments[0].Index ?? 1) - 1;
+                int fCount = _doc.MainDocumentPart?.FooterParts.Count() ?? 0;
+                var fIdx = segments[0].StringIndex == "last()" ? fCount - 1 : (segments[0].Index ?? 1) - 1;
                 return GetFooterNode(fIdx, path, depth);
             }
         }

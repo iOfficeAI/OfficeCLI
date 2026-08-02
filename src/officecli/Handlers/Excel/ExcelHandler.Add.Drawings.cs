@@ -278,9 +278,11 @@ public partial class ExcelHandler
         // in addition to bare integer cell counts.
         var (px, py, pwEmu, phEmu) = ParseAnchorBoundsEmu(properties, "0", "0", "5", "5");
         // P9: accept `altText=` as alias for `alt=`.
+        // CONSISTENCY(picture-alt): description completes the shared alias set.
         var alt = properties.GetValueOrDefault("alt")
             ?? properties.GetValueOrDefault("altText")
-            ?? properties.GetValueOrDefault("alttext", "");
+            ?? properties.GetValueOrDefault("alttext")
+            ?? properties.GetValueOrDefault("description", "");
 
         // Resolve the image bytes AND parse/validate the anchor BEFORE any
         // part is created: a bad data URI or anchor used to fail after the
@@ -529,10 +531,10 @@ public partial class ExcelHandler
         }
 
         // P8: picture-level hyperlink — <a:hlinkClick> under <xdr:cNvPr>.
-        // External URL → add rel on DrawingsPart, reference its rId.
-        // Internal (starts with '#') → no rel, use Location attribute.
-        // CONSISTENCY(xlsx-hyperlink): mirrors cell link handling in
-        // commit 60e1455.
+        // DrawingML hyperlinks always reference a relationship. Internal
+        // workbook jumps use a non-external hyperlink relationship whose
+        // target is a fragment such as "#Sheet2!A1"; @location is not part of
+        // CT_Hyperlink and makes the drawing schema-invalid.
         var picHlink = properties.GetValueOrDefault("hyperlink")
             ?? properties.GetValueOrDefault("link");
         if (!string.IsNullOrWhiteSpace(picHlink))
@@ -540,22 +542,13 @@ public partial class ExcelHandler
             var picCNvPr = anchor.Descendants<XDR.NonVisualDrawingProperties>().FirstOrDefault();
             if (picCNvPr != null)
             {
-                Drawing.HyperlinkOnClick hlClick;
-                if (picHlink.StartsWith("#"))
-                {
-                    // No rel, no @r:id — pure in-document jump via @location.
-                    hlClick = new Drawing.HyperlinkOnClick { Id = "" };
-                    hlClick.SetAttribute(new OpenXmlAttribute(
-                        "", "location", "", picHlink.Substring(1)));
-                }
-                else
-                {
-                    // CONSISTENCY(hyperlink-scheme-allowlist).
+                var isInternal = picHlink.StartsWith("#", StringComparison.Ordinal);
+                if (!isInternal)
                     Core.HyperlinkUriValidator.RequireSafeScheme(picHlink, "link");
-                    var hlUri = new Uri(picHlink, UriKind.RelativeOrAbsolute);
-                    var hlRel = picDrawingsPart.AddHyperlinkRelationship(hlUri, isExternal: true);
-                    hlClick = new Drawing.HyperlinkOnClick { Id = hlRel.Id };
-                }
+                var hlUri = new Uri(picHlink, UriKind.RelativeOrAbsolute);
+                var hlRel = picDrawingsPart.AddHyperlinkRelationship(
+                    hlUri, isExternal: !isInternal);
+                var hlClick = new Drawing.HyperlinkOnClick { Id = hlRel.Id };
                 picCNvPr.AppendChild(hlClick);
             }
         }
@@ -898,6 +891,25 @@ public partial class ExcelHandler
             spPr,
             txBody
         );
+
+        // Shape-level hyperlinks use the same relationship-backed DrawingML
+        // representation as pictures. Internal workbook jumps are non-external
+        // relationships targeting a #Sheet!A1 fragment.
+        var shpHlink = properties.GetValueOrDefault("hyperlink")
+            ?? properties.GetValueOrDefault("link");
+        if (!string.IsNullOrWhiteSpace(shpHlink))
+        {
+            var isInternal = shpHlink.StartsWith("#", StringComparison.Ordinal);
+            if (!isInternal)
+                Core.HyperlinkUriValidator.RequireSafeScheme(shpHlink, "link");
+            var hlUri = new Uri(shpHlink, UriKind.RelativeOrAbsolute);
+            var hlRel = shpDrawingsPart.AddHyperlinkRelationship(
+                hlUri, isExternal: !isInternal);
+            var hlClick = new Drawing.HyperlinkOnClick { Id = hlRel.Id };
+            shape.NonVisualShapeProperties?
+                .GetFirstChild<XDR.NonVisualDrawingProperties>()?
+                .AppendChild(hlClick);
+        }
 
         var shpAnchor = new XDR.TwoCellAnchor(
             new XDR.FromMarker(

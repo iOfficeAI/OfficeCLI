@@ -49,7 +49,9 @@ public partial class PowerPointHandler
         {
             switch (key.ToLowerInvariant())
             {
-                case "alt":
+                // CONSISTENCY(picture-alt): full alias set, matching shape Set
+                // (ShapeProperties.cs) and the shared picture schema contract.
+                case "alt" or "alttext" or "description":
                     var nvPicPr = pic.NonVisualPictureProperties?.NonVisualDrawingProperties;
                     if (nvPicPr != null) nvPicPr.Description = value;
                     break;
@@ -987,9 +989,10 @@ public partial class PowerPointHandler
         {
             switch (key.ToLowerInvariant())
             {
-                case "alt":
+                case "alt" or "alttext" or "description":
                 {
                     // CONSISTENCY(media-alt): mirror picture Set (Set.Media.cs:40).
+                    // CONSISTENCY(picture-alt): full alias set with it too.
                     // ViewAsIssues flags missing alt on audio/video <p:pic> too,
                     // so they must be settable through the same surface.
                     var nvDr = pic.NonVisualPictureProperties?.NonVisualDrawingProperties;

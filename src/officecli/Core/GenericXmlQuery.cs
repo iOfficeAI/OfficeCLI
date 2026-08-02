@@ -67,7 +67,19 @@ internal static class GenericXmlQuery
         var idx = parentCounters[counterKey];
         parentCounters[counterKey] = idx + 1;
 
-        var currentPath = $"{parentPath}/{elLocalName}[{idx + 1}]";
+        // Stable-id segment for Word paragraphs (issue #259): every other
+        // path emitter (Get echo, Add result, BuildParaPathSegment) prefers
+        // p[@paraId=X] because positional indexes drift as soon as the
+        // document is edited. Match that canonical form here so generic-
+        // fallback query results compare and round-trip against Get output.
+        // Sibling counters still advance positionally for all other elements;
+        // pptx a:p is Drawing.Paragraph and xlsx has no w:p, so this only
+        // ever fires for Word content.
+        var segment = element is DocumentFormat.OpenXml.Wordprocessing.Paragraph wp
+                      && !string.IsNullOrEmpty(wp.ParagraphId?.Value)
+            ? $"{elLocalName}[@paraId={wp.ParagraphId.Value}]"
+            : $"{elLocalName}[{idx + 1}]";
+        var currentPath = $"{parentPath}/{segment}";
 
         // Check if this element matches
         if (MatchesElement(element, targetLocalName, targetNsUri, attributes, containsText))

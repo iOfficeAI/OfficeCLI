@@ -37,7 +37,7 @@
     },
     "text": {
       "type": "string",
-      "description": "Sets plain text on the paragraph by creating an implicit single run. Do not also add a 'run' child with text on the same paragraph — they will duplicate.",
+      "description": "Sets plain text on the paragraph by creating an implicit single run. Newline semantics: \\n is a PARAGRAPH boundary (the text is split into one paragraph per line, each inheriting the same style/props); \\v is a soft line break within the paragraph (Shift+Enter). Do not also add a 'run' child with text on the same paragraph — they will duplicate.",
       "add": true,
       "set": true,
       "get": true,

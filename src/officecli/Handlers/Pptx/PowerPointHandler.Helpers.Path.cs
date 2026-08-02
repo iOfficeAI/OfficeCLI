@@ -242,22 +242,47 @@ public partial class PowerPointHandler
         // Support quoted attr values so a name containing ']' (e.g. PowerPoint's
         // auto-generated "Shape [1] copy") survives the predicate parse: the
         // unquoted fallback stops at the first ']' as before.
-        var matches = Regex.Matches(path, @"(\w+)\[@(id|name)=(?:'([^']*)'|""([^""]*)""|([^\]]+))\]");
+        // The predicate group is repeatable so `placeholder[@type=body][@idx=1]`
+        // (issue #260 — same chained-bracket form StyleList uses for
+        // /master/ph[@type=..][@idx=..] style paths) parses as ONE segment.
+        var matches = Regex.Matches(path, @"(\w+)((?:\[@\w+=(?:'[^']*'|""[^""]*""|[^\]]+)\])+)");
         foreach (Match m in matches)
         {
+            var elementType = m.Groups[1].Value.ToLowerInvariant();
+
+            // Parse the chained predicates: [(key, value), ...].
+            var predicates = new List<(string Key, string Value)>();
+            foreach (Match pm in Regex.Matches(m.Groups[2].Value,
+                @"\[@(\w+)=(?:'([^']*)'|""([^""]*)""|([^\]]+))\]"))
+            {
+                // Three alternation captures: single-quoted (2), double-quoted
+                // (3), unquoted (4). Trim is still useful for the unquoted form
+                // because the schema documents @name=Foo Bar (no quotes).
+                string v;
+                if (pm.Groups[2].Success) v = pm.Groups[2].Value;
+                else if (pm.Groups[3].Success) v = pm.Groups[3].Value;
+                else v = pm.Groups[4].Value.Trim('"', '\'', ' ');
+                predicates.Add((pm.Groups[1].Value.ToLowerInvariant(), v));
+            }
+
+            bool isPlaceholder = elementType == "placeholder";
+            // Everything except placeholder keeps the legacy contract: exactly
+            // one @id=/@name= predicate. Any other shape (StyleList's
+            // `ph[@type=..][@idx=..]` style paths, raw-XML attribute paths)
+            // passes through UNTOUCHED so its own parser still sees it.
+            if (!isPlaceholder
+                && !(predicates.Count == 1 && predicates[0].Key is "id" or "name"))
+            {
+                sb.Append(path, cursor, m.Index + m.Length - cursor);
+                cursor = m.Index + m.Length;
+                continue;
+            }
+
             sb.Append(path, cursor, m.Index - cursor);
             var prefix = sb.ToString();
 
-            var elementType = m.Groups[1].Value.ToLowerInvariant();
-            var attrName = m.Groups[2].Value.ToLowerInvariant();
-            // Three alternation captures: single-quoted (3), double-quoted (4),
-            // unquoted (5). Pick the one that matched. Trim is still useful for
-            // the unquoted form because the schema documents @name=Foo Bar (no
-            // quotes) for legacy callers.
-            string attrValue;
-            if (m.Groups[3].Success) attrValue = m.Groups[3].Value;
-            else if (m.Groups[4].Success) attrValue = m.Groups[4].Value;
-            else attrValue = m.Groups[5].Value.Trim('"', '\'', ' ');
+            var attrName = predicates[0].Key;
+            var attrValue = predicates[0].Value;
 
             // CONSISTENCY(master-layout-shape-edit): @id=/@name= resolution must
             // also work when the prefix is a slidemaster or slidelayout shape
@@ -332,7 +357,9 @@ public partial class PowerPointHandler
                 scope = groups[gIdx - 1];
             }
 
-            var positionalIdx = FindElementByAttrInScope(scope, elementType, attrName, attrValue);
+            var positionalIdx = isPlaceholder
+                ? FindPlaceholderByBinding(scope, predicates)
+                : FindElementByAttrInScope(scope, elementType, attrName, attrValue);
             var replacement = $"{m.Groups[1].Value}[{positionalIdx}]";
             sb.Append(replacement);
             cursor = m.Index + m.Length;
@@ -485,6 +512,70 @@ public partial class PowerPointHandler
                 .Count(s => s.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties?.PlaceholderShape != null),
             _ => 0,
         };
+    }
+
+    /// <summary>
+    /// Resolve a placeholder binding selector (issue #260) to the 1-based
+    /// positional index among the scope's placeholders. Supported predicate
+    /// keys, chainable as `placeholder[@type=body][@idx=1]`:
+    ///   @idx  — the p:ph idx binding id (ECMA-376 §19.3.1.36; absent = "0")
+    ///   @type — the p:ph type (absent = "body" per schema default)
+    ///   @id / @name — the shape's cNvPr, same semantics as other types.
+    /// A selector matching more than one placeholder (e.g. body idx=1 and
+    /// pic idx=1 sharing @idx) is an error prompting a narrower predicate,
+    /// never a silent first-match.
+    /// </summary>
+    private static int FindPlaceholderByBinding(OpenXmlElement scope, List<(string Key, string Value)> predicates)
+    {
+        foreach (var (key, _) in predicates)
+            if (key is not ("idx" or "type" or "id" or "name"))
+                throw new ArgumentException(
+                    $"Unsupported placeholder attribute selector '@{key}='. Supported: @idx=, @type=, @id=, @name=.");
+
+        var placeholders = scope.Elements<Shape>()
+            .Select((s, i) => (Shape: s,
+                Ph: s.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties?.PlaceholderShape))
+            .Where(t => t.Ph != null)
+            .ToList();
+
+        string PhIdx(PlaceholderShape ph) => ph.Index?.Value.ToString() ?? "0";
+        string PhType(PlaceholderShape ph) => ph.Type?.InnerText ?? "body";
+        string Describe((Shape Shape, PlaceholderShape? Ph) t) =>
+            $"type={PhType(t.Ph!)} idx={PhIdx(t.Ph!)}" +
+            (t.Shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Name?.Value is { Length: > 0 } n
+                ? $" name=\"{n}\"" : "");
+
+        var hits = new List<int>();
+        for (int i = 0; i < placeholders.Count; i++)
+        {
+            var (shape, ph) = placeholders[i];
+            bool all = true;
+            foreach (var (key, value) in predicates)
+            {
+                var actual = key switch
+                {
+                    "idx" => PhIdx(ph!),
+                    "type" => PhType(ph!),
+                    "id" => shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Id?.Value.ToString(),
+                    _ => shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Name?.Value,
+                };
+                if (!string.Equals(actual, value, StringComparison.OrdinalIgnoreCase)) { all = false; break; }
+            }
+            if (all) hits.Add(i + 1);
+        }
+
+        var selector = string.Concat(predicates.Select(p => $"[@{p.Key}={p.Value}]"));
+        if (hits.Count == 0)
+            throw new ArgumentException(
+                $"No placeholder matches placeholder{selector}. Available: " +
+                (placeholders.Count == 0 ? "(none)"
+                    : string.Join(", ", placeholders.Select((t, i) => $"placeholder[{i + 1}] ({Describe(t)})"))));
+        if (hits.Count > 1)
+            throw new ArgumentException(
+                $"placeholder{selector} is ambiguous — matches " +
+                string.Join(", ", hits.Select(h => $"placeholder[{h}] ({Describe(placeholders[h - 1])})")) +
+                ". Narrow it with a combined selector, e.g. placeholder[@type=body][@idx=1].");
+        return hits[0];
     }
 
     /// <summary>

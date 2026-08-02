@@ -432,8 +432,7 @@ internal static partial class PivotTableHelper
 
         // ColumnItems — same shape as RowItems but for the column-label layout.
         // Even when there are NO column fields, ECMA-376 requires a <colItems> with one
-        // empty <i/> placeholder; common writers' empty-case branch
-        // (xepivotxml.cxx:1008-1014) writes exactly that.
+        // empty <i/> placeholder; common writers emit exactly that in the empty case.
         pivotDef.ColumnItems = (ColumnItems)BuildAxisItems(
             colFieldIndices, columnData, isRow: false, dataFieldCount: valueFields.Count);
 
@@ -531,8 +530,8 @@ internal static partial class PivotTableHelper
     ///   </colItems>
     /// Verified against multi_data_authored.xlsx (a 1×1×2 pivot from real Excel).
     ///
-    /// Empty axis: single &lt;i/&gt; placeholder (writeRowColumnItems
-    /// empty-case branch in xepivotxml.cxx:1008-1014).
+    /// Empty axis: single &lt;i/&gt; placeholder (the empty-case branch
+    /// common writers emit).
     ///
     /// Limitation: still only single-axis-field cases are correct. Multi-row-field
     /// cartesian-product layouts need a deeper expansion tracked as v2.

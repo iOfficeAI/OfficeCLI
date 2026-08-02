@@ -103,6 +103,11 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
     // Backing FileStream when we open via stream (shared-read mode). null
     // when the package owns its own file handle via PresentationDocument.Open(path).
     private FileStream? _backingStream;
+    // Editable sessions open _doc over this in-memory copy of the package so
+    // saves swap the file atomically (temp + File.Replace) instead of rewriting
+    // it in place. Null for read-only sessions (they never write). See
+    // AtomicWriteBack / OfficeCli.Core.AtomicPackageWriter.
+    private MemoryStream? _packageStream;
 
     public PowerPointHandler(string filePath, bool editable)
     {
@@ -110,14 +115,36 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
         // Open via a shared FileStream so external readers (e.g. test harness
         // ZipFile.OpenRead while the handler is alive) don't hit the macOS
         // flock exclusive lock that PresentationDocument.Open(path, editable)
-        // would acquire. The package writes through to the stream; we call
-        // _doc.Save() in Dispose() to flush before closing the stream.
+        // would acquire. Editable sessions work against an in-memory copy so the
+        // on-disk file is only ever swapped atomically (temp + File.Replace via
+        // AtomicWriteBack), never rewritten in place — a process death mid-write
+        // otherwise truncates the original with no fallback.
         var share = editable ? FileShare.Read : FileShare.ReadWrite;
         var access = editable ? FileAccess.ReadWrite : FileAccess.Read;
         _backingStream = new FileStream(filePath, FileMode.Open, access, share);
-        _doc = PresentationDocument.Open(_backingStream, editable);
-        if (editable)
-            InitShapeIdCounter();
+        try
+        {
+            if (editable)
+            {
+                _backingStream.Position = 0;
+                _packageStream = new MemoryStream();
+                _backingStream.CopyTo(_packageStream);
+                _packageStream.Position = 0;
+            }
+            _doc = PresentationDocument.Open((Stream?)_packageStream ?? _backingStream, editable);
+            if (editable)
+                // fromRawStreams: don't materialize every slide's DOM just to
+                // index shape ids — that would make a later Save re-serialize
+                // untouched slides (#267). Read ids from the raw part streams.
+                InitShapeIdCounter(fromRawStreams: true);
+        }
+        catch
+        {
+            _doc?.Dispose();
+            _packageStream?.Dispose();
+            _backingStream.Dispose();
+            throw;
+        }
     }
 
     /// <summary>
@@ -1405,9 +1432,12 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
                         // demand so the ImagePart has a host to attach to.
                         // CONSISTENCY(grow-on-rawset): mirrors slideMaster/layout
                         // auto-grow above and /notesMaster on-demand creation.
+                        // EnsureNotesSlidePart (not a bare AddNewPart) so the
+                        // created part gets a NotesSlide root and its
+                        // notesMaster relationship; the following raw-set
+                        // replaces the root but keeps the relationships.
                         var hostSlide = sldParts[nsIdx - 1];
-                        imageHost = hostSlide.NotesSlidePart
-                            ?? hostSlide.AddNewPart<NotesSlidePart>();
+                        imageHost = EnsureNotesSlidePart(hostSlide);
                     }
                     else
                         throw new ArgumentException(
@@ -1548,7 +1578,7 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
                     var parts = GetSlideParts().ToList();
                     if (i < 1 || i > parts.Count) throw new ArgumentException($"noteSlide index {i} out of range");
                     var hostSlide = parts[i - 1];
-                    hlHost = hostSlide.NotesSlidePart ?? hostSlide.AddNewPart<NotesSlidePart>();
+                    hlHost = EnsureNotesSlidePart(hostSlide);
                 }
                 else
                     throw new ArgumentException(
@@ -1732,10 +1762,28 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
                 if (parentPartPath == "/presentation")
                 {
                     epHost = presentationPart;
+                    // A non-part (external/hyperlink) relationship can't be
+                    // re-homed by ChangeIdOfPart, and silently skipping here
+                    // would report success while dropping the binary part.
+                    // Fail loudly instead — under atomic batch the file is
+                    // rolled back untouched. Unreachable from a self-produced
+                    // dump (both carriers pin ids from the same source rels).
                     if (epHost.ExternalRelationships.Any(r => r.Id == epRid)
-                        || epHost.HyperlinkRelationships.Any(r => r.Id == epRid)
-                        || epHost.Parts.Any(p => p.RelationshipId == epRid))
+                        || epHost.HyperlinkRelationships.Any(r => r.Id == epRid))
+                        throw new ArgumentException(
+                            $"add-part extpart: rid '{epRid}' already exists as an external/hyperlink relationship on /presentation and cannot be re-homed. Use a different rid.");
+                    // Part-rel collision: on a rebuilt deck the scaffold's own
+                    // rels (master/slide/presProps…) occupy low rIds, so a
+                    // pinned source id like rId2 is usually TAKEN. Skipping
+                    // here (the old behavior) silently dropped the part while
+                    // still reporting success. Idempotent-skip only a genuine
+                    // re-run (same-rel-type ExtendedPart already present);
+                    // otherwise re-home the occupant so the pinned id is free.
+                    // Mirrors the slide/master/layout branch below.
+                    var epOcc = epHost.Parts.FirstOrDefault(p => p.RelationshipId == epRid);
+                    if (epOcc.OpenXmlPart is ExtendedPart occExt && occExt.RelationshipType == epRelType)
                         return (epRid, parentPartPath);
+                    ReHomeCollidingRel(epHost, epRid);
                     var epPresPart = epHost.AddExtendedPart(epRelType, epContentType, epExt, epRid);
                     using (var epStream = new MemoryStream(epBytes))
                         epPresPart.FeedData(epStream);
@@ -1772,13 +1820,25 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
                     throw new ArgumentException(
                         "add-part extpart: parent must be /presentation, /slide[N], /slideLayout[N], or /slideMaster[N]");
 
-                // External/hyperlink-rel collision: keep the idempotent skip (can't
-                // re-home a non-part relationship). Part collision (scaffold layout
-                // rel occupying rId3..rId5 on the master): re-home it so the pinned
-                // id is free — otherwise the extpart silently skips and the hdphoto
-                // r:embed dangles. Mirrors the add-part image collision path.
+                // External/hyperlink-rel collision: a non-part relationship
+                // can't be re-homed by ChangeIdOfPart, and the old idempotent
+                // skip reported success while dropping the binary part. Fail
+                // loudly instead (atomic batch rolls the file back).
+                // Unreachable from a self-produced dump — both carriers pin
+                // ids from the same source rels, so they never collide.
+                // Part collision (scaffold layout rel occupying rId3..rId5 on
+                // the master): re-home it so the pinned id is free — otherwise
+                // the extpart silently skips and the hdphoto r:embed dangles.
+                // Mirrors the add-part image collision path.
                 if (epHost.ExternalRelationships.Any(r => r.Id == epRid)
                     || epHost.HyperlinkRelationships.Any(r => r.Id == epRid))
+                    throw new ArgumentException(
+                        $"add-part extpart: rid '{epRid}' already exists as an external/hyperlink relationship on {parentPartPath} and cannot be re-homed. Use a different rid.");
+                // Genuine re-run (same-rel-type ExtendedPart already pinned on
+                // this rid): idempotent skip, same as the /presentation branch —
+                // re-homing our own part would duplicate it under a fresh id.
+                var epSlideOcc = epHost.Parts.FirstOrDefault(p => p.RelationshipId == epRid);
+                if (epSlideOcc.OpenXmlPart is ExtendedPart epSlideExt && epSlideExt.RelationshipType == epRelType)
                     return (epRid, parentPartPath);
                 ReHomeCollidingRel(epHost, epRid);
                 var epPart = epHost.AddExtendedPart(epRelType, epContentType, epExt, epRid);
@@ -2149,6 +2209,27 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
                 }
             }
         }
+        // Presentation-part host: every r:id inside presentation.xml resolves
+        // against the presentation part's rels (sldMasterIdLst / sldIdLst /
+        // notesMasterIdLst / custShow slide lists), so repoint any attribute
+        // still carrying the vacated id or the deck dangles on open.
+        else if (host is PresentationPart ppHost && ppHost.Presentation != null)
+        {
+            const string RelNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+            var changed = false;
+            foreach (var el in ppHost.Presentation.Descendants())
+            {
+                foreach (var attr in el.GetAttributes())
+                {
+                    if (attr.LocalName == "id" && attr.NamespaceUri == RelNs && attr.Value == pinnedRid)
+                    {
+                        el.SetAttribute(new OpenXmlAttribute(attr.Prefix, attr.LocalName, attr.NamespaceUri, newRid));
+                        changed = true;
+                    }
+                }
+            }
+            if (changed) ppHost.Presentation.Save();
+        }
     }
 
     /// <summary>
@@ -2260,16 +2341,41 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
             catch { /* best-effort audit trail */ }
         }
         _doc.Save();
-        _backingStream?.Flush();
+        if (_packageStream != null) AtomicWriteBack();
+        else _backingStream?.Flush();
     }
+
+    // Crash-atomic flush of the in-memory package to disk (temp + File.Replace).
+    // No-op for read-only sessions (_packageStream == null), which never write.
+    // See OfficeCli.Core.AtomicPackageWriter.
+    private void AtomicWriteBack()
+    {
+        if (_packageStream == null || _backingStream == null) return;
+        OfficeCli.Core.AtomicPackageWriter.Flush(
+            _packageStream, _filePath,
+            releaseLock: () => { _backingStream!.Dispose(); _backingStream = null; },
+            reopenLock: () => { _backingStream = new FileStream(_filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read); });
+    }
+
+    /// <summary>See <see cref="OfficeCli.Handlers.WordHandler.DiscardOnDispose"/> —
+    /// atomic-batch rollback: drop the in-memory DOM without serializing.</summary>
+    public bool DiscardOnDispose { get; set; }
 
     public void Dispose()
     {
-        // Save through the package (flush in-memory edits to the underlying
-        // stream) before disposing. When we own the backing FileStream, the
-        // package would otherwise leave the on-disk file in whatever state
-        // the last auto-flush left it — for the stream-Open path this can
-        // truncate to zero bytes and look like a corrupted zip on reopen.
+        if (DiscardOnDispose)
+        {
+            // Atomic-batch rollback: never serialize the poisoned DOM. Close
+            // the backing stream FIRST so the package's dispose-time autosave
+            // has nowhere to write. The on-disk file keeps the last flushed
+            // (pre-batch) state.
+            _backingStream?.Dispose();
+            _backingStream = null;
+            try { _doc.Dispose(); } catch { /* autosave hit the closed stream — intended */ }
+            _packageStream?.Dispose();
+            _packageStream = null;
+            return;
+        }
         if (Modified)
         {
             try { ReconcileSlideMasterIds(); }
@@ -2278,9 +2384,24 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
             catch { /* best-effort audit trail */ }
         }
         try { _doc.Save(); } catch { /* read-only or already disposed */ }
-        _doc.Dispose();
-        _backingStream?.Dispose();
-        _backingStream = null;
+        if (_packageStream != null)
+        {
+            // Editable: read the in-memory package into the atomic temp BEFORE
+            // _doc.Dispose() (the SDK may close the stream it was opened over on
+            // dispose), then swap it over the original in one File.Replace.
+            try { AtomicWriteBack(); } catch { /* best-effort: original left intact */ }
+            _doc.Dispose();
+            _packageStream.Dispose();
+            _packageStream = null;
+            _backingStream?.Dispose();
+            _backingStream = null;
+        }
+        else
+        {
+            _doc.Dispose();
+            _backingStream?.Dispose();
+            _backingStream = null;
+        }
     }
 
     // Canonical, RELOAD-STABLE ordering for masters and layouts.

@@ -13,11 +13,9 @@ namespace OfficeCli.Core;
 /// style) blow up the Open XML SDK DOM — roughly 400 bytes of heap per
 /// 17-byte XML token — turning an 11 MB file into multiple GB of RSS.
 ///
-/// Both reference implementations treat such cells as nonexistent:
-/// Excel drops them on load and never writes them back; LibreOffice's
-/// importer discards them with <c>if (mnXfId &lt; 0) return;</c>
-/// (sc/source/filter/oox/sheetdatabuffer.cxx). Removing them is therefore
-/// semantically lossless.
+/// Common spreadsheet applications treat such cells as nonexistent:
+/// they are dropped on load and never written back — a style-less empty
+/// cell carries no data. Removing them is therefore semantically lossless.
 ///
 /// A cell is removable ONLY when all three hold:
 ///   1. it has an <c>r</c> attribute,
@@ -178,7 +176,7 @@ public static class WorksheetBloatFilter
         // True when a surviving cell has no r attribute: its position is
         // sequence-implied and we cannot cheaply know the real bounds, so
         // the dimension element is left untouched (stale dimensions are
-        // tolerated by Excel, LibreOffice and this codebase alike).
+        // tolerated by common spreadsheet applications and this codebase alike).
         public bool DimensionUnsafe;
 
         public bool HasBounds => MinRow != int.MaxValue;

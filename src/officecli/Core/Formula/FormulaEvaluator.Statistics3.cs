@@ -6,7 +6,7 @@ namespace OfficeCli.Core;
 // W4d — statistical hypothesis tests (T.TEST / CHISQ.TEST / F.TEST / Z.TEST),
 // each returning a p-value through the W4 distribution CDFs (RegIncBeta for the
 // t/F tails, RegGammaP for chi-square, NormCdf for z). Verified against real
-// Microsoft Excel.
+// Excel.
 internal partial class FormulaEvaluator
 {
     private static double Mean(double[] v) => v.Length == 0 ? 0 : v.Average();
@@ -70,7 +70,7 @@ internal partial class FormulaEvaluator
         double v1 = SampleVar(a), v2 = SampleVar(b);
         if (v1 == 0 || v2 == 0) return FormulaResult.Error("#DIV/0!");
         double f = v1 / v2;
-        double rt = 1 - FDistCdf(f, a.Length - 1, b.Length - 1);
+        double rt = FDistRightTail(f, a.Length - 1, b.Length - 1);
         return FR(2 * Math.Min(rt, 1 - rt));
     }
 
@@ -93,7 +93,7 @@ internal partial class FormulaEvaluator
             }
         int df = rows == 1 || cols == 1 ? rows * cols - 1 : (rows - 1) * (cols - 1);
         if (df < 1) return FormulaResult.Error("#N/A");
-        return FR(1 - RegGammaP(df / 2.0, chi2 / 2.0));   // right tail
+        return FR(RegGammaQ(df / 2.0, chi2 / 2.0));   // right tail
     }
 
     // Z.TEST(array, x, [sigma]) — one-tailed P(Z > z); sample stdev when sigma omitted.
@@ -106,6 +106,6 @@ internal partial class FormulaEvaluator
             ? s.AsNumber() : Math.Sqrt(SampleVar(a));
         if (sigma == 0) return FormulaResult.Error("#DIV/0!");
         double z = (Mean(a) - x) / (sigma / Math.Sqrt(a.Length));
-        return FR(1 - NormCdf(z));
+        return FR(NormCdf(-z));   // symmetry keeps the far tail (1-CDF cancels to 0)
     }
 }

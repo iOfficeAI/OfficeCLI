@@ -121,9 +121,11 @@ public partial class PowerPointHandler
                 // own behavior matches: inserting a picture leaves descr
                 // absent until the user fills the alt-text dialog. Mirrors
                 // AddShape which never auto-populates descr.
-                var altText = properties.TryGetValue("alt", out var altOverride) && !string.IsNullOrEmpty(altOverride)
-                    ? altOverride
-                    : null;
+                // CONSISTENCY(picture-alt): full alias set (matches Set and
+                // the shared picture schema contract).
+                var altText = new[] { "alt", "altText", "alttext", "description" }
+                    .Select(k => properties.GetValueOrDefault(k))
+                    .FirstOrDefault(v => !string.IsNullOrEmpty(v));
 
                 // Build Picture element following Open-XML-SDK conventions
                 var picture = new Picture();

@@ -258,6 +258,28 @@ public partial class ExcelHandler
                 SaveWorkbook();
                 return true;
             }
+            case "workbook.passwordhash":
+            {
+                // Verbatim legacy hash write (round-trip of the readback above),
+                // parallel to the sheet-level `passwordhash` case. No re-hash:
+                // the dump carries the already-hashed value. Implies a lock so
+                // the protection element is meaningful (Excel parity).
+                var protH = EnsureWorkbookProtection();
+                if (string.IsNullOrEmpty(value) || value.Equals("none", StringComparison.OrdinalIgnoreCase))
+                {
+                    protH.WorkbookPassword = null;
+                    if (!_workbookLockStructureExplicit) protH.LockStructure = null;
+                }
+                else
+                {
+                    protH.WorkbookPassword = HexBinaryValue.FromString(value);
+                    if (protH.LockStructure?.Value != true && protH.LockWindows?.Value != true)
+                        protH.LockStructure = true;
+                }
+                CleanupEmptyWorkbookProtection();
+                SaveWorkbook();
+                return true;
+            }
             case "workbook.password" or "workbookpassword":
             {
                 var prot = EnsureWorkbookProtection();
@@ -455,7 +477,16 @@ public partial class ExcelHandler
         {
             if (prot.LockStructure?.Value == true) node.Format["workbook.lockStructure"] = true;
             if (prot.LockWindows?.Value == true) node.Format["workbook.lockWindows"] = true;
-            if (prot.WorkbookPassword?.HasValue == true) node.Format["workbook.password"] = "***";
+            // Surface the legacy password hash verbatim (canonical
+            // `workbook.passwordHash`) so dump→batch preserves workbook
+            // protection strength instead of degrading to passwordless —
+            // mirrors the sheet-level passwordHash readback. `workbook.password`
+            // stays a display-only mask (never round-tripped; the hash is).
+            if (prot.WorkbookPassword?.Value is { Length: > 0 } wbPwHash)
+            {
+                node.Format["workbook.passwordHash"] = wbPwHash;
+                node.Format["workbook.password"] = "***";
+            }
         }
     }
 }

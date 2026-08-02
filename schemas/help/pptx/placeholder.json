@@ -12,9 +12,10 @@
     "remove": true
   },
   "paths": {
-    "positional": ["/slide[N]/placeholder[M]", "/slide[N]/shape[M]"]
+    "positional": ["/slide[N]/placeholder[M]", "/slide[N]/shape[M]"],
+    "byAttribute": ["/slide[N]/placeholder[@idx=K]", "/slide[N]/placeholder[@type=body][@idx=K]", "/slide[N]/placeholder[@id=ID]", "/slide[N]/placeholder[@name=NAME]"]
   },
-  "note": "Aliases: ph. Inserts a Shape with PlaceholderShape nonVisual properties — geometry comes from the slide layout. Add returns /slide[N]/shape[M] (placeholder is a shape at the OOXML layer). effective.* keys behave as documented in pptx/shape.json.",
+  "note": "Aliases: ph. Inserts a Shape with PlaceholderShape nonVisual properties — geometry comes from the slide layout. Add returns /slide[N]/shape[M] (placeholder is a shape at the OOXML layer). effective.* keys behave as documented in pptx/shape.json. Binding-id addressing: placeholder[@idx=K] targets the p:ph idx that binds the placeholder to its layout slot (stable across edits, unlike ordinal position); chain [@type=body][@idx=K] when two placeholders of different types share an idx (a lone @idx matching more than one errors with a narrowing hint). Absent idx counts as 0 and absent type as body, per ECMA-376 defaults.",
   "properties": {
     "id": {
       "type": "number",

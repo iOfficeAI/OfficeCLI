@@ -186,11 +186,17 @@ internal static partial class PivotTableHelper
                 var trimmed = parts[p].Trim();
                 if (trimmed.StartsWith("name=", StringComparison.OrdinalIgnoreCase))
                 {
-                    customName = trimmed.Substring("name=".Length).Trim();
-                    var next = new string[parts.Length - 1];
+                    // The name consumes EVERYTHING from this segment to the end
+                    // of the spec, re-joined with ':' — display names routinely
+                    // contain literal colons (Excel's CJK default is
+                    // "求和项:<field>"), and dump always emits name= as the
+                    // final segment. Consuming only parts[p] left the name's
+                    // own colon tail behind as a bogus showAs token, making
+                    // every CJK-default-named data field unreplayable.
+                    var joined = string.Join(":", parts.Skip(p)).Trim();
+                    customName = joined.Substring("name=".Length).Trim();
+                    var next = new string[p];
                     Array.Copy(parts, 0, next, 0, p);
-                    if (p < parts.Length - 1)
-                        Array.Copy(parts, p + 1, next, p, parts.Length - p - 1);
                     parts = next;
                     break;
                 }

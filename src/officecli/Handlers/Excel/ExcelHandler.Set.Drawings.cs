@@ -351,7 +351,9 @@ public partial class ExcelHandler
 
             switch (lk)
             {
-                case "alt":
+                // CONSISTENCY(picture-alt): full alias set — Add already
+                // accepted alttext; Set rejecting it was an Add/Set asymmetry.
+                case "alt" or "alttext" or "description":
                     var nvProps = anchor.Descendants<XDR.NonVisualDrawingProperties>().FirstOrDefault();
                     if (nvProps != null) nvProps.Description = value;
                     break;

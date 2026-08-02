@@ -631,62 +631,55 @@ public partial class PowerPointHandler
     private static void ApplyListStyle(Drawing.ParagraphProperties pProps, string value,
                                        bool preserveIndent = false)
     {
+        // Validate and construct FIRST — an invalid value must throw before
+        // any mutation. Stripping the existing bullet group ahead of the
+        // value check left a half-mutated DOM behind the invalid_value error,
+        // and the single-command path autosaves the dirty DOM on Dispose, so
+        // the paragraph's explicit "no bullet" override was silently lost.
+        OpenXmlElement bullet = value.ToLowerInvariant() switch
+        {
+            "bullet" or "•" or "disc" => new Drawing.CharacterBullet { Char = "•" },
+            "dash" or "-" or "–" => new Drawing.CharacterBullet { Char = "–" },
+            "arrow" or ">" or "→" => new Drawing.CharacterBullet { Char = "→" },
+            "check" or "✓" => new Drawing.CharacterBullet { Char = "✓" },
+            "star" or "★" => new Drawing.CharacterBullet { Char = "★" },
+            "numbered" or "number" or "1" => new Drawing.AutoNumberedBullet { Type = Drawing.TextAutoNumberSchemeValues.ArabicPeriod },
+            "alpha" or "a" => new Drawing.AutoNumberedBullet { Type = Drawing.TextAutoNumberSchemeValues.AlphaLowerCharacterPeriod },
+            "alphaupper" => new Drawing.AutoNumberedBullet { Type = Drawing.TextAutoNumberSchemeValues.AlphaUpperCharacterPeriod },
+            "roman" or "i" => new Drawing.AutoNumberedBullet { Type = Drawing.TextAutoNumberSchemeValues.RomanLowerCharacterPeriod },
+            "romanupper" => new Drawing.AutoNumberedBullet { Type = Drawing.TextAutoNumberSchemeValues.RomanUpperCharacterPeriod },
+            "none" or "false" => new Drawing.NoBullet(),
+            _ => value.Length <= 2
+                ? new Drawing.CharacterBullet { Char = value }
+                : throw new ArgumentException($"Invalid list style: {value}. Use: bullet, numbered, alpha, roman, none, or a single character"),
+        };
+
         pProps.RemoveAllChildren<Drawing.CharacterBullet>();
         pProps.RemoveAllChildren<Drawing.AutoNumberedBullet>();
         pProps.RemoveAllChildren<Drawing.NoBullet>();
         pProps.RemoveAllChildren<Drawing.BulletFont>();
 
-        switch (value.ToLowerInvariant())
+        // CONSISTENCY(schema-order-pptx): bu* children rank BEFORE tabLst and
+        // defRPr in CT_TextParagraphProperties — a pPr that already carries
+        // <a:defRPr> (kern/spacing set first) must not get the bullet appended
+        // after it, or PowerPoint silently ignores it and the strict validator
+        // flags the file. Route through InsertPPrChild like every other pPr
+        // child injection.
+        InsertPPrChild(pProps, bullet);
+
+        if (bullet is Drawing.NoBullet)
         {
-            case "bullet" or "•" or "disc":
-                pProps.AppendChild(new Drawing.CharacterBullet { Char = "•" });
-                break;
-            case "dash" or "-" or "–":
-                pProps.AppendChild(new Drawing.CharacterBullet { Char = "–" });
-                break;
-            case "arrow" or ">" or "→":
-                pProps.AppendChild(new Drawing.CharacterBullet { Char = "→" });
-                break;
-            case "check" or "✓":
-                pProps.AppendChild(new Drawing.CharacterBullet { Char = "✓" });
-                break;
-            case "star" or "★":
-                pProps.AppendChild(new Drawing.CharacterBullet { Char = "★" });
-                break;
-            case "numbered" or "number" or "1":
-                pProps.AppendChild(new Drawing.AutoNumberedBullet { Type = Drawing.TextAutoNumberSchemeValues.ArabicPeriod });
-                break;
-            case "alpha" or "a":
-                pProps.AppendChild(new Drawing.AutoNumberedBullet { Type = Drawing.TextAutoNumberSchemeValues.AlphaLowerCharacterPeriod });
-                break;
-            case "alphaupper" or "A":
-                pProps.AppendChild(new Drawing.AutoNumberedBullet { Type = Drawing.TextAutoNumberSchemeValues.AlphaUpperCharacterPeriod });
-                break;
-            case "roman" or "i":
-                pProps.AppendChild(new Drawing.AutoNumberedBullet { Type = Drawing.TextAutoNumberSchemeValues.RomanLowerCharacterPeriod });
-                break;
-            case "romanupper" or "I":
-                pProps.AppendChild(new Drawing.AutoNumberedBullet { Type = Drawing.TextAutoNumberSchemeValues.RomanUpperCharacterPeriod });
-                break;
-            case "none" or "false":
-                pProps.AppendChild(new Drawing.NoBullet());
-                // Interactive convenience: removing the bullet also clears the
-                // hanging indent. Skipped when the same property bag carries an
-                // explicit indent/marginLeft — key-iteration order is
-                // undefined, so list=none must not erase a sibling indent=0pt
-                // that was (or will be) applied in the same Set call.
-                if (!preserveIndent)
-                {
-                    pProps.LeftMargin = null;
-                    pProps.Indent = null;
-                }
-                return;
-            default:
-                if (value.Length <= 2)
-                    pProps.AppendChild(new Drawing.CharacterBullet { Char = value });
-                else
-                    throw new ArgumentException($"Invalid list style: {value}. Use: bullet, numbered, alpha, roman, none, or a single character");
-                break;
+            // Interactive convenience: removing the bullet also clears the
+            // hanging indent. Skipped when the same property bag carries an
+            // explicit indent/marginLeft — key-iteration order is
+            // undefined, so list=none must not erase a sibling indent=0pt
+            // that was (or will be) applied in the same Set call.
+            if (!preserveIndent)
+            {
+                pProps.LeftMargin = null;
+                pProps.Indent = null;
+            }
+            return;
         }
 
         // Apply default hanging indent for bullet/numbered lists (matches PowerPoint defaults)

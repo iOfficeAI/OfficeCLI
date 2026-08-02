@@ -114,12 +114,13 @@
     },
     "data": {
       "type": "string",
-      "description": "inline CSV-ish data ('H1,H2;R1C1,R1C2') or CSV file/URL/data-URI resolvable by FileSource.",
+      "description": "inline CSV-ish data ('H1,H2;R1C1,R1C2') or CSV file/URL/data-URI resolvable by FileSource. Both forms are quote-aware: wrap a cell in double quotes to keep a comma (or a row separator) inside it, and double the quote to write a literal one.",
       "add": true,
       "set": false,
       "get": false,
       "examples": [
-        "--prop data=\"A,B;1,2\""
+        "--prop data=\"A,B;1,2\"",
+        "--prop data='Name,Age;\"Doe, John\",30'"
       ],
       "readback": "n/a (seeds cells at Add time)",
       "enforcement": "strict"

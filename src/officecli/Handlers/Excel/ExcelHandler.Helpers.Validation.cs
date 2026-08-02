@@ -137,8 +137,8 @@ public partial class ExcelHandler
         // additions (#SPILL!, #CALC!, #FIELD!, #BLOCKED!, #CONNECT!,
         // #UNKNOWN!), and async-fetch sentinels (#GETTING_DATA) which
         // lack the trailing `!`. Intentionally lenient — there is no
-        // OOXML BNF for the error namespace and Microsoft has added
-        // codes over time. The trade-off is that `#FOO` would also match
+        // OOXML BNF for the error namespace and new error codes have
+        // been added over time. The trade-off is that `#FOO` would also match
         // here; the alternative (closed-set whitelist) would break the
         // moment a new error code lands.
         char c = value[1];

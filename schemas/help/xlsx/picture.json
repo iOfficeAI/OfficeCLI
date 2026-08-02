@@ -50,9 +50,11 @@
       "description": "Mark the picture as decorative (a16:decorative ext under cNvPr). Excludes it from screen-reader alt-text traversal.",
       "add": true,
       "set": false,
+      "get": true,
       "examples": [
         "--prop decorative=true"
       ],
+      "readback": "true when the picture carries the a16:decorative flag",
       "enforcement": "report"
     },
     "rotation": {
@@ -115,10 +117,12 @@
       "description": "Picture opacity. Accepts percent (50, '50%') or fraction (0.5). 100 / 100% / 1.0 = fully opaque.",
       "add": true,
       "set": false,
+      "get": true,
       "examples": [
         "--prop opacity=50",
         "--prop opacity=0.5"
       ],
+      "readback": "integer percent (0..99); key omitted when fully opaque",
       "enforcement": "report"
     },
     "hyperlink": {

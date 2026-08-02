@@ -2,8 +2,50 @@
 // SPDX-License-Identifier: Apache-2.0
 
 
-// Ensure UTF-8 output on all platforms (Windows defaults to system codepage e.g. GBK)
-Console.OutputEncoding = System.Text.Encoding.UTF8;
+// Ensure UTF-8 output on all platforms (Windows defaults to system codepage
+// e.g. GBK). How that is reached depends on where the stream actually goes:
+//
+//  * Redirected into a pipe or a file — write through our own UTF-8 writers.
+//    The bytes reach the consumer untouched and the console object is never
+//    touched, so `officecli … | tool` and `officecli … > out.txt` mutate
+//    nothing that outlives the process.
+//  * A real console — the terminal decodes bytes with whatever code page it
+//    is set to, so putting CJK on a CP437/CP936 console means switching that
+//    code page. Console.OutputEncoding does exactly that, but through the
+//    console object, which is shared with the parent shell and outlives this
+//    process: left as-is, every officecli run pinned the user's terminal to
+//    CP 65001 and the next legacy program they ran wrote mojibake into it.
+//    Switch it, then put it back on the way out. A hard kill (taskkill /F)
+//    still skips the restore — best effort is the most a CLI can do here.
+//
+// Stdin gets the same treatment one layer down; see CommandBuilder.StdIn.
+{
+    var utf8NoBom = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+    if (!Console.IsOutputRedirected || !Console.IsErrorRedirected)
+    {
+        var previous = Console.OutputEncoding;
+        if (previous.CodePage != System.Text.Encoding.UTF8.CodePage)
+        {
+            Console.OutputEncoding = utf8NoBom;
+            void Restore(object? sender, EventArgs e)
+            {
+                try { Console.OutputEncoding = previous; } catch { /* console already gone */ }
+            }
+            AppDomain.CurrentDomain.ProcessExit += Restore;
+            Console.CancelKeyPress += Restore;
+        }
+    }
+    // Order matters: the assignment above resets Console.Out/Error, so install
+    // our writers after it. AutoFlush + TextWriter.Synchronized match what the
+    // framework's own console writers give — the resident and watch servers
+    // write from several threads at once.
+    if (Console.IsOutputRedirected)
+        Console.SetOut(System.IO.TextWriter.Synchronized(
+            new System.IO.StreamWriter(Console.OpenStandardOutput(), utf8NoBom) { AutoFlush = true }));
+    if (Console.IsErrorRedirected)
+        Console.SetError(System.IO.TextWriter.Synchronized(
+            new System.IO.StreamWriter(Console.OpenStandardError(), utf8NoBom) { AutoFlush = true }));
+}
 
 // Snapshot the OS user culture BEFORE we pin the thread to Invariant.
 // Read by `create --locale` (when no explicit tag is given) to bake the
@@ -22,6 +64,13 @@ OfficeCli.Core.LocaleFontRegistry.OsLocaleSnapshot = System.Globalization.Cultur
 // `get --json` output, and silently-zero numCache reads in charts.
 System.Globalization.CultureInfo.DefaultThreadCurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
 System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = System.Globalization.CultureInfo.InvariantCulture;
+
+// On Unix, named-pipe sockets live under $TMPDIR; a long (sandbox-nested)
+// TMPDIR pushes them past the kernel's socket-path cap and resident/watch
+// startup breaks (issue #263). Must run before any pipe endpoint or
+// Path.GetTempPath()-keyed .lock/.port file is touched, including the
+// __resident-serve__ dispatch below.
+OfficeCli.Core.PipeTempDirGuard.EnsurePipePathFits();
 
 // Internal commands (spawned as separate processes, not user-facing)
 if (args.Length == 1 && args[0] == "__update-check__")

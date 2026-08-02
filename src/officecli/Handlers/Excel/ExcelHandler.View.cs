@@ -729,6 +729,27 @@ public partial class ExcelHandler
                 var body = dn.Text?.Trim();
                 var name = dn.Name?.Value;
                 if (string.IsNullOrEmpty(body) || string.IsNullOrEmpty(name)) continue;
+                // Scope index out of range: localSheetId is a 0-based
+                // position into <sheets>; a value >= the sheet count means
+                // real Excel refuses to open the file (0x800A03EC). Typical
+                // cause: a sheet remove/reorder that didn't renumber scopes.
+                var sheetCount = workbook?.Sheets?.Elements<Sheet>().Count() ?? 0;
+                var lid = dn.LocalSheetId?.Value;
+                if (lid.HasValue && lid.Value >= sheetCount)
+                {
+                    issues.Add(new DocumentIssue
+                    {
+                        Id = $"D{++issueNum}",
+                        Type = IssueType.Content,
+                        Subtype = Core.IssueSubtypes.DefinedNameBroken,
+                        Severity = IssueSeverity.Error,
+                        Path = $"/namedrange[{name}]",
+                        Message = $"Defined name '{name}' has out-of-range scope localSheetId={lid.Value} (workbook has {sheetCount} sheet(s)); Excel will refuse to open this file",
+                        Context = body,
+                        Suggestion = "Rescope the name to an existing sheet index or remove it."
+                    });
+                    continue;
+                }
                 // Body that is an error literal (#REF!) is already handled
                 // by the evaluator's TT.Error path (B3 fix) — that branch
                 // propagates the error to formulas. Surface it as an issue

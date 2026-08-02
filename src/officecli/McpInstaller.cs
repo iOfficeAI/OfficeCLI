@@ -227,6 +227,9 @@ public static class McpInstaller
                 FileName = "claude",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                // CONSISTENCY(child-stream-encoding): see BlankDocCreator.
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
                 UseShellExecute = false,
             };
             foreach (var a in args) psi.ArgumentList.Add(a);

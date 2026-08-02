@@ -101,15 +101,15 @@ public partial class WordHandler
         string[][]? tableData = null;
         if (properties.TryGetValue("data", out var dataStr))
         {
+            // Both forms are quote-aware: a cell wrapped in double quotes may
+            // contain the separator, so `"Doe, John",30` is two cells. A plain
+            // Split(',') made it three and shifted the rest of the row.
+            // CONSISTENCY(table-data-parse): mirrored in the pptx add-table path.
             if (OfficeCli.Core.FileSource.IsResolvable(dataStr))
-                tableData = OfficeCli.Core.FileSource.ResolveLines(dataStr)
-                    .Where(l => !string.IsNullOrWhiteSpace(l))
-                    .Select(l => l.Split(',').Select(c => c.Trim()).ToArray())
-                    .ToArray();
+                tableData = OfficeCli.Core.DelimitedText.ParseGrid(
+                    OfficeCli.Core.FileSource.ResolveText(dataStr), ',', '\n');
             else
-                tableData = dataStr.Split(';')
-                    .Select(r => r.Split(',').Select(c => c.Trim()).ToArray())
-                    .ToArray();
+                tableData = OfficeCli.Core.DelimitedText.ParseGrid(dataStr, ',', ';');
         }
 
         int rows, cols;
@@ -375,12 +375,15 @@ public partial class WordHandler
                     // BUG-DUMP-R34-TBLIND: honour a pct-typed indent ("2%") so it
                     // round-trips as <w:tblInd w:type="pct"> instead of collapsing
                     // to dxa twips (which shifts the whole table).
+                    // CONSISTENCY(length-units): non-pct indent accepts pt/cm/in
+                    // (and bare = twips) via SpacingConverter, matching tc padding
+                    // and every other length slot. tblInd is signed (ST_SignedTwipsMeasure).
                     tblProps.TableIndentation = tv.TrimEnd().EndsWith("%", StringComparison.Ordinal)
                         ? new TableIndentation { Width = (int)Math.Round(ParseHelpers.SafeParseDouble(tv.TrimEnd().TrimEnd('%'), "indent") * 50), Type = TableWidthUnitValues.Pct }
-                        : new TableIndentation { Width = ParseHelpers.SafeParseInt(tv, "indent"), Type = TableWidthUnitValues.Dxa };
+                        : new TableIndentation { Width = OfficeCli.Core.SpacingConverter.ParseWordSpacingSigned(tv), Type = TableWidthUnitValues.Dxa };
                     break;
                 case "cellspacing":
-                    tblProps.TableCellSpacing = new TableCellSpacing { Width = ParseHelpers.SafeParseUint(tv, "cellspacing").ToString(), Type = TableWidthUnitValues.Dxa };
+                    tblProps.TableCellSpacing = new TableCellSpacing { Width = OfficeCli.Core.SpacingConverter.ParseWordSpacing(tv).ToString(), Type = TableWidthUnitValues.Dxa };
                     break;
                 case "layout":
                     tblProps.TableLayout = new TableLayout
@@ -400,7 +403,7 @@ public partial class WordHandler
                     // schema-invalid OOXML when other props (style→tblLook at rank
                     // 14) appeared earlier in argv. Same fix for padding.{top,
                     // bottom,left,right} below and Set padding path.
-                    var paddingVal = ParseHelpers.SafeParseInt(tv, "padding");
+                    var paddingVal = OfficeCli.Core.SpacingConverter.ParseWordSpacingSigned(tv);
                     if (paddingVal < 0)
                         throw new ArgumentException($"Invalid 'padding' value: '{tv}'. Table cell margins must be non-negative (OOXML w:tblCellMar).");
                     var dxa = paddingVal.ToString();
@@ -418,7 +421,7 @@ public partial class WordHandler
                 // tcMar handling in Set.Element.cs.
                 case "padding.top":
                     {
-                        var tv2 = ParseHelpers.SafeParseInt(tv, "padding.top");
+                        var tv2 = OfficeCli.Core.SpacingConverter.ParseWordSpacingSigned(tv);
                         if (tv2 < 0)
                             throw new ArgumentException($"Invalid 'padding.top' value: '{tv}'. Table cell margins must be non-negative.");
                         var cmt = EnsureTableCellMarginDefault(tblProps);
@@ -427,7 +430,7 @@ public partial class WordHandler
                     break;
                 case "padding.bottom":
                     {
-                        var bv2 = ParseHelpers.SafeParseInt(tv, "padding.bottom");
+                        var bv2 = OfficeCli.Core.SpacingConverter.ParseWordSpacingSigned(tv);
                         if (bv2 < 0)
                             throw new ArgumentException($"Invalid 'padding.bottom' value: '{tv}'. Table cell margins must be non-negative.");
                         var cmb = EnsureTableCellMarginDefault(tblProps);
@@ -436,7 +439,7 @@ public partial class WordHandler
                     break;
                 case "padding.left":
                     {
-                        var lv = ParseHelpers.SafeParseInt(tv, "padding.left");
+                        var lv = OfficeCli.Core.SpacingConverter.ParseWordSpacingSigned(tv);
                         if (lv < 0)
                             throw new ArgumentException($"Invalid 'padding.left' value: '{tv}'. Table cell margins must be non-negative.");
                         var cml = EnsureTableCellMarginDefault(tblProps);
@@ -445,7 +448,7 @@ public partial class WordHandler
                     break;
                 case "padding.right":
                     {
-                        var rv = ParseHelpers.SafeParseInt(tv, "padding.right");
+                        var rv = OfficeCli.Core.SpacingConverter.ParseWordSpacingSigned(tv);
                         if (rv < 0)
                             throw new ArgumentException($"Invalid 'padding.right' value: '{tv}'. Table cell margins must be non-negative.");
                         var cmr = EnsureTableCellMarginDefault(tblProps);
@@ -634,7 +637,7 @@ public partial class WordHandler
         // position; they are only schema-valid inside a table STYLE's tblPr
         // (CT_TblPrStyle). Inserting them bare therefore always validates as
         // "invalid child element 'tblStyleRowBandSize'", no matter the order.
-        // wml-aware consumers (Word, LibreOffice — whose DOCX export writes
+        // wml-aware consumers (Word and other editors — whose DOCX export writes
         // them document-side at the CT_TblPrBase rank-4/5 slot) DO honor the
         // elements, so we keep them document-side but wrap them in an
         // mc:AlternateContent guard with Requires="w": every wordprocessingml
@@ -807,6 +810,7 @@ public partial class WordHandler
         // required trailing empty paragraph here so Word can open the doc.
         if (parent is TableCell && parent.LastChild is Table)
             parent.AppendChild(new Paragraph());
+        _lastAddedTable = table;
         var tbls = parent.Elements<Table>().ToList();
         var idx = tbls.FindIndex(t => ReferenceEquals(t, table));
         return $"{parentPath}/tbl[{(idx >= 0 ? idx + 1 : tbls.Count)}]";

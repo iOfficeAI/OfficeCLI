@@ -347,7 +347,10 @@ internal static class ExcelDataFormatter
         // A ',' in the digit placeholder run requests thousands grouping
         // (#,##0.00% renders 123,455.55%); F-format never groups.
         var numFormat = section.Contains(',') ? $"N{decimals}" : $"F{decimals}";
-        var num = (value * 100).ToString(numFormat, System.Globalization.CultureInfo.InvariantCulture) + "%";
+        // Excel rounds half away from zero; pre-round so the .NET half-to-even
+        // ToString has no midpoint left to resolve the wrong way.
+        var pct = Math.Round(value * 100, Math.Max(0, Math.Min(15, decimals)), MidpointRounding.AwayFromZero);
+        var num = pct.ToString(numFormat, System.Globalization.CultureInfo.InvariantCulture) + "%";
         // Re-attach the section's literal prefix/suffix around the digit run by
         // replacing the numeric placeholder token (the '#'/'0'/'.'/'%' span) with
         // the rendered number. This carries '(' ... ')' accounting wrappers.

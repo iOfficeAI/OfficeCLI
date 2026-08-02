@@ -50,6 +50,9 @@ internal static class HtmlScreenshot
                 FileName = bin,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                // CONSISTENCY(child-stream-encoding): see BlankDocCreator.
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
@@ -546,6 +549,9 @@ internal static class HtmlScreenshot
                 FileName = bin,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                // CONSISTENCY(child-stream-encoding): see BlankDocCreator.
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
@@ -587,6 +593,9 @@ internal static class HtmlScreenshot
                 FileName = bin,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                // CONSISTENCY(child-stream-encoding): see BlankDocCreator.
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };

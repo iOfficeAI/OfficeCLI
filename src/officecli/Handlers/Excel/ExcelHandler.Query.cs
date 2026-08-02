@@ -466,11 +466,17 @@ public partial class ExcelHandler
             if (rbIdx < 1 || rbIdx > breaks.Count)
                 throw new ArgumentException($"Row break index {rbIdx} out of range (1-{breaks.Count})");
             var brk = breaks[rbIdx - 1];
-            return new DocumentNode
+            var rbNode = new DocumentNode
             {
                 Path = path, Type = "rowbreak",
                 Format = { ["row"] = brk.Id?.Value ?? 0u, ["manual"] = brk.ManualPageBreak?.Value ?? false }
             };
+            // Restricted-span page break (<brk min max>): surface a non-default
+            // column span so dump→replay reproduces it. Full-width default
+            // (min 0 / max 16383) is omitted to keep the readback clean.
+            if (brk.Min?.Value is { } rbMin && rbMin > 0) rbNode.Format["min"] = (int)rbMin;
+            if (brk.Max?.Value is { } rbMax && rbMax != 16383u) rbNode.Format["max"] = (int)rbMax;
+            return rbNode;
         }
         var cbMatch = Regex.Match(cellRef, @"^colbreak\[(\d+)\]$", RegexOptions.IgnoreCase);
         if (cbMatch.Success)
@@ -481,11 +487,15 @@ public partial class ExcelHandler
             if (cbIdx < 1 || cbIdx > breaks.Count)
                 throw new ArgumentException($"Column break index {cbIdx} out of range (1-{breaks.Count})");
             var brk = breaks[cbIdx - 1];
-            return new DocumentNode
+            var cbNode = new DocumentNode
             {
                 Path = path, Type = "colbreak",
                 Format = { ["col"] = (int)(brk.Id?.Value ?? 0u), ["manual"] = brk.ManualPageBreak?.Value ?? false }
             };
+            // Restricted-span break: full-height default is min 0 / max 1048575.
+            if (brk.Min?.Value is { } cbMin && cbMin > 0) cbNode.Format["min"] = (int)cbMin;
+            if (brk.Max?.Value is { } cbMax && cbMax != 1048575u) cbNode.Format["max"] = (int)cbMax;
+            return cbNode;
         }
 
         // Validation path: /Sheet1/dataValidation[N] (canonical) or

@@ -49,12 +49,22 @@ internal static class UpdateChecker
         // home is read-only, so a CreateDirectory failure here is not fatal.
         try { Directory.CreateDirectory(ConfigDir); } catch { /* continue */ }
 
+        var config = LoadConfig();
+
         // Apply pending update from previous background check (.update file).
         // After this returns, the current process image is still the OLD binary;
         // the NEW binary is on disk and will run on the *next* invocation.
-        ApplyPendingUpdate();
-
-        var config = LoadConfig();
+        //
+        // GATED ON autoUpdate: the pending file sits NEXT TO THE BINARY
+        // (shared across users) while the opt-out lives in per-HOME
+        // config.json — so a refresh spawned under some other HOME (default
+        // = enabled) could stage a .update that a later invocation applied
+        // even though THIS user had autoUpdate off, silently swapping a
+        // version-pinned binary. When the setting is off, the staged file is
+        // left in place, just never applied by THIS user — deleting it would
+        // only make an enabled sibling process re-download it next cycle.
+        if (config.AutoUpdate)
+            ApplyPendingUpdate();
 
         // Skill auto-refresh: if the running binary's version differs from the
         // last version that performed a refresh, push embedded skills from THIS
@@ -410,6 +420,9 @@ internal static class UpdateChecker
                 // doesn't touch the console stream at all.
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                // CONSISTENCY(child-stream-encoding): see BlankDocCreator.
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
                 RedirectStandardInput = true
             };
 
@@ -727,6 +740,9 @@ internal static class UpdateChecker
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                // CONSISTENCY(child-stream-encoding): see BlankDocCreator.
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
                 CreateNoWindow = true,
                 Environment = { ["OFFICECLI_SKIP_UPDATE"] = "1" }
             });

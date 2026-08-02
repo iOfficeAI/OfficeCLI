@@ -357,7 +357,13 @@ def _run_cli(binary, argv):
     """Run `binary <argv...>` (capturing output). A missing binary surfaces as a
     clear OfficeCliError with install guidance, not a raw FileNotFoundError."""
     try:
-        return subprocess.run([binary, *argv], capture_output=True, text=True)
+        # text=True alone decodes with locale.getencoding() — the ANSI code page
+        # on Windows (cp936/cp1252). The CLI always writes UTF-8, so a message
+        # carrying a non-ASCII path raised UnicodeDecodeError (or mojibake) out
+        # of subprocess instead of a clean OfficeCliError. The resident-pipe
+        # route below already decodes utf-8; keep the two agreeing.
+        return subprocess.run([binary, *argv], capture_output=True,
+                              text=True, encoding="utf-8", errors="replace")
     except FileNotFoundError:
         raise OfficeCliError(127, _MISSING_CLI.format(bin=binary)) from None
 

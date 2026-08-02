@@ -2410,10 +2410,83 @@ public partial class PowerPointHandler
                     }
                     break;
                 }
+                default:
+                {
+                    // mc:AlternateContent inside a group (e.g. an a14 math text box
+                    // grouped with other shapes) — see RenderAlternateContent (#228).
+                    if (child.LocalName == "AlternateContent")
+                        RenderGroupAltContent(sb, child, slidePart, themeColors, offX, offY, scaleX, scaleY);
+                    break;
+                }
             }
         }
 
         sb.AppendLine("    </div>");
+    }
+
+    // Shapes inside an mc:AlternateContent child of a group. Same drop-fix as
+    // RenderAlternateContent's general branch (#228), but mirroring the group
+    // child branches: each inner shape's slide-space xfrm must be re-projected
+    // into the group's child coordinate system (CONSISTENCY(group-child-pos)).
+    private static void RenderGroupAltContent(StringBuilder sb, OpenXmlElement acElement,
+        OpenXmlPart slidePart, Dictionary<string, string> themeColors,
+        long offX, long offY, double scaleX, double scaleY)
+    {
+        var altChild = acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Choice")
+                    ?? acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Fallback");
+        if (altChild == null) return;
+        foreach (var inner in altChild.ChildElements)
+        {
+            // Inside a group the SDK leaves the mc:AlternateContent subtree
+            // untyped (OpenXmlUnknownElement), so `is Shape` never matches —
+            // re-hydrate the strongly-typed element from its XML.
+            switch (CoerceAltContentChild(inner))
+            {
+                case Shape sp:
+                {
+                    var pos = CalcGroupChildPos(sp.ShapeProperties?.Transform2D, offX, offY, scaleX, scaleY);
+                    if (pos.HasValue)
+                        RenderShape(sb, sp, slidePart, themeColors, pos);
+                    break;
+                }
+                case Picture pic:
+                {
+                    var pos = CalcGroupChildPos(pic.ShapeProperties?.Transform2D, offX, offY, scaleX, scaleY);
+                    if (pos.HasValue)
+                        RenderPicture(sb, pic, slidePart, themeColors, pos);
+                    break;
+                }
+                case ConnectionShape cxn:
+                {
+                    var pos = CalcGroupChildPos(cxn.ShapeProperties?.Transform2D, offX, offY, scaleX, scaleY);
+                    if (pos.HasValue)
+                        RenderConnector(sb, cxn, themeColors, dataPath: null, overridePos: pos, part: slidePart);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Re-hydrate an mc:Choice/mc:Fallback child into its strongly-typed SDK
+    // element. Where the schema doesn't admit AlternateContent (e.g. inside
+    // p:grpSp) the SDK parses the subtree as OpenXmlUnknownElement, so typed
+    // pattern matches and typed property accessors (ShapeProperties, TextBody)
+    // silently yield null. Already-typed elements pass through unchanged.
+    private static OpenXmlElement CoerceAltContentChild(OpenXmlElement inner)
+    {
+        if (inner is not OpenXmlUnknownElement) return inner;
+        try
+        {
+            return inner.LocalName switch
+            {
+                "sp" => new Shape(inner.OuterXml),
+                "pic" => new Picture(inner.OuterXml),
+                "cxnSp" => new ConnectionShape(inner.OuterXml),
+                "graphicFrame" => new GraphicFrame(inner.OuterXml),
+                _ => inner,
+            };
+        }
+        catch { return inner; }
     }
 
     /// <summary>
@@ -2534,6 +2607,13 @@ public partial class PowerPointHandler
                     }
                     break;
                 }
+                default:
+                {
+                    // mc:AlternateContent — see RenderGroup default branch (#228).
+                    if (child.LocalName == "AlternateContent")
+                        RenderGroupAltContent(sb, child, slidePart, themeColors, offX, offY, scaleX, scaleY);
+                    break;
+                }
             }
         }
 
@@ -2551,7 +2631,37 @@ public partial class PowerPointHandler
     {
         var isModel3D = acElement.Descendants().Any(d => d.LocalName == "model3d");
         var isZoom = acElement.Descendants().Any(d => d.LocalName == "sldZm");
-        if (!isModel3D && !isZoom) return;
+        if (!isModel3D && !isZoom)
+        {
+            // General mc:AlternateContent — e.g. a text box whose body carries
+            // Office 2010 math (mc:Choice Requires="a14" around a p:sp). Returning
+            // early here silently dropped the whole shape, equations and text alike
+            // (#228). Route the shapes inside mc:Choice (preferred: it carries the
+            // full-fidelity content our renderer understands, e.g. a14:m equations)
+            // or mc:Fallback through the normal shape/picture pipeline instead.
+            var altChild = acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Choice")
+                        ?? acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Fallback");
+            if (altChild == null) return;
+            foreach (var acInner in altChild.ChildElements)
+            {
+                switch (CoerceAltContentChild(acInner))
+                {
+                    case Shape acSp:
+                        RenderShape(sb, acSp, slidePart, themeColors, dataPath: dataPath);
+                        break;
+                    case Picture acPic:
+                        RenderPicture(sb, acPic, slidePart, themeColors, dataPath: dataPath);
+                        break;
+                    case ConnectionShape acCxn:
+                        RenderConnector(sb, acCxn, themeColors, dataPath: dataPath, part: slidePart);
+                        break;
+                    case GraphicFrame acGf when acGf.Descendants<Drawing.Table>().Any():
+                        RenderTable(sb, acGf, themeColors, dataPath: dataPath, part: slidePart);
+                        break;
+                }
+            }
+            return;
+        }
 
         // Extract position from mc:Choice > graphicFrame/sp > xfrm
         var choice = acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Choice");
@@ -2748,13 +2858,20 @@ public partial class PowerPointHandler
         sb.AppendLine($@"    <script type=""module"">
     let THREE, GLTFLoader;
     try {{
+      // Mirror-first via the importmap (CONSISTENCY(katex-mirror), see Core/ThreeAssets)
       THREE = await import('three');
       ({{ GLTFLoader }} = await import('three/addons/loaders/GLTFLoader.js'));
     }} catch(e) {{
-      // Three.js unavailable (offline) — show fallback image
-      const c = document.getElementById('{canvasId}');
-      if (c) {{ c.style.display='none'; const fb=c.parentElement?.querySelector('.m3d-fallback'); if(fb) fb.style.display='block'; }}
-      throw e; // stop execution of this module
+      try {{
+        // Mirror unreachable — CDN /+esm bypasses the importmap (absolute rewritten imports)
+        THREE = await import('{Core.ThreeAssets.CdnEsmThreeUrl}');
+        ({{ GLTFLoader }} = await import('{Core.ThreeAssets.CdnEsmGltfLoaderUrl}'));
+      }} catch(e2) {{
+        // Three.js unavailable (offline) — show fallback image
+        const c = document.getElementById('{canvasId}');
+        if (c) {{ c.style.display='none'; const fb=c.parentElement?.querySelector('.m3d-fallback'); if(fb) fb.style.display='block'; }}
+        throw e2; // stop execution of this module
+      }}
     }}
     (function() {{
       const canvas = document.getElementById('{canvasId}');

@@ -217,6 +217,16 @@ internal partial class FormulaEvaluator
         if (args[0] is FormulaResult { IsError: true } e) return e;
         var s = (args[0] as FormulaResult)?.AsString();
         if (string.IsNullOrEmpty(s)) return FormulaResult.Error("#REF!");
+        // a1 = FALSE selects absolute R1C1 (R{row}C{col}); relative R[..]C[..]
+        // needs the evaluating cell and is not supported.
+        bool a1 = !(args.Count > 1 && args[1] is FormulaResult a && a.AsNumber() == 0);
+        if (!a1)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(s.Trim(), @"^R(\d+)C(\d+)$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!m.Success) return FormulaResult.Error("#REF!");
+            return ResolveRef(new RefArg(null, int.Parse(m.Groups[2].Value), int.Parse(m.Groups[1].Value), 1, 1));
+        }
         var refArg = ParseRefString(s);
         if (refArg == null) return FormulaResult.Error("#REF!");
         return ResolveRef(refArg);

@@ -9,7 +9,7 @@ namespace OfficeCli.Core;
 // fixed-income family). Every one rests on two shared pieces: the day-count
 // basis engine (DayCountDiff / YearFracBasis, bases 0–4) and the coupon-date
 // schedule (CouponPcd / CouponNcd stepped back from maturity). PRICE/YIELD-style
-// roots reuse the shared SolveRoot. Values are verified against real Microsoft
+// roots reuse the shared SolveRoot. Values are verified against real
 // Excel — the day-count edge rules (30/360 end-of-month, actual/actual) are
 // where engines diverge, so each function is checked rather than trusted.
 internal partial class FormulaEvaluator
@@ -78,18 +78,39 @@ internal partial class FormulaEvaluator
         return neg ? -frac : frac;
     }
 
-    // Excel's basis-1 actual/actual: divide actual days by the average days-per-
-    // year over the calendar years the interval spans.
+    // Basis-1 actual/actual day count (OOXML §18.17.4.2 / ODF 4.11.7.7): actual
+    // days over a year length chosen by where the interval sits. A span longer
+    // than one year (or crossing the year boundary "forward") uses the average
+    // days-per-year of the calendar years it touches; a span of at most one year
+    // uses 366 iff a 29-Feb falls inside it (inclusive), else 365.
     private static double ActualActualYearFrac(DateTime start, DateTime end)
     {
-        int y1 = start.Year, y2 = end.Year;
-        double days = (end - start).Days;
-        if (y1 == y2)
-            return days / (DateTime.IsLeapYear(y1) ? 366.0 : 365.0);
-        int yearsSpanned = y2 - y1 + 1;
-        double totalDays = (new DateTime(y2 + 1, 1, 1) - new DateTime(y1, 1, 1)).Days;
-        double avg = totalDays / yearsSpanned;
-        return days / avg;
+        int y1 = start.Year, m1 = start.Month, d1 = start.Day;
+        int y2 = end.Year, m2 = end.Month, d2 = end.Day;
+        double dayDiff = (end - start).Days;
+        bool yearDifferent = y1 != y2;
+        double denom;
+        if (yearDifferent && (y2 != y1 + 1 || m1 < m2 || (m1 == m2 && d1 < d2)))
+        {
+            int dayCount = 0;
+            for (int i = y1; i <= y2; i++) dayCount += DateTime.IsLeapYear(i) ? 366 : 365;
+            denom = (double)dayCount / (y2 - y1 + 1);
+        }
+        else if (!yearDifferent && DateTime.IsLeapYear(y1))
+        {
+            denom = 366;
+        }
+        else if (yearDifferent &&
+                 ((DateTime.IsLeapYear(y1) && (m1 < 2 || (m1 == 2 && d1 <= 29))) ||
+                  (DateTime.IsLeapYear(y2) && (m2 > 2 || (m2 == 2 && d2 == 29)))))
+        {
+            denom = 366;
+        }
+        else
+        {
+            denom = 365;
+        }
+        return dayDiff / denom;
     }
 
     // ---- coupon schedule ----

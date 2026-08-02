@@ -120,8 +120,10 @@ public partial class PowerPointHandler
             sb.AppendLine($"<link rel=\"stylesheet\" href=\"{Core.KatexAssets.CssUrl}\" media=\"print\" onload=\"this.media='all'\" onerror=\"{Core.KatexAssets.CssOnErrorJs}\">");
             sb.AppendLine($"<script defer src=\"{Core.KatexAssets.JsUrl}\" onerror=\"{Core.KatexAssets.JsOnErrorJs("document.querySelectorAll('.katex-formula').forEach(function(el){el.textContent=el.dataset.formula;el.style.fontFamily='monospace';el.style.color='#666'})")}\"></script>");
         }
-        // Three.js for 3D model rendering (graceful degradation: shows placeholder when offline)
-        sb.AppendLine(@"<script type=""importmap"">{""imports"":{""three"":""https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"",""three/addons/"":""https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/""}}</script>");
+        // Three.js for 3D model rendering (graceful degradation: shows placeholder when offline).
+        // CONSISTENCY(katex-mirror): mirror-first importmap; CDN fallback lives at the
+        // dynamic import() site in HtmlPreview.Shapes.cs — see Core/ThreeAssets.
+        sb.AppendLine($"<script type=\"importmap\">{Core.ThreeAssets.ImportMapJson}</script>");
         sb.AppendLine("<style>");
         sb.AppendLine(GenerateCss(slideWidthPt, slideHeightPt));
         sb.AppendLine("</style>");

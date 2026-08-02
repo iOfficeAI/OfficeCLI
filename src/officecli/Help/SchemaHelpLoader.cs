@@ -349,10 +349,7 @@ internal static class SchemaHelpLoader
     /// </summary>
     internal static string TruncateForError(string s, int maxChars)
     {
-        if (s.Length <= maxChars) return s;
-        var cut = maxChars;
-        if (cut > 0 && char.IsHighSurrogate(s[cut - 1])) cut--;
-        return s[..cut] + "…";
+        return OfficeCli.Core.DisplayText.Truncate(s, maxChars);
     }
 
     /// <summary>

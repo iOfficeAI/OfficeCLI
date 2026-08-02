@@ -18,7 +18,21 @@ public partial class PowerPointHandler
     /// Scan all slides to initialize the global shape ID counter.
     /// Called once on document open (editable mode).
     /// </summary>
-    private void InitShapeIdCounter()
+    private void InitShapeIdCounter() => InitShapeIdCounter(fromRawStreams: false);
+
+    /// <param name="fromRawStreams">
+    /// When true, scan each slide's cNvPr ids by reading its raw part stream
+    /// instead of materializing the strongly-typed DOM. Touching
+    /// <c>slidePart.Slide</c> (via <see cref="GetSlide"/>) loads the SDK root,
+    /// and a later package Save then re-serializes that part — normalizing its
+    /// lexical formatting and dropping any XML the SDK does not model, even on
+    /// slides the command never targeted (#267). The open path passes true so a
+    /// targeted edit leaves untouched slides byte-for-byte identical. The
+    /// post-raw-set rebuild passes false: that path has just mutated a slide's
+    /// live DOM whose new ids are not yet flushed to the stream, so it must read
+    /// the DOM.
+    /// </param>
+    private void InitShapeIdCounter(bool fromRawStreams)
     {
         // CONSISTENCY(shape-id-high-range): auto-assigned ids start at 100000+
         // so they cannot collide with PowerPoint-authored ids (which sit in
@@ -32,22 +46,54 @@ public partial class PowerPointHandler
 
         foreach (var slidePart in GetSlideParts())
         {
-            var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree;
-            if (shapeTree == null) continue;
-            foreach (var nvPr in shapeTree.Descendants<NonVisualDrawingProperties>())
+            var ids = fromRawStreams
+                ? ScanShapeIdsFromStream(slidePart)
+                : ScanShapeIdsFromDom(slidePart);
+            foreach (var id in ids)
             {
-                if (nvPr.Id?.HasValue == true)
-                {
-                    _usedShapeIds.Add(nvPr.Id.Value);
-                    if (nvPr.Id.Value > maxId)
-                        maxId = nvPr.Id.Value;
-                }
+                _usedShapeIds.Add(id);
+                if (id > maxId)
+                    maxId = id;
             }
         }
 
         _nextShapeId = maxId + 1;
         if (_nextShapeId < maxId) // uint overflow
             _nextShapeId = minStartId;
+    }
+
+    private static IEnumerable<uint> ScanShapeIdsFromDom(SlidePart slidePart)
+    {
+        var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree;
+        if (shapeTree == null) yield break;
+        foreach (var nvPr in shapeTree.Descendants<NonVisualDrawingProperties>())
+            if (nvPr.Id?.HasValue == true)
+                yield return nvPr.Id.Value;
+    }
+
+    // Scan cNvPr ids from the raw part XML without loading the strongly-typed
+    // DOM, so the part stays clean and Save leaves it byte-for-byte intact
+    // (#267). Matches any element with local name "cNvPr" regardless of
+    // namespace — mirrors Descendants<NonVisualDrawingProperties>().
+    private static IEnumerable<uint> ScanShapeIdsFromStream(OpenXmlPart part)
+    {
+        using var stream = part.GetStream(System.IO.FileMode.Open, System.IO.FileAccess.Read);
+        using var reader = System.Xml.XmlReader.Create(stream, new System.Xml.XmlReaderSettings
+        {
+            DtdProcessing = System.Xml.DtdProcessing.Prohibit,
+            IgnoreComments = true,
+            IgnoreWhitespace = true,
+            CloseInput = true,
+        });
+        while (reader.Read())
+        {
+            if (reader.NodeType == System.Xml.XmlNodeType.Element && reader.LocalName == "cNvPr")
+            {
+                var idStr = reader.GetAttribute("id");
+                if (idStr != null && uint.TryParse(idStr, out var id))
+                    yield return id;
+            }
+        }
     }
 
     /// <summary>

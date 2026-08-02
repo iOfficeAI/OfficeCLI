@@ -2,7 +2,9 @@
   "$schema": "../_schema.json",
   "format": "docx",
   "element": "diagram",
-  "elementAliases": ["flowchart"],
+  "elementAliases": [
+    "flowchart"
+  ],
   "parent": "body",
   "operations": {
     "add": true,
@@ -16,12 +18,15 @@
       "/body"
     ]
   },
-  "note": "Renders a mermaid diagram into native, editable drawing shapes + connectors in the body. Aliases: flowchart. ADD-ONLY synthesizer (like 'equation'): there is no persistent 'diagram' node, but the whole diagram is wrapped in ONE group (wpg:wgp) and Add returns its path (/body/group[N]), so it stays adjustable as a unit. get /body/group[N] reads the group back (type=group with x/y/width/height); set /body/group[N] --prop width=… --prop height=… resizes the whole diagram — child font sizes re-bake with the resize so text stays proportional; give ONE of width/height to scale proportionally (aspect preserved), or BOTH for an exact box. set /body/group[N] --prop x=… --prop y=… moves the whole diagram (rewrites the floating anchor offset; a single axis leaves the other in place). remove /body/group[N] deletes it (the group and every child, no husk). Non-positive sizes are rejected. A human can instead drag the single group object in Word (note: an interactive drag scales the geometry but Word does not re-bake the absolute font size — use the CLI set for text to scale too). Individual node text is still reachable at /body/textbox[K]. (docx has no drawing 'query' — address the group by index.) The mermaid header selects the layout engine; supported: flowchart / graph, sequenceDiagram. Other mermaid types (gantt, pie, classDiagram, stateDiagram, erDiagram, ...) are rejected with a clear message until implemented. SIZING: docx has no slide to resize (no pptx-style poster) — the diagram always scales into the available space. Give width/height for an explicit box (may enlarge, aspect ratio preserved, like picture/chart); with neither it fits the section's text-area width and is never enlarged. Placed as floating shapes anchored to the page margin. The parse + layout engine is shared with the pptx 'diagram' emitter; only the docx drawing output differs.",
+  "note": "Renders a mermaid diagram into native, editable drawing shapes + connectors in the body. Aliases: flowchart. ADD-ONLY synthesizer (like 'equation'): there is no persistent 'diagram' node, but the whole diagram is wrapped in ONE group (wpg:wgp) and Add returns its path (/body/group[N]), so it stays adjustable as a unit. get /body/group[N] reads the group back (type=group with x/y/width/height); set /body/group[N] --prop width=… --prop height=… resizes the whole diagram — child font sizes re-bake with the resize so text stays proportional; a lone width/height changes only that axis; add keepAspect=true to scale the other proportionally, or give BOTH for an exact box. set /body/group[N] --prop x=… --prop y=… moves the whole diagram (rewrites the floating anchor offset; a single axis leaves the other in place). remove /body/group[N] deletes it (the group and every child, no husk). Non-positive sizes are rejected. A human can instead drag the single group object in Word (note: an interactive drag scales the geometry but Word does not re-bake the absolute font size — use the CLI set for text to scale too). Individual node text is still reachable at /body/textbox[K]. (docx has no drawing 'query' — address the group by index.) The mermaid header selects the layout engine; supported: flowchart / graph, sequenceDiagram. Other mermaid types (gantt, pie, classDiagram, stateDiagram, erDiagram, ...) are rejected with a clear message until implemented. SIZING: docx has no slide to resize (no pptx-style poster) — the diagram always scales into the available space. Give width/height for an explicit box (may enlarge, aspect ratio preserved, like picture/chart); with neither it fits the section's text-area width and is never enlarged. Placed as floating shapes anchored to the page margin. The parse + layout engine is shared with the pptx 'diagram' emitter; only the docx drawing output differs.",
   "properties": {
     "mermaid": {
       "type": "string",
       "description": "Mermaid diagram source. Canonical (mirrors equation's 'formula'). Aliases: text, dsl. The first line's header (flowchart TD / sequenceDiagram / ...) selects the diagram kind.",
-      "aliases": ["text", "dsl"],
+      "aliases": [
+        "text",
+        "dsl"
+      ],
       "add": true,
       "set": false,
       "get": false,
@@ -34,7 +39,9 @@
     "src": {
       "type": "string",
       "description": "Path to a .mmd file to load the mermaid source from (used when no inline mermaid/text/dsl is given). Consistent with picture 'src' = a file path. Alias: path.",
-      "aliases": ["path"],
+      "aliases": [
+        "path"
+      ],
       "add": true,
       "set": false,
       "get": false,
@@ -68,13 +75,75 @@
     "render": {
       "type": "string",
       "description": "How to render. auto (default): use real mermaid.js via a headless browser (Chrome/Chromium/Edge) when available — covers EVERY mermaid type (gantt/pie/class/state/er/…) at full fidelity, embedded as a PNG with the mermaid source stamped into alt-text (regenerable); falls back to the native synthesizer when no browser is present. native: always the built-in editable-shape synthesizer (no browser; supported subset only; fully editable in Word). image: force the browser path (errors if no browser). mermaid.js is fetched once to a local cache (mirror d.officecli.ai, CDN fallback).",
-      "enum": ["auto", "native", "image"],
+      "enum": [
+        "auto",
+        "native",
+        "image"
+      ],
       "add": true,
       "set": false,
       "get": false,
       "examples": [
         "--prop render=native",
         "--prop render=image"
+      ],
+      "enforcement": "report"
+    },
+    "poster": {
+      "type": "boolean",
+      "description": "Controls page growth for a long diagram. UNSET (default) = ADAPTIVE: the diagram fits the current page, but if fitting would shrink it below readability it auto-grows the section's page to the diagram's natural size instead (clamped to Word's 22in/55.88cm max; split a very long chart past that). true = always grow the page. false = always fit the current page even if the result is tiny. Ignored when an explicit width/height is given.",
+      "add": true,
+      "set": false,
+      "get": false,
+      "examples": [
+        "--prop poster=true",
+        "--prop poster=false"
+      ],
+      "enforcement": "report"
+    },
+    "theme": {
+      "type": "string",
+      "description": "mermaid color theme (image render only): default (light), dark, neutral, forest, base. Baked into the source as frontmatter, so it round-trips in alt-text and a regenerate reproduces it. Ignored by render=native. Uses the ESM mermaid build, loaded from the CDN (a styled diagram currently needs network on render; plain diagrams stay offline-cached).",
+      "add": true,
+      "set": false,
+      "get": false,
+      "examples": [
+        "--prop theme=dark",
+        "--prop theme=forest"
+      ],
+      "enforcement": "report"
+    },
+    "layout": {
+      "type": "string",
+      "description": "flowchart layout engine (image render only): dagre (default, curved edges) or elk (Eclipse Layout Kernel — orthogonal edge routing, tighter layered placement). elk loads the @mermaid-js/layout-elk ESM package from the CDN. Ignored by render=native.",
+      "add": true,
+      "set": false,
+      "get": false,
+      "examples": [
+        "--prop layout=elk"
+      ],
+      "enforcement": "report"
+    },
+    "look": {
+      "type": "string",
+      "description": "visual style (image render only): classic (default) or handDrawn (sketchy rough.js strokes). Baked into the source frontmatter; round-trips in alt-text. Ignored by render=native.",
+      "add": true,
+      "set": false,
+      "get": false,
+      "examples": [
+        "--prop look=handDrawn"
+      ],
+      "enforcement": "report"
+    },
+    "background": {
+      "type": "string",
+      "description": "render background: transparent (default), a #hex, or a CSS color word. Applied at render time (mmdc -b / page background); does not round-trip in alt-text. Values with whitespace/quotes fall back to transparent.",
+      "add": true,
+      "set": false,
+      "get": false,
+      "examples": [
+        "--prop background=white",
+        "--prop background=#1e1e1e"
       ],
       "enforcement": "report"
     }

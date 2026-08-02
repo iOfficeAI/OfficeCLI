@@ -181,6 +181,9 @@ static partial class CommandBuilder
             // constructed a JsonSerializerOptions{WriteIndented=true} that was
             // never threaded into Serialize — kept the compact behavior, just
             // dropped the dead options block.
+            // NEWLINE-SEMANTICS-V2: stamp the dump version so replay knows
+            // '\v' (not '\n') encodes soft line breaks in text props.
+            items.Insert(0, OfficeCli.Core.BatchCompat.MetaItem());
             var output = JsonSerializer.Serialize(items, BatchJsonContext.Default.ListBatchItem);
             // BUG-R4-FUZZ-3: Unix convention — `--out -` means stdout, not a
             // file literally named "-". Without this, running `dump --out -`

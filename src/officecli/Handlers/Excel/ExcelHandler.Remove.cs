@@ -253,6 +253,12 @@ public partial class ExcelHandler
             // references to unreachable parts). Mirrors the cleanup done
             // by the pivottable[N] branch below — both routes share the
             // same orphan prune helper.
+            // localSheetId on <definedName> is a 0-based position into
+            // <sheets>; capture the removed sheet's position before it is
+            // detached so scoped names can be renumbered below.
+            var removedSheetIndex = (uint)sheets.Elements<Sheet>()
+                .TakeWhile(s => !ReferenceEquals(s, sheet)).Count();
+
             var relId = sheet.Id?.Value;
             var sheetWsPart = relId != null
                 ? workbookPart.GetPartById(relId) as WorksheetPart
@@ -340,6 +346,21 @@ public partial class ExcelHandler
                     .Where(dn => dn.Text?.Contains(sheetName + "!", StringComparison.OrdinalIgnoreCase) == true)
                     .ToList();
                 foreach (var dn in toRemove) dn.Remove();
+
+                // Renumber sheet-scoped names: localSheetId is a 0-based
+                // position into <sheets>, so removing a sheet shifts every
+                // later sheet down by one. Names scoped to the removed sheet
+                // itself lose their scope with it (the text-based drop above
+                // only catches bodies that mention the removed sheet's name).
+                // Excel refuses to open a workbook whose definedName carries
+                // an out-of-range localSheetId (0x800A03EC).
+                foreach (var dn in definedNames.Elements<DefinedName>().ToList())
+                {
+                    var lid = dn.LocalSheetId?.Value;
+                    if (lid == null) continue;
+                    if (lid == removedSheetIndex) dn.Remove();
+                    else if (lid > removedSheetIndex) dn.LocalSheetId = lid.Value - 1;
+                }
                 if (!definedNames.HasChildren) definedNames.Remove();
             }
 

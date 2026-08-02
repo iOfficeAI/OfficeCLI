@@ -215,27 +215,59 @@ public partial class WordHandler
                 sb.Append(fontFaces);
                 sb.AppendLine("</style>");
             }
-            // Filter out system fonts for Google Fonts loading (they're already local)
-            var googleFonts = docFonts.Where(f =>
-                !f.Equals("Arial", StringComparison.OrdinalIgnoreCase)
-                && !f.Equals("Times New Roman", StringComparison.OrdinalIgnoreCase)
-                && !f.Equals("Tahoma", StringComparison.OrdinalIgnoreCase)
-                && !f.Equals("Courier New", StringComparison.OrdinalIgnoreCase)
-                && !f.StartsWith("Symbol") && !f.StartsWith("Wingding")).ToList();
-            if (googleFonts.Count > 0)
+            // Web-font loading: detect-then-inject, one request per family.
+            //
+            // Local-first: a font that resolves locally must NOT be replaced by
+            // Google's metric-compatible substitute. A plain stylesheet <link>
+            // can't express that — its @font-face parses after ours (same
+            // family + descriptors → last wins) and Google's css2 dropped
+            // local() fallbacks in 2020, so a successful load would shadow the
+            // genuine local font. Instead a tiny inline script canvas-measures
+            // each family against monospace AND serif fallbacks (dual-fallback
+            // so a font that IS the platform default for one generic family is
+            // still detected via the other) and only injects a css2 <link> for
+            // families that are genuinely absent locally.
+            //
+            // Per-family requests: css2 is all-or-nothing — one unknown family
+            // 400s the whole batch, so a 宋体+Open Sans document used to lose
+            // the perfectly servable Open Sans too. Split links fail (or hit)
+            // independently; a family Google doesn't carry costs one async 400
+            // and nothing else. Known-never-on-Google names are deliberately
+            // NOT filtered here: the skip would freeze today's Google catalog
+            // into the binary, and a doomed request is harmless post-split.
+            //
+            // CONSISTENCY(katex-mirror): officecli's caching proxy first
+            // (d.officecli.ai/fonts/css2 forwards to Google Fonts, rewrites the
+            // font URLs to the /gstatic hop, and CF-edge-caches both), Google
+            // direct as the onerror fallback, removal as the last resort — the
+            // local metric-override @font-face block above keeps layout stable
+            // without any web font (also the no-JS degradation).
+            var webFontCandidates = docFonts.Where(f =>
+                    !f.Equals("Arial", StringComparison.OrdinalIgnoreCase)
+                    && !f.Equals("Times New Roman", StringComparison.OrdinalIgnoreCase)
+                    && !f.Equals("Tahoma", StringComparison.OrdinalIgnoreCase)
+                    && !f.Equals("Courier New", StringComparison.OrdinalIgnoreCase)
+                    && !f.StartsWith("Symbol") && !f.StartsWith("Wingding"))
+                .Select(SanitizeFontName)
+                .Where(f => !string.IsNullOrEmpty(f))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (webFontCandidates.Count > 0)
             {
-                var families = string.Join("&", googleFonts
-                    .Select(SanitizeFontName)
-                    .Where(f => !string.IsNullOrEmpty(f))
-                    .Select(f => $"family={f.Replace(' ', '+')}:ital,wght@0,400;0,700;1,400;1,700"));
-                // media=print + onload swap → load asynchronously without blocking first paint
-                // (web fonts are unreachable in many networks and would otherwise stall render until TCP timeout).
-                // CONSISTENCY(katex-mirror): officecli's caching proxy first (d.officecli.ai/fonts/css2
-                // forwards to Google Fonts, rewrites the font URLs to the /gstatic hop, and CF-edge-caches
-                // both), Google direct as the onerror fallback, removal as the last resort — the local
-                // metric-override @font-face block above keeps layout stable without any web font.
-                var gfQuery = $"{families}&display=swap";
-                sb.AppendLine($"<link rel=\"stylesheet\" href=\"https://d.officecli.ai/fonts/css2?{gfQuery}\" media=\"print\" onload=\"this.media='all'\" onerror=\"if(!this.dataset.f){{this.dataset.f=1;this.href='https://fonts.googleapis.com/css2?{gfQuery}'}}else{{this.remove()}}\">");
+                // Sanitized names contain only letters/digits/space/.-_ so plain
+                // quote-wrapping is JSON-safe (no escapable characters survive).
+                var famJson = "[" + string.Join(",", webFontCandidates.Select(f => $"\"{f}\"")) + "]";
+                sb.AppendLine("<script>(function(){");
+                sb.AppendLine($"var fams={famJson};");
+                sb.AppendLine("function w(f,fb){var c=w.c||(w.c=document.createElement('canvas').getContext('2d'));c.font='72px '+(f?'\"'+f+'\",':'')+fb;return c.measureText('mmmmmmmmmmlliWW@#\\u5e05\\u6c38\\u306e\\ud55c').width;}");
+                sb.AppendLine("function has(f){try{return w(f,'monospace')!==w(null,'monospace')||w(f,'serif')!==w(null,'serif');}catch(e){return true;}}");
+                sb.AppendLine("var ax=':ital,wght@0,400;0,700;1,400;1,700&display=swap';");
+                sb.AppendLine("fams.forEach(function(f){if(has(f))return;");
+                sb.AppendLine("var q='family='+encodeURIComponent(f).replace(/%20/g,'+')+ax;");
+                sb.AppendLine("var l=document.createElement('link');l.rel='stylesheet';l.href='https://d.officecli.ai/fonts/css2?'+q;");
+                sb.AppendLine("l.onerror=function(){if(!l.dataset.f){l.dataset.f=1;l.href='https://fonts.googleapis.com/css2?'+q;}else{l.remove();}};");
+                sb.AppendLine("document.head.appendChild(l);});");
+                sb.AppendLine("})();</script>");
             }
         }
         // KaTeX for math rendering — only include when the document actually has formulas.
@@ -1685,37 +1717,110 @@ public partial class WordHandler
     private HashSet<string> CollectDocumentFonts()
     {
         var fonts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Theme fonts, read once — both added to the set and used to resolve
+        // theme-token literals below. Malformed theme1.xml shouldn't taint
+        // the font set.
+        string? majLatin = null, minLatin = null, majEa = null, minEa = null, majCs = null, minCs = null;
+        try
+        {
+            var theme = _doc.MainDocumentPart?.ThemePart?.Theme?.ThemeElements?.FontScheme;
+            majLatin = theme?.MajorFont?.LatinFont?.Typeface?.Value;
+            minLatin = theme?.MinorFont?.LatinFont?.Typeface?.Value;
+            majEa = theme?.MajorFont?.EastAsianFont?.Typeface?.Value;
+            minEa = theme?.MinorFont?.EastAsianFont?.Typeface?.Value;
+            majCs = theme?.MajorFont?.ComplexScriptFont?.Typeface?.Value;
+            minCs = theme?.MinorFont?.ComplexScriptFont?.Typeface?.Value;
+        }
+        catch (System.Xml.XmlException) { }
+
+        // Wild documents park theme-token ENUM literals in the plain
+        // ascii/eastAsia attributes (where only asciiTheme/eastAsiaTheme
+        // should carry them). Taken verbatim they leak to @font-face and the
+        // web-font requests as fake family names ("minorHAnsi"), and the
+        // local metric-override lookup misses. Resolve to the theme font;
+        // an unresolvable token is dropped, never emitted verbatim.
+        void Add(string? raw)
+        {
+            var mapped = raw switch
+            {
+                "majorAscii" or "majorHAnsi" => majLatin,
+                "minorAscii" or "minorHAnsi" => minLatin,
+                "majorEastAsia" => majEa,
+                "minorEastAsia" => minEa,
+                "majorBidi" => majCs,
+                "minorBidi" => minCs,
+                _ => raw,
+            };
+            var name = NormalizeHarvestedFontName(mapped);
+            if (name != null) fonts.Add(name);
+        }
+
         // From styles
         var styles = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles;
         if (styles != null)
             foreach (var rf in styles.Descendants<RunFonts>())
             {
-                if (!string.IsNullOrEmpty(rf.Ascii?.Value)) fonts.Add(rf.Ascii.Value);
-                if (!string.IsNullOrEmpty(rf.HighAnsi?.Value)) fonts.Add(rf.HighAnsi.Value);
-                if (!string.IsNullOrEmpty(rf.EastAsia?.Value)) fonts.Add(rf.EastAsia.Value);
+                Add(rf.Ascii?.Value);
+                Add(rf.HighAnsi?.Value);
+                Add(rf.EastAsia?.Value);
             }
         // From document body
         var body = _doc.MainDocumentPart?.Document?.Body;
         if (body != null)
             foreach (var rf in body.Descendants<RunFonts>())
             {
-                if (!string.IsNullOrEmpty(rf.Ascii?.Value)) fonts.Add(rf.Ascii.Value);
-                if (!string.IsNullOrEmpty(rf.HighAnsi?.Value)) fonts.Add(rf.HighAnsi.Value);
+                Add(rf.Ascii?.Value);
+                Add(rf.HighAnsi?.Value);
             }
-        // From theme (malformed theme1.xml shouldn't taint the font set).
-        try
-        {
-            var theme = _doc.MainDocumentPart?.ThemePart?.Theme?.ThemeElements?.FontScheme;
-            var majFont = theme?.MajorFont?.LatinFont?.Typeface?.Value;
-            if (!string.IsNullOrEmpty(majFont)) fonts.Add(majFont);
-            var minFont = theme?.MinorFont?.LatinFont?.Typeface?.Value;
-            if (!string.IsNullOrEmpty(minFont)) fonts.Add(minFont);
-        }
-        catch (System.Xml.XmlException) { }
+        Add(majLatin);
+        Add(minLatin);
         // Remove fonts that have no usable @font-face (symbols, wingdings)
         fonts.RemoveWhere(f => f.StartsWith("Symbol") || f.StartsWith("Wingding"));
         return fonts;
     }
+
+    /// <summary>
+    /// Junk gate for font names harvested from wild documents. rFonts values
+    /// in real-world files carry OOXML control-char escapes (_x000B_), CSS
+    /// keywords ("sans-serif", "inherit"), CSS fragments ("var(--x)",
+    /// "font-weight 400", "auto 16px 1.4"), and mojibake — all observed being
+    /// sent upstream as font families. Returns the cleaned name, or null when
+    /// the value cannot be a font name.
+    /// </summary>
+    internal static string? NormalizeHarvestedFontName(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        // Bad producers park escaped control chars in rFonts (_x000B_ = VT).
+        var s = System.Text.RegularExpressions.Regex.Replace(raw, "_x[0-9A-Fa-f]{4}_", "").Trim();
+        // Real family names are short; longer strings are style blobs.
+        if (s.Length == 0 || s.Length > 64) return null;
+        // CSS-fragment characters never appear in genuine family names.
+        if (s.IndexOfAny(CssFragmentChars) >= 0) return null;
+        if (s.Contains("--")) return null; // var(--custom-prop) residue
+        if (!s.Any(char.IsLetter)) return null;
+        // CSS-wide keywords / generic families / non-names.
+        if (CssKeywordNonFonts.Contains(s)) return null;
+        // Style-shorthand residue: "font-weight 400", "auto 16px 1.4".
+        if (s.StartsWith("font-", StringComparison.OrdinalIgnoreCase)) return null;
+        if (System.Text.RegularExpressions.Regex.IsMatch(s, @"\d+(\.\d+)?(px|pt|em|rem)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) return null;
+        return s;
+    }
+
+    private static readonly char[] CssFragmentChars = { '(', ')', ':', ';', ',', '{', '}', '"', '\'', '<', '>', '/', '\\' };
+
+    private static readonly HashSet<string> CssKeywordNonFonts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // NOTE: "fangsong" is deliberately ABSENT although CSS4 lists it as a
+        // generic family — it is also the real ASCII name of the FangSong
+        // (仿宋) font, and killing it would drop the font's metric-override
+        // and web-font fallback. A generic-keyword leak of that spelling is
+        // far less likely than the genuine font name.
+        "serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui",
+        "ui-serif", "ui-sans-serif", "ui-monospace", "ui-rounded", "math", "emoji",
+        "inherit", "initial", "unset", "revert", "revert-layer",
+        "auto", "normal", "none", "undefined", "null", "inline",
+    };
 
     /// <summary>
     /// Resolve CJK font from theme supplemental font list (like libra's ThemeHandler).
@@ -1803,10 +1908,19 @@ public partial class WordHandler
             var overrides = ascentPct > 0
                 ? $" ascent-override: {ascentPct:0.##}%; descent-override: {descentPct:0.##}%; line-gap-override: 0%;"
                 : "";
-            sb.AppendLine($"@font-face {{ font-family: '{safeFont}'; src: local('{safeFont}');{overrides} }}");
-            sb.AppendLine($"@font-face {{ font-family: '{safeFont}'; font-weight: bold; src: local('{safeFont} Bold');{overrides} }}");
-            sb.AppendLine($"@font-face {{ font-family: '{safeFont}'; font-style: italic; src: local('{safeFont} Italic');{overrides} }}");
-            sb.AppendLine($"@font-face {{ font-family: '{safeFont}'; font-weight: bold; font-style: italic; src: local('{safeFont} Bold Italic');{overrides} }}");
+            // "Calibri Light"-style names are separate families in Word but
+            // rarely separate installed fonts; fall back to the base family
+            // locally so a machine with plain Calibri still renders close.
+            var baseFont = safeFont.EndsWith(" Light", StringComparison.OrdinalIgnoreCase) && safeFont.Length > 6
+                ? safeFont[..^6].TrimEnd()
+                : null;
+            string Src(string suffix) => baseFont != null
+                ? $"local('{safeFont}{suffix}'), local('{baseFont}{suffix}')"
+                : $"local('{safeFont}{suffix}')";
+            sb.AppendLine($"@font-face {{ font-family: '{safeFont}'; src: {Src("")};{overrides} }}");
+            sb.AppendLine($"@font-face {{ font-family: '{safeFont}'; font-weight: bold; src: {Src(" Bold")};{overrides} }}");
+            sb.AppendLine($"@font-face {{ font-family: '{safeFont}'; font-style: italic; src: {Src(" Italic")};{overrides} }}");
+            sb.AppendLine($"@font-face {{ font-family: '{safeFont}'; font-weight: bold; font-style: italic; src: {Src(" Bold Italic")};{overrides} }}");
         }
         return sb.ToString();
     }
@@ -3541,13 +3655,19 @@ public partial class WordHandler
             var part = _doc.MainDocumentPart?.GetPartById(rId)
                        as AlternativeFormatImportPart;
             if (part == null) return;
-            using var stream = part.GetStream();
-            using var reader = new StreamReader(stream);
-            var content = reader.ReadToEnd();
             var contentType = (part.ContentType ?? "").ToLowerInvariant();
             // Strip media-type parameters (e.g. "text/html; charset=utf-8")
             // before comparison: Pandoc/non-Word authors commonly emit them.
             var mediaType = contentType.Split(';', 2)[0].Trim();
+            // An altChunk stores the source bytes verbatim, so the payload is
+            // whatever the authoring tool wrote — windows-1252 and friends are
+            // routine, which is why the content type carries a charset at all.
+            // Decoding everything as UTF-8 turned `café` and em-dashes into
+            // U+FFFD in the preview; honour the declaration (and any BOM or
+            // <meta charset> inside the payload) instead.
+            using var stream = part.GetStream();
+            var content = OfficeCli.Core.CharsetDecoder.Decode(
+                stream, OfficeCli.Core.CharsetDecoder.ParseCharset(contentType));
 
             if (mediaType is "text/html" or "application/xhtml+xml"
                 || mediaType.EndsWith("+xml") && mediaType.Contains("xhtml"))
@@ -3578,7 +3698,7 @@ public partial class WordHandler
                 // RTF etc.: strip control words and braces, emit as plain-text block.
                 var plain = Regex.Replace(content, @"\\[a-zA-Z]+-?\d*\s?|[{}]", " ");
                 plain = Regex.Replace(plain, @"\s+", " ").Trim();
-                if (plain.Length > 1000) plain = plain[..1000] + "…";
+                plain = OfficeCli.Core.DisplayText.Truncate(plain, 1000);
                 sb.AppendLine(
                     $"<div class=\"alt-chunk-fallback\" " +
                     $"style=\"border:1px dashed #bbb;padding:4px;font-style:italic;color:#555\">" +

@@ -1,0 +1,36 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "bookmarkEnd",
+  "parent": "body|paragraph|table-cell",
+  "operations": {
+    "add": true,
+    "set": false,
+    "get": true,
+    "query": true,
+    "remove": true
+  },
+  "paths": {
+    "stable":     ["/bookmarkEnd[@id=N]"],
+    "positional": ["/bookmarkEnd[N]", "/body/p[N]/bookmarkEnd[M]"]
+  },
+  "note": "Standalone bookmark close marker (<w:bookmarkEnd w:id=N>). Most bookmarks are added as a Start/End pair via `add bookmark` (or the content-wrapping open=true/end=true pair). Use `add bookmarkEnd` only when you must place the closing marker on its own — a code generator replaying a dump that holds an id-keyed end whose start was added by a separate op, or an end that sits across a structural boundary the name-match of `add bookmark --prop end=true` cannot reach. `id` is required; `name` optionally resolves the id from an existing start (LIFO for nested same-name bookmarks). Bookmark ids are renumbered as start+end pairs at save; an end with no matching start is preserved, not deleted.",
+  "properties": {
+    "id": {
+      "type": "number",
+      "description": "the bookmark id to close (w:bookmarkEnd/@w:id) — must match the w:id of the bookmarkStart being closed. Required unless `name` is given.",
+      "add": true, "set": false, "get": true,
+      "examples": ["--prop id=3"],
+      "readback": "numeric bookmark id as stored on BookmarkEnd",
+      "enforcement": "strict"
+    },
+    "name": {
+      "type": "string",
+      "description": "resolve the id from an existing bookmarkStart of this name (the last unclosed same-name start, else the last named start). Convenience alternative to id; ignored when id is supplied.",
+      "add": true, "set": false, "get": false,
+      "examples": ["--prop name=chapter1"],
+      "readback": "not stored on the end marker — surfaces on the paired bookmarkStart",
+      "enforcement": "strict"
+    }
+  }
+}

@@ -329,7 +329,7 @@ public partial class PowerPointHandler
                 }
                 case "text":
                 {
-                    XmlTextValidator.ValidateOrThrow(value, "text");
+                    XmlTextValidator.ValidateOrThrow(value, "text", allowSoftBreakChar: true);
                     // CONSISTENCY(text-escape-boundary): \n / \t resolution at
                     // CLI --prop parse; here value has real newlines/tabs.
                     var textLines = value.Split('\n');
@@ -2735,7 +2735,7 @@ public partial class PowerPointHandler
                 }
                 case "text":
                 {
-                    XmlTextValidator.ValidateOrThrow(value, "text");
+                    XmlTextValidator.ValidateOrThrow(value, "text", allowSoftBreakChar: true);
                     var textBody = cell.TextBody;
                     // CONSISTENCY(text-escape-boundary): see CommandBuilder.
                     var lines = value.Split('\n');
@@ -4021,8 +4021,15 @@ public partial class PowerPointHandler
         }
         if (fontSizePt <= 0) fontSizePt = 18.0; // PPT default for new textboxes
 
-        // Line height: fixed spacing overrides multiplier
-        double lineHeight = fixedLineSpacingPt ?? fontSizePt * lineSpacingMultiplier;
+        // Line height: fixed spacing overrides multiplier. Percent/default
+        // spacing is relative to the font's line pitch (~1.2× the font size for
+        // Latin faces, ~1.32× for CJK faces per hhea/OS2 metrics), NOT 1.0× —
+        // estimating at 1.0× made the check miss real overflows that PowerPoint
+        // visibly clips (issue #236). Resolve the ratio from the first run
+        // typeface; unlocatable fonts fall back to the 1.2 Latin norm.
+        double singleRatio = SingleSpacingPitch(
+            paragraphs.SelectMany(p => p.Elements<Drawing.Run>()).FirstOrDefault()?.RunProperties);
+        double lineHeight = fixedLineSpacingPt ?? fontSizePt * lineSpacingMultiplier * singleRatio;
         if (lineHeight <= 0) return null;
 
         // Estimate text width per line using per-character measurement

@@ -65,6 +65,7 @@ public static partial class PptxBatchEmitter
         "/ppt/embeddings/",       // chart xlsx / OLE payloads — EmitChart / EmitOleForSlide
         "/ppt/charts/",           // chart XML — EmitChart
         "/ppt/diagrams/",         // SmartArt — EmitSmartArtsForSlide
+        "/ppt/printerSettings/",  // presentation-level ExtendedPart — carried via add-part extpart (GetPresentationExtendedParts)
     };
 
     // Maps an unsupported part URI (or URI prefix) → human-readable reason.
@@ -87,7 +88,6 @@ public static partial class PptxBatchEmitter
         ("/ppt/tableStyles.xml",            "tableStyles",            "custom table-style catalogue dropped on dump"),
         ("/ppt/viewProps.xml",              "viewProps",              "view-pane / zoom / sorter settings dropped on dump"),
         ("/ppt/handoutMasters/",            "handoutMaster",          "handout master dropped on dump"),
-        ("/ppt/printerSettings/",           "printerSettings",        "printer-settings binary dropped on dump (also stripped by the OpenXml SDK on save)"),
         ("/ppt/customXml/",                 "customXml",              "customXml part dropped on dump (custom data store / content-control bindings)"),
         ("/customXml/",                     "customXml",              "customXml part dropped on dump (custom data store / content-control bindings)"),
         ("/ppt/fonts/",                     "embeddedFont",           "embedded font binary (.fntdata) dropped on dump"),

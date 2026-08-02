@@ -11,84 +11,143 @@
     "remove": true
   },
   "paths": {
-    "stable":     ["/<sheetName>/<A1Ref>"],
-    "positional": ["/Sheet1/A1", "/Sheet1/B2:C3"]
+    "stable": [
+      "/<sheetName>/<A1Ref>"
+    ],
+    "positional": [
+      "/Sheet1/A1",
+      "/Sheet1/B2:C3"
+    ]
   },
   "note": "Get returns canonical keys: numberformat (not `format`), alignment.{horizontal,vertical,wrapText}, font.{bold,italic,name,size,color}. Add/Set accept both font.* and short forms (bold, italic, font, size). The bare `color` key is rejected on cells (ambiguous with `fill`) — use `font.color` for text color or `fill` for background. Cross-format note: pptx shape `color=` unambiguously means text color; xlsx must be explicit because a cell has both font color and fill color. Parent path controls placement: `/Sheet1` appends to the next empty cell; `/Sheet1/A2` targets a specific cell. Set auto-vivifies any in-bounds cell (A1:XFD1048576) — writing to a never-written cell creates it rather than throwing not_found, since OOXML xlsx stores only cells with content. Sheet-level and out-of-bounds writes still error.",
   "properties": {
     "value": {
       "type": "string",
       "description": "literal cell value — string, number, or date. Numeric strings stored as numbers unless cell has text format (@) or explicit type=string. Readback in DocumentNode.Text.",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop value=\"Hello\"", "--prop value=42", "--prop value=42 --prop type=string", "--prop value=42 --prop type=number"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop value=\"Hello\"",
+        "--prop value=42",
+        "--prop value=42 --prop type=string",
+        "--prop value=42 --prop type=number"
+      ],
       "readback": "plain string in DocumentNode.Text",
       "enforcement": "report"
     },
     "formula": {
       "type": "string",
       "description": "cell formula, without leading =",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop formula=\"SUM(A1:A10)\""],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop formula=\"SUM(A1:A10)\""
+      ],
       "readback": "formula text without leading =",
       "enforcement": "report"
     },
     "numberformat": {
       "type": "string",
       "description": "Excel format code — covers number, date, percentage, currency, and text (@). \"@\" forces String storage on subsequent values.",
-      "aliases": ["format", "numfmt"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop numberformat=\"#,##0.00\"", "--prop numberformat=yyyy-mm-dd", "--prop numberformat=@"],
+      "aliases": [
+        "format",
+        "numfmt"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop numberformat=\"#,##0.00\"",
+        "--prop numberformat=yyyy-mm-dd",
+        "--prop numberformat=@"
+      ],
       "readback": "format string as stored",
       "enforcement": "report"
     },
     "font.bold": {
       "type": "bool",
       "description": "bold font weight on the cell.",
-      "aliases": ["bold"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop bold=true"],
+      "aliases": [
+        "bold"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop bold=true"
+      ],
       "readback": "true | false",
       "enforcement": "strict"
     },
     "font.italic": {
       "type": "bool",
       "description": "italic style on the cell.",
-      "aliases": ["italic"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop italic=true"],
+      "aliases": [
+        "italic"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop italic=true"
+      ],
       "readback": "true | false",
       "enforcement": "strict"
     },
     "font.name": {
       "type": "string",
       "description": "font family name. Aliases: font, fontname.",
-      "aliases": ["font", "fontname"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop font=\"Calibri\""],
+      "aliases": [
+        "font",
+        "fontname"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop font=\"Calibri\""
+      ],
       "readback": "font family name string",
       "enforcement": "strict"
     },
     "font.size": {
       "type": "font-size",
-      "aliases": ["size", "fontsize"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop size=11pt"],
+      "aliases": [
+        "size",
+        "fontsize"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop size=11pt"
+      ],
       "readback": "unit-qualified, e.g. \"11pt\"",
       "enforcement": "strict"
     },
     "font.color": {
       "type": "color",
       "description": "font color on the cell. Note: the bare 'color' alias is intentionally rejected on cells due to ambiguity with 'fill' (background) — use 'font.color' explicitly.",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop font.color=FF0000"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop font.color=FF0000"
+      ],
       "readback": "#RRGGBB uppercase",
       "enforcement": "report"
     },
     "fill": {
       "type": "color",
-      "description": "cell background fill. Solid color (hex / named / rgb(...)) or a linear gradient as 'COLOR1-COLOR2[-ANGLE]' / 'gradient;COLOR1;COLOR2[;ANGLE]'. Scheme color names (accent1..) and 'none' are not accepted on input — readback may surface them when a cell already carries them.",
-      "aliases": ["bgcolor"],
-      "add": true, "set": true, "get": true,
+      "description": "cell background fill. Solid color (hex / named / rgb(...)), a scheme color name (accent1-accent6, lt1/dk1, lt2/dk2, hlink...) stored as a theme reference, or a linear gradient as 'COLOR1-COLOR2[-ANGLE]' / 'gradient;COLOR1;COLOR2[;ANGLE]'. On a cell that already carries a non-solid pattern fill, a lone fill= updates the pattern's foreground color (pattern and background are kept).",
+      "aliases": [
+        "bgcolor"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
       "examples": [
         "--prop fill=FFFF00",
         "--prop fill=#FF0000",
@@ -101,141 +160,261 @@
     },
     "fillPattern": {
       "type": "enum",
-      "values": ["none", "solid", "gray125", "gray0625", "mediumGray", "darkGray", "lightGray", "darkHorizontal", "darkVertical", "darkDown", "darkUp", "darkGrid", "darkTrellis", "lightHorizontal", "lightVertical", "lightDown", "lightUp", "lightGrid", "lightTrellis"],
+      "values": [
+        "none",
+        "solid",
+        "gray125",
+        "gray0625",
+        "mediumGray",
+        "darkGray",
+        "lightGray",
+        "darkHorizontal",
+        "darkVertical",
+        "darkDown",
+        "darkUp",
+        "darkGrid",
+        "darkTrellis",
+        "lightHorizontal",
+        "lightVertical",
+        "lightDown",
+        "lightUp",
+        "lightGrid",
+        "lightTrellis"
+      ],
       "description": "non-solid pattern fill type. When set, `fill` supplies the pattern foreground color and `fillBg` supplies the background color. Omit to keep a plain solid `fill`.",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop fillPattern=lightGray --prop fill=FF0000 --prop fillBg=FFFF00"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop fillPattern=lightGray --prop fill=FF0000 --prop fillBg=FFFF00"
+      ],
       "readback": "camelCase pattern name (e.g. lightGray); present only for non-solid patterns",
       "enforcement": "report"
     },
     "fillBg": {
       "type": "color",
       "description": "background color of a non-solid pattern fill (see fillPattern). Ignored for solid fills.",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop fillPattern=darkGrid --prop fill=000000 --prop fillBg=FFFFFF"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop fillPattern=darkGrid --prop fill=000000 --prop fillBg=FFFFFF"
+      ],
       "readback": "#RRGGBB uppercase; present only for non-solid patterns with a background color",
       "enforcement": "report"
     },
     "strike": {
       "type": "bool",
       "description": "single strikethrough on the cell text.",
-      "aliases": ["strikethrough", "font.strike"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop strike=true"],
+      "aliases": [
+        "strikethrough",
+        "font.strike"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop strike=true"
+      ],
       "readback": "true | false",
       "enforcement": "report"
     },
     "underline": {
       "type": "enum",
-      "values": ["single", "double", "singleAccounting", "doubleAccounting", "none"],
+      "values": [
+        "single",
+        "double",
+        "singleAccounting",
+        "doubleAccounting",
+        "none"
+      ],
       "description": "underline style on the cell text.",
-      "aliases": ["font.underline"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop underline=single"],
+      "aliases": [
+        "font.underline"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop underline=single"
+      ],
       "readback": "underline style name",
       "enforcement": "report"
     },
     "locked": {
       "type": "bool",
       "description": "cell protection: lock the cell against edits when the sheet is protected. Default Excel behavior is locked=true. Add/Set only — readback is exposed under 'protection.locked'.",
-      "add": true, "set": true, "get": false,
-      "examples": ["--prop locked=false"],
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop locked=false"
+      ],
       "readback": "n/a (use protection.locked on Get)",
       "enforcement": "report"
     },
     "protection.locked": {
       "type": "bool",
       "description": "cell protection lock state. Get-only readback (dotted form). For Add/Set use the flat `locked` key.",
-      "add": false, "set": false, "get": true,
+      "add": false,
+      "set": false,
+      "get": true,
       "readback": "true | false",
       "enforcement": "report"
     },
     "protection.hidden": {
       "type": "bool",
       "description": "hide formula in protected sheet. Get-only readback.",
-      "add": false, "set": false, "get": true,
+      "add": false,
+      "set": false,
+      "get": true,
       "readback": "true | false",
       "enforcement": "report"
     },
     "numFmtId": {
       "type": "number",
       "description": "raw OOXML number format id (supplementary; prefer `numberformat`). Emitted only when numFmtId > 0.",
-      "add": false, "set": false, "get": true,
+      "add": false,
+      "set": false,
+      "get": true,
       "readback": "integer",
       "enforcement": "report"
     },
     "phonetic": {
       "type": "string",
       "description": "phonetic guide text from SST PhoneticRun. Emitted only when present.",
-      "add": false, "set": false, "get": true,
+      "add": false,
+      "set": false,
+      "get": true,
       "readback": "phonetic string",
       "enforcement": "report"
     },
     "quotePrefix": {
       "type": "bool",
       "description": "leading apostrophe quote-prefix flag. Emitted only when set. Set it via a leading apostrophe on `value` (Excel's force-text idiom).",
-      "add": false, "set": false, "get": true,
+      "add": false,
+      "set": false,
+      "get": true,
       "readback": "true | false",
       "enforcement": "report"
     },
     "alignment.horizontal": {
       "type": "enum",
-      "values": ["left", "center", "right", "justify", "fill", "distributed"],
+      "values": [
+        "left",
+        "center",
+        "right",
+        "justify",
+        "fill",
+        "distributed"
+      ],
       "description": "horizontal text alignment. Alias: halign.",
-      "aliases": ["halign"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop alignment.horizontal=center"],
+      "aliases": [
+        "halign"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop alignment.horizontal=center"
+      ],
       "readback": "one of values",
       "enforcement": "report"
     },
     "alignment.vertical": {
       "type": "enum",
-      "values": ["top", "center", "bottom"],
+      "values": [
+        "top",
+        "center",
+        "bottom"
+      ],
       "description": "vertical text alignment. Alias: valign.",
-      "aliases": ["valign"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop alignment.vertical=center"],
+      "aliases": [
+        "valign"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop alignment.vertical=center"
+      ],
       "readback": "one of values",
       "enforcement": "report"
     },
     "alignment.wrapText": {
       "type": "bool",
       "description": "wrap text within the cell. Aliases: wrap, wrapText.",
-      "aliases": ["wrap", "wrapText"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop alignment.wrapText=true"],
+      "aliases": [
+        "wrap",
+        "wrapText"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop alignment.wrapText=true"
+      ],
       "readback": "true | false",
       "enforcement": "report"
     },
     "alignment.readingOrder": {
       "type": "enum",
-      "values": ["context", "ltr", "rtl"],
+      "values": [
+        "context",
+        "ltr",
+        "rtl"
+      ],
       "description": "cell text reading direction (OOXML 0=context, 1=ltr, 2=rtl). Use 'rtl' for Arabic / Hebrew, 'ltr' to force left-to-right, 'context' (default) to derive from content.",
-      "aliases": ["readingorder", "readingOrder", "direction", "dir"],
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop alignment.readingOrder=rtl", "--prop direction=rtl"],
+      "aliases": [
+        "readingorder",
+        "readingOrder",
+        "direction",
+        "dir"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop alignment.readingOrder=rtl",
+        "--prop direction=rtl"
+      ],
       "enforcement": "report"
     },
     "merge": {
       "type": "string",
       "description": "merge range applied post-cell-creation (parity with `set`). Accepts a single A1 range (A1:C3) or comma-separated ranges (A1:B1,A2:B2). Use merge=false to clear an existing merge anchored at this cell (aliases: unmerge, none, empty).",
-      "add": true, "set": true, "get": false,
-      "examples": ["--prop merge=A1:C3", "--prop merge=false"],
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop merge=A1:C3",
+        "--prop merge=false"
+      ],
       "enforcement": "report"
     },
     "ref": {
       "type": "string",
       "description": "target A1 cell reference (alternative to encoding the address in the path tail).",
-      "aliases": ["address"],
-      "add": true, "set": false, "get": false,
-      "examples": ["--prop ref=B2"],
+      "aliases": [
+        "address"
+      ],
+      "add": true,
+      "set": false,
+      "get": false,
+      "examples": [
+        "--prop ref=B2"
+      ],
       "enforcement": "report"
     },
     "link": {
       "type": "string",
       "description": "hyperlink target attached to the cell. Accepts external URL (https://, http://, mailto:, file://, onenote:, tel:) or internal anchor (#Sheet!Cell, #NamedRange). Use link=none on Set to remove. Parity with Set. Alias: url.",
-      "aliases": ["url"],
-      "add": true, "set": true, "get": true,
+      "aliases": [
+        "url"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
       "examples": [
         "--prop link=https://example.com",
         "--prop link=mailto:user@example.com",
@@ -247,48 +426,80 @@
     "tooltip": {
       "type": "string",
       "description": "ScreenTip text shown on hover for an existing hyperlink. Pair with link= during Add, or apply to a cell that already has a hyperlink during Set.",
-      "aliases": ["screenTip", "screentip"],
-      "add": true, "set": true, "get": false,
-      "examples": ["--prop link=https://example.com --prop tooltip=\"Open in browser\""],
+      "aliases": [
+        "screenTip",
+        "screentip"
+      ],
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop link=https://example.com --prop tooltip=\"Open in browser\""
+      ],
       "enforcement": "report"
     },
     "display": {
       "type": "string",
       "description": "friendly display text (@display attribute) for an existing hyperlink. Pair with link= during Add, or apply to a cell that already has a hyperlink during Set.",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop link=https://example.com --prop display=\"Company site\""],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop link=https://example.com --prop display=\"Company site\""
+      ],
       "readback": "display string",
       "enforcement": "report"
     },
     "type": {
       "type": "enum",
-      "values": ["string", "number", "boolean", "date", "error", "richtext"],
+      "values": [
+        "string",
+        "number",
+        "boolean",
+        "date",
+        "error",
+        "richtext"
+      ],
       "description": "force a cell type. Normally inferred from value/formula. Add/Set accept the listed values only; SST-backed shared strings and inline strings are not creatable via Add (use plain string instead). Get may still surface 'SharedString' or 'InlineString' when reading cells written by Excel or other tools.",
-      "add": true, "set": true, "get": true,
-      "examples": ["--prop value=01234 --prop type=string"],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop value=01234 --prop type=string"
+      ],
       "readback": "PascalCase type name (e.g. \"String\", \"Number\", \"Boolean\", \"Error\", \"SharedString\", \"InlineString\", \"Date\")",
       "enforcement": "report"
     },
     "runs": {
       "type": "string",
       "description": "rich-text runs as JSON array (e.g. '[{\"text\":\"Hello\",\"bold\":true}]'). Used when type=richtext.",
-      "add": true, "set": false, "get": false,
-      "examples": ["--prop type=richtext --prop runs='[{\"text\":\"Bold\",\"bold\":true}]'"],
+      "add": true,
+      "set": false,
+      "get": false,
+      "examples": [
+        "--prop type=richtext --prop runs='[{\"text\":\"Bold\",\"bold\":true}]'"
+      ],
       "readback": "n/a (decomposed into /run[N] subnodes)",
       "enforcement": "report"
     },
     "clear": {
       "type": "bool",
       "description": "clear the cell value/formula before applying new content.",
-      "add": true, "set": true, "get": false,
-      "examples": ["--prop clear=true"],
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop clear=true"
+      ],
       "readback": "n/a",
       "enforcement": "report"
     },
     "shift": {
       "type": "string",
       "description": "Cell-level Insert/Delete shift (Excel UI parity). On `add --type cell`: 'right' pushes existing cells in the same row right by one to make room; 'down' pushes existing cells in the same column down by one. On `remove` (passed via the top-level `--shift` flag, not `--prop`): 'left' shifts cells in the same row left into the gap; 'up' shifts cells in the same column up. Scope cap: only cellRefs within the affected row (left/right) or column (up/down) are rewritten — formulas, mergeCells, and CF/DV/hyperlink/table refs that span the affected band are NOT adjusted. For full-band shift with all metadata adjusted, use add/remove --type row or --type col.",
-      "add": true, "set": false, "get": false,
+      "add": true,
+      "set": false,
+      "get": false,
       "examples": [
         "add file.xlsx /Sheet1/B5 --type cell --prop shift=right --prop value=NEW",
         "add file.xlsx /Sheet1/B5 --type cell --prop shift=down --prop value=NEW",
@@ -301,51 +512,302 @@
     "arrayformula": {
       "type": "string",
       "description": "dynamic-array formula spilled into ref range (without leading '=').",
-      "add": true, "set": true, "get": false,
-      "examples": ["--prop arrayformula=\"A1:A10*2\" --prop ref=B1:B10"],
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop arrayformula=\"A1:A10*2\" --prop ref=B1:B10"
+      ],
       "readback": "n/a",
       "enforcement": "report"
     },
     "cachedValue": {
       "type": "string",
       "description": "raw <x:v> cached display value as stored in the file. Surfaces only on Get/Query for formula cells; absent on plain-value cells. Mirrors what the last writer (Excel/LibreOffice) computed — may be stale.",
-      "add": false, "set": false, "get": true,
+      "add": false,
+      "set": false,
+      "get": true,
       "readback": "raw cached display value for formula cells; absent on plain-value cells",
       "enforcement": "report"
     },
     "computedValue": {
       "type": "string",
       "description": "OfficeCli evaluator's prediction of the formula result. Surfaces only on Get/Query for formula cells when the evaluator could compute a value. Compare against cachedValue to detect stale caches (see view issues subtype formula_cache_stale).",
-      "add": false, "set": false, "get": true,
+      "add": false,
+      "set": false,
+      "get": true,
       "readback": "evaluator-predicted value for formula cells; absent when the evaluator could not compute",
       "enforcement": "report"
     },
     "evaluated": {
       "type": "bool",
       "description": "cross-handler protocol flag — true when cachedValue is present OR the evaluator produced computedValue; false when the formula has neither (view text substitutes #OCLI_NOTEVAL!). Read this via get --json instead of pattern-matching the sentinel, since literal user content may collide. Subtype: formula_not_evaluated.",
-      "add": false, "set": false, "get": true,
+      "add": false,
+      "set": false,
+      "get": true,
       "readback": "true|false (true ⇒ either cachedValue or computedValue is available)",
       "enforcement": "report"
     },
-    "alignment.indent":         { "type":"number", "add":true, "set":true, "get":true, "description":"cell alignment indent units (CT_CellAlignment @indent). Alias: indent.", "readback":"integer indent units", "enforcement":"report" },
-    "alignment.shrinkToFit":    { "type":"bool",   "add":true, "set":true, "get":true, "description":"shrink text to fit the cell width (CT_CellAlignment @shrinkToFit). Alias: shrink.", "readback":"true|false", "enforcement":"report" },
-    "alignment.textRotation":   { "type":"number", "add":true, "set":true, "get":true, "description":"text rotation in degrees, 0-90 up / 91-180 down, or 255 for vertical stacking (CT_CellAlignment @textRotation). The `rotation` shorthand also works on Set.", "readback":"integer degrees", "enforcement":"report" },
-    "border.diagonal":          { "type":"string", "add":true, "set":true, "get":true, "description":"diagonal border line style (CT_Border/diagonal @style — thin, medium, thick, dashed, etc.). Pair with border.diagonalUp/Down to choose direction.", "readback":"line-style token", "enforcement":"report" },
-    "border.diagonal.color":    { "type":"color",  "add":true, "set":true, "get":true, "requires":["border.diagonal"], "description":"diagonal border color. Requires a border.diagonal line to attach to.", "readback":"#RRGGBB uppercase", "enforcement":"report" },
-    "border.diagonalDown":      { "type":"bool",   "add":true, "set":true, "get":true, "description":"draw a top-left → bottom-right diagonal border.", "readback":"true|false", "enforcement":"report" },
-    "border.diagonalUp":        { "type":"bool",   "add":true, "set":true, "get":true, "description":"draw a bottom-left → top-right diagonal border.", "readback":"true|false", "enforcement":"report" },
-    "border":                   { "type":"string", "add":true,  "set":true,  "get":false, "description":"shorthand applying one line style to all four sides (top/bottom/left/right). Equivalent to border.all. Get reads back per-side under border.top/bottom/left/right.", "examples":["--prop border=thin", "--prop border=medium"], "readback":"n/a (read per-side border.top/bottom/left/right)", "enforcement":"report" },
-    "border.all":               { "type":"string", "add":true,  "set":true,  "get":false, "description":"line style applied to all four sides (top/bottom/left/right). Values: thin, medium, thick, double, dashed, dotted, none.", "examples":["--prop border.all=thin", "--prop border.all=medium"], "readback":"n/a (read per-side border.top/bottom/left/right)", "enforcement":"report" },
-    "border.top":               { "type":"string", "add":true,  "set":true,  "get":true,  "description":"top border line style (thin, medium, thick, double, dashed, dotted, none).", "examples":["--prop border.top=thin"], "readback":"line-style token", "enforcement":"report" },
-    "border.bottom":            { "type":"string", "add":true,  "set":true,  "get":true,  "description":"bottom border line style (thin, medium, thick, double, dashed, dotted, none).", "examples":["--prop border.bottom=thin"], "readback":"line-style token", "enforcement":"report" },
-    "border.left":              { "type":"string", "add":true,  "set":true,  "get":true,  "description":"left border line style (thin, medium, thick, double, dashed, dotted, none).", "examples":["--prop border.left=thin"], "readback":"line-style token", "enforcement":"report" },
-    "border.right":             { "type":"string", "add":true,  "set":true,  "get":true,  "description":"right border line style (thin, medium, thick, double, dashed, dotted, none).", "examples":["--prop border.right=thin"], "readback":"line-style token", "enforcement":"report" },
-    "border.color":             { "type":"color",  "add":true,  "set":true,  "get":false, "description":"border color applied to all sides (per-side color also accepted as border.top.color etc.). Get reads back per-side under border.{side}.color.", "examples":["--prop border.all=thin --prop border.color=FF0000"], "readback":"n/a (read per-side border.{side}.color)", "enforcement":"report" },
-    "arrayref":                 { "type":"string", "add":false, "set":false, "get":true, "description":"array-formula spill range (CellFormula @ref). Surfaces on the master cell of an array formula.", "readback":"A1 range string", "enforcement":"report" },
-    "mergeAnchor":              { "type":"bool",   "add":false, "set":false, "get":true, "description":"true when this cell is the top-left anchor of a merged range. Empty merged-region cells receive mergeAnchor=false; the anchor receives true.", "readback":"true|false", "enforcement":"report" },
-    "empty":                    { "type":"bool",   "add":false, "set":false, "get":true, "description":"true when the cell has neither display text nor a formula. Useful for distinguishing styled-but-empty cells from data cells.", "readback":"true|false", "enforcement":"report" },
-    "richtext":                 { "type":"bool",   "add":false, "set":false, "get":true, "description":"true when the cell stores rich-text runs (multi-format text). Surfaces alongside `runs` in Get output.", "readback":"true|false", "enforcement":"report" },
-    "subscript":                { "type":"bool",   "add":true, "set":true, "get":true, "aliases":["font.subscript"], "description":"subscript text (font vertical alignment). Legacy alias: font.subscript.", "readback":"true|false", "enforcement":"report" },
-    "superscript":              { "type":"bool",   "add":true, "set":true, "get":true, "aliases":["font.superscript"], "description":"superscript text (font vertical alignment). Legacy alias: font.superscript.", "readback":"true|false", "enforcement":"report" }
+    "alignment.indent": {
+      "type": "number",
+      "add": true,
+      "set": true,
+      "get": true,
+      "description": "cell alignment indent units (CT_CellAlignment @indent). Alias: indent.",
+      "readback": "integer indent units",
+      "enforcement": "report"
+    },
+    "alignment.shrinkToFit": {
+      "type": "bool",
+      "add": true,
+      "set": true,
+      "get": true,
+      "description": "shrink text to fit the cell width (CT_CellAlignment @shrinkToFit). Alias: shrink.",
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "alignment.textRotation": {
+      "type": "number",
+      "add": true,
+      "set": true,
+      "get": true,
+      "description": "text rotation in degrees, 0-90 up / 91-180 down, or 255 for vertical stacking (CT_CellAlignment @textRotation). The `rotation` shorthand also works on Set.",
+      "readback": "integer degrees",
+      "enforcement": "report"
+    },
+    "border.diagonal": {
+      "type": "string",
+      "add": true,
+      "set": true,
+      "get": true,
+      "description": "diagonal border line style (CT_Border/diagonal @style — thin, medium, thick, dashed, etc.). Pair with border.diagonalUp/Down to choose direction.",
+      "readback": "line-style token",
+      "enforcement": "report"
+    },
+    "border.diagonal.color": {
+      "type": "color",
+      "add": true,
+      "set": true,
+      "get": true,
+      "requires": [
+        "border.diagonal"
+      ],
+      "description": "diagonal border color. Requires a border.diagonal line to attach to.",
+      "readback": "#RRGGBB uppercase",
+      "enforcement": "report"
+    },
+    "border.diagonalDown": {
+      "type": "bool",
+      "add": true,
+      "set": true,
+      "get": true,
+      "description": "draw a top-left → bottom-right diagonal border.",
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "border.diagonalUp": {
+      "type": "bool",
+      "add": true,
+      "set": true,
+      "get": true,
+      "description": "draw a bottom-left → top-right diagonal border.",
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "border": {
+      "type": "string",
+      "add": true,
+      "set": true,
+      "get": false,
+      "description": "shorthand applying one line style to all four sides (top/bottom/left/right). Equivalent to border.all. Get reads back per-side under border.top/bottom/left/right.",
+      "examples": [
+        "--prop border=thin",
+        "--prop border=medium"
+      ],
+      "readback": "n/a (read per-side border.top/bottom/left/right)",
+      "enforcement": "report"
+    },
+    "border.all": {
+      "type": "string",
+      "add": true,
+      "set": true,
+      "get": false,
+      "description": "line style applied to all four sides (top/bottom/left/right). Values: thin, medium, thick, double, dashed, dotted, none.",
+      "examples": [
+        "--prop border.all=thin",
+        "--prop border.all=medium"
+      ],
+      "readback": "n/a (read per-side border.top/bottom/left/right)",
+      "enforcement": "report"
+    },
+    "border.top": {
+      "type": "string",
+      "add": true,
+      "set": true,
+      "get": true,
+      "description": "top border line style (thin, medium, thick, double, dashed, dotted, none).",
+      "examples": [
+        "--prop border.top=thin"
+      ],
+      "readback": "line-style token",
+      "enforcement": "report"
+    },
+    "border.bottom": {
+      "type": "string",
+      "add": true,
+      "set": true,
+      "get": true,
+      "description": "bottom border line style (thin, medium, thick, double, dashed, dotted, none).",
+      "examples": [
+        "--prop border.bottom=thin"
+      ],
+      "readback": "line-style token",
+      "enforcement": "report"
+    },
+    "border.left": {
+      "type": "string",
+      "add": true,
+      "set": true,
+      "get": true,
+      "description": "left border line style (thin, medium, thick, double, dashed, dotted, none).",
+      "examples": [
+        "--prop border.left=thin"
+      ],
+      "readback": "line-style token",
+      "enforcement": "report"
+    },
+    "border.right": {
+      "type": "string",
+      "add": true,
+      "set": true,
+      "get": true,
+      "description": "right border line style (thin, medium, thick, double, dashed, dotted, none).",
+      "examples": [
+        "--prop border.right=thin"
+      ],
+      "readback": "line-style token",
+      "enforcement": "report"
+    },
+    "border.color": {
+      "type": "color",
+      "add": true,
+      "set": true,
+      "get": false,
+      "description": "border color applied to all sides (per-side color also accepted as border.top.color etc.). Get reads back per-side under border.{side}.color.",
+      "examples": [
+        "--prop border.all=thin --prop border.color=FF0000"
+      ],
+      "readback": "n/a (read per-side border.{side}.color)",
+      "enforcement": "report"
+    },
+    "arrayref": {
+      "type": "string",
+      "add": false,
+      "set": false,
+      "get": true,
+      "description": "array-formula spill range (CellFormula @ref). Surfaces on the master cell of an array formula.",
+      "readback": "A1 range string",
+      "enforcement": "report"
+    },
+    "mergeAnchor": {
+      "type": "bool",
+      "add": false,
+      "set": false,
+      "get": true,
+      "description": "true when this cell is the top-left anchor of a merged range. Empty merged-region cells receive mergeAnchor=false; the anchor receives true.",
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "empty": {
+      "type": "bool",
+      "add": false,
+      "set": false,
+      "get": true,
+      "description": "true when the cell has neither display text nor a formula. Useful for distinguishing styled-but-empty cells from data cells.",
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "richtext": {
+      "type": "bool",
+      "add": false,
+      "set": false,
+      "get": true,
+      "description": "true when the cell stores rich-text runs (multi-format text). Surfaces alongside `runs` in Get output.",
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "subscript": {
+      "type": "bool",
+      "add": true,
+      "set": true,
+      "get": true,
+      "aliases": [
+        "font.subscript"
+      ],
+      "description": "subscript text (font vertical alignment). Legacy alias: font.subscript.",
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "superscript": {
+      "type": "bool",
+      "add": true,
+      "set": true,
+      "get": true,
+      "aliases": [
+        "font.superscript"
+      ],
+      "description": "superscript text (font vertical alignment). Legacy alias: font.superscript.",
+      "readback": "true|false",
+      "enforcement": "report"
+    },
+    "image": {
+      "type": "string",
+      "description": "In-cell image (\"Place in Cell\" / Excel 365 richValue): the image becomes the CELL'S VALUE — formulas reading the cell see a non-blank value, unlike a floating picture (add --type picture) which leaves the cell empty. Accepts an image file path (raster only — no SVG). Stored as xl/richData _localImage; down-level Excel shows a #VALUE! fallback, Excel 365 renders the image. Use image=none on Set to remove. Get reports type=Image plus alt / image.contentType / image.fileSize.",
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop image=photo.png",
+        "--prop image=photo.jpg \"alt=Site photo\"",
+        "--prop image=none"
+      ],
+      "enforcement": "report"
+    },
+    "alt": {
+      "type": "string",
+      "description": "Alt text for the in-cell image (rv Text key). Only valid alongside image=. Same aliases as the picture element's alt. Aliases: altText, alttext, description, image.alt.",
+      "aliases": [
+        "altText",
+        "alttext",
+        "description",
+        "image.alt"
+      ],
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop image=photo.png \"alt=Site photo\""
+      ],
+      "readback": "alt text as stored",
+      "enforcement": "report"
+    },
+    "image.contentType": {
+      "type": "string",
+      "description": "Read-only: MIME type of the in-cell image media part (e.g. image/png).",
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "MIME type string",
+      "enforcement": "report"
+    },
+    "image.fileSize": {
+      "type": "int",
+      "description": "Read-only: byte size of the in-cell image media part.",
+      "add": false,
+      "set": false,
+      "get": true,
+      "readback": "size in bytes",
+      "enforcement": "report"
+    }
   }
 }

@@ -182,6 +182,18 @@ public static partial class WordBatchEmitter
                     emittedPerSeriesScalar = true;
                 }
             }
+            // Trendline display/forecast sub-options → chart-level fan-out keys.
+            foreach (var (fmtKey, chartKey) in TrendlineSubKeys)
+            {
+                if (s.Format.TryGetValue(fmtKey, out var tvObj) && tvObj != null
+                    && tvObj.ToString() is { Length: > 0 } tv)
+                {
+                    // Chart-level fan-out keys, not SeriesScalarKeys reps, so no
+                    // emittedPerSeriesScalar flip needed (the base `trendline`
+                    // key already sets it for any series carrying a trendline).
+                    props[chartKey] = tv;
+                }
+            }
 
             // Per-series data-label show flags (value/category/series/percent).
             // AddChart has no per-series data-label setter, so accumulate the
@@ -309,5 +321,21 @@ public static partial class WordBatchEmitter
         ("smooth", "smooth"),
         ("trendline", "trendline"),
         ("errBars", "errbars"),
+    };
+
+    // Trendline display/forecast sub-options the Reader surfaces per-series but
+    // AddChart consumes only as chart-level fan-out keys. SeriesScalarKeys
+    // carries just the type:order spec, so these were dropped on dump→replay.
+    // Map each Reader key to the AddChart chart-level key. One trendline is the
+    // common case; if multiple series carry divergent flags the last one seen
+    // wins (matches the Reader's first-trendline display-flag model).
+    private static readonly (string, string)[] TrendlineSubKeys =
+    {
+        ("trendline.dispRSqr", "trendline.displayrsquared"),
+        ("trendline.dispEq", "trendline.displayequation"),
+        ("trendline.forward", "trendline.forecastforward"),
+        ("trendline.backward", "trendline.forecastbackward"),
+        ("trendline.intercept", "trendline.intercept"),
+        ("trendline.name", "trendline.label"),
     };
 }

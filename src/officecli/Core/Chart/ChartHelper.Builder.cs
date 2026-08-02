@@ -805,6 +805,10 @@ internal static partial class ChartHelper
     private static readonly string[] DeferredPrefixes =
     [
         "title.", "plotarea.", "legend.", "datalabel",
+        // legendEntry{N}.delete hides a specific legend entry; the Setter's
+        // TryParseLegendEntryKey applies it post-build, so it must defer (the
+        // "legend." prefix above does not match "legendentry...").
+        "legendentry",
         "datatable.", "displayunitslabel.", "trendlinelabel.",
         "labelfont.",
         // axisTitle.pPr / catTitle.pPr — restore the source axis-title paragraph

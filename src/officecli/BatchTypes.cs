@@ -105,6 +105,7 @@ internal class BatchItemConverter : JsonConverter<BatchItem>
                 case "xpath": item.Xpath = reader.GetString(); break;
                 case "action": item.Action = reader.GetString(); break;
                 case "xml": item.Xml = reader.GetString(); break;
+                case "dumpversion": item.DumpVersion = reader.TokenType == JsonTokenType.Null ? null : reader.GetInt32(); break;
                 default: reader.Skip(); break;
             }
         }
@@ -133,6 +134,7 @@ internal class BatchItemConverter : JsonConverter<BatchItem>
         if (value.Xpath != null) writer.WriteString("xpath", value.Xpath);
         if (value.Action != null) writer.WriteString("action", value.Action);
         if (value.Xml != null) writer.WriteString("xml", value.Xml);
+        if (value.DumpVersion.HasValue) writer.WriteNumber("dumpVersion", value.DumpVersion.Value);
         writer.WriteEndObject();
     }
 }
@@ -163,11 +165,18 @@ public class BatchItem
     public string? Xpath { get; set; }
     public string? Action { get; set; }
     public string? Xml { get; set; }
+    // NEWLINE-SEMANTICS-V2: dumps are versioned via a leading
+    // {"command":"meta","dumpVersion":2} item. v2 encodes soft line breaks
+    // as '\v' in text props ('\n' means a paragraph boundary); dumps
+    // WITHOUT a meta item are legacy v1, where '\n' meant a soft break —
+    // BatchCompat rewrites those on replay so old dump files keep restoring
+    // the exact original structure.
+    public int? DumpVersion { get; set; }
 
     internal static readonly HashSet<string> KnownFields = new(StringComparer.OrdinalIgnoreCase)
     {
         "command", "op", "path", "parent", "type", "from", "index", "after", "before", "to", "path2",
-        "props", "selector", "text", "mode", "depth", "part", "xpath", "action", "xml"
+        "props", "selector", "text", "mode", "depth", "part", "xpath", "action", "xml", "dumpversion"
     };
 
     public ResidentRequest ToResidentRequest()
@@ -206,6 +215,12 @@ public class BatchResult
     public bool Success { get; set; }
     public string? Output { get; set; }
     public string? Error { get; set; }
+    /// <summary>
+    /// Machine-readable error code for a failed item (same closed list as the
+    /// envelope-level error.code). Null when the failure is unclassified —
+    /// consumers fall back to the Error text. Purely additive field.
+    /// </summary>
+    public string? Code { get; set; }
     /// <summary>The original batch item, included when the command fails so the agent can inspect/retry.</summary>
     public BatchItem? Item { get; set; }
 }
@@ -225,6 +240,7 @@ internal class BatchResultConverter : JsonConverter<BatchResult>
         if (root.TryGetProperty("success", out var suc)) result.Success = suc.GetBoolean();
         if (root.TryGetProperty("output", out var outp)) result.Output = outp.ValueKind == JsonValueKind.String ? outp.GetString() : outp.GetRawText();
         if (root.TryGetProperty("error", out var err)) result.Error = err.GetString();
+        if (root.TryGetProperty("code", out var cod)) result.Code = cod.GetString();
         if (root.TryGetProperty("item", out var itm)) result.Item = JsonSerializer.Deserialize(itm.GetRawText(), BatchJsonContext.Default.BatchItem);
         return result;
     }
@@ -251,6 +267,8 @@ internal class BatchResultConverter : JsonConverter<BatchResult>
         if (value.Error != null)
         {
             writer.WriteString("error", value.Error);
+            if (value.Code != null)
+                writer.WriteString("code", value.Code);
             if (value.Item != null)
             {
                 writer.WritePropertyName("item");

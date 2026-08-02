@@ -60,7 +60,7 @@ public static class DocumentHandlerFactory
         // operation resulted in an overflow"). Only the native zip formats are
         // inspected; plugin-handled formats may not be zips and are left to
         // their own handler. See DocumentLimits for the thresholds.
-        if (ext is ".docx" or ".xlsx" or ".pptx")
+        if (IsNativeOoxml(ext))
             GuardDecompressionBomb(filePath);
 
         // CONSISTENCY(dangling-rel-repair): the reactive catch below only fires
@@ -71,24 +71,50 @@ public static class DocumentHandlerFactory
         // `dump`/`query` traversal — where it escapes this try/catch and crashes
         // the command. Real producers ship such decks (e.g. a diagramDrawing
         // rId pointing at a diagrams/drawingN.xml that was never written) and
-        // PowerPoint tolerates them. Strip the dangling rels up-front so every
-        // command (not just Open) survives, reusing the same in-place repair the
-        // reactive path uses. The scan is read-only and only rewrites when a
-        // dangling rel is actually present, so the clean-file path pays only a
-        // cheap .rels read.
-        if ((ext is ".docx" or ".xlsx" or ".pptx") && HasDanglingInternalRels(filePath))
-            StripDanglingPackageRels(filePath);
+        // PowerPoint tolerates them.
+        //
+        // Repair target diverges by mode. An editable open repairs the source
+        // in place — Save rewrites it anyway, so stripping a dangling rel first
+        // costs nothing extra. A read-only open must stay byte-preserving, so it
+        // repairs a throwaway temp COPY and opens on that; the source is never
+        // touched. The temp is registered for process-exit cleanup (a one-shot
+        // command exits right after the read; a resident is bound to one file).
+        string openTarget = filePath;
+        string? repairTemp = null;
+        if (IsNativeOoxml(ext) && HasDanglingInternalRels(filePath))
+        {
+            if (editable)
+                StripDanglingPackageRels(filePath);
+            else
+            {
+                repairTemp = CreateReadOnlyRepairCopy(filePath);
+                openTarget = repairTemp;
+                StripDanglingPackageRels(repairTemp);
+            }
+        }
 
         try
         {
-            return OpenHandler(filePath, ext, editable);
+            var handler = OpenHandler(openTarget, ext, editable);
+            if (repairTemp != null) RegisterReadOnlyRepairTemp(repairTemp);
+            return handler;
         }
         catch (Exception ex) when (IsEncodingException(ex))
         {
             // Files created by python-pptx (lxml) use encoding="ascii" which Open XML SDK rejects.
-            // Fix the XML declarations in-place and retry.
-            FixXmlEncoding(filePath);
-            return OpenHandler(filePath, ext, editable);
+            // Editable: fix the source in-place. Read-only: fix the temp copy so
+            // the source stays byte-identical. Reuse the temp if one was already
+            // spun up by the dangling-rel pre-strip above.
+            if (editable)
+            {
+                FixXmlEncoding(filePath);
+                return OpenHandler(filePath, ext, editable);
+            }
+            repairTemp ??= CreateReadOnlyRepairCopy(filePath);
+            FixXmlEncoding(repairTemp);
+            var handler = OpenHandler(repairTemp, ext, editable);
+            RegisterReadOnlyRepairTemp(repairTemp);
+            return handler;
         }
         catch (Exception ex) when (IsDanglingPartException(ex))
         {
@@ -97,10 +123,18 @@ public static class DocumentHandlerFactory
             // The SDK throws "Part: X doesn't exist in the package" on the
             // first part-graph walk, so EVERY command failed on the file even
             // though Word opens it fine (it ignores the dangling rel). Remove
-            // the dangling internal relationships in-place and retry — mirrors
-            // the FixXmlEncoding repair-and-retry path above.
-            StripDanglingPackageRels(filePath);
-            return OpenHandler(filePath, ext, editable);
+            // the dangling internal relationships and retry — mirrors the
+            // FixXmlEncoding repair-and-retry path above, source vs temp per mode.
+            if (editable)
+            {
+                StripDanglingPackageRels(filePath);
+                return OpenHandler(filePath, ext, editable);
+            }
+            repairTemp ??= CreateReadOnlyRepairCopy(filePath);
+            StripDanglingPackageRels(repairTemp);
+            var handler = OpenHandler(repairTemp, ext, editable);
+            RegisterReadOnlyRepairTemp(repairTemp);
+            return handler;
         }
         catch (DocumentFormat.OpenXml.Packaging.OpenXmlPackageException ex)
         {
@@ -183,16 +217,78 @@ public static class DocumentHandlerFactory
                     Code = "decompression_bomb",
                     Suggestion = "Verify the file is a genuine .docx/.xlsx/.pptx and not a crafted archive."
                 };
+
+            GuardElementExplosion(filePath, archive);
         }
     }
+
+    /// <summary>
+    /// CONSISTENCY(dos-hardening): the byte/ratio guards above do not bound the
+    /// in-memory DOM cost. A crafted part packed with millions of tiny elements
+    /// (e.g. a worksheet of &lt;c&gt;&lt;v&gt;0&lt;/v&gt;&lt;/c&gt; cells) stays well under every
+    /// byte/ratio/entry limit yet materializes into multiple GiB of managed heap
+    /// and OOM-kills the resident/watch server on any read that walks the tree.
+    /// Stream-count elements (XmlReader, no DOM) in the large parts and reject
+    /// before the SDK materializes them. Only parts over
+    /// <see cref="DocumentLimits.ElementScanPartThreshold"/> are scanned, so a
+    /// normal document pays nothing.
+    /// </summary>
+    private static void GuardElementExplosion(string filePath, ZipArchive archive)
+    {
+        long total = 0;
+        foreach (var entry in archive.Entries)
+        {
+            if (entry.Length <= DocumentLimits.ElementScanPartThreshold) continue;
+            if (!entry.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)) continue;
+
+            try
+            {
+                using var stream = entry.Open();
+                using var reader = System.Xml.XmlReader.Create(stream, new System.Xml.XmlReaderSettings
+                {
+                    DtdProcessing = System.Xml.DtdProcessing.Prohibit,
+                    XmlResolver = null,
+                    CloseInput = true,
+                });
+                while (reader.Read())
+                {
+                    if (reader.NodeType != System.Xml.XmlNodeType.Element) continue;
+                    if (++total > DocumentLimits.MaxDomElements)
+                        throw new CliException(
+                            $"Cannot open {Path.GetFileName(filePath)}: document has more than " +
+                            $"{DocumentLimits.MaxDomElements:N0} XML elements; rejected to avoid exhausting memory.")
+                        {
+                            Code = "decompression_bomb",
+                            Suggestion = "Verify the file is a genuine .docx/.xlsx/.pptx and not a crafted archive; " +
+                                "set OFFICECLI_MAX_DOM_ELEMENTS to raise the limit for an unusually large workbook."
+                        };
+                }
+            }
+            catch (System.Xml.XmlException)
+            {
+                // Malformed XML — let the normal open path surface corrupt_file.
+                return;
+            }
+        }
+    }
+
+    // The native zip-OOXML extensions officecli opens directly. Macro-enabled
+    // variants (.docm/.xlsm/.pptm) map to the SAME handler as their macro-free
+    // sibling: the Open XML SDK identifies the document by content-type and
+    // round-trips the vbaProject part untouched on Save, so open + in-place
+    // edit preserves macros. This gate governs OPEN only — dump / create /
+    // merge keep the macro-free whitelist, so no "rebuild into a new file" path
+    // can drop a vbaProject (a deliberate safety boundary, not an omission).
+    private static bool IsNativeOoxml(string ext) =>
+        ext is ".docx" or ".xlsx" or ".pptx" or ".docm" or ".xlsm" or ".pptm";
 
     private static IDocumentHandler OpenHandler(string filePath, string ext, bool editable)
     {
         return ext switch
         {
-            ".docx" => new WordHandler(filePath, editable),
-            ".xlsx" => new ExcelHandler(filePath, editable),
-            ".pptx" => new PowerPointHandler(filePath, editable),
+            ".docx" or ".docm" => new WordHandler(filePath, editable),
+            ".xlsx" or ".xlsm" => new ExcelHandler(filePath, editable),
+            ".pptx" or ".pptm" => new PowerPointHandler(filePath, editable),
             _      => TryOpenViaPlugin(filePath, ext, editable)
                    ?? throw UnsupportedTypeException(ext)
         };
@@ -301,12 +397,13 @@ public static class DocumentHandlerFactory
 
     private static CliException UnsupportedTypeException(string ext) =>
         new CliException(
-            $"Unsupported file type: {ext}. Supported: .docx, .xlsx, .pptx. " +
+            $"Unsupported file type: {ext}. Supported: .docx, .xlsx, .pptx " +
+            $"(and macro-enabled .docm, .xlsm, .pptm for open/edit). " +
             $"Other formats may be opened via plugins — run `officecli plugins list` to see installed plugins, " +
             $"or see plugins/plugin-protocol.md for installation paths.")
         {
             Code = "unsupported_type",
-            ValidValues = [".docx", ".xlsx", ".pptx"]
+            ValidValues = [".docx", ".xlsx", ".pptx", ".docm", ".xlsm", ".pptm"]
         };
 
     private static bool IsEncodingException(Exception ex)
@@ -353,10 +450,28 @@ public static class DocumentHandlerFactory
     /// </summary>
     private static string? ResolveInternalRelTarget(System.Xml.Linq.XElement rel, string baseDir)
     {
+        // Hyperlink targets are URI references, not package parts. Excel can
+        // store a drawing hyperlink such as "#Sheet1!A1" in drawingN.xml.rels
+        // without TargetMode="External". Treating that target as an OPC part
+        // makes the dangling-rel repair delete the relationship while leaving
+        // <a:hlinkClick r:id="..."> behind, and Excel then repairs drawingN.xml.
+        var relationshipType = (string?)rel.Attribute("Type");
+        if (relationshipType?.EndsWith("/hyperlink", StringComparison.OrdinalIgnoreCase) == true)
+            return null;
+
         if (string.Equals((string?)rel.Attribute("TargetMode"), "External", StringComparison.OrdinalIgnoreCase))
             return null;
         var target = (string?)rel.Attribute("Target");
         if (string.IsNullOrEmpty(target)) return null;
+        if (target.StartsWith("#", StringComparison.Ordinal)) return null;
+
+        // A non-hyperlink internal relationship may legally carry a fragment;
+        // only the URI path identifies the package part.
+        var fragmentIndex = target.IndexOf('#');
+        if (fragmentIndex >= 0)
+            target = target.Substring(0, fragmentIndex);
+        if (target.Length == 0) return null;
+
         var resolved = target.StartsWith("/")
             ? target.TrimStart('/')
             : (baseDir.Length > 0 ? baseDir + "/" + target : target);
@@ -411,6 +526,46 @@ public static class DocumentHandlerFactory
     /// .rels entries are touched, and only the dangling Relationship nodes are
     /// dropped.
     /// </summary>
+    /// <summary>
+    /// Copy the source file to a throwaway temp with the same extension, for the
+    /// read-only repair path. The in-place repair functions
+    /// (<see cref="StripDanglingPackageRels"/>, <see cref="FixXmlEncoding"/>)
+    /// then run on the copy so the caller's file stays byte-identical.
+    /// </summary>
+    private static string CreateReadOnlyRepairCopy(string filePath)
+    {
+        var temp = Path.Combine(
+            Path.GetTempPath(),
+            $"ocli_ro_{Guid.NewGuid():N}{Path.GetExtension(filePath)}");
+        File.Copy(filePath, temp, overwrite: true);
+        return temp;
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentBag<string> _readOnlyRepairTemps = new();
+    private static int _readOnlyRepairCleanupHooked;
+
+    /// <summary>
+    /// Track a read-only repair copy for deletion at process exit. The concrete
+    /// handler keeps the temp file open for its lifetime (Word/PPT lazy-load
+    /// parts) and the codebase relies on <c>handler is ExcelHandler</c>-style
+    /// concrete-type checks throughout, so a disposing decorator is not viable.
+    /// A one-shot CLI command exits right after the read, cleaning the temp
+    /// immediately; a resident is bound to a single file (one temp at most).
+    /// The source file is never touched either way.
+    /// </summary>
+    private static void RegisterReadOnlyRepairTemp(string tempPath)
+    {
+        _readOnlyRepairTemps.Add(tempPath);
+        if (System.Threading.Interlocked.Exchange(ref _readOnlyRepairCleanupHooked, 1) == 0)
+        {
+            AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+            {
+                foreach (var t in _readOnlyRepairTemps)
+                    try { File.Delete(t); } catch { /* ages out of TEMP */ }
+            };
+        }
+    }
+
     private static void StripDanglingPackageRels(string filePath)
     {
         using var zip = ZipFile.Open(filePath, ZipArchiveMode.Update);

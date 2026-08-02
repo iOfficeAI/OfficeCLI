@@ -227,7 +227,7 @@ internal class WatchServer : IDisposable
             {
                 try
                 {
-                    if (p.StartTime.ToUniversalTime().Ticks != expectedStartTicksUtc.Value)
+                    if (!StartTicksMatch(p.StartTime.ToUniversalTime().Ticks, expectedStartTicksUtc.Value))
                         return false; // pid recycled by an unrelated process
                 }
                 catch
@@ -244,6 +244,21 @@ internal class WatchServer : IDisposable
         catch (ArgumentException) { return false; }
         catch (InvalidOperationException) { return false; }
     }
+
+    // Process start-time identity check, tolerant of platform jitter. On Linux
+    // Process.StartTime is derived from /proc/<pid>/stat jiffies + boot time,
+    // and the same live process yields a slightly different tick count when
+    // read by another process (~hundreds of microseconds) than the value it
+    // recorded for itself — so an EXACT tick comparison wrongly reports a live
+    // watch as dead, deleting its marker and breaking watch on Linux (regression
+    // from the pid-only check). Windows/macOS read a precise kernel creation
+    // timestamp that is stable across readers. A 2-second tolerance absorbs the
+    // Linux jitter while still rejecting a recycled pid, whose unrelated process
+    // started seconds-to-hours after the crashed writer.
+    internal static readonly long StartTicksTolerance = TimeSpan.FromSeconds(2).Ticks;
+
+    internal static bool StartTicksMatch(long actualTicks, long expectedTicks)
+        => Math.Abs(actualTicks - expectedTicks) <= StartTicksTolerance;
 
     private void WriteMarker()
     {
@@ -2117,35 +2132,46 @@ internal class WatchServer : IDisposable
     /// Read the HTTP request line and headers, plus any body bytes that arrived in the
     /// same TCP read. Returns (requestLine, headers, bodyPrefix). Caller is responsible
     /// for reading the rest of the body using Content-Length if needed.
+    ///
+    /// The body prefix comes back as raw BYTES, not text: a UTF-8 sequence can
+    /// straddle the boundary between this read and the caller's, and decoding
+    /// each half on its own turns both into U+FFFD. Decoding happens once, in
+    /// ReadPostBodyAsync, over the assembled payload.
     /// </summary>
-    private static async Task<(string requestLine, Dictionary<string, string> headers, string bodyPrefix)>
+    private static async Task<(string requestLine, Dictionary<string, string> headers, byte[] bodyPrefix)>
         ReadHttpRequestHeaderAsync(NetworkStream stream, CancellationToken token)
     {
         var buffer = new byte[8192];
-        var sb = new StringBuilder();
+        var raw = new MemoryStream();
         int headerEnd = -1;
         while (headerEnd < 0)
         {
             var n = await stream.ReadAsync(buffer.AsMemory(), token);
             if (n == 0) break;
-            sb.Append(Encoding.UTF8.GetString(buffer, 0, n));
-            headerEnd = sb.ToString().IndexOf("\r\n\r\n", StringComparison.Ordinal);
-            if (sb.Length > 32 * 1024) break; // safety cap
+            raw.Write(buffer, 0, n);
+            // Rescan from 3 bytes before the new data so a terminator split
+            // across reads is still found. Bounded by the 32 KB cap below.
+            var scanFrom = Math.Max(0, (int)raw.Length - n - 3);
+            var found = raw.GetBuffer().AsSpan(scanFrom, (int)raw.Length - scanFrom).IndexOf("\r\n\r\n"u8);
+            if (found >= 0) headerEnd = scanFrom + found;
+            if (raw.Length > 32 * 1024) break; // safety cap
         }
 
-        var raw = sb.ToString();
+        var rawBytes = raw.GetBuffer();
+        var total = (int)raw.Length;
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (headerEnd < 0)
         {
             // No header terminator — treat the whole thing as a single line
-            var firstLine = raw;
-            var crlf = raw.IndexOf("\r\n", StringComparison.Ordinal);
-            if (crlf >= 0) firstLine = raw[..crlf];
-            return (firstLine, headers, "");
+            var all = Encoding.UTF8.GetString(rawBytes, 0, total);
+            var firstLine = all;
+            var crlf = all.IndexOf("\r\n", StringComparison.Ordinal);
+            if (crlf >= 0) firstLine = all[..crlf];
+            return (firstLine, headers, Array.Empty<byte>());
         }
 
-        var headerSection = raw[..headerEnd];
-        var bodyPrefix = raw[(headerEnd + 4)..];
+        var headerSection = Encoding.UTF8.GetString(rawBytes, 0, headerEnd);
+        var bodyPrefix = rawBytes.AsSpan(headerEnd + 4, total - (headerEnd + 4)).ToArray();
         var lines = headerSection.Split("\r\n");
         var requestLine = lines.Length > 0 ? lines[0] : "";
         for (int i = 1; i < lines.Length; i++)
@@ -2164,61 +2190,66 @@ internal class WatchServer : IDisposable
     // Prevents slow-loris style stalls (Content-Length advertised, body never sent).
     private static readonly TimeSpan PostBodyReadTimeout = TimeSpan.FromSeconds(3);
 
-    private async Task HandlePostSelectionAsync(NetworkStream stream, Dictionary<string, string> headers, string bodyPrefix, CancellationToken token)
+    /// <summary>
+    /// Assemble a POST body from the bytes that arrived with the headers plus
+    /// whatever Content-Length says is still on the wire, then decode the whole
+    /// payload as UTF-8 exactly once.
+    ///
+    /// Decoding per socket read instead splits any multi-byte sequence that
+    /// straddles a read boundary into two independent fragments, and each
+    /// fragment decodes to U+FFFD — a large CJK payload came back from a
+    /// 200 OK with characters silently replaced, and the replacements went
+    /// straight into the document. Every /api POST shares this path so the
+    /// bound checks stay identical across endpoints.
+    ///
+    /// Bounded by MaxSelectionBodyBytes (FUZZER-001 slow-loris) and
+    /// PostBodyReadTimeout. A prefix overshooting Content-Length is trimmed:
+    /// otherwise extra bytes could be smuggled in the header segment
+    /// (FUZZER-002). A request with no Content-Length keeps the prefix as-is.
+    /// </summary>
+    private static async Task<string> ReadPostBodyAsync(
+        NetworkStream stream, Dictionary<string, string> headers, byte[] bodyPrefix, CancellationToken token)
+    {
+        int contentLength = -1;
+        if (headers.TryGetValue("Content-Length", out var clStr) && int.TryParse(clStr, out var parsedCl))
+        {
+            if (parsedCl < 0 || parsedCl > MaxSelectionBodyBytes)
+                throw new InvalidDataException("body too large");
+            contentLength = parsedCl;
+        }
+
+        if (contentLength < 0) return Encoding.UTF8.GetString(bodyPrefix);
+        if (bodyPrefix.Length >= contentLength) return Encoding.UTF8.GetString(bodyPrefix, 0, contentLength);
+
+        var body = new byte[contentLength];
+        bodyPrefix.CopyTo(body, 0);
+        int have = bodyPrefix.Length;
+        using var readCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        readCts.CancelAfter(PostBodyReadTimeout);
+        try
+        {
+            while (have < contentLength)
+            {
+                var n = await stream.ReadAsync(body.AsMemory(have, contentLength - have), readCts.Token);
+                if (n == 0) break;
+                have += n;
+            }
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            throw new InvalidDataException("body read timed out");
+        }
+        return Encoding.UTF8.GetString(body, 0, have);
+    }
+
+    private async Task HandlePostSelectionAsync(NetworkStream stream, Dictionary<string, string> headers, byte[] bodyPrefix, CancellationToken token)
     {
         int statusCode = 204;
         string statusText = "No Content";
-        string body = bodyPrefix;
 
         try
         {
-            // Reject runaway Content-Length up front (covers FUZZER-001 slow-loris).
-            int contentLength = -1;
-            if (headers.TryGetValue("Content-Length", out var clStr) && int.TryParse(clStr, out var parsedCl))
-            {
-                if (parsedCl < 0 || parsedCl > MaxSelectionBodyBytes)
-                    throw new InvalidDataException("body too large");
-                contentLength = parsedCl;
-            }
-
-            // If the bodyPrefix already exceeds Content-Length, trim it. Without this,
-            // an attacker could smuggle extra bytes by sending a long body in the same
-            // TCP segment as the headers (FUZZER-002).
-            var prefixBytes = Encoding.UTF8.GetByteCount(body);
-            if (contentLength >= 0 && prefixBytes > contentLength)
-            {
-                var prefBytes = Encoding.UTF8.GetBytes(body);
-                body = Encoding.UTF8.GetString(prefBytes, 0, contentLength);
-                prefixBytes = contentLength;
-            }
-
-            // Read any missing tail bytes, bounded by both size and time.
-            if (contentLength > prefixBytes)
-            {
-                using var readCts = CancellationTokenSource.CreateLinkedTokenSource(token);
-                readCts.CancelAfter(PostBodyReadTimeout);
-                var sb = new StringBuilder(body, contentLength);
-                int have = prefixBytes;
-                var buf = new byte[8192];
-                try
-                {
-                    while (have < contentLength)
-                    {
-                        var toRead = Math.Min(buf.Length, contentLength - have);
-                        var n = await stream.ReadAsync(buf.AsMemory(0, toRead), readCts.Token);
-                        if (n == 0) break;
-                        sb.Append(Encoding.UTF8.GetString(buf, 0, n));
-                        have += n;
-                        if (have > MaxSelectionBodyBytes)
-                            throw new InvalidDataException("body too large");
-                    }
-                }
-                catch (OperationCanceledException) when (!token.IsCancellationRequested)
-                {
-                    throw new InvalidDataException("body read timed out");
-                }
-                body = sb.ToString();
-            }
+            var body = await ReadPostBodyAsync(stream, headers, bodyPrefix, token);
 
             // Expected JSON: {"paths": ["/slide[1]/shape[2]", ...]}
             var req = JsonSerializer.Deserialize(body, WatchSelectionJsonContext.Default.SelectionRequest);
@@ -2275,33 +2306,11 @@ internal class WatchServer : IDisposable
     /// spawn, not an in-process handler call, so this can never become a second
     /// writer racing a live resident.
     /// </summary>
-    private async Task HandlePostSendAsync(NetworkStream stream, Dictionary<string, string> headers, string bodyPrefix, bool json, CancellationToken token)
+    private async Task HandlePostSendAsync(NetworkStream stream, Dictionary<string, string> headers, byte[] bodyPrefix, bool json, CancellationToken token)
     {
         try
         {
-            // Read body (same pattern as selection handler)
-            int contentLength = 0;
-            if (headers.TryGetValue("Content-Length", out var clStr) && int.TryParse(clStr, out var cl))
-                contentLength = cl;
-            if (contentLength > MaxSelectionBodyBytes) throw new InvalidDataException("body too large");
-
-            var body = bodyPrefix;
-            if (contentLength > body.Length)
-            {
-                var sb = new StringBuilder(body);
-                var buf = new byte[4096];
-                int have = Encoding.UTF8.GetByteCount(body);
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-                cts.CancelAfter(PostBodyReadTimeout);
-                while (have < contentLength)
-                {
-                    var n = await stream.ReadAsync(buf, cts.Token);
-                    if (n == 0) break;
-                    sb.Append(Encoding.UTF8.GetString(buf, 0, n));
-                    have += n;
-                }
-                body = sb.ToString();
-            }
+            var body = await ReadPostBodyAsync(stream, headers, bodyPrefix, token);
 
             // Same batch-item vocabulary as CLI batch / the SDKs' send(item)
             // {"command": "set"|"add"|"remove", ...}.
@@ -2318,6 +2327,9 @@ internal class WatchServer : IDisposable
                 FileName = exe,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                // CONSISTENCY(child-stream-encoding): see BlankDocCreator.
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
@@ -2420,7 +2432,7 @@ internal class WatchServer : IDisposable
                         var prop = root.GetProperty("prop").GetString() ?? "text";
                         var value = root.GetProperty("value").GetString() ?? "";
                         psi.ArgumentList.Add("--prop");
-                        psi.ArgumentList.Add($"{prop}={value}");
+                        psi.ArgumentList.Add($"{prop}={PropValueForArgv(prop, value)}");
                     }
                     break;
                 }
@@ -2461,32 +2473,11 @@ internal class WatchServer : IDisposable
     /// whole body passes straight through. Same child-process-spawn
     /// constraint as /api/send — never touch the document in-process.
     /// </summary>
-    private async Task HandlePostBatchAsync(NetworkStream stream, Dictionary<string, string> headers, string bodyPrefix, bool json, CancellationToken token)
+    private async Task HandlePostBatchAsync(NetworkStream stream, Dictionary<string, string> headers, byte[] bodyPrefix, bool json, CancellationToken token)
     {
         try
         {
-            int contentLength = 0;
-            if (headers.TryGetValue("Content-Length", out var clStr) && int.TryParse(clStr, out var cl))
-                contentLength = cl;
-            if (contentLength > MaxSelectionBodyBytes) throw new InvalidDataException("body too large");
-
-            var body = bodyPrefix;
-            if (contentLength > body.Length)
-            {
-                var sb = new StringBuilder(body);
-                var buf = new byte[4096];
-                int have = Encoding.UTF8.GetByteCount(body);
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-                cts.CancelAfter(PostBodyReadTimeout);
-                while (have < contentLength)
-                {
-                    var n = await stream.ReadAsync(buf, cts.Token);
-                    if (n == 0) break;
-                    sb.Append(Encoding.UTF8.GetString(buf, 0, n));
-                    have += n;
-                }
-                body = sb.ToString();
-            }
+            var body = await ReadPostBodyAsync(stream, headers, bodyPrefix, token);
 
             var exe = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName
                 ?? (OperatingSystem.IsWindows() ? "officecli.exe" : "officecli");
@@ -2495,6 +2486,9 @@ internal class WatchServer : IDisposable
                 FileName = exe,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                // CONSISTENCY(child-stream-encoding): see BlankDocCreator.
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
@@ -2580,33 +2574,11 @@ internal class WatchServer : IDisposable
     /// its baked HTML — resident-first routing lives inside the CLI
     /// (TryResident), and WatchServer itself never opens the document.
     /// </summary>
-    private async Task HandlePostSwitchAsync(NetworkStream stream, Dictionary<string, string> headers, string bodyPrefix, CancellationToken token)
+    private async Task HandlePostSwitchAsync(NetworkStream stream, Dictionary<string, string> headers, byte[] bodyPrefix, CancellationToken token)
     {
         try
         {
-            // Read body (same pattern as /api/send).
-            int contentLength = 0;
-            if (headers.TryGetValue("Content-Length", out var clStr) && int.TryParse(clStr, out var cl))
-                contentLength = cl;
-            if (contentLength > MaxSelectionBodyBytes) throw new InvalidDataException("body too large");
-
-            var body = bodyPrefix;
-            if (contentLength > body.Length)
-            {
-                var sb = new StringBuilder(body);
-                var buf = new byte[4096];
-                int have = Encoding.UTF8.GetByteCount(body);
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-                cts.CancelAfter(PostBodyReadTimeout);
-                while (have < contentLength)
-                {
-                    var n = await stream.ReadAsync(buf, cts.Token);
-                    if (n == 0) break;
-                    sb.Append(Encoding.UTF8.GetString(buf, 0, n));
-                    have += n;
-                }
-                body = sb.ToString();
-            }
+            var body = await ReadPostBodyAsync(stream, headers, bodyPrefix, token);
 
             string? requested;
             try
@@ -2681,6 +2653,9 @@ internal class WatchServer : IDisposable
                     FileName = exe,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
+                    // CONSISTENCY(child-stream-encoding): see BlankDocCreator.
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
@@ -2919,9 +2894,22 @@ internal class WatchServer : IDisposable
         foreach (var kv in propsEl.EnumerateObject())
         {
             psi.ArgumentList.Add("--prop");
-            psi.ArgumentList.Add($"{kv.Name}={kv.Value.GetString() ?? ""}");
+            psi.ArgumentList.Add($"{kv.Name}={PropValueForArgv(kv.Name, kv.Value.GetString() ?? "")}");
         }
     }
+
+    /// <summary>
+    /// CONSISTENCY(text-escape-boundary): props reach this server as JSON, where
+    /// a backslash is already the final character the caller wants. The child CLI
+    /// resolves C-escapes in text-valued props, so handing the value over bare
+    /// resolves it a second time — a shape whose text is the path C:\temp\new.docx
+    /// came out as "C:" + TAB + "emp" + newline + "ew.docx". /api/batch passes the
+    /// same JSON through untouched, so without this the two endpoints disagreed on
+    /// what one item means. Double the backslashes for exactly the keys the child
+    /// resolves, leaving paths, colors and numbers alone.
+    /// </summary>
+    private static string PropValueForArgv(string key, string value)
+        => OfficeCli.CommandBuilder.KeyTakesCEscapes(key) ? TextEscape.Protect(value) : value;
 
     /// <summary>
     /// Append the shared insert-position hints (--index / --after / --before)

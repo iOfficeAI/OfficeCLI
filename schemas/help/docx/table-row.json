@@ -125,6 +125,17 @@
       ],
       "readback": "'Ndxa' | 'N%' | 'auto' | 'nil'",
       "enforcement": "report"
+    },
+    "cellSpacing": {
+      "type": "number",
+      "description": "Spacing between cells in the row, in twips (w:tblCellSpacing on trPr).",
+      "add": false,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop cellSpacing=100"
+      ],
+      "enforcement": "report"
     }
   }
 }

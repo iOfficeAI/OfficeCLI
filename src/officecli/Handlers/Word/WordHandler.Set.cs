@@ -11,6 +11,62 @@ namespace OfficeCli.Handlers;
 
 public partial class WordHandler
 {
+    // PERF(nav-child-cache): keys whose Set only writes run/paragraph/cell/row/
+    // table PROPERTIES (rPr / pPr / tcPr / trPr / tblPr) and therefore never
+    // adds or removes a <w:r> / <w:tr> / <w:tc> element — the only structure the
+    // run/row/cell nav caches index. A Set restricted to these keys leaves those
+    // caches valid, so a per-run/per-cell attribute-set batch keeps hitting them
+    // (arming the clear guard there would rebuild O(R) per set → O(R²)).
+    //
+    // JUDGMENT (why this is a safe-list, not a structural block-list): the
+    // criterion "does this key add/remove an r/tr/tc element?" is provable per
+    // key. `text` fails it (replaces all runs of a paragraph/cell). Anything not
+    // provably attribute-only — a new key, a field/hyperlink/equation rewrite,
+    // revision accept/reject (deletes inserted runs) — is absent here and thus
+    // clears by default. Missing a genuinely-safe key only over-clears (perf);
+    // wrongly listing an unsafe key would serve a detached element (silent
+    // wrong-content bug), so the list stays conservative.
+    private static readonly HashSet<string> NavCacheSafeSetKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // run rPr
+        "bold", "italic", "underline", "strike", "doublestrike", "color", "size",
+        "fontsize", "font", "highlight", "caps", "smallcaps", "vanish", "hidden",
+        "subscript", "superscript", "vertalign", "position", "kerning", "emboss",
+        "outline", "shadow", "imprint", "rtl", "lang", "charscale", "spacing",
+        "letterspacing",
+        // paragraph pPr
+        "alignment", "align", "halign", "textalignment", "spacebefore", "spaceafter",
+        "linespacing", "linerule", "keepnext", "keeplines", "widowcontrol",
+        "outlinelevel", "contextualspacing", "numid", "numlevel", "bidi",
+        // cell tcPr
+        "valign", "verticalalignment", "width", "nowrap", "textdirection",
+        "gridspan", "vmerge", "hidemark", "fit",
+        // row trPr
+        "height", "rowheight", "cantsplit", "tblheader",
+    };
+
+    // A Set clears the nav child caches unless EVERY property key is provably
+    // attribute-only (in NavCacheSafeSetKeys, or a dotted member of a safe
+    // family like border.*/shading.*/margin.*/indent.*/padding.*). Empty props
+    // (e.g. a pure revision.action routed elsewhere) is treated as "may
+    // restructure" → clears.
+    private static bool ShouldClearNavCacheAfterSet(Dictionary<string, string> properties)
+    {
+        if (properties.Count == 0) return true;
+        foreach (var key in properties.Keys)
+        {
+            if (NavCacheSafeSetKeys.Contains(key)) continue;
+            var lower = key.ToLowerInvariant();
+            var dot = lower.IndexOf('.');
+            var family = dot >= 0 ? lower[..dot] : lower;
+            if (family is "border" or "shading" or "margin" or "indent"
+                or "padding" or "cellmargin" or "font")
+                continue;
+            return true; // a key we can't prove is attribute-only → clear
+        }
+        return false;
+    }
+
     public List<string> Set(string path, Dictionary<string, string> properties)
     {
         Modified = true;
@@ -18,6 +74,16 @@ public partial class WordHandler
         LastUnrecognizedLatex = new List<string>();
         LastSetNewPath = null;
         var unsupported = new List<string>();
+
+        // PERF(nav-child-cache): drop the run/row/cell nav caches on exit when
+        // this Set might rewrite a container's child set (`set text`, revision
+        // accept/reject, field/hyperlink rewrites, …). Property-only sets whose
+        // keys are all attribute-only leave it disarmed. Exit-timing so a set
+        // that repopulates the cache mid-op (navigating through the mutated
+        // segment) still ends clean. See NavCacheSafeSetKeys.
+        using var _navClearGuard = ShouldClearNavCacheAfterSet(properties)
+            ? new NavCacheClearGuard(this)
+            : default;
 
         // Bare `revision=` key was retired when the namespace split into
         // revision.type (creation) / revision.action (accept-reject). Reject
@@ -427,7 +493,14 @@ public partial class WordHandler
             var firstName = hfParts[0].Name.ToLowerInvariant();
             if ((firstName == "header" || firstName == "footer") && hfParts.Count == 1)
             {
-                SetHeaderFooter(firstName, (hfParts[0].Index ?? 1) - 1, properties, unsupported);
+                // last() resolves to the LAST part by creation order (mirrors
+                // get); otherwise set /header[last()] silently wrote into the
+                // FIRST header (Index == null → 0), losing content.
+                int hfCount = (firstName == "header"
+                    ? _doc.MainDocumentPart?.HeaderParts.Count()
+                    : _doc.MainDocumentPart?.FooterParts.Count()) ?? 0;
+                int hfIdx = hfParts[0].StringIndex == "last()" ? hfCount - 1 : (hfParts[0].Index ?? 1) - 1;
+                SetHeaderFooter(firstName, hfIdx, properties, unsupported);
                 return unsupported;
             }
         }
@@ -622,7 +695,7 @@ public partial class WordHandler
                     // reject XML 1.0 illegal control chars at input time so the resident
                     // process doesn't accept them into the in-memory DOM only to fail at
                     // close with "save failed — data may be lost" and lose user work.
-                    ParseHelpers.ValidateXmlText(value, "text");
+                    ParseHelpers.ValidateXmlText(value, "text", allowSoftBreakChar: true);
                     // Only replace non-field static text runs. Complex fields are
                     // a multi-run sequence: [Begin][Instr]([Separate][Result])[End].
                     // Runs carrying <w:fldChar>/<w:instrText> AND any run nested

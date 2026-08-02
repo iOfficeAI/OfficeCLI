@@ -51,29 +51,37 @@
     "x": {
       "type": "length",
       "description": "horizontal offset (group origin). Readback in cm via EmuConverter.",
-      "add": false, "set": false, "get": true,
+      "add": false, "set": true, "get": true,
       "readback": "length in cm (e.g. \"2cm\")",
       "enforcement": "report"
     },
     "y": {
       "type": "length",
       "description": "vertical offset.",
-      "add": false, "set": false, "get": true,
+      "add": false, "set": true, "get": true,
       "readback": "length in cm",
       "enforcement": "report"
     },
     "width": {
       "type": "length",
-      "description": "group bounding box width.",
-      "add": false, "set": false, "get": true,
+      "description": "group bounding box width. Set changes only this axis (children scale horizontally via the chExt baseline); pass keepAspect=true to scale height proportionally too.",
+      "add": false, "set": true, "get": true,
       "readback": "length in cm",
       "enforcement": "report"
     },
     "height": {
       "type": "length",
-      "description": "group bounding box height.",
-      "add": false, "set": false, "get": true,
+      "description": "group bounding box height. Set changes only this axis; pass keepAspect=true to scale width proportionally too.",
+      "add": false, "set": true, "get": true,
       "readback": "length in cm",
+      "enforcement": "report"
+    },
+    "keepAspect": {
+      "type": "boolean",
+      "description": "when true and only ONE of width/height is given, the other axis scales by the same ratio (and child font sizes re-bake with the uniform resize) so the group keeps its aspect — useful for diagram groups. Default false: only the axes you pass change, matching set width on a plain shape.",
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop width=12cm --prop keepAspect=true"],
+      "readback": "n/a (behavioral flag, not stored)",
       "enforcement": "report"
     }
   }

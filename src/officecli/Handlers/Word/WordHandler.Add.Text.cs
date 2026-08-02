@@ -12,6 +12,37 @@ public partial class WordHandler
 {
     private string AddParagraph(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
     {
+        // NEWLINE-SEMANTICS-V2: at this block-level surface '\n' is a
+        // PARAGRAPH boundary (matching pptx and the Google Docs API); the
+        // soft line break <w:br/> is written as '\v'. A text containing
+        // '\n' therefore creates one paragraph per line, every line
+        // inheriting the same style/format props — Word's Enter key, N
+        // times. The properties dictionary is mutated in place per line and
+        // restored afterwards (never copied) so TrackingPropertyDictionary
+        // keeps recording handler reads for unsupported_property detection.
+        if (properties.TryGetValue("text", out var rawParaText) && rawParaText != null)
+        {
+            var normalized = rawParaText.Replace("\r\n", "\n").Replace("\r", "\n");
+            if (normalized.IndexOf('\n') >= 0)
+            {
+                var lines = normalized.Split('\n');
+                string firstPath = "";
+                try
+                {
+                    for (int li = 0; li < lines.Length; li++)
+                    {
+                        properties["text"] = lines[li];
+                        var p = AddParagraph(parent, parentPath, index.HasValue ? index + li : null, properties);
+                        if (li == 0) firstPath = p;
+                    }
+                }
+                finally
+                {
+                    properties["text"] = rawParaText;
+                }
+                return firstPath;
+            }
+        }
         // See RejectBareRevisionKey: the bare `revision=` literal was retired
         // when creation/action split into revision.type / revision.action.
         RejectBareRevisionKey(properties);
@@ -556,52 +587,42 @@ public partial class WordHandler
         // the anchor enums.
         FrameProperties? frameProps = null;
         FrameProperties EnsureFramePr() => frameProps ??= new FrameProperties();
+        // CONSISTENCY(length-units): framePr size/position slots accept pt/cm/in
+        // (bare = twips) via SpacingConverter, matching tc padding and every other
+        // length slot. Convert to twips first, then enforce the ST_(Signed)TwipsMeasure
+        // ±31680 bound on the resolved twips.
+        int FrameTwips(string raw, string prop, bool signed)
+        {
+            int tw;
+            try
+            {
+                tw = signed
+                    ? OfficeCli.Core.SpacingConverter.ParseWordSpacingSigned(raw)
+                    : (int)OfficeCli.Core.SpacingConverter.ParseWordSpacing(raw);
+            }
+            catch (ArgumentException)
+            {
+                // Re-wrap so the message names the slot ("auto" and other
+                // non-length tokens are rejected here, not silently written).
+                throw new ArgumentException($"Invalid '{prop}' value: '{raw}'. Must resolve to a twips length (bare number, or a pt/cm/in value).");
+            }
+            int lo = signed ? -31680 : 0;
+            if (tw < lo || tw > 31680)
+                throw new ArgumentException($"Invalid '{prop}' value: '{raw}'. Must resolve to {lo}..31680 twips (bare number, or a pt/cm/in length).");
+            return tw;
+        }
         if (properties.TryGetValue("framePr.w", out var fpW) || properties.TryGetValue("framepr.w", out fpW))
-        {
-            // OOXML w:framePr/@w:w is ST_TwipsMeasure = unsigned int with
-            // MaxInclusive=31680. Width is StringValue in the SDK so a raw
-            // "auto" or out-of-range integer passes through and Word 422s.
-            if (!uint.TryParse(fpW, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var fwV)
-                || fwV > 31680)
-                throw new ArgumentException($"Invalid 'framePr.w' value: '{fpW}'. Must be a non-negative integer 0..31680 (twips, ST_TwipsMeasure).");
-            EnsureFramePr().Width = fpW;
-        }
+            EnsureFramePr().Width = FrameTwips(fpW, "framePr.w", signed: false).ToString();
         if (properties.TryGetValue("framePr.h", out var fpH) || properties.TryGetValue("framepr.h", out fpH))
-        {
-            if (!uint.TryParse(fpH, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var fhV)
-                || fhV > 31680)
-                throw new ArgumentException($"Invalid 'framePr.h' value: '{fpH}'. Must be a non-negative integer 0..31680 (twips, ST_TwipsMeasure).");
-            EnsureFramePr().Height = fhV;
-        }
+            EnsureFramePr().Height = (uint)FrameTwips(fpH, "framePr.h", signed: false);
         if (properties.TryGetValue("framePr.x", out var fpX) || properties.TryGetValue("framepr.x", out fpX))
-        {
-            // ST_SignedTwipsMeasure: -31680 <= x <= 31680. X is StringValue.
-            if (!int.TryParse(fpX, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var fxV)
-                || fxV < -31680 || fxV > 31680)
-                throw new ArgumentException($"Invalid 'framePr.x' value: '{fpX}'. Must be a signed integer -31680..31680 (twips, ST_SignedTwipsMeasure).");
-            EnsureFramePr().X = fpX;
-        }
+            EnsureFramePr().X = FrameTwips(fpX, "framePr.x", signed: true).ToString();
         if (properties.TryGetValue("framePr.y", out var fpY) || properties.TryGetValue("framepr.y", out fpY))
-        {
-            if (!int.TryParse(fpY, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var fyV)
-                || fyV < -31680 || fyV > 31680)
-                throw new ArgumentException($"Invalid 'framePr.y' value: '{fpY}'. Must be a signed integer -31680..31680 (twips, ST_SignedTwipsMeasure).");
-            EnsureFramePr().Y = fpY;
-        }
+            EnsureFramePr().Y = FrameTwips(fpY, "framePr.y", signed: true).ToString();
         if (properties.TryGetValue("framePr.hSpace", out var fpHS) || properties.TryGetValue("framepr.hspace", out fpHS))
-        {
-            if (!uint.TryParse(fpHS, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var fhsV)
-                || fhsV > 31680)
-                throw new ArgumentException($"Invalid 'framePr.hSpace' value: '{fpHS}'. Must be a non-negative integer 0..31680 (twips, ST_TwipsMeasure).");
-            EnsureFramePr().HorizontalSpace = fpHS;
-        }
+            EnsureFramePr().HorizontalSpace = FrameTwips(fpHS, "framePr.hSpace", signed: false).ToString();
         if (properties.TryGetValue("framePr.vSpace", out var fpVS) || properties.TryGetValue("framepr.vspace", out fpVS))
-        {
-            if (!uint.TryParse(fpVS, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var fvsV)
-                || fvsV > 31680)
-                throw new ArgumentException($"Invalid 'framePr.vSpace' value: '{fpVS}'. Must be a non-negative integer 0..31680 (twips, ST_TwipsMeasure).");
-            EnsureFramePr().VerticalSpace = fpVS;
-        }
+            EnsureFramePr().VerticalSpace = FrameTwips(fpVS, "framePr.vSpace", signed: false).ToString();
         if (properties.TryGetValue("framePr.wrap", out var fpWrap) || properties.TryGetValue("framepr.wrap", out fpWrap))
         {
             EnsureFramePr().Wrap = fpWrap.ToLowerInvariant() switch
@@ -956,20 +977,30 @@ public partial class WordHandler
                 else if (IsExplicitFalseAddOverride(bold))
                     rProps.Bold = new Bold { Val = OnOffValue.FromBoolean(false) };
             }
-            if ((properties.TryGetValue("bold.cs", out var boldCs)
-                    || properties.TryGetValue("font.bold.cs", out boldCs))
-                && IsTruthy(boldCs))
-                rProps.BoldComplexScript = new BoldComplexScript();
+            if (properties.TryGetValue("bold.cs", out var boldCs)
+                || properties.TryGetValue("font.bold.cs", out boldCs))
+            {
+                // Mirror the r-level path (BUG-DUMP-BCS-FALSE): an explicit
+                // OFF must land on the generated run too, not only on the
+                // paragraph-mark rPr — an on-only gate dropped the override
+                // and the run re-inherited the style's bold.
+                if (IsTruthy(boldCs)) rProps.BoldComplexScript = new BoldComplexScript();
+                else if (IsExplicitFalseAddOverride(boldCs))
+                    rProps.BoldComplexScript = new BoldComplexScript { Val = OnOffValue.FromBoolean(false) };
+            }
             if (properties.TryGetValue("italic", out var pItalic) || properties.TryGetValue("font.italic", out pItalic))
             {
                 if (IsTruthy(pItalic)) rProps.Italic = new Italic();
                 else if (IsExplicitFalseAddOverride(pItalic))
                     rProps.Italic = new Italic { Val = OnOffValue.FromBoolean(false) };
             }
-            if ((properties.TryGetValue("italic.cs", out var italicCs)
-                    || properties.TryGetValue("font.italic.cs", out italicCs))
-                && IsTruthy(italicCs))
-                rProps.ItalicComplexScript = new ItalicComplexScript();
+            if (properties.TryGetValue("italic.cs", out var italicCs)
+                || properties.TryGetValue("font.italic.cs", out italicCs))
+            {
+                if (IsTruthy(italicCs)) rProps.ItalicComplexScript = new ItalicComplexScript();
+                else if (IsExplicitFalseAddOverride(italicCs))
+                    rProps.ItalicComplexScript = new ItalicComplexScript { Val = OnOffValue.FromBoolean(false) };
+            }
             if (properties.TryGetValue("size.cs", out var sizeCs)
                 || properties.TryGetValue("font.size.cs", out sizeCs))
             {
@@ -3191,24 +3222,30 @@ public partial class WordHandler
         // illegal control chars before constructing Text nodes. Without this, the
         // resident process saves a corrupt DOM and surfaces "save failed — data may
         // be lost" only on close, costing the user their edits.
-        Core.ParseHelpers.ValidateXmlText(text, "text");
+        Core.ParseHelpers.ValidateXmlText(text, "text", allowSoftBreakChar: true);
         // CONSISTENCY(escape-sequences): cross-handler convention — `\n` / `\t`
         // two-char escapes in --prop text= are interpreted as real newline /
         // tab. Mirrors PPTX shape-text and Excel cell-value handling. CRLF/CR
         // collapsed afterwards so all break forms route through <w:br/>.
         // CONSISTENCY(text-escape-boundary): \n / \t resolution at CLI --prop;
         // text arrives with real newlines already, just normalize CR / CRLF.
+        // NEWLINE-SEMANTICS-V2: '\v' is the canonical soft-line-break char
+        // (<w:br/>), matching Word's own object model (Chr(11)) and the
+        // Google Docs API. '\n' still degrades to a soft break HERE because a
+        // run physically cannot span paragraphs — block-level surfaces
+        // (AddParagraph) consume '\n' as a paragraph boundary before text
+        // ever reaches this run-scoped helper.
         var s = text.Replace("\r\n", "\n").Replace("\r", "\n");
         int start = 0;
         for (int i = 0; i < s.Length; i++)
         {
             char c = s[i];
-            if (c == '\n' || c == '\t')
+            if (c == '\n' || c == '\v' || c == '\t')
             {
                 if (i > start)
                     run.AppendChild(new Text(s.Substring(start, i - start)) { Space = SpaceProcessingModeValues.Preserve });
-                if (c == '\n') run.AppendChild(new Break());
-                else run.AppendChild(new TabChar());
+                if (c == '\t') run.AppendChild(new TabChar());
+                else run.AppendChild(new Break());
                 start = i + 1;
             }
         }

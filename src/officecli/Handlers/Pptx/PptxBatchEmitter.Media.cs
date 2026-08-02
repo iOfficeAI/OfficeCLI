@@ -615,14 +615,18 @@ public static partial class PptxBatchEmitter
             int precedingShapeCount = skip
                 ? 0
                 : CountRenderableSiblingsBefore(spTreeRegion, altIdx);
-            // siblings after this AlternateContent in source order — the
-            // replay file lays them out in the same order, so if any
-            // exist we can pin a positional `insertbefore` target. When
-            // none follow (AlternateContent was the last entry), append.
+            // TYPED siblings after this AlternateContent in source order —
+            // those exist on the replay slide before any raw-set runs, so if
+            // any follow we can pin a positional `insertbefore` target. A
+            // following AlternateContent does NOT count: it is emitted after
+            // us in this same loop, so pinning on it forward-references an
+            // element that doesn't exist yet ("XPath matched no elements",
+            // zoom-test / prezi-demo: two consecutive trailing zoom frames).
+            // When only AlternateContent (or nothing) follows, append — the
+            // later blocks also append in source order, preserving layout.
             int followingShapeCount = skip
                 ? 0
-                : CountRenderableSiblingsBefore(spTreeRegion, spTreeRegion.Length)
-                    - precedingShapeCount - 1; // -1 for the AlternateContent itself
+                : CountTypedRenderableSiblingsAfter(spTreeRegion, altEnd);
 
             cursor = altEnd;
             if (skip) continue;
@@ -639,8 +643,41 @@ public static partial class PptxBatchEmitter
             // sample07). Pin the SOURCE rId so the verbatim r:embed resolves.
             var altRids = new HashSet<string>(StringComparer.Ordinal);
             foreach (System.Text.RegularExpressions.Match rm in
-                     System.Text.RegularExpressions.Regex.Matches(slice, @"r:(?:embed|link)=""(rId\d+)"""))
+                     System.Text.RegularExpressions.Regex.Matches(slice, @"r:(?:embed|link)=""([^""]+)"""))
                 altRids.Add(rm.Groups[1].Value);
+
+            // Internal slide-jump links inside the block (<a:hlinkClick
+            // r:id="rIdN" action="…hlinksldjump"> — every zoom frame carries
+            // one next to its preview blip). The verbatim slice keeps the
+            // source rId, but the relationship targets another SLIDE, which
+            // is re-added later in the batch — so DEFER the pinned slide
+            // relationship to the end of the emit (ctx.DeferredLinks replays
+            // after every slide exists). Without this the jump r:id dangled
+            // and the zoom frames were functionally dead (semantic validate
+            // reds on every zoom/prezi deck). Mirrors the table txBodyRaw
+            // slide-jump carrier.
+            try
+            {
+                var altIdRids = new HashSet<string>(StringComparer.Ordinal);
+                foreach (System.Text.RegularExpressions.Match rm in
+                         System.Text.RegularExpressions.Regex.Matches(slice, @"r:id=""([^""]+)"""))
+                    altIdRids.Add(rm.Groups[1].Value);
+                foreach (var (jumpRelId, targetOrd) in ppt.GetSlideInternalSlideJumpRels(slideNum, altIdRids))
+                {
+                    ctx.DeferredLinks.Add(new BatchItem
+                    {
+                        Command = "add-part",
+                        Parent = slidePath,
+                        Type = "sliderel",
+                        Props = new Dictionary<string, string>
+                        {
+                            ["rid"] = jumpRelId,
+                            ["target"] = targetOrd.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        },
+                    });
+                }
+            }
+            catch { /* best-effort */ }
 
             // chartEx blocks (cx: extension charts — funnel/sunburst/treemap):
             // the Choice's <cx:chart r:id> references an ExtendedChartPart that
@@ -806,6 +843,42 @@ public static partial class PptxBatchEmitter
             else
             {
                 if (depth == 0 && renderable.Contains(tag)) count++;
+                if (!isSelfClose) depth++;
+            }
+        }
+        return count;
+    }
+
+    // Depth-0 TYPED renderable children (sp/pic/cxnSp/graphicFrame/grpSp —
+    // excluding mc:AlternateContent) at or after <paramref name="afterOffset"/>.
+    // Used to decide insertbefore vs append for a raw AlternateContent slice:
+    // typed elements are created by the semantic walk BEFORE any raw-set runs,
+    // so they are valid positional anchors — a later AlternateContent sibling
+    // is NOT (it is emitted after us in the same loop), and pinning on it
+    // forward-references an element that doesn't exist yet at execution time.
+    private static int CountTypedRenderableSiblingsAfter(string spTreeRegion, int afterOffset)
+    {
+        var rx = new System.Text.RegularExpressions.Regex(
+            @"<(/?)(p:sp|p:pic|p:cxnSp|p:graphicFrame|p:grpSp|mc:AlternateContent|mc:Choice|mc:Fallback)\b([^>]*?)(/?)>",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+        int depth = 0;
+        int count = 0;
+        var typed = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "p:sp", "p:pic", "p:cxnSp", "p:graphicFrame", "p:grpSp",
+        };
+        foreach (System.Text.RegularExpressions.Match m in rx.Matches(spTreeRegion))
+        {
+            bool isClose = m.Groups[1].Value == "/";
+            string tag = m.Groups[2].Value;
+            bool isSelfClose = m.Groups[4].Value == "/";
+            if (isClose)
+            {
+                depth--;
+            }
+            else
+            {
+                if (depth == 0 && m.Index >= afterOffset && typed.Contains(tag)) count++;
                 if (!isSelfClose) depth++;
             }
         }

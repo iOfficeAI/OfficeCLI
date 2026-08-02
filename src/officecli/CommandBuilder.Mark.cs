@@ -368,5 +368,5 @@ static partial class CommandBuilder
     }
 
     private static string Truncate(string s, int max)
-        => s.Length <= max ? s : s.Substring(0, max - 1) + "…";
+        => s.Length <= max ? s : OfficeCli.Core.DisplayText.Truncate(s, max - 1);
 }

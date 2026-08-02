@@ -847,15 +847,21 @@ internal static partial class ChartHelper
                 var valEl = ser.GetFirstChild<C.Values>();
                 if (valEl != null)
                 {
-                    valEl.RemoveAllChildren();
+                    // ATOMICITY: build (and fully validate) the replacement
+                    // content BEFORE touching the existing <c:val>. The old code
+                    // called RemoveAllChildren() first, so a rejected token
+                    // (e.g. a named range like "SalesRange", which is neither a
+                    // Sheet!ref nor a number list) threw AFTER emptying <c:val>,
+                    // leaving a schema-invalid empty element that real Excel
+                    // refuses to open (0x800A03EC) — and it persisted on save
+                    // even though the CLI reported an error.
+                    C.Values builtVals;
                     if (value.Contains('!'))
                     {
                         // Cell reference: e.g. Sheet1!B2:B4 — normalize so a
                         // sheet name that needs quoting (spaces, hyphens, leading
                         // digit) is quoted, matching the Add path.
-                        var builtVals = BuildValuesRef(NormalizeRangeReference(value));
-                        foreach (var child in builtVals.ChildElements.ToList())
-                            valEl.AppendChild(child.CloneNode(true));
+                        builtVals = BuildValuesRef(NormalizeRangeReference(value));
                     }
                     else
                     {
@@ -883,10 +889,12 @@ internal static partial class ChartHelper
                                     { Code = "invalid_value" };
                             nums[ti] = d;
                         }
-                        var builtVals = BuildValues(nums);
-                        foreach (var child in builtVals.ChildElements.ToList())
-                            valEl.AppendChild(child.CloneNode(true));
+                        builtVals = BuildValues(nums);
                     }
+                    // Validation passed — now safe to swap the content in.
+                    valEl.RemoveAllChildren();
+                    foreach (var child in builtVals.ChildElements.ToList())
+                        valEl.AppendChild(child.CloneNode(true));
                 }
                 return true;
             }

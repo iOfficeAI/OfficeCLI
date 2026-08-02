@@ -375,7 +375,7 @@ static partial class CommandBuilder
         if (string.IsNullOrEmpty(text)) return "(empty)";
         var t = text.Replace("\\", "\\\\").Replace("\t", "\\t")
                     .Replace("\r", "").Replace("\n", "\\n").Replace("\"", "\\\"");
-        if (t.Length > 60) t = t[..60] + "…";
+        t = OfficeCli.Core.DisplayText.Truncate(t, 60);
         return "\"" + t + "\"";
     }
 

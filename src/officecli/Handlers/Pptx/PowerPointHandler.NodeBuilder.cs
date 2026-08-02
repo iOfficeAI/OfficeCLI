@@ -911,7 +911,7 @@ public partial class PowerPointHandler
         node.Format["name"] = name;
         if (phTypeStr != null) node.Format["phType"] = phTypeStr;
         // Store the placeholder idx as its raw uint, NOT (int). Decks (often
-        // WPS/Kingsoft-authored) use high idx values up to uint.MaxValue
+        // authored by third-party editors) use high idx values up to uint.MaxValue
         // (4294967295); an (int) cast overflows that to -1, which AddPlaceholder's
         // uint.TryParse then rejects → the placeholder auto-assigns a fresh idx,
         // binds to the WRONG layout slot, and loses all inherited font/size/color

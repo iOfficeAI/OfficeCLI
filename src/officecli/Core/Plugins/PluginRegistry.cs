@@ -264,6 +264,9 @@ public static class PluginRegistry
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
+                    // CONSISTENCY(child-stream-encoding): see BlankDocCreator.
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
                     CreateNoWindow = true,
                 }
             };

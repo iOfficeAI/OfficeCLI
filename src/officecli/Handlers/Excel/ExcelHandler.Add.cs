@@ -216,6 +216,11 @@ public partial class ExcelHandler
             if (ReferenceEquals(afterAnchor, sheetEl) || ReferenceEquals(beforeAnchor, sheetEl))
                 return $"/{sheetName}";
 
+            // localSheetId on <definedName> is a 0-based position into
+            // <sheets>; capture the pre-move order so scoped names can be
+            // remapped to the sheets' new positions after the reorder.
+            var preMoveOrder = sheets.Elements<Sheet>().ToList();
+
             sheetEl.Remove();
 
             if (afterAnchor != null)
@@ -235,6 +240,28 @@ public partial class ExcelHandler
                 else
                     sheets.AppendChild(sheetEl);
             }
+
+            // Remap sheet-scoped defined names (printArea, print titles,
+            // scoped named ranges) from old positions to new ones — an
+            // unremapped localSheetId silently rebinds the name to whatever
+            // sheet now occupies the old position.
+            var postMoveOrder = sheets.Elements<Sheet>().ToList();
+            var definedNames = workbook.GetFirstChild<DefinedNames>();
+            if (definedNames != null)
+            {
+                foreach (var dn in definedNames.Elements<DefinedName>())
+                {
+                    var lid = dn.LocalSheetId?.Value;
+                    if (lid == null || lid >= preMoveOrder.Count) continue;
+                    var newIdx = postMoveOrder.IndexOf(preMoveOrder[(int)lid.Value]);
+                    if (newIdx >= 0 && newIdx != lid.Value) dn.LocalSheetId = (uint)newIdx;
+                }
+            }
+
+            // Mark the document modified so Dispose flushes it. Without this,
+            // a `using (h) h.Move(...)` (no explicit Save) is silently dropped
+            // by the !Modified byte-preserving discard path in Dispose.
+            Modified = true;
             workbook.Save();
             return $"/{sheetName}";
         }
@@ -327,6 +354,9 @@ public partial class ExcelHandler
             if (targetSheetData != sheetData)
                 tgtOldIdx = targetSheetData.Elements<Row>().ToDictionary(r => r, r => (int)(r.RowIndex?.Value ?? 0));
 
+            // Mark modified before the first irreversible mutation so Dispose
+            // flushes (the !Modified path would otherwise discard the move).
+            Modified = true;
             row.Remove();
 
             if (targetIndex.HasValue)
@@ -433,6 +463,10 @@ public partial class ExcelHandler
                 // No-op: moving a col to its own slot or right after itself.
                 return $"/{sheetName}/col[{srcColLetter}]";
             }
+
+            // Mark modified before mutating so Dispose flushes (past the no-op
+            // early return above; the !Modified path would else discard the move).
+            Modified = true;
 
             // Build the col renumber map. Two cases:
             //   src < target: cols (src+1)..(target-1) shift left by 1; src moves to (target-1).
@@ -685,6 +719,10 @@ public partial class ExcelHandler
         // so cachedValue stays consistent with the formula.
         var oldIdx = sheetData.Elements<Row>().ToDictionary(r => r, r => (int)(r.RowIndex?.Value ?? 0));
 
+        // Mark modified before the swap so Dispose flushes it (the !Modified
+        // byte-preserving discard path would otherwise drop the whole swap).
+        Modified = true;
+
         // Physically exchange the two rows in document order, then renumber by
         // document order — mirrors Move's reposition + RenumberRowsAndCellRefs.
         PowerPointHandler.SwapXmlElements(row1, row2);
@@ -856,6 +894,9 @@ public partial class ExcelHandler
                 }
             }
 
+            // Mark modified so Dispose flushes the copy (the !Modified
+            // byte-preserving discard path would otherwise drop it).
+            Modified = true;
             SaveWorksheet(tgtWorksheet);
             return $"{targetParentPath}/row[{newRowIndex}]";
         }
@@ -1005,6 +1046,9 @@ public partial class ExcelHandler
                 tgtMergeCells.Count = (uint)tgtMergeCells.Elements<MergeCell>().Count();
             }
 
+            // Mark modified so Dispose flushes the copy (the !Modified
+            // byte-preserving discard path would otherwise drop it).
+            Modified = true;
             DeleteCalcChainIfPresent();
             SaveWorksheet(tgtWorksheet);
             return $"{targetParentPath}/col[{targetColLetter}]";
@@ -1062,6 +1106,89 @@ public partial class ExcelHandler
 
                 var chartIdx = drawingsPart.ChartParts.ToList().IndexOf(chartPart);
                 return (relId, $"/{sheetName}/chart[{chartIdx + 1}]");
+
+            case "drawing-group":
+            {
+                // Verbatim DrawingML group carrier for xlsx dump→batch.
+                // The full hosting anchor is preserved because flattening a
+                // <xdr:grpSp> loses the child coordinate system, z-order,
+                // styles and the fact that the objects are grouped. Only
+                // hyperlink relationships are carried here; dump falls back
+                // to semantic leaf shapes when a group references package
+                // parts such as images/charts.
+                var groupSheetName = parentPartPath.TrimStart('/');
+                var groupWorksheet = FindWorksheet(groupSheetName)
+                    ?? throw new ArgumentException(
+                        $"Sheet not found: {groupSheetName}. drawing-group must be added under a sheet.");
+                properties ??= new Dictionary<string, string>();
+                var anchorXml = properties.GetValueOrDefault("anchor-xml")
+                    ?? throw new ArgumentException(
+                        "'anchor-xml' property is required for drawing-group (verbatim xdr anchor XML)");
+
+                XDR.TwoCellAnchor groupAnchor;
+                try
+                {
+                    groupAnchor = new XDR.TwoCellAnchor(anchorXml);
+                }
+                catch (Exception ex)
+                {
+                    throw new ArgumentException(
+                        $"drawing-group anchor XML is not a valid xdr:twoCellAnchor: {ex.Message}", ex);
+                }
+                if (groupAnchor.GetFirstChild<XDR.GroupShape>() == null)
+                    throw new ArgumentException(
+                        "drawing-group anchor XML must contain a top-level xdr:grpSp.");
+
+                List<DumpDrawingHyperlinkSpec> groupHyperlinks;
+                try
+                {
+                    groupHyperlinks = DecodeDumpDrawingHyperlinks(
+                        properties.GetValueOrDefault("hyperlinks") ?? "");
+                }
+                catch (FormatException ex)
+                {
+                    throw new ArgumentException(
+                        $"drawing-group 'hyperlinks' carrier is invalid: {ex.Message}", ex);
+                }
+
+                Modified = true;
+                var groupDrawingsPart = groupWorksheet.DrawingsPart
+                    ?? groupWorksheet.AddNewPart<DrawingsPart>();
+                if (groupDrawingsPart.WorksheetDrawing == null)
+                {
+                    groupDrawingsPart.WorksheetDrawing = new XDR.WorksheetDrawing();
+                    groupDrawingsPart.WorksheetDrawing.Save();
+                }
+                var groupSheet = GetSheet(groupWorksheet);
+                if (groupSheet.GetFirstChild<SpreadsheetDrawing>() == null)
+                {
+                    var drawingRelId = groupWorksheet.GetIdOfPart(groupDrawingsPart);
+                    groupSheet.Append(new SpreadsheetDrawing { Id = drawingRelId });
+                    SaveWorksheet(groupWorksheet);
+                }
+
+                // Relationship IDs are scoped to the destination drawing part.
+                // Create fresh IDs (avoids collisions with pictures/charts
+                // emitted earlier), then rewrite every r:id/r:embed/r:link in
+                // the verbatim group anchor that referenced the source ID.
+                foreach (var hyperlink in groupHyperlinks)
+                {
+                    if (string.IsNullOrEmpty(hyperlink.Id) || string.IsNullOrEmpty(hyperlink.Target))
+                        throw new ArgumentException(
+                            "drawing-group hyperlink entries require non-empty Id and Target.");
+                    var uri = new Uri(hyperlink.Target, UriKind.RelativeOrAbsolute);
+                    var replayRel = groupDrawingsPart.AddHyperlinkRelationship(
+                        uri, hyperlink.IsExternal);
+                    RemapDrawingRelationshipId(groupAnchor, hyperlink.Id, replayRel.Id);
+                }
+
+                groupDrawingsPart.WorksheetDrawing.AppendChild(groupAnchor);
+                groupDrawingsPart.WorksheetDrawing.Save();
+                var groupIndex = groupDrawingsPart.WorksheetDrawing
+                    .Elements<XDR.TwoCellAnchor>()
+                    .Count(a => a.GetFirstChild<XDR.GroupShape>() != null);
+                return ("group", $"/{groupSheetName}/group[{groupIndex}]");
+            }
 
             case "chartex":
             {
@@ -1235,7 +1362,24 @@ public partial class ExcelHandler
 
             default:
                 throw new ArgumentException(
-                    $"Unknown part type: {partType}. Supported: chart, chartex, ole");
+                    $"Unknown part type: {partType}. Supported: chart, chartex, drawing-group, ole");
+        }
+    }
+
+    private static void RemapDrawingRelationshipId(
+        OpenXmlElement root, string sourceId, string destinationId)
+    {
+        const string relNs =
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        foreach (var element in root.Descendants().Prepend(root))
+        {
+            foreach (var attr in element.GetAttributes()
+                .Where(a => a.NamespaceUri == relNs && a.Value == sourceId)
+                .ToList())
+            {
+                element.SetAttribute(new OpenXmlAttribute(
+                    attr.Prefix, attr.LocalName, attr.NamespaceUri, destinationId));
+            }
         }
     }
 

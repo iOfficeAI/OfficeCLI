@@ -104,6 +104,22 @@ public partial class ExcelHandler
         {
             var refSheet = sheets.Elements<Sheet>().ElementAt(pos);
             sheets.InsertBefore(newSheet, refSheet);
+
+            // localSheetId on <definedName> is a 0-based position into
+            // <sheets>; inserting mid-list shifts every sheet at/after the
+            // insert point up by one, so scoped names (printArea, print
+            // titles, scoped named ranges) must shift with them or they
+            // silently rebind to the sheet now occupying the old position.
+            var definedNames = GetWorkbook().GetFirstChild<DefinedNames>();
+            if (definedNames != null)
+            {
+                foreach (var dn in definedNames.Elements<DefinedName>())
+                {
+                    var lid = dn.LocalSheetId?.Value;
+                    if (lid.HasValue && lid.Value >= (uint)pos)
+                        dn.LocalSheetId = lid.Value + 1;
+                }
+            }
         }
         else
         {
@@ -867,6 +883,21 @@ public partial class ExcelHandler
             }
         }
 
+        // In-cell image ("Place in Cell" richValue) during Add — parity with
+        // the Set cell `image=` case (ExcelHandler.Set.Cells.cs).
+        if (properties.TryGetValue("image", out var inCellImg) && !string.IsNullOrEmpty(inCellImg)
+            && !inCellImg.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            // CONSISTENCY(picture-alt): same alt aliases as the picture element.
+            var inCellAlt = properties.GetValueOrDefault("alt")
+                ?? properties.GetValueOrDefault("altText")
+                ?? properties.GetValueOrDefault("alttext")
+                ?? properties.GetValueOrDefault("description")
+                ?? properties.GetValueOrDefault("image.alt");
+            if (inCellAlt != null) Core.ParseHelpers.ValidateXmlText(inCellAlt, "alt");
+            SetInCellImage(cell, inCellImg, inCellAlt);
+        }
+
         // CONSISTENCY(cell-prop-hints): mirror Set's CellPropHints check
         // here. Before the style filter runs, flag any ambiguous flat
         // keys (e.g. `color` — is it font.color or fill?) as unsupported.
@@ -1310,12 +1341,17 @@ public partial class ExcelHandler
             rowBreaks = new RowBreaks();
             rbWs.AppendChild(rowBreaks);
         }
-        rowBreaks.AppendChild(new Break
-        {
-            Id = rbRowIdx,
-            Max = 16383u,
-            ManualPageBreak = true
-        });
+        // Optional restricted column span (min/max) — mirrors the Set path so a
+        // dump-emitted `add rowbreak row=N min=.. max=..` reproduces a
+        // non-full-width break. Defaults to full width (max 16383) when absent.
+        var rbBreak = new Break { Id = rbRowIdx, Max = 16383u, ManualPageBreak = true };
+        if (properties.TryGetValue("min", out var rbMinS) && uint.TryParse(rbMinS, out var rbMin))
+            rbBreak.Min = rbMin;
+        if (properties.TryGetValue("max", out var rbMaxS) && uint.TryParse(rbMaxS, out var rbMax))
+            rbBreak.Max = rbMax;
+        if (properties.TryGetValue("manual", out var rbMan))
+            rbBreak.ManualPageBreak = IsTruthy(rbMan);
+        rowBreaks.AppendChild(rbBreak);
         rowBreaks.Count = (uint)rowBreaks.Elements<Break>().Count();
         rowBreaks.ManualBreakCount = rowBreaks.Count;
         SaveWorksheet(rbWorksheet);
@@ -1353,12 +1389,15 @@ public partial class ExcelHandler
             colBreaks = new ColumnBreaks();
             cbWs.AppendChild(colBreaks);
         }
-        colBreaks.AppendChild(new Break
-        {
-            Id = cbColIdx,
-            Max = 1048575u,
-            ManualPageBreak = true
-        });
+        // Optional restricted row span (min/max) — mirrors the Set path.
+        var cbBreak = new Break { Id = cbColIdx, Max = 1048575u, ManualPageBreak = true };
+        if (properties.TryGetValue("min", out var cbMinS) && uint.TryParse(cbMinS, out var cbMin))
+            cbBreak.Min = cbMin;
+        if (properties.TryGetValue("max", out var cbMaxS) && uint.TryParse(cbMaxS, out var cbMax))
+            cbBreak.Max = cbMax;
+        if (properties.TryGetValue("manual", out var cbMan))
+            cbBreak.ManualPageBreak = IsTruthy(cbMan);
+        colBreaks.AppendChild(cbBreak);
         colBreaks.Count = (uint)colBreaks.Elements<Break>().Count();
         colBreaks.ManualBreakCount = colBreaks.Count;
         SaveWorksheet(cbWorksheet);

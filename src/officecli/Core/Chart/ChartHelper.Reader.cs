@@ -326,6 +326,18 @@ internal static partial class ChartHelper
                 "tr" => "topRight",
                 _ => posRaw
             };
+            // Per-entry legend deletion (<c:legendEntry><c:idx/><c:delete val="1"/>).
+            // The Setter writes these (legendEntry{N}.delete) but the Reader had
+            // no read site, so the Get-driven dump silently reverted a hidden
+            // legend entry on round-trip. Key uses 1-based ordinal = source idx+1,
+            // matching the Setter's legendEntry{N} parse (N → idx N-1).
+            foreach (var le in legend.Elements<C.LegendEntry>())
+            {
+                var leIdx = le.GetFirstChild<C.Index>()?.Val;
+                var leDel = le.GetFirstChild<C.Delete>()?.Val;
+                if (leDel?.HasValue == true && leDel.Value && leIdx?.HasValue == true)
+                    node.Format[$"legendEntry{leIdx.Value + 1}.delete"] = "true";
+            }
         }
         else
         {
@@ -482,6 +494,31 @@ internal static partial class ChartHelper
         // readback the source's element silently dropped on dump→replay.
         if (barChart?.GetFirstChild<C.SeriesLines>() != null)
             node.Format["serLines"] = "true";
+
+        // gapDepth (3D bar/line/area chart depth spacing). Setter writes
+        // <c:gapDepth> on the 3D chart group but the Reader had no read site,
+        // so dump→replay dropped it. Only present on 3D charts, so Descendants
+        // is unambiguous; emit only when the element exists (non-default).
+        var gapDepthEl = plotArea.Descendants<C.GapDepth>().FirstOrDefault();
+        if (gapDepthEl?.Val?.HasValue == true)
+            node.Format["gapDepth"] = gapDepthEl.Val.Value.ToString();
+
+        // Category-axis position (<c:catAx><c:axPos>). Setter's axisPosition
+        // writes it on the category axis; the Reader never read it back, so a
+        // non-default (top/left/right) tick position reverted to the bottom
+        // default on dump→replay. axPos is a required element (always present),
+        // so emit only when it differs from the category-axis default "b" to
+        // avoid newly stamping axisPosition onto every existing chart's dump.
+        var catAxisPos = plotArea.GetFirstChild<C.CategoryAxis>()
+            ?.GetFirstChild<C.AxisPosition>()?.Val;
+        if (catAxisPos?.HasValue == true && catAxisPos.InnerText != "b")
+            node.Format["axisPosition"] = catAxisPos.InnerText switch
+            {
+                "t" => "top",
+                "l" => "left",
+                "r" => "right",
+                _ => "bottom",
+            };
 
         // CONSISTENCY(bar3d-shape): emit barShape so Set/Add shape=cone|cylinder|...
         // round-trips through Get. Lives on <c:bar3DChart><c:shape>.
@@ -1329,6 +1366,16 @@ internal static partial class ChartHelper
                     if (dispRSqr?.HasValue == true && dispRSqr.Value) seriesNode.Format["trendline.dispRSqr"] = "true";
                     var dispEq = firstTl.GetFirstChild<C.DisplayEquation>()?.Val;
                     if (dispEq?.HasValue == true && dispEq.Value) seriesNode.Format["trendline.dispEq"] = "true";
+                    // Forecast forward/backward + manual intercept. Previously
+                    // unread, so dump→replay silently dropped them even though
+                    // the Setter accepts trendline.forecastforward/backward/
+                    // intercept. Emitted below via the chart-level fan-out keys.
+                    var fwd = firstTl.GetFirstChild<C.Forward>()?.Val;
+                    if (fwd?.HasValue == true) seriesNode.Format["trendline.forward"] = fwd.Value;
+                    var bwd = firstTl.GetFirstChild<C.Backward>()?.Val;
+                    if (bwd?.HasValue == true) seriesNode.Format["trendline.backward"] = bwd.Value;
+                    var icpt = firstTl.GetFirstChild<C.Intercept>()?.Val;
+                    if (icpt?.HasValue == true) seriesNode.Format["trendline.intercept"] = icpt.Value;
                     // CONSISTENCY(trendline-name-readback): the Setter writes
                     // a <c:trendlineLbl> with rich-text holding the user's
                     // name. Pull the text content back for Get parity.

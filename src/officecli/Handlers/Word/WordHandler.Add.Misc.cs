@@ -380,6 +380,70 @@ public partial class WordHandler
         return resultPath;
     }
 
+    // P2 (bookmarkEnd typed support): place a STANDALONE <w:bookmarkEnd w:id=N>
+    // at an arbitrary position. `add bookmark --prop end=true` only closes a
+    // start that the current batch opened by NAME; a code generator replaying a
+    // dump often has just the id-keyed end node (start added by a separate op,
+    // or the end sits across a structural boundary the name-match can't reach),
+    // and previously fell through to AddDefault (schema-invalid unnamespaced
+    // attrs). This is the id-explicit counterpart to AddBookmark's end=true
+    // branch. `id` is required (the bookmark id to close); `name` optionally
+    // resolves the id from an existing start. EnsureBookmarkIds pairs it to the
+    // matching start at flush and never deletes an unmatched end.
+    private string AddBookmarkEnd(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
+    {
+        // Cell redirect mirrors AddBookmark: a bookmarkEnd is inline content, so
+        // land it in the cell's first paragraph (cells only accept block-level
+        // children), keeping the returned path round-trippable.
+        if (parent is TableCell tc)
+        {
+            var firstPara = tc.Elements<Paragraph>().FirstOrDefault();
+            if (firstPara == null)
+            {
+                firstPara = new Paragraph();
+                AssignParaId(firstPara);
+                tc.AppendChild(firstPara);
+            }
+            var paraIdx = PathIndex.FromArrayIndex(tc.Elements<Paragraph>().ToList().IndexOf(firstPara));
+            parent = firstPara;
+            parentPath = $"{parentPath}/{BuildParaPathSegment(firstPara, paraIdx)}";
+            index = null;
+        }
+
+        var idVal = properties.GetValueOrDefault("id", "");
+        var name = properties.GetValueOrDefault("name", "");
+        if (string.IsNullOrEmpty(idVal) && !string.IsNullOrEmpty(name))
+        {
+            // Resolve the id from the last same-name start that has no end yet
+            // (LIFO close for nested same-name bookmarks), falling back to the
+            // last named start — mirrors AddBookmark's end=true selection.
+            var body = _doc.MainDocumentPart?.Document?.Body;
+            var namedStarts = body?.Descendants<BookmarkStart>()
+                .Where(bs => string.Equals(bs.Name?.Value, name, StringComparison.Ordinal) && bs.Id?.Value != null)
+                .ToList() ?? new List<BookmarkStart>();
+            var openStart = namedStarts
+                .Where(bs => !(body?.Descendants<BookmarkEnd>().Any(be => be.Id?.Value == bs.Id!.Value) ?? false))
+                .LastOrDefault() ?? namedStarts.LastOrDefault();
+            if (openStart == null)
+                throw new ArgumentException(
+                    $"bookmarkEnd by name '{name}' found no matching bookmarkStart. " +
+                    "Pass --prop id=N to place the end by explicit id, or add the start first.");
+            idVal = openStart.Id!.Value!;
+        }
+        if (string.IsNullOrEmpty(idVal))
+            throw new ArgumentException(
+                "bookmarkEnd requires --prop id=N (the bookmark id to close) or --prop name=NAME (to resolve the id from an existing start).");
+        if (!int.TryParse(idVal, out _))
+            throw new ArgumentException($"bookmarkEnd id must be an integer (got '{idVal}').");
+
+        var endOnly = new BookmarkEnd { Id = idVal };
+        if (parent is Paragraph endPara)
+            InsertIntoParagraph(endPara, new OpenXmlElement[] { endOnly }, index);
+        else
+            InsertAtIndexOrAppend(parent, endOnly, index);
+        return $"{parentPath}/bookmarkEnd[@id={idVal}]";
+    }
+
     private string AddBookmark(OpenXmlElement parent, string parentPath, int? index, Dictionary<string, string> properties)
     {
         var body = _doc.MainDocumentPart?.Document?.Body
@@ -690,8 +754,8 @@ public partial class WordHandler
         // value when the raw name would otherwise be rejected so the returned
         // path is round-trippable via `get`/`add --after`.
         // BUG-R3 (dump emits a name its own batch rejects): a name with an
-        // embedded double-quote (legal in OOXML w:name, e.g. LibreOffice's
-        // "Fast_math"_optimization) cannot be expressed as an attribute
+        // embedded double-quote (legal in OOXML w:name, e.g. a
+        // "Fast_math"_optimization name from some editors) cannot be expressed as an attribute
         // selector value in EITHER the bare or double-quoted form. The
         // bookmark itself is already in the document at this point; only the
         // navigable RETURN path can't carry the name. Fall back to a positional

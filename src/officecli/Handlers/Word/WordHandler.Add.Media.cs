@@ -452,20 +452,23 @@ public partial class WordHandler
         // emit the long alt text as the name. Take them separately; fall
         // back through name → alt → DefaultPictureName so callers passing
         // only one still get a sensible result.
+        // CONSISTENCY(picture-alt): full alias set on input (alt canonical;
+        // altText/alttext/description aliases), matching Set and the shared
+        // picture schema contract. Set already accepted alttext/description —
+        // Add silently ignoring them was an Add/Set asymmetry.
+        var altFromProps = new[] { "alt", "altText", "alttext", "description" }
+            .Select(k => properties.GetValueOrDefault(k))
+            .FirstOrDefault(v => !string.IsNullOrEmpty(v));
         var pictureName = properties.TryGetValue("name", out var nameOverride) && !string.IsNullOrEmpty(nameOverride)
             ? nameOverride
-            : (properties.TryGetValue("alt", out var altOverride) && !string.IsNullOrEmpty(altOverride)
-                ? altOverride
-                : DefaultPictureName());
+            : (altFromProps ?? DefaultPictureName());
         // altText: explicit `alt=` wins. When absent, leave the Description
         // attribute blank — auto-stamping `altText = pictureName` meant Get
         // surfaced a phantom `alt=<name>` key on dump round-trip for sources
         // whose docPr had no Description (07_example_online_convert.docx).
         // Empty string keeps the OOXML attr off entirely (DocProperties
         // serialises Description="" as no attr).
-        var altText = properties.TryGetValue("alt", out var altOverride2) && !string.IsNullOrEmpty(altOverride2)
-            ? altOverride2
-            : "";
+        var altText = altFromProps ?? "";
 
         var imgDocPropId = NextDocPropId();
         // BUG-DUMP-R29-1: parse the optional effectExtent prop ("l,t,r,b", 4

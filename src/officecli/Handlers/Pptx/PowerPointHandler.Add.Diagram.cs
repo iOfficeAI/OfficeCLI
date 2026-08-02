@@ -192,8 +192,19 @@ public partial class PowerPointHandler
     private string AddDiagramAsImage(string parentPath, int? index, Dictionary<string, string> properties,
                                      string mermaidText, bool allowNativeFallback)
     {
+        // Bake theme/layout/look into the source as frontmatter so they render and
+        // round-trip via alt-text (the composed source is what gets stamped). The
+        // image backend renders elk/handDrawn/themes at full fidelity. The native
+        // fallback keeps the ORIGINAL source — its parser has no frontmatter/elk
+        // support and would emit garbage nodes from the `---` lines.
+        var composedText = MermaidImageRenderer.ComposeSource(mermaidText,
+            properties.GetValueOrDefault("theme"),
+            properties.GetValueOrDefault("layout"),
+            properties.GetValueOrDefault("look"));
+        var background = properties.GetValueOrDefault("background");
+
         string imgPath;
-        try { imgPath = MermaidImageRenderer.RenderToPngFile(mermaidText); }
+        try { imgPath = MermaidImageRenderer.RenderToPngFile(composedText, background); }
         // A syntax error is bad input — surface it (with mermaid's line-numbered
         // message) so the caller can fix the source. Never fall back to native: the
         // synthesizer would reject the same broken text or, worse, draw garbage.
@@ -202,11 +213,14 @@ public partial class PowerPointHandler
         try
         {
             var pic = new Dictionary<string, string>(properties);
-            foreach (var k in new[] { "mermaid", "text", "dsl", "src", "path", "render", "poster" })
+            foreach (var k in new[] { "mermaid", "text", "dsl", "src", "path", "render", "poster",
+                                      "theme", "layout", "look", "background" })
                 pic.Remove(k);
             pic["src"] = imgPath;
+            // Stamp the COMPOSED source (frontmatter included) so theme/layout/look
+            // travel in the document and a regenerate reproduces the same styling.
             if (!(pic.TryGetValue("alt", out var a) && !string.IsNullOrEmpty(a)))
-                pic["alt"] = MermaidImageRenderer.SourceTag + mermaidText;
+                pic["alt"] = MermaidImageRenderer.SourceTag + composedText;
 
             // Sizing parity with the native path: the diagram is ALWAYS scaled to FIT
             // its box with aspect preserved (a mermaid diagram is never stretched).
@@ -217,6 +231,45 @@ public partial class PowerPointHandler
             {
                 using var s = System.IO.File.OpenRead(imgPath);
                 var dims = OfficeCli.Core.ImageSource.TryGetDimensions(s);
+
+                // poster resolution. Explicit poster=true always grows the slide;
+                // poster=false always fits one slide. When poster is UNSET, the
+                // ADAPTIVE DEFAULT grows the slide only when fitting the diagram to
+                // the slide would shrink it below the readability floor (a long
+                // flowchart otherwise becomes a 1cm sliver) — a normal diagram still
+                // fits the slide unchanged. Auto-poster stands down when the caller
+                // pinned an explicit box (x/y/width/height): that is an explicit
+                // placement request, honor it.
+                bool posterSet = properties.ContainsKey("poster");
+                bool posterOn = OfficeCli.Core.ParseHelpers.IsTruthy(properties.GetValueOrDefault("poster"));
+                bool hasExplicitBox = pic.ContainsKey("width") || pic.ContainsKey("height")
+                                      || pic.ContainsKey("x") || pic.ContainsKey("y");
+                bool grow = posterOn;
+                if (!posterSet && !hasExplicitBox && dims is { Width: > 0, Height: > 0 } ad)
+                {
+                    var (sw0, sh0) = GetSlideSize();
+                    double m0 = 0.6 * CmToEmu;
+                    grow = OfficeCli.Core.Diagram.MermaidImageRenderer.ExceedsOnePageReadably(
+                        ad.Width, ad.Height, (sw0 - 2 * m0) / CmToEmu, (sh0 - 2 * m0) / CmToEmu);
+                }
+
+                // Grow the SLIDE to the whole diagram. The raster px are read as
+                // 96-DPI CSS pixels; both axes are clamped, aspect preserved, to
+                // PowerPoint's maximum slide edge (56in / 142.24cm) so an extremely
+                // long chart yields a valid — if tall — single slide rather than a
+                // file PowerPoint refuses to open.
+                if (grow && dims is { Width: > 0, Height: > 0 } pd)
+                {
+                    double wCm = pd.Width / 96.0 * 2.54, hCm = pd.Height / 96.0 * 2.54;
+                    double clamp = Math.Min(1.0, MaxSlideEdgeCm / Math.Max(wCm, hCm));
+                    wCm *= clamp; hCm *= clamp;
+                    SetSlideSizeCm(wCm, hCm);
+                    long cxp = (long)(wCm * CmToEmu), cyp = (long)(hCm * CmToEmu);
+                    pic["x"] = "0"; pic["y"] = "0";
+                    pic["width"] = cxp.ToString();
+                    pic["height"] = cyp.ToString();
+                    return AddPicture(parentPath, index, pic);
+                }
                 if (dims is { Width: > 0, Height: > 0 } d)
                 {
                     var (sw, sh) = GetSlideSize();
@@ -327,10 +380,18 @@ public partial class PowerPointHandler
         return Math.Min(w, 5.0) + 0.4;
     }
 
+    // PowerPoint refuses to open a deck whose slide edge exceeds 56 inches
+    // (=142.24cm =51206400 EMU). poster sizing clamps to this.
+    private const double MaxSlideEdgeCm = 142.24;
+
     private void SetSlideSizeCm(double wCm, double hCm)
     {
         var pres = _doc?.PresentationPart?.Presentation;
         if (pres == null) return;
+        // Clamp each edge to PowerPoint's maximum so an oversized poster (a very
+        // long flowchart grown to its natural size) still yields an openable file.
+        wCm = Math.Min(wCm, MaxSlideEdgeCm);
+        hCm = Math.Min(hCm, MaxSlideEdgeCm);
         pres.SlideSize ??= new SlideSize();
         pres.SlideSize.Cx = (int)Math.Round(wCm * CmToEmu);
         pres.SlideSize.Cy = (int)Math.Round(hCm * CmToEmu);

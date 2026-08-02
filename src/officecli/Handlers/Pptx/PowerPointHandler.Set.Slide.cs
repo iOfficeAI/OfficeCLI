@@ -46,7 +46,7 @@ public partial class PowerPointHandler
         {
             if (key.Equals("text", StringComparison.OrdinalIgnoreCase))
             {
-                XmlTextValidator.ValidateOrThrow(value, "text");
+                XmlTextValidator.ValidateOrThrow(value, "text", allowSoftBreakChar: true);
                 SetNotesText(notesPart, value);
             }
             else if (key.Equals("direction", StringComparison.OrdinalIgnoreCase)

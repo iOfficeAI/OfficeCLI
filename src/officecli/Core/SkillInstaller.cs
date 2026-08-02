@@ -34,7 +34,7 @@ internal static class SkillInstaller
         (["pi", "pi-agent"],              "Pi",             ".pi",                  Path.Combine(".pi", "agent", "skills")),
         (["windsurf"],                    "Windsurf",       ".windsurf",            Path.Combine(".windsurf", "skills")),
         (["minimax", "minimax-cli"],      "MiniMax CLI",    ".minimax",             Path.Combine(".minimax", "skills")),
-        (["opencode"],                    "OpenCode",       ".opencode",            Path.Combine(".opencode", "skills")),
+        (["opencode"],                    "OpenCode",       Path.Combine(".config", "opencode"), Path.Combine(".config", "opencode", "skills")),
         (["hermes", "hermes-agent"],      "Hermes Agent",   ".hermes",              Path.Combine(".hermes", "skills")),
         (["openclaw"],                    "OpenClaw",       ".openclaw",            Path.Combine(".openclaw", "skills")),
         (["nanobot"],                     "NanoBot",        Path.Combine(".nanobot", "workspace"),   Path.Combine(".nanobot", "workspace", "skills")),

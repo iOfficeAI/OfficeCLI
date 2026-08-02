@@ -83,9 +83,9 @@
     },
     "checked": {
       "type": "bool",
-      "description": "checkbox content-control checked state (<w14:checked w14:val=\"1|0\">). Checkbox controls only; default false. The content run shows ☒ (checked) / ☐ (unchecked).",
+      "description": "checkbox content-control checked state (<w14:checked w14:val=\"1|0\">). Checkbox controls only; default false. The content run shows ☒ (checked) / ☐ (unchecked). Set repaints the box glyph.",
       "add": true,
-      "set": false,
+      "set": true,
       "get": true,
       "examples": [
         "--prop type=checkbox --prop checked=true"
@@ -97,7 +97,7 @@
       "type": "string",
       "description": "date-picker display format string (e.g. yyyy-MM-dd). Date controls only.",
       "add": true,
-      "set": false,
+      "set": true,
       "get": true,
       "examples": [
         "--prop format=yyyy-MM-dd"
@@ -107,9 +107,9 @@
     },
     "items": {
       "type": "string",
-      "description": "comma-separated dropdown/combobox choices. Each item may use display|value form (e.g. Draft|DRAFT) when display text differs from the stored value.",
+      "description": "comma-separated dropdown/combobox choices. Each item may use display|value form (e.g. Draft|DRAFT) when display text differs from the stored value. Set replaces the whole choice list (lastValue is preserved).",
       "add": true,
-      "set": false,
+      "set": true,
       "get": true,
       "examples": [
         "--prop items=Red,Green,Blue",
@@ -140,7 +140,7 @@
       "type": "bool",
       "description": "true when the control is currently showing its placeholder text (<w:showingPlcHdr/>).",
       "add": true,
-      "set": false,
+      "set": true,
       "get": true,
       "examples": [
         "--prop placeholder=true"
@@ -152,7 +152,7 @@
       "type": "string",
       "description": "docPart gallery reference for the placeholder content (<w:placeholder><w:docPart w:val=.../></w:placeholder>).",
       "add": true,
-      "set": false,
+      "set": true,
       "get": true,
       "examples": [
         "--prop placeholderText=DefaultPlaceholder"
@@ -164,7 +164,7 @@
       "type": "string",
       "description": "date-picker selected value as ISO-8601 UTC (w:fullDate). The actual chosen date, distinct from the display format.",
       "add": true,
-      "set": false,
+      "set": true,
       "get": true,
       "examples": [
         "--prop date.fullDate=2026-01-01T00:00:00Z"
@@ -176,7 +176,7 @@
       "type": "string",
       "description": "date-picker calendar system (w:calendar), e.g. gregorian, hijri, japan.",
       "add": true,
-      "set": false,
+      "set": true,
       "get": true,
       "examples": [
         "--prop date.calendar=gregorian"
@@ -188,7 +188,7 @@
       "type": "string",
       "description": "date-picker locale/language id (w:lid), e.g. en-US.",
       "add": true,
-      "set": false,
+      "set": true,
       "get": true,
       "examples": [
         "--prop date.lid=en-US"
@@ -200,7 +200,7 @@
       "type": "string",
       "description": "date-picker XML-mapping storage type (w:storeMappedDataAs), e.g. dateTime, date, text.",
       "add": true,
-      "set": false,
+      "set": true,
       "get": true,
       "examples": [
         "--prop date.storeMappedDataAs=dateTime"
@@ -212,7 +212,7 @@
       "type": "string",
       "description": "combobox current selection (w:lastValue on <w:comboBox>).",
       "add": true,
-      "set": false,
+      "set": true,
       "get": true,
       "examples": [
         "--prop comboBox.lastValue=B"
@@ -224,7 +224,7 @@
       "type": "string",
       "description": "dropdown current selection (w:lastValue on <w:dropDownList>).",
       "add": true,
-      "set": false,
+      "set": true,
       "get": true,
       "examples": [
         "--prop dropDown.lastValue=X"

@@ -55,9 +55,126 @@ public static class MermaidImageRenderer
     private const string CdnUrl =
         "https://cdn.jsdelivr.net/npm/mermaid@" + MermaidVersion + "/dist/mermaid.min.js";
 
+    // ESM builds, used only when a style option (theme / layout / look) is set.
+    // The UMD global (mermaid.min.js above) does not render a source carrying a
+    // YAML `---` frontmatter block (run() marks it processed but emits no svg —
+    // verified headless), and ELK ships as an ESM-only layout package that must
+    // be registered via mermaid.registerLayoutLoaders. So a styled diagram is
+    // rendered by importing the ESM mermaid + (for elk) the ESM elk loader.
+    // These are NOT locally cached: the ESM build pulls dozens of relative
+    // ./chunks/*.mjs and cross-package deps (dayjs/khroma/dompurify), so a
+    // single-file cache cannot satisfy them — the page imports them live from
+    // the CDN. Offline styling would need a pre-bundled single-file ESM hosted
+    // on the mirror (future infra task); the plain UMD path stays offline.
+    private const string ElkVersion = "0.1";
+    private const string MermaidEsmUrl =
+        "https://cdn.jsdelivr.net/npm/mermaid@" + MermaidVersion + "/dist/mermaid.esm.min.mjs";
+    private const string ElkEsmUrl =
+        "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@" + ElkVersion
+        + "/dist/mermaid-layout-elk.esm.min.mjs";
+
+    // Accepted style-option values. Kept in sync with schemas/help/*/diagram.json.
+    private static readonly HashSet<string> Themes =
+        new(StringComparer.OrdinalIgnoreCase) { "default", "dark", "neutral", "forest", "base" };
+    private static readonly HashSet<string> Layouts =
+        new(StringComparer.OrdinalIgnoreCase) { "dagre", "elk" };
+    private static readonly HashSet<string> Looks =
+        new(StringComparer.OrdinalIgnoreCase) { "classic", "handdrawn" };
+
     /// <summary>Sentinel prefix stamped into the rendered picture's alt-text so the
     /// mermaid source travels inside the document and the diagram stays regenerable.</summary>
     public const string SourceTag = "mermaid:";
+
+    /// <summary>
+    /// Readability floor for the adaptive one-page default: the smallest fit scale
+    /// at which a diagram shrunk to fit a single page/slide stays legible. Mermaid's
+    /// default node text is ~16px (=12pt at 96 DPI); shrinking it by this factor
+    /// lands near 6.5pt — about the floor for readable print. When one-page fit
+    /// would drop below this, the caller grows the canvas (poster) instead so a long
+    /// flowchart does not become an unreadable sliver.
+    /// </summary>
+    public const double ReadableFitFloor = 0.55;
+
+    /// <summary>
+    /// Adaptive-default decision: would fitting a diagram of natural pixel size
+    /// (<paramref name="wPx"/>×<paramref name="hPx"/>) into a one-page box
+    /// (<paramref name="boxWcm"/>×<paramref name="boxHcm"/>) shrink it below the
+    /// readability floor? The raster px are read as 96-DPI CSS pixels. True → the
+    /// caller should grow the canvas rather than fit. False (incl. degenerate
+    /// inputs) → fit to one page is fine.
+    /// </summary>
+    public static bool ExceedsOnePageReadably(double wPx, double hPx, double boxWcm, double boxHcm)
+    {
+        if (wPx <= 0 || hPx <= 0 || boxWcm <= 0 || boxHcm <= 0) return false;
+        double natWcm = wPx / 96.0 * 2.54, natHcm = hPx / 96.0 * 2.54;
+        double s = Math.Min(boxWcm / natWcm, boxHcm / natHcm);
+        return s < ReadableFitFloor;
+    }
+
+    /// <summary>
+    /// Bake the requested style options into the mermaid source as a leading
+    /// <c>--- config: … ---</c> frontmatter block, so they render AND round-trip
+    /// (the composed source is what gets stamped into alt-text). Returns the
+    /// source unchanged when no option is set. Rejects unknown values with a
+    /// message listing the valid ones. When the source already carries its own
+    /// frontmatter or an <c>%%{init}%%</c> directive, the source wins and the
+    /// options are ignored (caller may warn) — merging into an existing block is
+    /// out of scope and would risk producing a malformed document.
+    /// </summary>
+    public static string ComposeSource(string mermaid, string? theme, string? layout, string? look)
+    {
+        theme = string.IsNullOrWhiteSpace(theme) ? null : theme.Trim();
+        layout = string.IsNullOrWhiteSpace(layout) ? null : layout.Trim();
+        look = string.IsNullOrWhiteSpace(look) ? null : look.Trim();
+        if (theme == null && layout == null && look == null) return mermaid;
+
+        if (theme != null && !Themes.Contains(theme))
+            throw new ArgumentException($"unknown diagram theme '{theme}'. Valid: {string.Join(", ", Themes)}.");
+        if (layout != null && !Layouts.Contains(layout))
+            throw new ArgumentException($"unknown diagram layout '{layout}'. Valid: {string.Join(", ", Layouts)}.");
+        if (look != null && !Looks.Contains(look))
+            throw new ArgumentException($"unknown diagram look '{look}'. Valid: classic, handDrawn.");
+
+        var lead = mermaid.TrimStart();
+        if (lead.StartsWith("---", StringComparison.Ordinal) || lead.StartsWith("%%{", StringComparison.Ordinal))
+            return mermaid; // source already declares config — do not double-inject
+
+        var sb = new StringBuilder("---\nconfig:\n");
+        if (theme != null) sb.Append("  theme: ").Append(theme.ToLowerInvariant()).Append('\n');
+        if (layout != null) sb.Append("  layout: ").Append(layout.ToLowerInvariant()).Append('\n');
+        // look's canonical mermaid spelling is camelCase handDrawn; normalize.
+        if (look != null)
+            sb.Append("  look: ")
+              .Append(look.Equals("handdrawn", StringComparison.OrdinalIgnoreCase) ? "handDrawn" : "classic")
+              .Append('\n');
+        sb.Append("---\n").Append(mermaid);
+        return sb.ToString();
+    }
+
+    /// <summary>True when the (already composed) source carries a style frontmatter,
+    /// so it must be rendered via the ESM path rather than the UMD global.</summary>
+    private static bool SourceNeedsEsm(string source)
+    {
+        var lead = source.TrimStart();
+        if (!lead.StartsWith("---", StringComparison.Ordinal)) return false;
+        var end = lead.IndexOf("\n---", 3, StringComparison.Ordinal);
+        if (end < 0) return false;
+        var fm = lead.Substring(0, end);
+        return fm.Contains("theme:", StringComparison.OrdinalIgnoreCase)
+            || fm.Contains("layout:", StringComparison.OrdinalIgnoreCase)
+            || fm.Contains("look:", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>True when the composed source selects the ELK layout, which needs
+    /// the ESM elk loader registered in the page.</summary>
+    private static bool SourceNeedsElk(string source)
+    {
+        var lead = source.TrimStart();
+        if (!lead.StartsWith("---", StringComparison.Ordinal)) return false;
+        var end = lead.IndexOf("\n---", 3, StringComparison.Ordinal);
+        if (end < 0) return false;
+        return Regex.IsMatch(lead.Substring(0, end), @"layout:\s*elk\b", RegexOptions.IgnoreCase);
+    }
 
     private static string CacheDir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".officecli", "cache");
@@ -99,18 +216,18 @@ public static class MermaidImageRenderer
     /// render. Throws <see cref="InvalidOperationException"/> only when no backend
     /// works (message carries the underlying tool's error).
     /// </summary>
-    public static string RenderToPngFile(string mermaid)
+    public static string RenderToPngFile(string mermaid, string? background = null)
     {
         Exception? failure = null;
         if (TryLocateMmdc(out var mmdc))
         {
-            try { return RenderViaMmdc(mermaid, mmdc); }
+            try { return RenderViaMmdc(mermaid, mmdc, background); }
             catch (MermaidSyntaxException) { throw; } // bad input — the browser would reject it too
             catch (Exception e) { failure = e; }
         }
         if (HtmlScreenshot.HasChromeFamily())
         {
-            try { return RenderViaChrome(mermaid); }
+            try { return RenderViaChrome(mermaid, background); }
             catch (MermaidSyntaxException) { throw; } // surface the parse error, don't mask it
             catch (Exception e) { failure ??= e; }
         }
@@ -158,7 +275,20 @@ public static class MermaidImageRenderer
         return HtmlScreenshot.Which("mmdc");
     }
 
-    private static string RenderViaMmdc(string mermaid, string exe)
+    /// <summary>Validate a user background value for the mmdc <c>-b</c> flag / page
+    /// style: <c>transparent</c>, a #hex, or a plain CSS color word. Rejects
+    /// anything with whitespace/quotes so it can't break out of the flag or the
+    /// inline style. Null/empty → transparent.</summary>
+    private static string SafeBackground(string? bg)
+    {
+        if (string.IsNullOrWhiteSpace(bg)) return "transparent";
+        bg = bg.Trim();
+        return Regex.IsMatch(bg, @"^(transparent|#[0-9a-fA-F]{3,8}|[a-zA-Z]{1,20})$")
+            ? bg
+            : "transparent";
+    }
+
+    private static string RenderViaMmdc(string mermaid, string exe, string? background)
     {
         var inPath = Path.Combine(Path.GetTempPath(), $"ocli_mmd_{Guid.NewGuid():N}.mmd");
         var outPath = Path.ChangeExtension(inPath, ".png");
@@ -169,12 +299,15 @@ public static class MermaidImageRenderer
             {
                 RedirectStandardError = true,
                 RedirectStandardOutput = true,
+                // CONSISTENCY(child-stream-encoding): see BlankDocCreator.
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
             psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(inPath);
             psi.ArgumentList.Add("-o"); psi.ArgumentList.Add(outPath);
-            psi.ArgumentList.Add("-b"); psi.ArgumentList.Add("transparent");
+            psi.ArgumentList.Add("-b"); psi.ArgumentList.Add(SafeBackground(background));
             psi.ArgumentList.Add("-s"); psi.ArgumentList.Add("2"); // HiDPI for crisp raster
             var pcfg = Environment.GetEnvironmentVariable("OFFICECLI_MMDC_PUPPETEER");
             if (!string.IsNullOrWhiteSpace(pcfg) && File.Exists(pcfg))
@@ -215,10 +348,14 @@ public static class MermaidImageRenderer
     /// <summary>Two chrome passes: dump the DOM to read the diagram's viewBox, then
     /// screenshot at exactly that size (HiDPI). PNG bakes in the browser's rendering
     /// so mermaid's foreignObject labels — invisible to Office as SVG — appear.</summary>
-    private static string RenderViaChrome(string mermaid)
+    private static string RenderViaChrome(string mermaid, string? background)
     {
-        var jsRef = ResolveMermaidJsRef();
-        var html = BuildHtml(mermaid, jsRef);
+        // A styled source (theme/layout/look frontmatter) is rendered by the ESM
+        // build (the UMD global does not render frontmatter, and elk is ESM-only);
+        // a plain source keeps the offline-cached UMD path unchanged.
+        var html = SourceNeedsEsm(mermaid)
+            ? BuildHtmlEsm(mermaid, SourceNeedsElk(mermaid), SafeBackground(background))
+            : BuildHtml(mermaid, ResolveMermaidJsRef(), SafeBackground(background));
         var htmlPath = Path.Combine(Path.GetTempPath(), $"ocli_mmd_{Guid.NewGuid():N}.html");
         File.WriteAllText(htmlPath, html);
         try
@@ -284,7 +421,7 @@ public static class MermaidImageRenderer
         return CdnUrl; // every download failed → reference the CDN directly in the page
     }
 
-    private static string BuildHtml(string mermaid, string jsRef)
+    private static string BuildHtml(string mermaid, string jsRef, string background)
     {
         // Pass the source as base64 so no mermaid character can break out of the
         // HTML/JS context. Render explicitly (startOnLoad:false + mermaid.run) and
@@ -296,7 +433,7 @@ public static class MermaidImageRenderer
             // descender gap BELOW it inside the inline-block wrapper. The fixed-height
             // screenshot window then clips those few pixels → the diagram's bottom edge
             // (e.g. a sequence diagram's bottom actor boxes) gets cut. block removes it.
-            + "<style>html,body{margin:0;padding:0;background:transparent;font-size:0}"
+            + "<style>html,body{margin:0;padding:0;background:" + background + ";font-size:0}"
             + "#d{display:inline-block}#d svg{display:block}</style>"
             + $"<script src=\"{jsRef}\"></script></head>"
             // Hidden sink for a failure message. mermaid's parse error is multi-line
@@ -346,6 +483,50 @@ public static class MermaidImageRenderer
             + "document.title='MMDREADY';"
             + "}catch(e){document.getElementById('mmderr').textContent="
             + "(e&&e.message?e.message:String(e));document.title='MMDERR';}});"
+            + "</script></body></html>";
+    }
+
+    /// <summary>
+    /// ESM variant of <see cref="BuildHtml"/> for a styled source: imports the ESM
+    /// mermaid build (which, unlike the UMD global, renders a frontmatter-carrying
+    /// source) and, when the source selects ELK, the ESM elk loader — registered
+    /// via <c>registerLayoutLoaders</c> before init. Same title/mmderr/getBBox
+    /// contract as BuildHtml so the DOM-dump reader is unchanged. Assets load live
+    /// from the CDN (see the ESM-url comment above); on failure the title stays
+    /// unset → the host treats it as an infra failure and falls back to native.
+    /// </summary>
+    private static string BuildHtmlEsm(string mermaid, bool needsElk, string background)
+    {
+        var b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(mermaid));
+        var elkImport = needsElk
+            ? $"const elk=(await import(\"{ElkEsmUrl}\")).default;mermaid.registerLayoutLoaders(elk);"
+            : "";
+        return
+            "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
+            + "<style>html,body{margin:0;padding:0;background:" + background + ";font-size:0}"
+            + "#d{display:inline-block}#d svg{display:block}</style></head>"
+            + "<body><pre id=\"mmderr\" style=\"display:none\"></pre>"
+            + "<div id=\"d\" class=\"mermaid\"></div><script type=\"module\">"
+            + "try{"
+            + $"const mermaid=(await import(\"{MermaidEsmUrl}\")).default;"
+            + elkImport
+            + "const src=new TextDecoder().decode(Uint8Array.from(atob(\"" + b64 + "\"),c=>c.charCodeAt(0)));"
+            + "document.getElementById('d').textContent=src;"
+            + "mermaid.initialize({startOnLoad:false,securityLevel:'loose',htmlLabels:false,"
+            + "flowchart:{htmlLabels:false},class:{htmlLabels:false},suppressErrorRendering:true});"
+            + "try{await mermaid.parse(src);}catch(pe){"
+            + "document.getElementById('mmderr').textContent=(pe&&pe.message?pe.message:String(pe));"
+            + "document.title='MMDSYNTAX';throw pe;}"
+            + "await mermaid.run({nodes:[document.getElementById('d')]});"
+            + "try{const s=document.querySelector('#d svg');if(s){const b=s.getBBox();"
+            + "const p=14,x=b.x-p,y=b.y-p,w=Math.ceil(b.width+2*p),h=Math.ceil(b.height+2*p);"
+            + "s.setAttribute('viewBox',x+' '+y+' '+w+' '+h);"
+            + "s.setAttribute('width',w);s.setAttribute('height',h);"
+            + "s.style.maxWidth=w+'px';s.style.width=w+'px';s.style.height=h+'px';}}catch(e){}"
+            + "document.title='MMDREADY';"
+            + "}catch(e){if(document.title!=='MMDSYNTAX'){"
+            + "document.getElementById('mmderr').textContent=(e&&e.message?e.message:String(e));"
+            + "document.title='MMDERR';}}"
             + "</script></body></html>";
     }
 

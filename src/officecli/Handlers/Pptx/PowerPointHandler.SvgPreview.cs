@@ -125,7 +125,60 @@ public partial class PowerPointHandler
                 case GroupShape grp:
                     RenderGroupSvg(sb, defs, ref defId, grp, slidePart, themeColors);
                     break;
+                default:
+                    // mc:AlternateContent (e.g. an a14 math text box) — render the
+                    // shapes inside mc:Choice/mc:Fallback instead of dropping the
+                    // whole element (#228, same drop as the HTML preview had).
+                    if (element.LocalName == "AlternateContent")
+                        RenderAltContentSvg(sb, defs, ref defId, element, slidePart, themeColors);
+                    break;
                 // TODO: Chart
+            }
+        }
+    }
+
+    // Shapes wrapped in mc:AlternateContent. Prefer mc:Choice (full-fidelity
+    // content) over mc:Fallback; route each inner element through the normal
+    // SVG dispatch. overrideOffScale carries the enclosing group's child
+    // coordinate projection (CONSISTENCY(group-child-pos)); null at slide level.
+    private void RenderAltContentSvg(StringBuilder sb, StringBuilder defs, ref int defId,
+        OpenXmlElement acElement, SlidePart slidePart, Dictionary<string, string> themeColors,
+        (long offX, long offY, double scaleX, double scaleY)? overrideOffScale = null)
+    {
+        var altChild = acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Choice")
+                    ?? acElement.ChildElements.FirstOrDefault(e => e.LocalName == "Fallback");
+        if (altChild == null) return;
+        foreach (var inner in altChild.ChildElements)
+        {
+            // CONSISTENCY(mc-alt-coerce): see CoerceAltContentChild — untyped
+            // inside groups, typed at spTree level.
+            switch (CoerceAltContentChild(inner))
+            {
+                case Shape shape:
+                {
+                    (long x, long y, long cx, long cy)? pos = null;
+                    if (overrideOffScale is (var ox, var oy, var sx, var sy))
+                    {
+                        pos = CalcGroupChildPos(shape.ShapeProperties?.Transform2D, ox, oy, sx, sy);
+                        if (!pos.HasValue) break;
+                    }
+                    RenderShapeSvg(sb, defs, ref defId, shape, slidePart, themeColors, pos);
+                    break;
+                }
+                case Picture pic:
+                {
+                    (long x, long y, long cx, long cy)? pos = null;
+                    if (overrideOffScale is (var ox, var oy, var sx, var sy))
+                    {
+                        pos = CalcGroupChildPos(pic.ShapeProperties?.Transform2D, ox, oy, sx, sy);
+                        if (!pos.HasValue) break;
+                    }
+                    RenderPictureSvg(sb, defs, ref defId, pic, slidePart, themeColors, pos);
+                    break;
+                }
+                case ConnectionShape cxn:
+                    RenderConnectorSvg(sb, defs, ref defId, cxn, themeColors);
+                    break;
             }
         }
     }
@@ -590,10 +643,13 @@ public partial class PowerPointHandler
                 };
             }
 
-            // Line spacing
-            double lineHeight = 1.0; // PowerPoint default is single spacing
+            // Line spacing. Issue #236 (same defect as the HTML preview):
+            // PowerPoint single/percent spacing is relative to the font's line
+            // pitch (~1.2× Latin, ~1.32× CJK), not 1.0× the font size.
+            double svgPitch = SingleSpacingPitch(rp);
+            double lineHeight = svgPitch; // PowerPoint default is single spacing
             var lsPct = pProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
-            if (lsPct.HasValue) lineHeight = lsPct.Value / 100000.0;
+            if (lsPct.HasValue) lineHeight = lsPct.Value / 100000.0 * svgPitch;
             var lsPts = pProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
             if (lsPts.HasValue) lineHeight = lsPts.Value / 100.0 / fontSizePt; // convert pt spacing to ratio
 
@@ -931,6 +987,12 @@ public partial class PowerPointHandler
                 case ConnectionShape cxn:
                     RenderConnectorSvg(sb, defs, ref defId, cxn, themeColors);
                     break;
+                default:
+                    // mc:AlternateContent inside a group — see slide-level branch (#228).
+                    if (child.LocalName == "AlternateContent")
+                        RenderAltContentSvg(sb, defs, ref defId, child, slidePart, themeColors,
+                            (offX, offY, scaleX, scaleY));
+                    break;
             }
         }
 
@@ -1186,6 +1248,26 @@ public partial class PowerPointHandler
 
             var pProps = para.ParagraphProperties;
 
+            // Issue #236 (same defect as the HTML preview): the paragraph div
+            // owns line-height, so give it a font-size matching its tallest run
+            // — otherwise the CSS strut resolves against the inherited root
+            // size and small-text line boxes balloon to the root font size.
+            int? foDefaultFontSize = null;
+            if (placeholderShape != null && placeholderPart != null)
+            {
+                int level = para.ParagraphProperties?.Level?.Value ?? 0;
+                foDefaultFontSize = ResolvePlaceholderFontSize(placeholderShape, placeholderPart, level);
+            }
+            int foMaxFontHundredths = 0;
+            foreach (var r0 in para.Elements<Drawing.Run>())
+            {
+                int sz = r0.RunProperties?.FontSize?.Value ?? foDefaultFontSize ?? 1800;
+                if (sz > foMaxFontHundredths) foMaxFontHundredths = sz;
+            }
+            if (foMaxFontHundredths == 0) foMaxFontHundredths = foDefaultFontSize ?? 1800;
+            paraStyles.Add($"font-size:{foMaxFontHundredths / 100.0:0.##}pt");
+            double foPitch = SingleSpacingPitch(para.Elements<Drawing.Run>().FirstOrDefault()?.RunProperties);
+
             // Alignment
             if (pProps?.Alignment?.HasValue == true)
             {
@@ -1206,11 +1288,13 @@ public partial class PowerPointHandler
             var saPts = pProps?.GetFirstChild<Drawing.SpaceAfter>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
             if (saPts.HasValue) paraStyles.Add($"margin-bottom:{saPts.Value / 100.0:0.##}pt");
 
-            // Line spacing
+            // Line spacing — unitless multipliers scale by the single-spacing
+            // pitch (issue #236); fixed-pt stays absolute.
             var lsPct = pProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPercent>().PercentVal();
-            if (lsPct.HasValue) paraStyles.Add($"line-height:{lsPct.Value / 100000.0:0.##}");
+            if (lsPct.HasValue) paraStyles.Add($"line-height:{lsPct.Value / 100000.0 * foPitch:0.##}");
             var lsPts = pProps?.GetFirstChild<Drawing.LineSpacing>()?.GetFirstChild<Drawing.SpacingPoints>()?.Val?.Value;
             if (lsPts.HasValue) paraStyles.Add($"line-height:{lsPts.Value / 100.0:0.##}pt");
+            else if (!lsPct.HasValue) paraStyles.Add($"line-height:{foPitch:0.##}");
 
             // Indent
             if (pProps?.Indent?.HasValue == true)
@@ -2022,6 +2106,28 @@ public partial class PowerPointHandler
             }
         }
     }
+
+    /// <summary>
+    /// PowerPoint single-spacing line pitch for a resolved typeface: the bare
+    /// ascent+descent(+lineGap) ratio (~1.2× Latin faces, ~1.32× CJK faces
+    /// like Microsoft YaHei — issue #236). Unresolvable/unlocatable fonts fall
+    /// back to the 1.2 Latin norm (GetPitchRatio returns 1.0 on failure, which
+    /// is never a real line pitch).
+    /// </summary>
+    internal static double SingleSpacingPitch(string? typeface)
+    {
+        if (typeface != null && !typeface.StartsWith("+", StringComparison.Ordinal))
+        {
+            var r = FontMetricsReader.GetPitchRatio(typeface);
+            if (r > 1.0) return r;
+        }
+        return 1.2;
+    }
+
+    /// <summary>Pitch from a run's explicit latin/ea typeface (theme tokens fall back to 1.2).</summary>
+    internal static double SingleSpacingPitch(Drawing.RunProperties? rp)
+        => SingleSpacingPitch(rp?.GetFirstChild<Drawing.LatinFont>()?.Typeface?.Value
+            ?? rp?.GetFirstChild<Drawing.EastAsianFont>()?.Typeface?.Value);
 
     private static string SvgEncode(string text)
     {

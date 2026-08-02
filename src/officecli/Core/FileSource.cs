@@ -49,6 +49,22 @@ internal static class FileSource
     }
 
     /// <summary>
+    /// Resolve a source to its full text. Prefer this over
+    /// <see cref="ResolveLines"/> when the content is parsed with quoting
+    /// rules — a quoted CSV field may itself contain a newline, which
+    /// pre-splitting into lines would tear apart.
+    /// </summary>
+    public static string ResolveText(string source)
+    {
+        var (stream, _) = Resolve(source);
+        using (stream)
+        {
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
+        }
+    }
+
+    /// <summary>
     /// Resolve a source to text lines (for CSV/text data).
     /// </summary>
     public static string[] ResolveLines(string source)

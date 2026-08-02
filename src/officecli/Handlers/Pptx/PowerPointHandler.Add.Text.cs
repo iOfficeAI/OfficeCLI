@@ -133,7 +133,7 @@ public partial class PowerPointHandler
                 var notesSlidePart = EnsureNotesSlidePart(notesSlideParts[notesSlideIdx - 1]);
                 if (properties.TryGetValue("text", out var notesText))
                 {
-                    XmlTextValidator.ValidateOrThrow(notesText, "text");
+                    XmlTextValidator.ValidateOrThrow(notesText, "text", allowSoftBreakChar: true);
                     SetNotesText(notesSlidePart, notesText);
                 }
                 // Reading direction (Arabic / Hebrew speaker notes). Mirrors
@@ -350,7 +350,7 @@ public partial class PowerPointHandler
 
                 // Create initial run with text and run-level properties
                 var paraText = properties.GetValueOrDefault("text", "");
-                XmlTextValidator.ValidateOrThrow(paraText, "text");
+                XmlTextValidator.ValidateOrThrow(paraText, "text", allowSoftBreakChar: true);
                 var newRun = new Drawing.Run();
                 var rProps = new Drawing.RunProperties { Language = "en-US" };
                 if (properties.TryGetValue("lang", out var pLang) && !string.IsNullOrEmpty(pLang))
@@ -1124,6 +1124,25 @@ public partial class PowerPointHandler
     // '\t' chars within a single line by joining segments with a tab character
     // and emitting a single run per segment.
     internal static void AppendLineWithTabs(
+        Drawing.Paragraph paragraph,
+        string line,
+        Func<string, Drawing.Run> runFactory)
+    {
+        // NEWLINE-SEMANTICS-V2: '\v' is the cross-handler soft-line-break
+        // char. In DrawingML that is <a:br/> — a line break INSIDE the
+        // paragraph, as opposed to '\n' which the caller has already split
+        // into separate <a:p> paragraphs. Emit each '\v'-separated chunk,
+        // joined by <a:br/> elements ('\v' is XML-illegal and must never
+        // reach <a:t> as a literal char).
+        var vChunks = line.Split('\v');
+        for (int vi = 0; vi < vChunks.Length; vi++)
+        {
+            if (vi > 0) paragraph.AppendChild(new Drawing.Break());
+            AppendChunkWithTabs(paragraph, vChunks[vi], runFactory);
+        }
+    }
+
+    private static void AppendChunkWithTabs(
         Drawing.Paragraph paragraph,
         string line,
         Func<string, Drawing.Run> runFactory)

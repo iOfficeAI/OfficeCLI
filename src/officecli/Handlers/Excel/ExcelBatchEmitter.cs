@@ -57,7 +57,8 @@ public static partial class ExcelBatchEmitter
     {
         "type", "formula", "cachedValue", "computedValue", "evaluated", "empty",
         "merge", "link", "tooltip", "display", "arrayformula", "arrayref", "numFmtId",
-        "quotePrefix", "phonetic", "__raw", "__richruns",
+        "quotePrefix", "phonetic", "image.contentType", "image.fileSize", "alt",
+        "__raw", "__richruns", "__imageDataUri",
     };
 
     // Sheet-level Format(Get) key → Set key mapping. Only pairs verified on
@@ -87,6 +88,13 @@ public static partial class ExcelBatchEmitter
         ("margin.right", "margin.right"),
         ("margin.header", "margin.header"),
         ("margin.footer", "margin.footer"),
+        // sortState. Emitted LAST so it replays against a fully-populated
+        // sheet (the sheet-level "sort" Set case sorts the used range). Get
+        // surfaces only the sort keys ("A:desc"), not the sortState @ref
+        // extent, so dump reconstructs keys-only — a partial-range sort
+        // replays as a used-range sort. Faithful to the Get-surfaced canonical
+        // state; strictly better than dropping sortState entirely.
+        ("sort", "sort"),
     };
 
     // Workbook-level keys where Get key == Set case (Set.Workbook.cs).
@@ -100,6 +108,10 @@ public static partial class ExcelBatchEmitter
         "calc.fullCalcOnLoad", "calc.refMode",
         "activeTab", "firstSheet",
         "workbook.lockStructure", "workbook.lockWindows",
+        // Legacy workbook password hash — carried verbatim (SetWorkbook's
+        // workbook.passwordhash case writes it without re-hashing) so workbook
+        // protection survives round-trip, mirroring sheet-level passwordHash.
+        "workbook.passwordHash",
         // Core document properties. lastModifiedBy / timestamps excluded:
         // save-time stamping would flip them every replay cycle.
         "title", "author", "subject", "description", "keywords", "category",
@@ -112,6 +124,18 @@ public static partial class ExcelBatchEmitter
         var warnings = new List<UnsupportedWarning>();
 
         EmitWorkbookSettings(xl, items, warnings);
+
+        // Sheet-independent defined names (workbook-scoped constants/expressions
+        // like TaxRate="=0.075", no sheet qualifier in the ref) are emitted
+        // BEFORE any sheet so that formula cells referencing them resolve their
+        // cached value on replay-import. Without this, `import`/`set` of
+        // "=TaxRate*100" runs while TaxRate is undefined, so the replayed cell
+        // keeps its formula but loses its cached <v> — a round-trip fidelity
+        // loss that only Excel's on-open recalc (fullCalcOnLoad) masks, and not
+        // for manual-calc workbooks or non-recalculating readers. Names that
+        // reference a sheet range or carry a sheet scope stay in the post-sheet
+        // pass (they need the sheet to exist first).
+        EmitNamedRanges(xl, items, warnings, sheetIndependentOnly: true);
 
         var sheetNames = xl.GetDumpSheetNames();
         for (int i = 0; i < sheetNames.Count; i++)
@@ -133,7 +157,10 @@ public static partial class ExcelBatchEmitter
         foreach (var sheetName in sheetNames)
             EmitSlicers(xl, "/" + sheetName, xl.GetDumpSlicerCount(sheetName), items, warnings);
 
-        EmitNamedRanges(xl, items, warnings);
+        // Remaining names (sheet-scoped, or refs that qualify a sheet) after
+        // every sheet exists. The pre-sheet pass above already emitted the
+        // sheet-independent ones; this pass skips those to avoid duplicates.
+        EmitNamedRanges(xl, items, warnings, sheetIndependentOnly: false, skipSheetIndependent: true);
         EmitDocPropsScan(xl, warnings);
 
         return (items, warnings);
@@ -189,26 +216,54 @@ public static partial class ExcelBatchEmitter
         }
         if (wb.Format.TryGetValue("calc.fullPrecision", out var fp) && fp is bool fpB && !fpB)
             props["calc.fullPrecision"] = "false";
-        if (wb.Format.ContainsKey("workbook.password"))
-            warnings.Add(new UnsupportedWarning("workbook.password", "/workbook",
-                "protection password hashes cannot be round-tripped; workbook protection is emitted without a password"));
+        // workbook.passwordHash (added above) now round-trips the protection
+        // hash verbatim, so no lossy-password warning is needed. The
+        // display-only workbook.password="***" mask is intentionally NOT
+        // emitted (it is not in WorkbookSettingKeys) — replaying "***" would
+        // re-hash the literal mask into a bogus password.
 
         if (props.Count == 0) return;
         items.Add(new BatchItem { Command = "set", Path = "/", Props = props });
     }
 
+    // A defined name is "sheet-independent" when it is workbook-scoped and its
+    // ref carries no sheet qualifier ('!') — i.e. a constant or expression such
+    // as "=0.075" or a bare range on the implicit first sheet (which always
+    // exists). Such names can safely be emitted before any sheet, so formula
+    // cells referencing them resolve their cached value on replay-import.
+    private static bool IsSheetIndependentName(DocumentNode nr, string refVal)
+    {
+        var scope = nr.Format.TryGetValue("scope", out var sc) ? sc as string : null;
+        bool workbookScoped = string.IsNullOrEmpty(scope)
+            || string.Equals(scope, "workbook", StringComparison.OrdinalIgnoreCase);
+        return workbookScoped && !refVal.Contains('!');
+    }
+
     private static void EmitNamedRanges(ExcelHandler xl, List<BatchItem> items,
-        List<UnsupportedWarning> warnings)
+        List<UnsupportedWarning> warnings,
+        bool sheetIndependentOnly = false, bool skipSheetIndependent = false)
     {
         DocumentNode list;
         try { list = xl.Get("/namedrange"); }
         catch { return; }
         if (list.Children == null) return;
+        // Some generators write the SAME defined name twice into workbook.xml
+        // (identical name+ref+scope; schema validation tolerates it). Replay
+        // would add the first and collide on the second ("already exists"),
+        // failing the whole atomic batch over source rot — emit each
+        // (name, ref, scope) triple once.
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var nr in list.Children)
         {
             var name = nr.Format.TryGetValue("name", out var n) ? n as string : null;
             var refVal = nr.Format.TryGetValue("ref", out var r) ? r as string : null;
             if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(refVal)) continue;
+            // Two-pass partition: the pre-sheet pass takes only sheet-independent
+            // names; the post-sheet pass takes the rest. Each name is emitted by
+            // exactly one pass.
+            bool independent = IsSheetIndependentName(nr, refVal!);
+            if (sheetIndependentOnly && !independent) continue;
+            if (skipSheetIndependent && independent) continue;
             // Excel's builtin names (_xlnm.Print_Area etc.) are carried by the
             // sheet-level printarea/printtitlerows emits — re-adding them here
             // would duplicate the defined name.
@@ -225,6 +280,21 @@ public static partial class ExcelBatchEmitter
             // AddNamedRange defaults a sheet-parent to sheet scope; pin the
             // scope explicitly so parent "/" + scope=<sheet> round-trips.
             props["scope"] = string.IsNullOrEmpty(scope) ? "workbook" : scope!;
+            // Replay's duplicate check keys on name+scope, so a repeated
+            // (name, scope) can only be emitted once regardless of ref. Warn
+            // when a dropped duplicate carried a DIFFERENT ref — that one is
+            // genuinely lost, not just redundant.
+            var dedupKey = props["name"] + " " + props["scope"];
+            if (!seenNames.Add(dedupKey))
+            {
+                var firstRef = items.LastOrDefault(it => it.Type == "namedrange"
+                    && it.Props != null && it.Props["name"].Equals(name, StringComparison.OrdinalIgnoreCase)
+                    && it.Props["scope"] == props["scope"])?.Props?["ref"];
+                if (!string.Equals(firstRef, refVal, StringComparison.Ordinal))
+                    warnings.Add(new UnsupportedWarning("namedrange", nr.Path ?? "/namedrange",
+                        $"duplicate defined name '{name}' (same scope, different ref '{refVal}') dropped on dump — the first occurrence wins on replay"));
+                continue;
+            }
             if (nr.Format.TryGetValue("comment", out var cm) && cm is string cs && cs.Length > 0)
                 props["comment"] = cs;
             // volatile (DefinedName.Function) — AddNamedRange consumes it.
@@ -405,6 +475,19 @@ public static partial class ExcelBatchEmitter
             foreach (var flagKey in new[] { "bestFit", "thickTop", "thickBot", "ph" })
                 if (rowNode.Format.TryGetValue(flagKey, out var fv) && IsTruthyFormatValue(fv))
                     rp[flagKey] = "true";
+            // Row-level default style (CT_Row @s + @customFormat). Get surfaces
+            // both, but they were absent from this allowlist, so dump dropped
+            // the row's default cellXf — the style governing the row's phantom
+            // (never-materialized) cells. A persistent style attribute Excel
+            // does NOT regenerate, so the loss is permanent once round-tripped.
+            // customFormat is the on/off gate; s carries the style index.
+            if (rowNode.Format.TryGetValue("s", out var rs))
+            {
+                var rsS = FormatValue(rs);
+                if (rsS.Length > 0) rp["s"] = rsS;
+            }
+            if (rowNode.Format.TryGetValue("customFormat", out var rcf) && IsTruthyFormatValue(rcf))
+                rp["customFormat"] = "1";
             if (rp.Count > 0)
                 items.Add(new BatchItem { Command = "set", Path = rowNode.Path, Props = rp });
         }
@@ -417,6 +500,11 @@ public static partial class ExcelBatchEmitter
         foreach (var colNode in colNodes)
         {
             var cp = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            // Raw whole-column style index (<col style="N">) when it carries
+            // non-numberformat facets — GetDumpColumnNodes surfaces it as
+            // `style`; SetColumn's default branch writes col@style. Otherwise
+            // the numberformat code below carries a numberformat-only column.
+            if (colNode.Format.TryGetValue("style", out var cstyle)) cp["style"] = FormatValue(cstyle);
             if (colNode.Format.TryGetValue("width", out var w)) cp["width"] = FormatValue(w);
             if (colNode.Format.TryGetValue("hidden", out var chd) && chd is bool chb && chb) cp["hidden"] = "true";
             if (colNode.Format.TryGetValue("outlineLevel", out var colv)) cp["outline"] = FormatValue(colv);
@@ -431,7 +519,7 @@ public static partial class ExcelBatchEmitter
         }
 
         // 7. Sheet-level settings (freeze/zoom/tab color/autofilter/print...).
-        EmitSheetSettings(sheetNode, sheetPath, items, warnings);
+        EmitSheetSettings(xl, sheetNode, sheetPath, items, warnings);
 
         // 8. Structured elements: tables, conditional formats, validations,
         // comments, charts, sparklines. After data + styles so referenced
@@ -443,7 +531,7 @@ public static partial class ExcelBatchEmitter
             warnings.Add(new UnsupportedWarning(element, sheetPath, reason));
     }
 
-    private static void EmitSheetSettings(DocumentNode sheetNode, string sheetPath,
+    private static void EmitSheetSettings(ExcelHandler xl, DocumentNode sheetNode, string sheetPath,
         List<BatchItem> items, List<UnsupportedWarning> warnings)
     {
         var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -499,24 +587,34 @@ public static partial class ExcelBatchEmitter
 
         // Manual page breaks. Get exposes them as comma-joined index lists;
         // replay re-adds each one (rowbreak row=N / colbreak col=N).
-        if (sheetNode.Format.TryGetValue("rowBreaks", out var rbk) && rbk is string rbkS && rbkS.Length > 0)
-            foreach (var b in rbkS.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                items.Add(new BatchItem
-                {
-                    Command = "add",
-                    Parent = sheetPath,
-                    Type = "rowbreak",
-                    Props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["row"] = b },
-                });
-        if (sheetNode.Format.TryGetValue("colBreaks", out var cbk) && cbk is string cbkS && cbkS.Length > 0)
-            foreach (var b in cbkS.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                items.Add(new BatchItem
-                {
-                    Command = "add",
-                    Parent = sheetPath,
-                    Type = "colbreak",
-                    Props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["col"] = b },
-                });
+        // Manual page breaks carry an optional restricted column/row span
+        // (<brk min max>). The sheet-level list gives only the break index, so
+        // fetch each break's node to recover min/max and replay a non-full
+        // span (otherwise the break silently widened to sheet-default on
+        // round-trip). Emitted inline on the add (AddRowBreak/AddColBreak now
+        // accept min/max).
+        EmitPageBreaks(xl, sheetNode, sheetPath, "rowBreaks", "rowbreak", "row", items);
+        EmitPageBreaks(xl, sheetNode, sheetPath, "colBreaks", "colbreak", "col", items);
+    }
+
+    private static void EmitPageBreaks(ExcelHandler xl, DocumentNode sheetNode, string sheetPath,
+        string getKey, string addType, string idKey, List<BatchItem> items)
+    {
+        if (!sheetNode.Format.TryGetValue(getKey, out var bkObj) || bkObj is not string bkS || bkS.Length == 0)
+            return;
+        var ids = bkS.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        for (int i = 0; i < ids.Length; i++)
+        {
+            var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [idKey] = ids[i] };
+            try
+            {
+                var brkNode = xl.Get($"{sheetPath}/{addType}[{i + 1}]");
+                if (brkNode.Format.TryGetValue("min", out var mn)) props["min"] = FormatValue(mn);
+                if (brkNode.Format.TryGetValue("max", out var mx)) props["max"] = FormatValue(mx);
+            }
+            catch { /* fall back to the bare index add */ }
+            items.Add(new BatchItem { Command = "add", Parent = sheetPath, Type = addType, Props = props });
+        }
     }
 
     // ==================== Value baseline (CSV import) ====================
@@ -639,6 +737,30 @@ public static partial class ExcelBatchEmitter
                     ["runs"] = runsJson,
                 },
             });
+            return null;
+        }
+
+        // In-cell images cannot ride the CSV value baseline. Replay their
+        // package bytes through the existing set image=<data-uri> vocabulary.
+        if (type == "Image")
+        {
+            if (cell.Format.TryGetValue("__imageDataUri", out var imageValue)
+                && imageValue is string imageDataUri && imageDataUri.Length > 0)
+            {
+                var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["image"] = imageDataUri,
+                };
+                if (cell.Format.TryGetValue("alt", out var altValue)
+                    && altValue is string alt && alt.Length > 0)
+                    props["alt"] = alt;
+                corrective.Add(new BatchItem { Command = "set", Path = cell.Path, Props = props });
+            }
+            else
+            {
+                warnings.Add(new UnsupportedWarning("cell.image", cell.Path ?? "",
+                    "in-cell image part could not be read; skipped"));
+            }
             return null;
         }
 

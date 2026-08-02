@@ -19,6 +19,34 @@
   "note": "Aliases: textbox. Anchor: 'anchor=B2:F7' (cell range) or x/y/width/height in cell units. 'ref=B2' expands to a 1x1 cell rectangle. Font/text props accept either bare ('size', 'bold', 'color', 'font') or dotted ('font.size', 'font.bold', 'font.color', 'font.name') forms.",
   "extends": "_shared/shape",
   "properties": {
+    "hyperlink": {
+      "type": "string",
+      "description": "Shape-level hyperlink. External URL (https://...) or in-document jump (#SheetName!A1).",
+      "aliases": [
+        "link"
+      ],
+      "add": true,
+      "set": false,
+      "get": true,
+      "examples": [
+        "--prop hyperlink=#Sheet2!A1"
+      ],
+      "enforcement": "report"
+    },
+    "reflection": {
+      "type": "string",
+      "description": "reflection effect. Accepts 'true' / 'tight' / 'half' / 'full' to enable a reflection of varying length, a numeric percentage 0-100, or 'none' to clear.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop reflection=true",
+        "--prop reflection=half",
+        "--prop reflection=full"
+      ],
+      "readback": "tight | half | full (mapped from a:reflection @endPos: 55000=tight, 90000=half, 100000=full, else numeric percent).",
+      "enforcement": "report"
+    },
     "anchor": {
       "type": "string",
       "description": "cell range anchor (e.g. B2:F7) — Add-only. Set uses x/y/width/height; Get readback emits x/y/width/height instead of cell-range form (round-trip via numeric position, not anchor string).",

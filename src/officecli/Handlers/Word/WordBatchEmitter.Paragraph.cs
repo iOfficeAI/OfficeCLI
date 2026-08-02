@@ -411,7 +411,7 @@ public static partial class WordBatchEmitter
             {
                 if (sdt.Format.TryGetValue(key, out var v) && v != null)
                 {
-                    var s = v.ToString() ?? "";
+                    var s = NormalizeSdtEmitValue(v);
                     if (s.Length > 0) sdtProps[key] = s;
                 }
             }
@@ -2688,7 +2688,7 @@ public static partial class WordBatchEmitter
             // BUG-R3 (dump emits `add textbox` into a table cell): see the
             // sibling site below — a cell-hosted textbox must attach to its
             // containing paragraph (paraTargetPath inside the cell), never as a
-            // direct <w:tc> child. LibreOffice exports textboxes wrapped in
+            // direct <w:tc> child. Some editors export textboxes wrapped in
             // <mc:AlternateContent>, so they reach this "run"-typed branch.
             string? attachParaAc = sharedAttachPara
                 ?? (parentPath.Contains("/tc[", StringComparison.Ordinal) ? paraTargetPath : null);

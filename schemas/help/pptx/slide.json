@@ -88,6 +88,14 @@
       "readback": "true if slide is hidden in slideshow",
       "enforcement": "report"
     },
+    "name": {
+      "type": "string",
+      "description": "slide name (cSld/@name) — shown by PowerPoint accessibility/VBA tooling and preserved on round-trip.",
+      "add": true, "set": true, "get": true,
+      "examples": ["--prop name=\"Agenda\""],
+      "readback": "slide name when present",
+      "enforcement": "report"
+    },
     "layoutType": {
       "type": "string",
       "description": "slide layout type name as encoded on the underlying SlideLayout (e.g. blank, title, titleOnly, twoContent, obj, txAndObj). Distinct from `layout`, which is the user-facing layout display name.",

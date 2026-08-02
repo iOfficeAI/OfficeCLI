@@ -833,17 +833,25 @@ internal static class ParseHelpers
     /// (U+D800–U+DFFF without a matching pair), and the U+FFFE / U+FFFF
     /// noncharacters.
     /// </summary>
-    public static void ValidateXmlText(string? value, string propName)
+    public static void ValidateXmlText(string? value, string propName, bool allowSoftBreakChar = false)
     {
         if (value == null) return;
         for (int i = 0; i < value.Length; i++)
         {
             char c = value[i];
             if (c == '\t' || c == '\n' || c == '\r') continue;
+            // '\v' (0x0B) is XML-illegal as character data. It is allowed ONLY
+            // when the caller consumes it into a break ELEMENT before
+            // serialization (NEWLINE-SEMANTICS-V2: AppendTextWithBreaks turns
+            // '\v' into <w:br/>). Callers that write validated text verbatim
+            // into XML (chart titles, xlsx cell values, headers, ...) keep the
+            // strict default so '\v' can never reach raw character data.
+            if (c == '\v' && allowSoftBreakChar) continue;
             if (c < 0x20)
                 throw new ArgumentException(
                     $"{propName} contains XML-illegal control character U+{(int)c:X4} at position {i}. " +
-                    "Allowed control chars: \\t, \\n, \\r.");
+                    "Allowed control chars: \\t, \\n, \\r" +
+                    (allowSoftBreakChar ? ", \\v." : "."));
             // UTF-16 surrogates only valid in pairs (high then low). A lone
             // half is illegal in XML 1.0 character data.
             if (char.IsHighSurrogate(c))

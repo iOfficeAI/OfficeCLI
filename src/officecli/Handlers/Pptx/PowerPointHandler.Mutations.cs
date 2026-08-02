@@ -445,6 +445,26 @@ public partial class PowerPointHandler
             var slideId = slideIds[PathIndex.ToArrayIndex(slideIdx)];
             var relId = slideId.RelationshipId?.Value;
             slideId.Remove();
+
+            // Custom shows reference slides by relationship id; prune entries
+            // for the slide being removed or they dangle once the part (and
+            // its relationship) is deleted — PowerPoint refuses to open the
+            // file (0x80070570). A show that becomes empty is dropped, as is
+            // an empty <p:custShowLst>.
+            var custShowList = presentation.GetFirstChild<CustomShowList>();
+            if (relId != null && custShowList != null)
+            {
+                foreach (var show in custShowList.Elements<CustomShow>().ToList())
+                {
+                    var entries = show.SlideList?.Elements<SlideListEntry>()
+                        .Where(e => e.Id?.Value == relId).ToList();
+                    if (entries == null) continue;
+                    foreach (var e in entries) e.Remove();
+                    if (show.SlideList!.HasChildren == false) show.Remove();
+                }
+                if (!custShowList.HasChildren) custShowList.Remove();
+            }
+
             if (relId != null)
                 presentationPart.DeletePart(presentationPart.GetPartById(relId));
             presentation.Save();
@@ -1697,6 +1717,16 @@ public partial class PowerPointHandler
                 : new NotesSlide();
             // Link notes to the new slide
             newNotesPart.AddPart(newSlidePart);
+            // BUG(notes-orphan): the clone must also carry the source's
+            // notesMaster relationship. Its placeholders have an empty
+            // <p:spPr/> and inherit geometry from the master, so without this
+            // the duplicated notes text has no position or size anywhere in
+            // the package and conformant readers throw on the missing
+            // relationship — even though the deck itself has a valid master.
+            newNotesPart.AddPart(EnsureNotesMasterPart(presentationPart));
+            // Pictures / hyperlinks living in the notes themselves, plus the
+            // rId remap their cloned XML needs.
+            CopyNotesSlideParts(srcNotesPart, newNotesPart);
         }
 
         newSlidePart.Slide.Save();
@@ -1736,15 +1766,55 @@ public partial class PowerPointHandler
     /// </summary>
     private static void CopySlideParts(SlidePart source, SlidePart target)
     {
+        // SlideLayoutPart is already linked by the caller; NotesSlidePart is
+        // cloned separately by CopyNotesSlideParts, which needs its own rId
+        // remap target (the notes XML, not the slide XML).
+        var rIdMap = CopyPartsAndRelationships(source, target,
+            part => part is SlideLayoutPart or NotesSlidePart);
+        if (rIdMap.Count > 0 && target.Slide != null)
+        {
+            RemapRelationshipIds(target.Slide, rIdMap);
+            target.Slide.Save();
+        }
+    }
+
+    /// <summary>
+    /// Copy a duplicated slide's notes-slide sub-parts. Speaker notes can carry
+    /// their own pictures and external hyperlinks; without this the clone kept
+    /// the r:embed / r:id in its notes XML while the relationships stayed behind
+    /// on the source part, leaving a dangling reference that makes PowerPoint
+    /// offer to repair the file.
+    ///
+    /// NotesMasterPart and SlidePart are skipped: CloneSlide wires those
+    /// explicitly to the NEW slide and the deck's notes master, and copying the
+    /// source's would point the clone back at the original slide.
+    /// </summary>
+    private static void CopyNotesSlideParts(NotesSlidePart source, NotesSlidePart target)
+    {
+        var rIdMap = CopyPartsAndRelationships(source, target,
+            part => part is NotesMasterPart or SlidePart);
+        if (rIdMap.Count > 0 && target.NotesSlide != null)
+        {
+            RemapRelationshipIds(target.NotesSlide, rIdMap);
+            target.NotesSlide.Save();
+        }
+    }
+
+    /// <summary>
+    /// Shared part + relationship copier behind CopySlideParts and
+    /// CopyNotesSlideParts. Returns the old rId -&gt; new rId map that the caller
+    /// must replay over its own cloned XML.
+    /// </summary>
+    private static Dictionary<string, string> CopyPartsAndRelationships(
+        OpenXmlPartContainer source, OpenXmlPartContainer target,
+        Func<OpenXmlPart, bool> skip)
+    {
         // Build a map of old rId → new rId for all parts that need copying
         var rIdMap = new Dictionary<string, string>();
 
         foreach (var part in source.Parts)
         {
-            // Skip SlideLayoutPart (already linked above)
-            if (part.OpenXmlPart is SlideLayoutPart) continue;
-            // Skip NotesSlidePart (handled separately)
-            if (part.OpenXmlPart is NotesSlidePart) continue;
+            if (skip(part.OpenXmlPart)) continue;
 
             // Charts and embedded objects MUST be deep-copied — both slides
             // sharing the same ChartPart instance makes real PowerPoint reject
@@ -1816,22 +1886,9 @@ public partial class PowerPointHandler
             catch { }
         }
 
-        // Remap any changed relationship IDs in the slide XML
-        if (rIdMap.Count > 0 && target.Slide != null)
-        {
-            RemapRelationshipIds(target.Slide, rIdMap);
-            target.Slide.Save();
-        }
+        return rIdMap;
     }
 
-    /// <summary>
-    /// Parts that carry per-slide mutable data and must be cloned (not shared)
-    /// when a slide is duplicated. ChartParts especially: real PowerPoint
-    /// rejects (422) a file in which two slides point to the same chart part,
-    /// even though the SDK validator passes it. Embedded packages / OLE
-    /// objects have the same constraint. Image and media parts are immutable
-    /// after creation and safe to share.
-    /// </summary>
     /// <summary>
     /// Create a fresh part of the same concrete type as <paramref name="source"/>
     /// hung off <paramref name="parent"/>. Using the strongly-typed AddNewPart
@@ -1872,6 +1929,14 @@ public partial class PowerPointHandler
         };
     }
 
+    /// <summary>
+    /// Parts that carry per-slide mutable data and must be cloned (not shared)
+    /// when a slide is duplicated. ChartParts especially: real PowerPoint
+    /// rejects (422) a file in which two slides point to the same chart part,
+    /// even though the SDK validator passes it. Embedded packages / OLE
+    /// objects have the same constraint. Image and media parts are immutable
+    /// after creation and safe to share.
+    /// </summary>
     private static bool NeedsDeepCopy(OpenXmlPart part) => part is
         DocumentFormat.OpenXml.Packaging.ChartPart
         or DocumentFormat.OpenXml.Packaging.ExtendedChartPart

@@ -134,6 +134,12 @@ internal static class ImageSource
 
         var contentType = MimeToContentType(mime);
         var bytes = Convert.FromBase64String(data);
+        // An empty payload decodes "successfully" to zero bytes and would
+        // flow all the way into a 0-byte media part — schema-valid, but the
+        // picture renders broken in Word/PowerPoint. Reject up front, like
+        // the extpart carrier does for empty data.
+        if (bytes.Length == 0)
+            throw new ArgumentException("Invalid data URI: empty base64 payload (would produce a 0-byte image).");
         return (new MemoryStream(bytes), contentType);
     }
 

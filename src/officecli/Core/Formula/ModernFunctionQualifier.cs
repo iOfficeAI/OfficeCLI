@@ -76,7 +76,7 @@ public static class ModernFunctionQualifier
     // commonly used for scalars too — include them when the spill metadata
     // is harmless to non-spilling outputs (Excel honors t="array" with ref=
     // pointing at the single anchor cell even when the formula resolves to
-    // a single value). Source: Microsoft 365 dynamic-array catalogue.
+    // a single value). Source: the modern dynamic-array function catalogue.
     private static readonly HashSet<string> DynamicArrayFunctions = new(StringComparer.OrdinalIgnoreCase)
     {
         "FILTER", "SORT", "SORTBY", "UNIQUE", "SEQUENCE", "RANDARRAY",
@@ -210,6 +210,77 @@ public static class ModernFunctionQualifier
     }
 
     /// <summary>
+    /// Scans a formula for an inline array constant <c>{…}</c> element that is
+    /// not a literal (number, quoted string, TRUE/FALSE, error) — a function
+    /// call, cell reference, name, or nested array. Returns the offending
+    /// element text, or null when every array constant is well-formed. String
+    /// literals are skipped so their content never counts as array syntax.
+    /// </summary>
+    internal static string? FindNonLiteralArrayConstant(string formula)
+    {
+        if (string.IsNullOrEmpty(formula) || !formula.Contains('{')) return null;
+        int i = 0;
+        while (i < formula.Length)
+        {
+            char c = formula[i];
+            if (c == '"') { i = SkipStringLiteral(formula, i); continue; }
+            if (c == '{')
+            {
+                int j = i + 1, paren = 0;
+                var elem = new System.Text.StringBuilder();
+                while (j < formula.Length && formula[j] != '}')
+                {
+                    char d = formula[j];
+                    if (d == '"') { int e = SkipStringLiteral(formula, j); elem.Append(formula, j, e - j); j = e; continue; }
+                    if (d == '{') return "{ }";                              // nested array
+                    if (d == '(') paren++;
+                    else if (d == ')') paren--;
+                    if ((d == ',' || d == ';') && paren == 0)                // element boundary (not inside a call)
+                    {
+                        if (!IsArrayLiteral(elem.ToString())) return elem.ToString().Trim();
+                        elem.Clear(); j++; continue;
+                    }
+                    elem.Append(d); j++;
+                }
+                if (j >= formula.Length || !IsArrayLiteral(elem.ToString())) return elem.ToString().Trim();
+                i = j + 1;
+                continue;
+            }
+            i++;
+        }
+        return null;
+    }
+
+    // Index just past the closing quote of the string literal starting at s[i]
+    // ('"' at i), honoring the "" escape for an embedded quote.
+    private static int SkipStringLiteral(string s, int i)
+    {
+        i++;
+        while (i < s.Length)
+        {
+            if (s[i] == '"')
+            {
+                if (i + 1 < s.Length && s[i + 1] == '"') { i += 2; continue; }
+                return i + 1;
+            }
+            i++;
+        }
+        return i;
+    }
+
+    private static bool IsArrayLiteral(string e)
+    {
+        e = e.Trim();
+        if (e.Length == 0) return false;
+        if (e.Length >= 2 && e[0] == '"' && e[^1] == '"') return true;         // "string"
+        if (e.Equals("TRUE", StringComparison.OrdinalIgnoreCase) ||
+            e.Equals("FALSE", StringComparison.OrdinalIgnoreCase)) return true; // boolean
+        if (e[0] == '#') return true;                                          // #error
+        return double.TryParse(e, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out _);         // number
+    }
+
+    /// <summary>
     /// Returns the formula with Excel 2016+ modern function names qualified
     /// with <c>_xlfn.</c> / <c>_xlfn._xlws.</c> as required by OOXML. Leaves
     /// already-qualified names, older functions, quoted string literals, and
@@ -218,6 +289,18 @@ public static class ModernFunctionQualifier
     public static string Qualify(string formula)
     {
         if (string.IsNullOrEmpty(formula)) return formula;
+
+        // Excel inline array constants {…} may hold only literal values.
+        // A function call, cell reference, name, or nested array inside {…} makes
+        // Excel report the whole workbook as corrupt (it prompts to repair on
+        // open). Reject such a formula at write time so officecli never emits a
+        // file Excel refuses to open.
+        var badElem = FindNonLiteralArrayConstant(formula);
+        if (badElem != null)
+            throw new ArgumentException(
+                $"Invalid array constant: '{badElem}'. Inline arrays {{...}} may contain only literal " +
+                "values (numbers, \"text\", TRUE/FALSE, errors) — not functions, cell references, or " +
+                "nested arrays. Reference a cell range instead (e.g. A1:A3).");
 
         // LET / LAMBDA parameter names are stored in the _xlpm. namespace; without
         // that prefix Excel reports the workbook as corrupt. Collect every such

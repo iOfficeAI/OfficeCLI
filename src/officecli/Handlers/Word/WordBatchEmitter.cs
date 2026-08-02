@@ -352,8 +352,7 @@ public static partial class WordBatchEmitter
 
     private static string Truncate(string? s, int max = 60)
     {
-        s ??= "";
-        return s.Length <= max ? s : s.Substring(0, max) + "…";
+        return OfficeCli.Core.DisplayText.Truncate(s, max);
     }
 
     private static string? ExtractParaId(string anchorPath)

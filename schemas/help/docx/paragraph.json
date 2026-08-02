@@ -1006,11 +1006,19 @@
     "fill": {
       "type": "color",
       "description": "paragraph background shading (w:shd @fill). A solid background reads back as this canonical key (matching table cells and runs). Accepts a solid color — hex ('FF0000'), '#'-prefixed hex ('#FF0000'), named color ('red'), or rgb(...) notation. For a true pattern shading (pct*/stripe/cross) or a foreground pattern color, pass the legacy `shd`/`shading` triplet form 'PATTERN;FILL[;COLOR]' instead; those read back via the shading.* detail keys.",
-      "aliases": ["shd", "shading"],
+      "aliases": [
+        "shd",
+        "shading"
+      ],
       "add": true,
       "set": true,
       "get": true,
-      "examples": ["--prop fill=FFFF00", "--prop fill=#FF0000", "--prop fill=red", "--prop shd=\"pct25;FF0000;0000FF\""],
+      "examples": [
+        "--prop fill=FFFF00",
+        "--prop fill=#FF0000",
+        "--prop fill=red",
+        "--prop shd=\"pct25;FF0000;0000FF\""
+      ],
       "readback": "#RRGGBB uppercase",
       "enforcement": "report"
     },
@@ -1086,56 +1094,74 @@
     "pbdr.top": {
       "type": "string",
       "description": "paragraph border edge descriptor. Emitted only when present.",
-      "add": false,
-      "set": false,
-      "get": false,
+      "add": true,
+      "set": true,
+      "get": true,
       "readback": "n/a (handler does not surface paragraph borders today)",
-      "enforcement": "report"
+      "enforcement": "report",
+      "examples": [
+        "--prop pbdr.top=\"single;4;#FF0000\""
+      ]
     },
     "pbdr.bottom": {
       "type": "string",
       "description": "paragraph border edge descriptor. Emitted only when present.",
-      "add": false,
-      "set": false,
-      "get": false,
+      "add": true,
+      "set": true,
+      "get": true,
       "readback": "n/a (handler does not surface paragraph borders today)",
-      "enforcement": "report"
+      "enforcement": "report",
+      "examples": [
+        "--prop pbdr.bottom=\"single;4;#FF0000\""
+      ]
     },
     "pbdr.left": {
       "type": "string",
       "description": "paragraph border edge descriptor. Emitted only when present.",
-      "add": false,
-      "set": false,
-      "get": false,
+      "add": true,
+      "set": true,
+      "get": true,
       "readback": "n/a (handler does not surface paragraph borders today)",
-      "enforcement": "report"
+      "enforcement": "report",
+      "examples": [
+        "--prop pbdr.left=\"single;4;#FF0000\""
+      ]
     },
     "pbdr.right": {
       "type": "string",
       "description": "paragraph border edge descriptor. Emitted only when present.",
-      "add": false,
-      "set": false,
-      "get": false,
+      "add": true,
+      "set": true,
+      "get": true,
       "readback": "n/a (handler does not surface paragraph borders today)",
-      "enforcement": "report"
+      "enforcement": "report",
+      "examples": [
+        "--prop pbdr.right=\"single;4;#FF0000\""
+      ]
     },
     "pbdr.between": {
       "type": "string",
       "description": "paragraph border edge descriptor. Emitted only when present.",
-      "add": false,
-      "set": false,
-      "get": false,
+      "add": true,
+      "set": true,
+      "get": true,
       "readback": "n/a (handler does not surface paragraph borders today)",
-      "enforcement": "report"
+      "enforcement": "report",
+      "examples": [
+        "--prop pbdr.between=\"single;4;#FF0000\""
+      ]
     },
     "pbdr.bar": {
       "type": "string",
       "description": "paragraph border edge descriptor. Emitted only when present.",
-      "add": false,
-      "set": false,
-      "get": false,
+      "add": true,
+      "set": true,
+      "get": true,
       "readback": "n/a (handler does not surface paragraph borders today)",
-      "enforcement": "report"
+      "enforcement": "report",
+      "examples": [
+        "--prop pbdr.bar=\"single;4;#FF0000\""
+      ]
     },
     "firstLineChars": {
       "type": "number",
@@ -1400,6 +1426,204 @@
       "set": false,
       "get": true,
       "readback": "integer half-points",
+      "enforcement": "report"
+    },
+    "adjustRightInd": {
+      "type": "boolean",
+      "description": "Adjust the right indent to fit the document grid.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop adjustRightInd=false"
+      ],
+      "enforcement": "report"
+    },
+    "autoSpaceDE": {
+      "type": "boolean",
+      "description": "Auto-add spacing between East-Asian and Latin text.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop autoSpaceDE=false"
+      ],
+      "enforcement": "report"
+    },
+    "autoSpaceDN": {
+      "type": "boolean",
+      "description": "Auto-add spacing between East-Asian text and numbers.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop autoSpaceDN=false"
+      ],
+      "enforcement": "report"
+    },
+    "kinsoku": {
+      "type": "boolean",
+      "description": "Apply East-Asian line-breaking (kinsoku) rules.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop kinsoku=false"
+      ],
+      "enforcement": "report"
+    },
+    "leftChars": {
+      "type": "number",
+      "description": "Left indent in character units (w:leftChars, 1/100 char).",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop leftChars=200"
+      ],
+      "enforcement": "report"
+    },
+    "lineSpacing": {
+      "type": "string",
+      "description": "Line spacing: multiplier (1.5x) or fixed (18pt). Pairs with lineRule.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop lineSpacing=1.5x"
+      ],
+      "enforcement": "report"
+    },
+    "mirrorIndents": {
+      "type": "boolean",
+      "description": "Swap left/right indents on facing (mirrored) pages.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop mirrorIndents=true"
+      ],
+      "enforcement": "report"
+    },
+    "overflowPunct": {
+      "type": "boolean",
+      "description": "Allow punctuation to hang past the right margin.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop overflowPunct=false"
+      ],
+      "enforcement": "report"
+    },
+    "rightChars": {
+      "type": "number",
+      "description": "Right indent in character units (w:rightChars, 1/100 char).",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop rightChars=100"
+      ],
+      "enforcement": "report"
+    },
+    "snapToGrid": {
+      "type": "boolean",
+      "description": "Snap the paragraph lines to the document grid.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop snapToGrid=false"
+      ],
+      "enforcement": "report"
+    },
+    "spaceAfterLines": {
+      "type": "number",
+      "description": "Space after the paragraph in 1/100 of a line.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop spaceAfterLines=100"
+      ],
+      "enforcement": "report"
+    },
+    "spaceBeforeLines": {
+      "type": "number",
+      "description": "Space before the paragraph in 1/100 of a line.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop spaceBeforeLines=100"
+      ],
+      "enforcement": "report"
+    },
+    "suppressAutoHyphens": {
+      "type": "boolean",
+      "description": "Suppress automatic hyphenation for this paragraph.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop suppressAutoHyphens=true"
+      ],
+      "enforcement": "report"
+    },
+    "suppressLineNumbers": {
+      "type": "boolean",
+      "description": "Suppress line numbers for this paragraph.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop suppressLineNumbers=true"
+      ],
+      "enforcement": "report"
+    },
+    "suppressOverlap": {
+      "type": "boolean",
+      "description": "Prevent this framed paragraph from overlapping others.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop suppressOverlap=true"
+      ],
+      "enforcement": "report"
+    },
+    "textAlignment": {
+      "type": "string",
+      "description": "Vertical alignment of text on the line: auto/baseline/top/center/bottom.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop textAlignment=center"
+      ],
+      "enforcement": "report"
+    },
+    "textboxTightWrap": {
+      "type": "string",
+      "description": "Tight-wrap lines in a text box: none/allLines/firstAndLastLine/firstLineOnly/lastLineOnly.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop textboxTightWrap=allLines"
+      ],
+      "enforcement": "report"
+    },
+    "topLinePunct": {
+      "type": "boolean",
+      "description": "Compress punctuation at the start of a line.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop topLinePunct=true"
+      ],
       "enforcement": "report"
     }
   }

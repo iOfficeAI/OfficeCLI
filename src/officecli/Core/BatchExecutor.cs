@@ -33,6 +33,9 @@ public static class BatchExecutor
         try
         {
             var items = JsonSerializer.Deserialize(itemsJson, BatchJsonContext.Default.ListBatchItem) ?? new List<BatchItem>();
+            // NEWLINE-SEMANTICS-V2: strip meta items; rewrite legacy docx dumps.
+            BatchCompat.PrepareForReplay(items,
+                handler is OfficeCli.Handlers.WordHandler ? ".docx" : "");
             var unrecognizedLatex = new List<string>();
             var results = CommandBuilder.RunNonResidentBatch(handler, items, stopOnError, json, unrecognizedLatex);
 

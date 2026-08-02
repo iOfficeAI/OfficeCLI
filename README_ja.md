@@ -285,8 +285,8 @@ officecli add sales.xlsx '/Sheet1' --type pivottable \
 `merge` は任意の `.docx` / `.xlsx` / `.pptx` の `{{key}}` プレースホルダーを JSON データで置換 — 段落、表セル、シェイプ、ヘッダー/フッター、チャートタイトル全体で動作。エージェントが一度レイアウトを設計 (高コスト)、本番コードが N 回入力 (低コスト、決定論的、トークンコストゼロ)。エージェントが各レポートを毎回ゼロから再生成し、N 個の一貫性のないレイアウトを生み出す失敗モードを回避します。
 
 ```bash
-officecli merge invoice-template.docx out-001.docx '{"client":"Acme","total":"$5,200"}'
-officecli merge q4-template.pptx q4-acme.pptx data.json
+officecli merge invoice-template.docx out-001.docx --data '{"client":"Acme","total":"$5,200"}'
+officecli merge q4-template.pptx q4-acme.pptx --data data.json
 ```
 
 #### Dump によるラウンドトリップ — 既存ドキュメントから学ぶ
@@ -412,10 +412,9 @@ curl -fsSL https://officecli.ai/SKILL.md -o ~/.claude/skills/officecli.md
 プロパティ名がわからない時は、階層型ヘルプで確認：
 
 ```bash
-officecli pptx set              # 全設定可能な要素とプロパティ
-officecli pptx set shape        # 特定の要素タイプの詳細
-officecli pptx set shape.fill   # 単一プロパティのフォーマットと例
-officecli docx query            # セレクタリファレンス：属性、:contains、:has() など
+officecli help pptx set              # 全設定可能な要素とプロパティ
+officecli help pptx set shape        # 特定の要素タイプの詳細
+officecli help docx query            # セレクタリファレンス：属性、:contains、:has() など
 ```
 
 `pptx` を `docx` や `xlsx` に置き換え可能。動詞は `view`、`get`、`query`、`set`、`add`、`raw`。
@@ -520,7 +519,7 @@ officecli get report.docx /body --depth 1 --json
 | `close` | 保存してレジデントモードを終了 |
 | [`install`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-install) | バイナリ + スキル + MCP をインストール（`all`、`claude`、`cursor` など） |
 | `config` | 設定の取得または変更 |
-| `<format> <command>` | [組み込みヘルプ](https://github.com/iOfficeAI/OfficeCLI/wiki/command-reference)（例：`officecli pptx set shape`） |
+| `help <format> <command>` | [組み込みヘルプ](https://github.com/iOfficeAI/OfficeCLI/wiki/command-reference)（例：`officecli help pptx set shape`） |
 
 ## エンドツーエンドワークフロー例
 
@@ -573,10 +572,11 @@ officecli get deck.pptx / --depth 2 --json
 officecli batch budget.xlsx --input updates.json --json
 
 # CSV データを Excel シートにインポート
-officecli add budget.xlsx / --type sheet --prop name="Q1 Data" --prop csv=sales.csv
+officecli add budget.xlsx / --type sheet --prop name="Q1 Data"
+officecli import budget.xlsx "/Q1 Data" sales.csv --header
 
 # テンプレートマージでレポートを一括生成
-officecli merge invoice-template.docx invoice-001.docx '{"client":"Acme","total":"$5,200"}'
+officecli merge invoice-template.docx invoice-001.docx --data '{"client":"Acme","total":"$5,200"}'
 
 # 納品前にドキュメント品質をチェック
 officecli validate report.docx && officecli view report.docx issues --json

@@ -798,6 +798,54 @@
       ],
       "readback": "#RRGGBB uppercase, or bare scheme name (accent1). Theme-linked colors (e.g. hyperlink runs) read back as '#RRGGBB;themeColor=NAME' — the compound form is accepted back by add/set and preserves the w:themeColor linkage on round-trip.",
       "enforcement": "strict"
+    },
+    "em": {
+      "type": "string",
+      "description": "East-Asian emphasis mark on the run: none / dot / comma / circle / underDot (w:em).",
+      "add": true,
+      "set": true,
+      "get": true,
+      "aliases": [
+        "emphasis",
+        "emphasisMark"
+      ],
+      "examples": [
+        "--prop em=dot"
+      ],
+      "enforcement": "report"
+    },
+    "bdr": {
+      "type": "string",
+      "description": "Run border: style;size;color, same grammar as paragraph pbdr (w:bdr).",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop bdr=\"single;4;#FF0000\""
+      ],
+      "enforcement": "report"
+    },
+    "specVanish": {
+      "type": "boolean",
+      "description": "Always hide the run (special hidden, e.g. a hidden paragraph mark) — w:specVanish.",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop specVanish=true"
+      ],
+      "enforcement": "report"
+    },
+    "snapToGrid": {
+      "type": "boolean",
+      "description": "Snap this run to the document grid (w:snapToGrid).",
+      "add": true,
+      "set": true,
+      "get": true,
+      "examples": [
+        "--prop snapToGrid=false"
+      ],
+      "enforcement": "report"
     }
   }
 }

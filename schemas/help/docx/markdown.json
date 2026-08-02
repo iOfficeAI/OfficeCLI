@@ -1,0 +1,54 @@
+{
+  "$schema": "../_schema.json",
+  "format": "docx",
+  "element": "markdown",
+  "elementAliases": [
+    "md"
+  ],
+  "parent": "body",
+  "operations": {
+    "add": true,
+    "set": false,
+    "get": false,
+    "query": false,
+    "remove": false
+  },
+  "paths": {
+    "positional": [
+      "/body"
+    ]
+  },
+  "note": "Expands a Markdown subset into ordinary, editable Word elements (paragraphs, headings, lists, tables, code, blockquotes). ADD-ONLY (like 'diagram'/'equation'): there is no persistent 'markdown' node — the expansion produces native elements you then edit individually (no matching set/get/query/remove); Add returns the path of the first block. Supported subset: ATX headings (# .. ######), blank-line paragraphs, ordered/unordered lists (-/*/+ and 1. / 3. with the first ordinal honored, 2-space nesting, same-line and next-line fenced code as item content), fenced code blocks (```lang), GFM pipe tables, blockquotes, thematic breaks, and inline **bold** / *italic* / `code` / ~~strike~~ / [text](url) / ![alt](img) with CommonMark backslash escapes. KNOWN LIMITATIONS: links and images degrade to their visible text only (no hyperlink relationship / no embedded picture — '[t](u)' keeps 't', '![a](u)' becomes '!a'); table cells carry plain text (no inline formatting inside cells); nested blockquotes flatten to a single level; a 'loose' list (blank line between the marker and its fenced content) is not treated as item content. Input mirrors 'diagram': inline via canonical 'markdown' (aliases 'text' / 'md'), or a file via 'src' (alias 'path').",
+  "properties": {
+    "markdown": {
+      "type": "string",
+      "description": "Markdown source text to expand. Canonical key (mirrors diagram's 'mermaid' / equation's 'formula'). Aliases: text, md. MULTILINE INPUT: a literal newline is required between blocks — inside plain double quotes '\\n' is the two characters backslash+n (it does NOT become a newline) and the whole thing collapses into one paragraph. Use bash/zsh $'...' ANSI-C quoting (which turns \\n into a real newline) or pass a file with src=.",
+      "aliases": [
+        "text",
+        "md"
+      ],
+      "add": true,
+      "set": false,
+      "get": false,
+      "examples": [
+        "--prop markdown=$'# Title\\n\\n- one\\n- two'",
+        "--prop text=$'1. First\\n2. Second'"
+      ],
+      "enforcement": "report"
+    },
+    "src": {
+      "type": "string",
+      "description": "Path to a .md file to load the Markdown source from (used when no inline markdown/text/md is given). Consistent with picture/diagram 'src' = a file path. Alias: path.",
+      "aliases": [
+        "path"
+      ],
+      "add": true,
+      "set": false,
+      "get": false,
+      "examples": [
+        "--prop src=README.md"
+      ],
+      "enforcement": "report"
+    }
+  }
+}

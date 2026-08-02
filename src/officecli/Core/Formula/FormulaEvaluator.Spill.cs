@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace OfficeCli.Core;
 
@@ -116,19 +117,24 @@ internal partial class FormulaEvaluator
     private FormulaResult? EvalSortBy(List<object> args)
     {
         if (ToGrid(args.Count > 0 ? args[0] : null) is not { } g) return FormulaResult.Error("#VALUE!");
-        int rows = g.GetLength(0);
+        int rows = g.GetLength(0), cols = g.GetLength(1);
+        // A horizontal array (its by-key vector length matches the column count,
+        // not the row count) is sorted along its columns; otherwise sort rows.
+        int keyLen = args.Count > 1 && ToGrid(args[1]) is { } k0 ? Flatten(k0).Length : rows;
+        bool byCol = keyLen != rows && keyLen == cols;
+        int n = byCol ? cols : rows;
         var keyCols = new List<(FormulaResult?[] key, int order)>();
         for (int i = 1; i < args.Count; i += 2)
         {
             if (ToGrid(args[i]) is not { } kg) break;
             var flat = Flatten(kg);
-            if (flat.Length != rows) return FormulaResult.Error("#VALUE!");
+            if (flat.Length != n) return FormulaResult.Error("#VALUE!");
             int ord = (int)Scalar(args, i + 1, 1);
             keyCols.Add((flat, ord));
         }
         if (keyCols.Count == 0) return MakeArea(g);
-        var rowIdx = Enumerable.Range(0, rows).ToList();
-        rowIdx.Sort((a, b) =>
+        var idx = Enumerable.Range(0, n).ToList();
+        idx.Sort((a, b) =>
         {
             foreach (var (key, ord) in keyCols)
             {
@@ -137,7 +143,7 @@ internal partial class FormulaEvaluator
             }
             return 0;
         });
-        return MakeArea(PickRows(g, rowIdx));
+        return MakeArea(byCol ? PickCols(g, idx) : PickRows(g, idx));
     }
 
     // Sort rows (or columns when byCol) by the idx-th key line.
@@ -240,6 +246,7 @@ internal partial class FormulaEvaluator
         int rows = g.GetLength(0), cols = g.GetLength(1);
         var rIdx = SliceIndices(rows, OptInt(args, 1), take: true);
         var cIdx = SliceIndices(cols, OptInt(args, 2), take: true);
+        if (rIdx.Count == 0 || cIdx.Count == 0) return FormulaResult.Error("#CALC!");   // TAKE(...,0) has no result
         return MakeArea(PickRC(g, rIdx, cIdx));
     }
 
@@ -290,7 +297,9 @@ internal partial class FormulaEvaluator
 
         void AddIfKept(FormulaResult? cell)
         {
-            bool blank = cell == null || cell.IsBlank || (cell.IsString && cell.StringValue == "");
+            // "ignore blanks" drops only genuinely empty cells, not an empty
+            // string "" (which is text and is kept, matching Excel).
+            bool blank = cell == null || cell.IsBlank;
             bool err = cell?.IsError == true;
             if ((ignore is 1 or 3) && blank) return;
             if ((ignore is 2 or 3) && err) return;
@@ -393,13 +402,14 @@ internal partial class FormulaEvaluator
         var colDelims = DelimList(args, 1);
         var rowDelims = DelimList(args, 2);
         bool ignoreEmpty = ScalarBool(args, 3, false);
+        bool ignoreCase = (int)Scalar(args, 4, 0) == 1;   // match_mode 1 = case-insensitive
         FormulaResult? pad = args.Count > 5 && args[5] is FormulaResult pf ? pf : FormulaResult.Error("#N/A");
 
         string[] rowParts = rowDelims.Count > 0
-            ? SplitOnAny(text, rowDelims, ignoreEmpty)
+            ? SplitOnAny(text, rowDelims, ignoreEmpty, ignoreCase)
             : new[] { text };
         var rows = rowParts.Select(rp => colDelims.Count > 0
-            ? SplitOnAny(rp, colDelims, ignoreEmpty)
+            ? SplitOnAny(rp, colDelims, ignoreEmpty, ignoreCase)
             : new[] { rp }).ToList();
         int cols = rows.Max(r => r.Length);
         var outc = new FormulaResult?[rows.Count, cols];
@@ -423,9 +433,12 @@ internal partial class FormulaEvaluator
         return list;
     }
 
-    private static string[] SplitOnAny(string s, List<string> delims, bool ignoreEmpty)
+    private static string[] SplitOnAny(string s, List<string> delims, bool ignoreEmpty, bool ignoreCase = false)
     {
-        var parts = s.Split(delims.ToArray(), ignoreEmpty ? StringSplitOptions.RemoveEmptyEntries : StringSplitOptions.None);
+        string[] parts = ignoreCase
+            ? Regex.Split(s, string.Join("|", delims.Select(Regex.Escape)), RegexOptions.IgnoreCase)
+            : s.Split(delims.ToArray(), StringSplitOptions.None);
+        if (ignoreEmpty) parts = parts.Where(p => p.Length > 0).ToArray();
         return parts.Length == 0 ? new[] { "" } : parts;
     }
 

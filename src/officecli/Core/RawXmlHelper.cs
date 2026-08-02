@@ -183,7 +183,13 @@ internal static class RawXmlHelper
                     if (xml == null) throw new ArgumentException("--xml is required for insertbefore");
                     RequireParent(node, "insertbefore");
                     var beforeFragment = ParseFragment(xml, xDoc);
-                    foreach (var el in beforeFragment.AsEnumerable().Reverse())
+                    // AddBeforeSelf lands each element immediately before the
+                    // anchor, i.e. AFTER everything inserted so far — forward
+                    // iteration preserves source order. (The reverse idiom is
+                    // insertafter-only; reversing here flipped a multi-element
+                    // fragment, splitting bookmarkStart/End pairs so the id
+                    // balancer synthesized a duplicate w:id end marker.)
+                    foreach (var el in beforeFragment)
                         node.AddBeforeSelf(el);
                     affected++;
                     break;

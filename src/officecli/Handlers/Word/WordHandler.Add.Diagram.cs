@@ -182,8 +182,17 @@ public partial class WordHandler
     private string AddDiagramAsImage(OpenXmlElement parent, string parentPath, int? index,
                                      Dictionary<string, string> properties, string mermaidText, bool allowNativeFallback)
     {
+        // Bake theme/layout/look into the source as frontmatter so they render and
+        // round-trip via alt-text; native fallback keeps the ORIGINAL source (its
+        // parser has no frontmatter/elk support). Mirrors the pptx image path.
+        var composedText = MermaidImageRenderer.ComposeSource(mermaidText,
+            properties.GetValueOrDefault("theme"),
+            properties.GetValueOrDefault("layout"),
+            properties.GetValueOrDefault("look"));
+        var background = properties.GetValueOrDefault("background");
+
         string imgPath;
-        try { imgPath = MermaidImageRenderer.RenderToPngFile(mermaidText); }
+        try { imgPath = MermaidImageRenderer.RenderToPngFile(composedText, background); }
         // A syntax error is bad input — surface it (with mermaid's line-numbered
         // message) so the caller can fix the source. Never fall back to native: the
         // synthesizer would reject the same broken text or, worse, draw garbage.
@@ -192,11 +201,56 @@ public partial class WordHandler
         try
         {
             var pic = new Dictionary<string, string>(properties);
-            foreach (var k in new[] { "mermaid", "text", "dsl", "src", "path", "render", "poster" })
+            foreach (var k in new[] { "mermaid", "text", "dsl", "src", "path", "render", "poster",
+                                      "theme", "layout", "look", "background" })
                 pic.Remove(k);
             pic["src"] = imgPath;
             if (!(pic.TryGetValue("alt", out var a) && !string.IsNullOrEmpty(a)))
-                pic["alt"] = MermaidImageRenderer.SourceTag + mermaidText;
+                pic["alt"] = MermaidImageRenderer.SourceTag + composedText;
+
+            // poster: grow the PAGE to the whole diagram instead of shrinking a long
+            // flowchart into an unreadable sliver. The pptx path grows the slide; the
+            // Word analogue grows the section's page size. Word caps a page edge at
+            // 22in (55.88cm) — far below pptx's 142cm — so a very long chart is still
+            // limited (splitting it stays the better answer past that), but a
+            // moderately long one becomes readable on one tall page. The page size is
+            // per SECTION: this sets the diagram's section, so on an export-a-diagram
+            // document (the diagram is the content) the whole page becomes the poster;
+            // mixed content in the same section shares the grown page (the explicit
+            // opt-in's tradeoff, mirroring pptx growing the one slide).
+            // poster resolution mirrors the pptx path: explicit poster=true always
+            // grows the page; poster=false always fits the page; UNSET is the
+            // ADAPTIVE DEFAULT — grow the page only when fitting the diagram to the
+            // page would shrink it below the readability floor. Auto-poster stands
+            // down when the caller pinned an explicit width/height.
+            {
+                bool posterSet = properties.ContainsKey("poster");
+                bool posterOn = OfficeCli.Core.ParseHelpers.IsTruthy(properties.GetValueOrDefault("poster"));
+                bool hasExplicitBox = pic.ContainsKey("width") || pic.ContainsKey("height");
+                using (var s = System.IO.File.OpenRead(imgPath))
+                {
+                    var dims = OfficeCli.Core.ImageSource.TryGetDimensions(s);
+                    if (dims is { Width: > 0, Height: > 0 } d)
+                    {
+                        bool grow = posterOn
+                            || (!posterSet && !hasExplicitBox
+                                && MermaidImageRenderer.ExceedsOnePageReadably(
+                                    d.Width, d.Height, SectionContentWidthCm(), SectionContentHeightCm()));
+                        if (grow)
+                        {
+                            const double maxPageEdgeCm = 55.88; // Word's 22in page limit
+                            const double marginCm = 0.5;
+                            double wCm = d.Width / 96.0 * 2.54, hCm = d.Height / 96.0 * 2.54;
+                            double clamp = Math.Min(1.0, (maxPageEdgeCm - 2 * marginCm) / Math.Max(wCm, hCm));
+                            wCm *= clamp; hCm *= clamp;
+                            SetLastSectionPageCm(wCm + 2 * marginCm, hCm + 2 * marginCm, marginCm);
+                            pic["width"] = wCm.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "cm";
+                            pic.Remove("height"); // aspect preserved
+                            return AddPicture(parent, parentPath, index, pic);
+                        }
+                    }
+                }
+            }
             // Sizing parity with the native path AND the pptx image path: the diagram
             // is ALWAYS scaled to FIT its box with aspect preserved (never stretched).
             // The box is the caller's width/height when given, else the section's
@@ -353,6 +407,29 @@ public partial class WordHandler
     // Text-area height (page height − top/bottom margins) of the last section, in
     // cm. Falls back to US-Letter with 1in margins (~24.13cm) when unset. Used to
     // cap a fit-to-page diagram image so a tall graph stays on one page.
+    // Set the last section's page size and uniform margins (poster). Creates the
+    // sectPr / pgSz / pgMar if absent. Twips = cm * 1440 / 2.54.
+    private void SetLastSectionPageCm(double pageWCm, double pageHCm, double marginCm)
+    {
+        var body = _doc?.MainDocumentPart?.Document?.Body;
+        if (body == null) return;
+        var sect = body.Elements<SectionProperties>().LastOrDefault();
+        if (sect == null) { sect = new SectionProperties(); body.Append(sect); }
+        uint W(double cm) => (uint)Math.Round(cm * 1440.0 / 2.54);
+
+        var pgSz = sect.Elements<PageSize>().FirstOrDefault();
+        if (pgSz == null) { pgSz = new PageSize(); sect.InsertAt(pgSz, 0); }
+        pgSz.Width = W(pageWCm);
+        pgSz.Height = W(pageHCm);
+
+        var pgMar = sect.Elements<PageMargin>().FirstOrDefault();
+        if (pgMar == null) { pgMar = new PageMargin(); sect.InsertAfter(pgMar, pgSz); }
+        pgMar.Top = (int)W(marginCm);
+        pgMar.Bottom = (int)W(marginCm);
+        pgMar.Left = (uint)W(marginCm);
+        pgMar.Right = (uint)W(marginCm);
+    }
+
     private double SectionContentHeightCm()
     {
         try

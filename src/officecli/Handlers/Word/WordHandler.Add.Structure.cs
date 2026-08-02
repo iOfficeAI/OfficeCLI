@@ -711,7 +711,7 @@ public partial class WordHandler
     {
         if (!properties.TryGetValue("text", out var fnText))
             throw new ArgumentException("'text' property is required for footnote type");
-        OfficeCli.Core.ParseHelpers.ValidateXmlText(fnText, "text");
+        OfficeCli.Core.ParseHelpers.ValidateXmlText(fnText, "text", allowSoftBreakChar: true);
 
         if (parent is not Paragraph fnPara)
             throw new ArgumentException("Footnotes must be added to a paragraph: /body/p[N]");
@@ -848,7 +848,7 @@ public partial class WordHandler
     {
         if (!properties.TryGetValue("text", out var enText))
             throw new ArgumentException("'text' property is required for endnote type");
-        OfficeCli.Core.ParseHelpers.ValidateXmlText(enText, "text");
+        OfficeCli.Core.ParseHelpers.ValidateXmlText(enText, "text", allowSoftBreakChar: true);
 
         if (parent is not Paragraph enPara)
             throw new ArgumentException("Endnotes must be added to a paragraph: /body/p[N]");
@@ -1272,7 +1272,7 @@ public partial class WordHandler
             {
                 // Two distinct styles (the styleId collision is already caught
                 // above, so this explicit styleId is unique) sharing a display
-                // name is a real-world artifact — LibreOffice / document merges
+                // name is a real-world artifact — third-party editors / document merges
                 // produce e.g. styleId "Subtitle1" + "Subtitle10" both named
                 // "Subtitle1". Word keys its Styles pane by name, so the
                 // duplicate collides in the UI, but NOTHING in the document

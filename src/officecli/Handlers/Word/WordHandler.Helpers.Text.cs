@@ -409,13 +409,18 @@ public partial class WordHandler
                 // with embedded \n loses the break on dump readback. Skip
                 // page/column breaks — they have no \n source representation
                 // and a paragraph-level `break` property already captures them.
+                // NEWLINE-SEMANTICS-V2: soft line breaks read back as '\v'
+                // (Word object model Chr(11)); '\n' now denotes a paragraph
+                // boundary at block level, so a break must not masquerade as
+                // one. AppendTextWithBreaks accepts '\v' (and legacy '\n' in
+                // run scope) back into <w:br/> for the dump round-trip.
                 case Break br when br.Type == null || br.Type.Value == BreakValues.TextWrapping:
-                    sb.Append('\n'); break;
+                    sb.Append('\v'); break;
                 // BUG-R10A(BUG1): <w:cr/> (CarriageReturn) is a line break too —
                 // same visual effect as a textWrapping <w:br/>. Without this case
                 // GetRunText dropped it and adjacent text merged ("A"+"B" → "AB")
                 // on dump readback. Map to \n so it round-trips through a <w:br/>.
-                case CarriageReturn: sb.Append('\n'); break;
+                case CarriageReturn: sb.Append('\v'); break;
                 // BUG-DUMP7-01: <w:sym w:font="Wingdings" w:char="F0E0"/> is a
                 // glyph substitution — the run carries no <w:t>. Without a case
                 // here, GetRunText returned empty and WordBatchEmitter's run-emit
@@ -480,6 +485,29 @@ public partial class WordHandler
     // REF/PAGEREF/TOC anchor pointing at it resolves to nothing. A zero-length
     // bookmark (End is the immediate document-order successor of Start) is NOT
     // a span and keeps the single combined `add bookmark` op so it stays empty.
+    // Document-order (pre-order) successors of `start` that stay within `root`.
+    // Replaces `root.Descendants()` + skip-until-started: that re-walked the whole
+    // subtree from the top on every call just to REACH bkStart, so classifying N
+    // bookmarks was O(N * position) = O(N²). Walking forward from bkStart is
+    // O(span) — bounded by the first content element / matching end, which for a
+    // typical span is the very next node.
+    private static IEnumerable<OpenXmlElement> ForwardWithin(OpenXmlElement start, OpenXmlElement root)
+    {
+        var n = start;
+        while (true)
+        {
+            OpenXmlElement? next = n.FirstChild ?? n.NextSibling();
+            while (next == null)
+            {
+                n = n.Parent;
+                if (n == null || ReferenceEquals(n, root)) yield break;
+                next = n.NextSibling();
+            }
+            yield return next;
+            n = next;
+        }
+    }
+
     private static bool IsContentSpanBookmark(BookmarkStart bkStart)
     {
         var id = bkStart.Id?.Value;
@@ -488,14 +516,8 @@ public partial class WordHandler
             ?? bkStart.Ancestors<TableCell>().FirstOrDefault() as OpenXmlElement
             ?? bkStart.Ancestors().LastOrDefault();
         if (root == null) return false;
-        bool started = false;
-        foreach (var el in root.Descendants())
+        foreach (var el in ForwardWithin(bkStart, root))
         {
-            if (!started)
-            {
-                if (ReferenceEquals(el, bkStart)) started = true;
-                continue;
-            }
             if (el is BookmarkEnd be && be.Id?.Value == id)
             {
                 // BUG-DUMP-BMSDT-DUP: the matching end lives INSIDE an SDT (raw-set
@@ -533,14 +555,33 @@ public partial class WordHandler
         return false;
     }
 
+    // Cached w:id → BookmarkStart lookup within a scope root (per-Body). Replaces
+    // body.Descendants<BookmarkStart>().FirstOrDefault(id), which is O(bookmarks)
+    // per call; dump resolves one per bookmarkEnd, so the scan made dump O(N²) on
+    // bookmark-dense documents. First-wins on duplicate ids, matching the old
+    // FirstOrDefault. Invalidated with the other body caches on any structural
+    // mutation (ClearBodyChildIndex → _bookmarkStartByIdCache = null).
+    private BookmarkStart? FindBookmarkStartById(OpenXmlElement scopeRoot, string id)
+    {
+        _bookmarkStartByIdCache ??= new();
+        if (!_bookmarkStartByIdCache.TryGetValue(scopeRoot, out var map))
+        {
+            map = new(StringComparer.Ordinal);
+            foreach (var bs in scopeRoot.Descendants<BookmarkStart>())
+                if (bs.Id?.Value is { } bid && !map.ContainsKey(bid))
+                    map[bid] = bs;
+            _bookmarkStartByIdCache[scopeRoot] = map;
+        }
+        return map.TryGetValue(id, out var found) ? found : null;
+    }
+
     // Overload: classify by the BookmarkEnd half (resolve its paired Start).
     private bool IsContentSpanBookmark(BookmarkEnd bkEnd)
     {
         var id = bkEnd.Id?.Value;
         if (string.IsNullOrEmpty(id)) return false;
         var body = _doc.MainDocumentPart?.Document?.Body;
-        var start = body?.Descendants<BookmarkStart>()
-            .FirstOrDefault(bs => bs.Id?.Value == id);
+        var start = body == null ? null : FindBookmarkStartById(body, id);
         return start != null && IsContentSpanBookmark(start);
     }
 
@@ -551,8 +592,7 @@ public partial class WordHandler
         var id = bkEnd.Id?.Value;
         if (string.IsNullOrEmpty(id)) return null;
         var body = _doc.MainDocumentPart?.Document?.Body;
-        var start = body?.Descendants<BookmarkStart>()
-            .FirstOrDefault(bs => bs.Id?.Value == id);
+        var start = body == null ? null : FindBookmarkStartById(body, id);
         return start?.Name?.Value;
     }
 

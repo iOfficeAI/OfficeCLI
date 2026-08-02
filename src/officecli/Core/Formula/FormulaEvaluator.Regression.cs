@@ -8,7 +8,7 @@ namespace OfficeCli.Core;
 // {m_k,…,m_1,b}) optionally with the 5-row stats block; TREND/GROWTH return the
 // fitted values. The dynamic-array writeback (ExcelHandler.DynamicArray) makes
 // Excel spill them; the anchor (top-left) is the cell's computedValue. Verified
-// against real Microsoft Excel.
+// against real Excel.
 internal partial class FormulaEvaluator
 {
     // Ordinary least squares: solve (XᵀX)β = Xᵀy. Returns β (length p) or null

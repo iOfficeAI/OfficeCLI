@@ -428,6 +428,29 @@ public partial class ExcelHandler
                 node.Format["crop"] = $"{cl / 1000.0:0.##},{ct / 1000.0:0.##},{cr / 1000.0:0.##},{cb / 1000.0:0.##}";
         }
 
+        // P6 readback: opacity from <a:blip><a:alphaModFix amt="N"/> (0..100000
+        // scale; Add takes percent). Mirrors BuildPictureBlipFill. Omitted when
+        // fully opaque (no alphaModFix node).
+        var picBlip = picture.BlipFill?.GetFirstChild<Drawing.Blip>();
+        var picAlpha = picBlip?.GetFirstChild<Drawing.AlphaModulationFixed>();
+        if (picAlpha?.Amount?.Value is { } alphaAmt && alphaAmt < 100000)
+            node.Format["opacity"] = (int)Math.Round(alphaAmt / 1000.0);
+
+        // P10 readback: decorative flag from <xdr:cNvPr><a:extLst><a:ext
+        // uri="{FF2B5EF4-...}"><a16:decorative val="1"/>. Mirrors the Add
+        // emit; the a16:decorative node is an unknown element.
+        var picCNvPrRead = picture.NonVisualPictureProperties?.NonVisualDrawingProperties;
+        if (picCNvPrRead != null)
+        {
+            // Search the whole cNvPr subtree — the a:extLst under cNvPr is a
+            // distinct strongly-typed child, so a GetFirstChild<ExtensionList>
+            // misses it; Descendants() reaches the unknown a16:decorative node.
+            bool decorative = picCNvPrRead.Descendants()
+                .Any(e => e.LocalName == "decorative"
+                    && e.GetAttributes().Any(a => a.LocalName == "val" && a.Value == "1"));
+            if (decorative) node.Format["decorative"] = true;
+        }
+
         return node;
     }
 
@@ -445,6 +468,151 @@ public partial class ExcelHandler
             foreach (var sp in anchor.Descendants<XDR.Shape>())
                 yield return (sp, anchor);
         }
+    }
+
+    internal sealed class DumpDrawingHyperlinkSpec
+    {
+        public string Id { get; set; } = "";
+        public string Target { get; set; } = "";
+        public bool IsExternal { get; set; }
+    }
+
+    internal sealed class DumpShapeReplayItem
+    {
+        // Exactly one of ShapeIndex / GroupAnchorXml is populated.
+        public int? ShapeIndex { get; set; }
+        public string? GroupAnchorXml { get; set; }
+        public List<DumpDrawingHyperlinkSpec> GroupHyperlinks { get; set; } = [];
+        public string? Warning { get; set; }
+    }
+
+    // Compact, trimming-safe carrier used inside the dump JSON string value:
+    // base64(id),base64(target),0|1 entries separated by '|'. Base64 never
+    // contains ',' or '|', so no reflection-based JSON serializer is needed
+    // inside the single-file published executable.
+    internal static string EncodeDumpDrawingHyperlinks(
+        IEnumerable<DumpDrawingHyperlinkSpec> hyperlinks)
+    {
+        static string B64(string value) => Convert.ToBase64String(
+            System.Text.Encoding.UTF8.GetBytes(value));
+        return string.Join("|", hyperlinks.Select(h =>
+            $"{B64(h.Id)},{B64(h.Target)},{(h.IsExternal ? "1" : "0")}"));
+    }
+
+    internal static List<DumpDrawingHyperlinkSpec> DecodeDumpDrawingHyperlinks(
+        string encoded)
+    {
+        static string FromB64(string value) => System.Text.Encoding.UTF8.GetString(
+            Convert.FromBase64String(value));
+        var result = new List<DumpDrawingHyperlinkSpec>();
+        if (string.IsNullOrEmpty(encoded)) return result;
+        foreach (var entry in encoded.Split('|', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var fields = entry.Split(',');
+            if (fields.Length != 3 || (fields[2] != "0" && fields[2] != "1"))
+                throw new FormatException(
+                    "Expected base64(id),base64(target),0|1 entries separated by '|'.");
+            result.Add(new DumpDrawingHyperlinkSpec
+            {
+                Id = FromB64(fields[0]),
+                Target = FromB64(fields[1]),
+                IsExternal = fields[2] == "1",
+            });
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Build the dump replay sequence for worksheet shapes without destroying
+    /// real DrawingML groups. A grouped TwoCellAnchor is carried verbatim when
+    /// every relationship referenced inside it is a hyperlink relationship;
+    /// those lightweight relationships can be recreated safely on replay.
+    ///
+    /// Groups that reference package parts (pictures/charts/etc.) fall back to
+    /// the existing leaf-shape path with an explicit warning. Copying those
+    /// parts requires a recursive part-graph carrier and raw XML alone would
+    /// leave dangling r:embed/r:id values.
+    /// </summary>
+    internal List<DumpShapeReplayItem> GetDumpShapeReplayItems(string sheetName)
+    {
+        var result = new List<DumpShapeReplayItem>();
+        var worksheet = FindWorksheet(sheetName);
+        var drawingsPart = worksheet?.DrawingsPart;
+        var wsDrawing = drawingsPart?.WorksheetDrawing;
+        if (drawingsPart == null || wsDrawing == null) return result;
+
+        const string relNs =
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        int leafIndex = 0;
+
+        foreach (var anchor in wsDrawing.Elements<XDR.TwoCellAnchor>())
+        {
+            var leaves = anchor.Descendants<XDR.Shape>().ToList();
+            var firstLeafIndex = leafIndex + 1;
+            leafIndex += leaves.Count;
+
+            var group = anchor.GetFirstChild<XDR.GroupShape>();
+            if (group == null)
+            {
+                for (int i = 0; i < leaves.Count; i++)
+                    result.Add(new DumpShapeReplayItem { ShapeIndex = firstLeafIndex + i });
+                continue;
+            }
+
+            var referencedIds = anchor
+                .Descendants()
+                .Prepend(anchor)
+                .SelectMany(e => e.GetAttributes())
+                .Where(a => a.NamespaceUri == relNs
+                    && (a.LocalName == "id" || a.LocalName == "embed" || a.LocalName == "link")
+                    && !string.IsNullOrEmpty(a.Value))
+                .Select(a => a.Value!)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            var hyperlinks = new List<DumpDrawingHyperlinkSpec>();
+            var unsupportedIds = new List<string>();
+            foreach (var rid in referencedIds)
+            {
+                var hyperlink = drawingsPart.HyperlinkRelationships
+                    .FirstOrDefault(r => r.Id == rid);
+                if (hyperlink == null)
+                {
+                    unsupportedIds.Add(rid);
+                    continue;
+                }
+                hyperlinks.Add(new DumpDrawingHyperlinkSpec
+                {
+                    Id = hyperlink.Id ?? rid,
+                    Target = hyperlink.Uri.ToString(),
+                    IsExternal = hyperlink.IsExternal,
+                });
+            }
+
+            if (unsupportedIds.Count == 0)
+            {
+                result.Add(new DumpShapeReplayItem
+                {
+                    GroupAnchorXml = anchor.OuterXml,
+                    GroupHyperlinks = hyperlinks,
+                });
+                continue;
+            }
+
+            var warning =
+                $"grouped drawing references non-hyperlink relationship(s) {string.Join(", ", unsupportedIds)}; "
+                + "the group was flattened because its dependent package parts cannot yet be carried safely";
+            for (int i = 0; i < leaves.Count; i++)
+            {
+                result.Add(new DumpShapeReplayItem
+                {
+                    ShapeIndex = firstLeafIndex + i,
+                    Warning = i == 0 ? warning : null,
+                });
+            }
+        }
+
+        return result;
     }
 
     private DocumentNode? GetShapeNode(string sheetName, WorksheetPart worksheetPart, int index, string path)
@@ -467,6 +635,28 @@ public partial class ExcelHandler
         var nvProps = shape.NonVisualShapeProperties?.GetFirstChild<XDR.NonVisualDrawingProperties>();
         if (nvProps?.Name?.Value != null)
             node.Format["name"] = nvProps.Name.Value;
+
+        // Shape hyperlinks live under <xdr:cNvPr><a:hlinkClick>. Group shapes
+        // are flattened to leaf shapes for Get/dump, so preserve each leaf link.
+        if (nvProps != null)
+        {
+            var shapeHlink = nvProps.GetFirstChild<Drawing.HyperlinkOnClick>();
+            if (shapeHlink != null)
+            {
+                if (!string.IsNullOrEmpty(shapeHlink.Id?.Value))
+                {
+                    var rel = drawingsPart.HyperlinkRelationships
+                        .FirstOrDefault(r => r.Id == shapeHlink.Id.Value);
+                    if (rel != null) node.Format["hyperlink"] = rel.Uri.ToString();
+                }
+                else
+                {
+                    var loc = shapeHlink.GetAttributes()
+                        .FirstOrDefault(a => a.LocalName == "location").Value;
+                    if (!string.IsNullOrEmpty(loc)) node.Format["hyperlink"] = "#" + loc;
+                }
+            }
+        }
 
         // Text — shape TextBody has one <a:p> per paragraph, each with
         // zero-or-more <a:r>/<a:t> runs. Concatenate runs within a
@@ -682,6 +872,24 @@ public partial class ExcelHandler
             var softEdge = activeEffects.GetFirstChild<Drawing.SoftEdge>();
             if (softEdge?.Radius?.HasValue == true)
                 node.Format["softEdge"] = $"{softEdge.Radius.Value / EmuConverter.EmuPerPointF:0.##}pt";
+            // reflection readback — Add/Set build a:reflection (via
+            // DrawingEffectsHelper.BuildReflection) but Get omitted it, so the
+            // Get-driven dump silently dropped it. BuildReflection encodes the
+            // preset/strength in @endPos (1/1000 percent); emit the numeric
+            // percent so `set reflection=<pct>` re-parses its own readback
+            // (true/half/full/tight all normalize to the same endPos on replay).
+            var reflection = activeEffects.GetFirstChild<Drawing.Reflection>();
+            if (reflection?.EndPosition?.HasValue == true)
+                node.Format["reflection"] = reflection.EndPosition.Value switch
+                {
+                    // Mirror PowerPointHandler.NodeBuilder reflection readback:
+                    // preset names for the canonical strengths, numeric percent
+                    // otherwise. Each re-parses via BuildReflection on replay.
+                    55000 => "tight",
+                    90000 => "half",
+                    100000 => "full",
+                    _ => (reflection.EndPosition.Value / 1000).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                };
         }
 
         return node;

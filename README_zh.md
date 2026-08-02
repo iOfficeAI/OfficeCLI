@@ -285,8 +285,8 @@ officecli add sales.xlsx '/Sheet1' --type pivottable \
 `merge` 把任意 `.docx` / `.xlsx` / `.pptx` 中的 `{{key}}` 占位符替换为 JSON 数据——段落、表格单元格、形状、页眉页脚、图表标题都支持。智能体一次性设计版式（昂贵），生产代码填充 N 次（廉价、确定、零 token 成本）。避免了"每份报告都从头重生成、产出 N 份版式不一致"的失败模式。
 
 ```bash
-officecli merge invoice-template.docx out-001.docx '{"client":"Acme","total":"$5,200"}'
-officecli merge q4-template.pptx q4-acme.pptx data.json
+officecli merge invoice-template.docx out-001.docx --data '{"client":"Acme","total":"$5,200"}'
+officecli merge q4-template.pptx q4-acme.pptx --data data.json
 ```
 
 #### Dump 往返 —— 从现有文档学习
@@ -311,7 +311,7 @@ officecli set report.docx /body/p[1]/r[1] --prop bold=true
 officecli set report.docx /body/p[2]/r[1] --prop color=FF0000
 officecli close report.docx
 
-# 批量模式 — 原子化多命令执行（默认遇到第一个错误即停止）
+# 批量模式 — 多命令执行，默认原子化：只要有一条失败，整批全部回滚
 echo '[{"command":"set","path":"/slide[1]/shape[1]","props":{"text":"Hello"}},
       {"command":"set","path":"/slide[1]/shape[2]","props":{"fill":"FF0000"}}]' \
   | officecli batch deck.pptx --json
@@ -319,8 +319,11 @@ echo '[{"command":"set","path":"/slide[1]/shape[1]","props":{"text":"Hello"}},
 # 内联 batch，无需标准输入
 officecli batch deck.pptx --commands '[{"op":"set","path":"/slide[1]/shape[1]","props":{"text":"Hi"}}]'
 
-# 使用 --force 跳过错误继续执行
-officecli batch deck.pptx --input updates.json --force --json
+# 使用 --best-effort 保留已成功的部分，即使其他条目失败（v1.0.137 前的旧行为）
+officecli batch deck.pptx --input updates.json --best-effort --json
+
+# 遇到第一个失败就停止执行（默认原子模式下仍会整体回滚；需搭配 --best-effort 才会保留已成功部分）
+officecli batch deck.pptx --input updates.json --stop-on-error --json
 ```
 
 > **要用其他工具读这个文件?先落盘。**
@@ -421,10 +424,9 @@ curl -fsSL https://officecli.ai/SKILL.md -o ~/.claude/skills/officecli.md
 不确定属性名时，用分层帮助查询：
 
 ```bash
-officecli pptx set              # 全部可设置元素与属性
-officecli pptx set shape        # 某一类元素的详细说明
-officecli pptx set shape.fill   # 单个属性格式与示例
-officecli docx query            # 选择器说明：属性匹配、:contains、:has() 等
+officecli help pptx set              # 全部可设置元素与属性
+officecli help pptx set shape        # 某一类元素的详细说明
+officecli help docx query            # 选择器说明：属性匹配、:contains、:has() 等
 ```
 
 将 `pptx` 换成 `docx` 或 `xlsx`；动词包括 `view`、`get`、`query`、`set`、`add`、`raw`。
@@ -518,7 +520,7 @@ officecli get report.docx /body --depth 1 --json
 | [`move`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-move) | 移动元素（`--to <parent>`、`--index N`、`--after <path>`、`--before <path>`） |
 | [`swap`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-swap) | 交换两个元素 |
 | [`validate`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-validate) | OpenXML 模式校验 |
-| [`batch`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-batch) | 单次打开/保存周期内执行多条操作（stdin、`--input` 或 `--commands`；默认遇到第一个错误停止，`--force` 跳过错误继续） |
+| [`batch`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-batch) | 单次打开/保存周期内执行多条操作（stdin、`--input` 或 `--commands`；默认原子化——只要有一条失败整批回滚，`--best-effort` 保留已成功部分，`--stop-on-error` 提前中止） |
 | [`merge`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-merge) | 模板合并 — 用 JSON 数据替换 `{{key}}` 占位符 |
 | [`watch`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-watch) | 在浏览器中实时 HTML 预览，自动刷新 |
 | [`mcp`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-mcp) | 启动 MCP 服务器，用于 AI 工具集成 |
@@ -529,7 +531,7 @@ officecli get report.docx /body --depth 1 --json
 | `close` | 保存并关闭驻留模式 |
 | [`install`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-install) | 安装二进制文件 + 技能文件 + MCP（`all`、`claude`、`cursor` 等） |
 | `config` | 获取或设置配置 |
-| `<format> <command>` | [内置帮助](https://github.com/iOfficeAI/OfficeCLI/wiki/command-reference)（如 `officecli pptx set shape`） |
+| `help <format> <command>` | [内置帮助](https://github.com/iOfficeAI/OfficeCLI/wiki/command-reference)（如 `officecli help pptx set shape`） |
 
 ## 端到端工作流示例
 
@@ -582,10 +584,11 @@ officecli get deck.pptx / --depth 2 --json
 officecli batch budget.xlsx --input updates.json --json
 
 # 导入 CSV 数据到 Excel 工作表
-officecli add budget.xlsx / --type sheet --prop name="Q1 Data" --prop csv=sales.csv
+officecli add budget.xlsx / --type sheet --prop name="Q1 Data"
+officecli import budget.xlsx "/Q1 Data" sales.csv --header
 
 # 模板合并批量生成报告
-officecli merge invoice-template.docx invoice-001.docx '{"client":"Acme","total":"$5,200"}'
+officecli merge invoice-template.docx invoice-001.docx --data '{"client":"Acme","total":"$5,200"}'
 
 # 交付前检查文档质量
 officecli validate report.docx && officecli view report.docx issues --json

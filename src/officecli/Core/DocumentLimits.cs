@@ -62,6 +62,31 @@ public static class DocumentLimits
     public const long MaxCompressionRatio = 1000;
 
     /// <summary>
+    /// Maximum number of XML elements officecli will let a single package
+    /// materialize into an in-memory DOM. The zip guards above bound *bytes*, but
+    /// the Open XML SDK builds a full node tree on any read that walks it, and a
+    /// worksheet of millions of tiny <c><v>…</v></c> cells costs ~hundreds of
+    /// bytes of managed heap per cell — a few MB of zip (well under every byte /
+    /// ratio / entry guard) expands into multiple GiB of RAM and OOM-kills the
+    /// long-lived resident/watch server. This cap is checked with a streaming
+    /// pre-scan (XmlReader, no DOM) so it trips before the expensive
+    /// materialization. Generous — a legitimate workbook with a few hundred
+    /// thousand populated cells stays far below it — and env-overridable for the
+    /// rare genuinely enormous data workbook, mirroring the sweep-budget knob.
+    /// </summary>
+    public static readonly long MaxDomElements =
+        long.TryParse(Environment.GetEnvironmentVariable("OFFICECLI_MAX_DOM_ELEMENTS"),
+            out var e) && e > 0 ? e : 3_000_000;
+
+    /// <summary>
+    /// Only parts whose uncompressed size exceeds this are stream-counted against
+    /// <see cref="MaxDomElements"/>. A normal document's parts are all far smaller,
+    /// so the common case pays zero extra scan cost; only a suspiciously large
+    /// part is walked, and that walk is cheap relative to the DOM build it guards.
+    /// </summary>
+    public const long ElementScanPartThreshold = 8L * 1024 * 1024;
+
+    /// <summary>
     /// Hard timeout for matching a user-supplied regular expression against
     /// document text. Mirrors <see cref="FindHelpers.RegexMatchTimeout"/> so
     /// every find-style entry point fails fast on catastrophic backtracking

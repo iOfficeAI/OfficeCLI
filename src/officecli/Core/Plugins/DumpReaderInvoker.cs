@@ -210,5 +210,5 @@ public static class DumpReaderInvoker
     }
 
     private static string Truncate(string s, int max) =>
-        s.Length <= max ? s : s.Substring(0, max) + "...";
+        DisplayText.Truncate(s, max, "...");
 }

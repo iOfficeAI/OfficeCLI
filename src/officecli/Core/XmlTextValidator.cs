@@ -71,9 +71,14 @@ internal static class XmlTextValidator
     /// character data. <paramref name="fieldName"/> appears in the error
     /// message to help callers identify which input was rejected.
     /// </summary>
-    public static void ValidateOrThrow(string? text, string fieldName)
+    public static void ValidateOrThrow(string? text, string fieldName, bool allowSoftBreakChar = false)
     {
-        var problem = FindInvalidChar(text);
+        // NEWLINE-SEMANTICS-V2: '\v' (U+000B) is XML-illegal, but text
+        // pipelines that split it into <a:br/> / <w:br/> ELEMENTS before
+        // serialization (AppendLineWithTabs / AppendTextWithBreaks) may
+        // opt in — the char never reaches XML character data there.
+        var probe = allowSoftBreakChar ? text?.Replace("\v", "") : text;
+        var problem = FindInvalidChar(probe);
         if (problem is null) return;
         throw new CliException(
             $"{fieldName}: contains character invalid in XML 1.0 text ({problem}). " +

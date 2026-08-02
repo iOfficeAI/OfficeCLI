@@ -66,8 +66,8 @@ public partial class ExcelHandler : IDocumentHandler, Rendering.IRenderModelHost
             _backingStream = new FileStream(filePath, FileMode.Open, access, share);
 
             // Issue #149: sheets that declare millions of empty cells make
-            // the SDK DOM balloon to GBs. Filter them out (lossless — both
-            // Excel and LibreOffice discard such cells on load) before the
+            // the SDK DOM balloon to GBs. Filter them out (lossless —
+            // spreadsheet applications discard such cells on load) before the
             // SDK ever parses the part. Gated: normal files take the
             // original path untouched.
             var bloat = OfficeCli.Core.WorksheetBloatFilter.TryFilter(_backingStream);
@@ -80,9 +80,28 @@ public partial class ExcelHandler : IDocumentHandler, Rendering.IRenderModelHost
                     Console.Error.WriteLine(
                         $"warning: {Path.GetFileName(filePath)} declares {bloat.RemovedCells:N0} empty cells " +
                         $"with no value, formula or style ({string.Join(", ", bloat.FilteredParts)}); " +
-                        "they were skipped on load and will be omitted on save (Excel and LibreOffice do the same).");
+                        "they were skipped on load and will be omitted on save (other spreadsheet applications do the same).");
                 }
                 catch { /* stderr unavailable (resident) — property still set */ }
+            }
+            else if (editable)
+            {
+                // Crash-atomic saves: an editable session works against an
+                // in-memory copy of the package so the on-disk file is only ever
+                // swapped atomically (temp + File.Replace in
+                // WriteBackFilteredPackage), never rewritten in place. Without
+                // this, _doc.Save() rewrites the backing file directly, and a
+                // process death mid-write leaves a truncated, unopenable file with
+                // no fallback (the original bytes are already gone). Read-only
+                // sessions skip this and keep streaming from the FileStream — they
+                // never write, so there is nothing to make atomic and no reason to
+                // pay the in-memory copy. The bloat-filter branch above already
+                // routes editable bloated files through the same in-memory model.
+                _backingStream.Position = 0;
+                var mem = new MemoryStream();
+                _backingStream.CopyTo(mem);
+                mem.Position = 0;
+                _filteredPackageStream = mem;
             }
 
             _doc = SpreadsheetDocument.Open(
@@ -434,18 +453,53 @@ public partial class ExcelHandler : IDocumentHandler, Rendering.IRenderModelHost
     {
         if (_filteredPackageStream == null || _backingStream == null || !_editable)
             return;
-        var pos = _filteredPackageStream.Position;
-        _filteredPackageStream.Position = 0;
-        _backingStream.Position = 0;
-        _backingStream.SetLength(0);
-        _filteredPackageStream.CopyTo(_backingStream);
-        _filteredPackageStream.Position = pos;
+        // Crash-atomic write-back (temp + File.Replace). The old path truncated
+        // the original in place (SetLength(0)) then copied the new bytes over it,
+        // so a process death between the two left the original already gone and
+        // only a partial file on disk — unrecoverable. See AtomicPackageWriter.
+        OfficeCli.Core.AtomicPackageWriter.Flush(
+            _filteredPackageStream, _filePath,
+            releaseLock: () => { _backingStream!.Dispose(); _backingStream = null; },
+            reopenLock: () => { _backingStream = new FileStream(_filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read); });
     }
+
+    /// <summary>See <see cref="OfficeCli.Handlers.WordHandler.DiscardOnDispose"/> —
+    /// atomic-batch rollback: drop the in-memory DOM without serializing.</summary>
+    public bool DiscardOnDispose { get; set; }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        if (DiscardOnDispose)
+        {
+            // Never serialize the poisoned DOM. Close the disk-backed streams
+            // first so the package's dispose-time autosave has nowhere to
+            // write (the filtered-package path autosaves into its
+            // MemoryStream, which is discarded — WriteBackFilteredPackage is
+            // the only disk write there and is skipped).
+            _backingStream?.Dispose();
+            _backingStream = null;
+            try { _doc.Dispose(); } catch { /* autosave hit the closed stream — intended */ }
+            _filteredPackageStream?.Dispose();
+            _filteredPackageStream = null;
+            return;
+        }
+        if (!Modified)
+        {
+            // A read-only inspection must be byte-preserving even when a caller
+            // accidentally opened the handler in editable mode. Open XML SDK
+            // serializes package relationships during Save/Dispose, which can
+            // discard DrawingML hyperlink relationships it cannot round-trip.
+            // Close the backing stream first so any dispose-time autosave has
+            // nowhere to write, then discard the in-memory package.
+            _backingStream?.Dispose();
+            _backingStream = null;
+            try { _doc.Dispose(); } catch { /* autosave hit the closed stream — intended */ }
+            _filteredPackageStream?.Dispose();
+            _filteredPackageStream = null;
+            return;
+        }
         try { FlushDirtyParts(); } catch { /* best-effort */ }
         // Mirror the PPT/Word pattern: when we own the backing FileStream the
         // package would otherwise leave the on-disk file in whatever state

@@ -90,7 +90,20 @@ public partial class PowerPointHandler
         if (tb == null) return "";
         var paragraphs = tb.Elements<Drawing.Paragraph>().ToList();
         if (paragraphs.Count == 0) return tb.InnerText ?? "";
-        return string.Join("\n", paragraphs.Select(p => p.InnerText ?? ""));
+        // NEWLINE-SEMANTICS-V2: render <a:br/> as '\v' inside each
+        // paragraph (InnerText drops it silently).
+        return string.Join("\n", paragraphs.Select(ParagraphTextWithBreaks));
+    }
+
+    private static string ParagraphTextWithBreaks(Drawing.Paragraph p)
+    {
+        var sb = new StringBuilder();
+        foreach (var child in p.ChildElements)
+        {
+            if (child is Drawing.Run r) sb.Append(r.Text?.Text ?? "");
+            else if (child is Drawing.Break) sb.Append('\v');
+        }
+        return sb.Length == 0 ? (p.InnerText ?? "") : sb.ToString();
     }
 
     private static string GetShapeText(Shape shape)
@@ -108,6 +121,11 @@ public partial class PowerPointHandler
             {
                 if (child is Drawing.Run run)
                     sb.Append(run.Text?.Text ?? "");
+                else if (child is Drawing.Break)
+                    // NEWLINE-SEMANTICS-V2: <a:br/> reads back as '\v' (soft
+                    // line break), matching docx <w:br/> readback; '\n' is
+                    // reserved for the paragraph join below.
+                    sb.Append('\v');
                 else if (child is OpenXmlUnknownElement unk
                          && unk.LocalName == "tab"
                          && unk.NamespaceUri == "http://schemas.openxmlformats.org/drawingml/2006/main")

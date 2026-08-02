@@ -399,6 +399,24 @@ public class ResidentServer : IDisposable
                 using var linked = CancellationTokenSource.CreateLinkedTokenSource(idleCts.Token, token);
                 await Task.Delay(currentTimeout, linked.Token);
 
+                // The clock says idle — but "time since the last command
+                // boundary" is not the same as "nothing is running now". A single
+                // command that runs longer than the idle window (e.g. a large
+                // batch) produces no boundary event for its whole duration, so the
+                // countdown armed when it started expires while it is still in
+                // flight. Level-check the in-flight count before committing to
+                // shutdown: a command waiting on or holding the command lock keeps
+                // _pendingClients > 0 for its entire duration, so re-arm and wait
+                // again instead of tearing the resident down mid-command. Shutting
+                // down here would cancel the command's in-progress reply (the
+                // client then reports "not delivered") while the exit-time flush
+                // still writes the applied result to disk — a false failure over a
+                // silently persisted change. When the command finishes it resets
+                // the timer, so the next expiry counts a full window from
+                // completion and shuts down cleanly only when truly idle.
+                if (Volatile.Read(ref _pendingClients) > 0)
+                    continue;
+
                 // Reached here = idle timeout elapsed without reset.
                 // Kick off the ordered shutdown path instead of raw-
                 // cancelling _mainCts / _pingCts, so the "ping liveness ⇔
@@ -637,9 +655,9 @@ public class ResidentServer : IDisposable
                         $"save failed during shutdown — data may be lost: {_filePath}");
                 else if (_shutdownFileVanishedAfterDispose)
                     response = MakeResponse(0, "Closing resident.",
-                        $"WARNING: backing file is missing at the original path: {_filePath}. " +
-                        "If you renamed/moved it, your changes were saved to the new location. " +
-                        "If you deleted it, your changes are lost.");
+                        $"WARNING: the backing file was missing at its original path during save: {_filePath}. " +
+                        "It was deleted or moved externally; your changes were rebuilt at that path. " +
+                        "If you renamed/moved it, a separate copy also exists at the new location.");
                 else
                     response = MakeResponse(0, "Closing resident.", "");
                 // ShutdownAsync cancelled the ping token; write on a
@@ -851,10 +869,18 @@ public class ResidentServer : IDisposable
                 //   - envelope success:false                        -> 1
                 //   - stderr contains UNSUPPORTED (unsupported_property) -> 2
                 //   - otherwise                                      -> 0
+                // Batch/validate verdict failures OUTRANK applied-with-caveats
+                // markers, mirroring the non-resident batch path — an
+                // atomically rolled-back batch whose only green item carried a
+                // LaTeX warning must not report exit 2, which would claim
+                // something was applied when nothing was. Single-command
+                // marker precedence (all-unsupported set → 2) is unchanged.
                 int jsonExitCode = 0;
-                if (stderr.Contains("UNSUPPORTED") || stderr.Contains(UnrecognizedLatexMarker))
+                if (batchFailure || validateFailure)
+                    jsonExitCode = 1;
+                else if (stderr.Contains("UNSUPPORTED") || stderr.Contains(UnrecognizedLatexMarker))
                     jsonExitCode = 2;
-                else if (!EnvelopeSuccess(envelope) || batchFailure || validateFailure || stderr.Contains("VALIDATION:"))
+                else if (!EnvelopeSuccess(envelope) || stderr.Contains("VALIDATION:"))
                     jsonExitCode = 1;
                 return MakeResponse(jsonExitCode, envelope, "");
             }
@@ -862,8 +888,12 @@ public class ResidentServer : IDisposable
             // BUG-DUMP12-01: surface stderr "VALIDATION:" token (emitted by
             // ExecuteRawSet / ExecuteAddPart when the SDK validator gains new
             // errors) as exit 1 so callers can detect rejected raw mutations.
-            int exitCode = (stderr.Contains("UNSUPPORTED") || stderr.Contains(UnrecognizedLatexMarker)) ? 2
-                : ((batchFailure || validateFailure || stderr.Contains("VALIDATION:")) ? 1 : 0);
+            // Batch/validate verdict failures outrank applied-with-caveats
+            // markers (mirrors the non-resident batch path); single-command
+            // marker precedence is unchanged.
+            int exitCode = (batchFailure || validateFailure) ? 1
+                : ((stderr.Contains("UNSUPPORTED") || stderr.Contains(UnrecognizedLatexMarker)) ? 2
+                : (stderr.Contains("VALIDATION:") ? 1 : 0));
             return MakeResponse(exitCode, stdout, stderr);
         }
         catch (Exception ex)
@@ -1120,7 +1150,10 @@ public class ResidentServer : IDisposable
                 ExecuteSave();
                 break;
             case "batch":
-                PromoteToEditable();
+                // Promotion happens INSIDE ExecuteBatch: the atomic flush
+                // barrier must read the pre-batch _dirty state, and
+                // PromoteToEditable latches _dirty=true — promoting here would
+                // make every batch look dirty and pay a full serialize.
                 ExecuteBatch(request);
                 break;
             case "dump":
@@ -1148,13 +1181,11 @@ public class ResidentServer : IDisposable
     // watch session after applying the items — parity with the per-verb
     // NotifyWatch* calls in ExecuteCommand (issue #169). A batch made up
     // entirely of these read-only verbs skips the full-refresh to avoid a
-    // needless re-render + SSE push. Any verb NOT listed here (including
-    // unknown / future ones) fails open to "notify", so a new mutating verb
-    // is never silently dropped from the preview.
-    private static readonly HashSet<string> ReadOnlyBatchVerbs = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "get", "query", "view", "validate", "dump", "raw"
-    };
+    // needless re-render + SSE push, skips the editable promotion, and skips
+    // the atomic machinery. Fail-open contract and the canonical verb list
+    // live in CommandBuilder.ReadOnlyBatchVerbs (shared with the non-resident
+    // atomic-copy decision).
+    private static HashSet<string> ReadOnlyBatchVerbs => CommandBuilder.ReadOnlyBatchVerbs;
 
     private void ExecuteBatch(ResidentRequest request)
     {
@@ -1174,6 +1205,9 @@ public class ResidentServer : IDisposable
 
         var items = System.Text.Json.JsonSerializer.Deserialize<List<BatchItem>>(
             batchJson, BatchJsonContext.Default.ListBatchItem) ?? new();
+        // NEWLINE-SEMANTICS-V2: strip meta items; rewrite legacy (\n = soft
+        // break) docx dumps to the v2 encoding before execution.
+        OfficeCli.Core.BatchCompat.PrepareForReplay(items, _filePath);
 
         // BUG-R40-B11: parity with the non-resident path —
         // CommandBuilder.Batch.cs already rejects null entries, but
@@ -1199,6 +1233,41 @@ public class ResidentServer : IDisposable
                 throw new CliException(protBlock) { Code = "document_protected" };
         }
 
+        var bestEffort = request.GetArg("bestEffort", "false")
+            .Equals("true", StringComparison.OrdinalIgnoreCase);
+        var hasMutating = items.Any(it => !ReadOnlyBatchVerbs.Contains(it.Command ?? ""));
+        var atomic = !bestEffort && hasMutating;
+
+        // Atomic flush barrier: make the on-disk file identical to the
+        // pre-batch in-memory tree, so a failed batch can roll back by simply
+        // discarding the poisoned DOM and reloading. Reads the TRUE pre-batch
+        // _dirty state (PromoteToEditable below latches it), so a batch on an
+        // already-flushed session pays nothing — the serialize below only
+        // happens when a flush was owed anyway, just earlier than the idle
+        // debounce would have run it. Ordered before promotion: mutations
+        // cannot exist while !_editable, so the not-yet-promoted case needs no
+        // barrier.
+        if (atomic && _editable && _dirty)
+        {
+            // FLUSH=off promises "disk writes only on explicit save/close/
+            // shutdown" — the barrier's implicit Save would break that
+            // contract, and skipping it would make a rollback reload lose
+            // the unflushed pre-batch edits. Fail closed with the two ways
+            // out instead of silently picking either.
+            if (FlushMode == ResidentFlushMode.Off)
+                throw new CliException(
+                    "atomic batch needs the pre-batch state on disk as its rollback point, " +
+                    "but OFFICECLI_RESIDENT_FLUSH=off is holding unflushed changes in memory. " +
+                    "Run 'save' first, or use 'batch --best-effort'.")
+                { Code = "flush_policy_conflict", Suggestion = "officecli save <file> before the batch, or batch --best-effort" };
+            var swBarrier = System.Diagnostics.Stopwatch.StartNew();
+            _handler.Save();
+            swBarrier.Stop();
+            _dirty = false;
+            RecordSaveDuration(swBarrier.Elapsed);
+        }
+        if (hasMutating) PromoteToEditable();
+
         // Defer per-mutation Document.Save() across the whole batch so N resident
         // mutations serialize once (at the next save/close) instead of N times —
         // the per-op Save was an O(N²) re-serialize of the growing part. Mirrors
@@ -1216,6 +1285,13 @@ public class ResidentServer : IDisposable
         var deferHandler = _handler as OfficeCli.Handlers.WordHandler;
         var prevDefer = deferHandler?.DeferSave ?? false;
         if (deferHandler != null) deferHandler.DeferSave = true;
+        // Staged docProps whole-part payloads live outside the flush barrier
+        // (they land on disk only at a non-discard Dispose), so a rollback
+        // must restore this pre-batch snapshot into the replacement handler —
+        // otherwise confirmed pre-batch raw-set edits vanish with the
+        // poisoned DOM. Taken before the batch so batch-staged entries roll
+        // back too.
+        var preBatchWholeParts = atomic ? deferHandler?.SnapshotPendingWholeParts() : null;
         List<BatchResult> results;
         // BUG-BT2: collect per-item unrecognized-LaTeX tokens across the whole
         // batch so the resident surfaces the same unrecognized_latex_command
@@ -1233,6 +1309,36 @@ public class ResidentServer : IDisposable
             if (deferHandler != null) deferHandler.DeferSave = prevDefer;
         }
 
+        // Atomic rollback: any failed item discards the WHOLE batch. The
+        // barrier above guaranteed disk == pre-batch state, and nothing
+        // flushed mid-batch (DeferSave + _commandLock keeps the autosave
+        // watchdog out), so rolling back is: drop the poisoned in-memory DOM
+        // without serializing it (DiscardOnDispose) and reload the pre-batch
+        // file. The reload pays one parse — only on the failure path.
+        var anyFailed = results.Any(r => !r.Success);
+        var rolledBack = false;
+        if (atomic && anyFailed)
+        {
+            switch (_handler)
+            {
+                case OfficeCli.Handlers.WordHandler w: w.DiscardOnDispose = true; break;
+                case OfficeCli.Handlers.ExcelHandler x: x.DiscardOnDispose = true; break;
+                case OfficeCli.Handlers.PowerPointHandler p: p.DiscardOnDispose = true; break;
+            }
+            try { _handler.Dispose(); } catch { /* discard path */ }
+            _handler = OfficeCli.Handlers.DocumentHandlerFactory.Open(_filePath, editable: true);
+            // Re-establish the resident's long-lived handler invariants
+            // (mirrors PromoteToEditable's post-open state): _editable stays
+            // latched, deferral re-applies, and memory now equals disk.
+            if (_handler is OfficeCli.Handlers.WordHandler wh2)
+            {
+                wh2.DeferSave = true;
+                wh2.AdoptPendingWholeParts(preBatchWholeParts);
+            }
+            _dirty = false;
+            rolledBack = true;
+        }
+
         // BUG-R7B(BUG2): reconcile document-wide ids (wp:docPr, paraId, sdt)
         // after the deferred batch. Each item ran under DeferSave so the
         // per-raw-set id passes were skipped; a raw-set of a header/footer part
@@ -1240,16 +1346,18 @@ public class ResidentServer : IDisposable
         // save/close. Run the same document-scoped passes here so a `validate`
         // (or watch render) issued before the eventual save sees the same clean
         // state save/close would write. Mirrors the non-resident path, where
-        // Dispose-time FinalizeDeferredIds already does this.
-        deferHandler?.ReconcileGlobalIds();
+        // Dispose-time FinalizeDeferredIds already does this. Skipped after a
+        // rollback — the batch's changes no longer exist and deferHandler
+        // points at the disposed pre-rollback handler.
+        if (!rolledBack) deferHandler?.ReconcileGlobalIds();
 
         // Judgment contract: batch is classified as a judgment command (root
         // the project conventions "Judgment: any batch step failed -> outer false"). The
         // verdict flips to failure as soon as ANY step is rejected. Keeps
         // envelope.success / exit code in lockstep with the non-resident
         // path.
-        _lastBatchHadFailure = results.Any(r => !r.Success);
-        CommandBuilder.PrintBatchResults(results, json, items.Count);
+        _lastBatchHadFailure = anyFailed;
+        CommandBuilder.PrintBatchResults(results, json, items.Count, atomicRolledBack: rolledBack);
         // BUG-BT2: emit the collected unrecognized-LaTeX markers so the
         // dispatcher maps them to exit 2 and the envelope warning code, exactly
         // as the single-shot resident add/set path (EmitUnrecognizedLatex) does.
@@ -1264,8 +1372,11 @@ public class ResidentServer : IDisposable
         // slides/sheets/pages with mixed verbs, so a targeted per-slide patch
         // isn't derivable — a full refresh mirrors swap / refresh / raw-set /
         // add-part. Skip only provably read-only batches to avoid a needless
-        // re-render; unknown verbs fail open to notify.
-        if (items.Any(it => !ReadOnlyBatchVerbs.Contains(it.Command ?? "")))
+        // re-render; unknown verbs fail open to notify. An atomic rollback
+        // also skips: the document is byte-identical to what the preview
+        // already shows, so pushing a frame would be a lie about a change
+        // that never landed.
+        if (hasMutating && !rolledBack)
             NotifyWatchFullRefresh();
     }
 
@@ -1916,6 +2027,8 @@ public class ResidentServer : IDisposable
             throw new CliException("dump currently supports .docx, .pptx and .xlsx only")
                 { Code = "unsupported_format" };
         }
+        // NEWLINE-SEMANTICS-V2: same version stamp as the non-resident dump.
+        items.Insert(0, OfficeCli.Core.BatchCompat.MetaItem());
         var output = System.Text.Json.JsonSerializer.Serialize(items, BatchJsonContext.Default.ListBatchItem);
 
         if (outPath == "-") outPath = null;
@@ -2023,6 +2136,9 @@ public class ResidentServer : IDisposable
         // previously lacked, so `set colot=color` behaves the same whether or
         // not a resident is alive. The resident's own envelope (find-count,
         // selector-count, watch, overflow, --json wrapping) stays below.
+        // CONSISTENCY(applied-echo): mirrors CommandBuilder.Set.cs — pre/post
+        // Format snapshots feed the " (applied: ...)" normalization echo.
+        var beforeSnap = CommandBuilder.TryGetFormatSnapshot(_handler, path);
         var (applied, unsupported, autoCorrected) =
             CommandBuilder.ApplySetWithCorrection(_handler, path, properties);
 
@@ -2058,8 +2174,11 @@ public class ResidentServer : IDisposable
         // R4-bt-1: report the post-move resolvable path for equation mode
         // switches (oMathPara ⇄ oMath), consistent with the non-resident path.
         var reportPath = (_handler as WordHandler)?.LastSetNewPath ?? path;
+        var appliedSuffix = CommandBuilder.BuildAppliedSuffix(applied,
+            beforeSnap, CommandBuilder.TryGetFormatSnapshot(_handler, reportPath));
         var message = applied.Count > 0
             ? $"Updated {reportPath}: {string.Join(", ", applied.Select(kv => $"{kv.Key}={kv.Value}"))}"
+              + appliedSuffix
               + (findMatchCount.HasValue ? $" ({findMatchCount.Value} matched)" : "")
               + (selectorCount > 1 ? $" ({selectorCount} elements matched)" : "")
             : (unsupported.Count > 0 ? $"No properties applied to {path}" : $"Updated {path}");
@@ -2640,6 +2759,13 @@ public class ResidentServer : IDisposable
         //    disk and closes the file handle). The ping pipe is still
         //    live right now, so any TryResident caller will correctly
         //    conclude "resident still owns the file".
+        // Capture whether the backing file was already gone BEFORE the flush.
+        // The atomic writer now recreates a missing target (File.Move fallback,
+        // so a delete/rename mid-session no longer loses the edits), which means
+        // the post-dispose File.Exists check below can no longer see the
+        // vanish — the file is back. Sample it here instead so the close still
+        // reports that the file had been removed and was rebuilt.
+        bool backingMissingBeforeFlush = !File.Exists(_filePath);
         bool disposeFailed = false;
         try { _handler.Dispose(); }
         catch (Exception ex)
@@ -2662,24 +2788,21 @@ public class ResidentServer : IDisposable
             _shutdownFileMissing = true;
             LogStderr($"ERROR: save failed during shutdown — data may be lost: {_filePath}");
         }
-        // BUG-INTERVIEW-EDIT-R10-B: even when Dispose succeeds, an unlinked
-        // backing file (rm/Trash, no rename target) means the bytes the SDK
-        // just wrote went to a now-orphaned inode and disappear when the FD
-        // closes. We can't reliably distinguish rename (data safe at new
-        // path) from unlink (data lost) without P/Invoke fstat — so the
-        // warning carefully lists both possibilities rather than claiming
-        // certain data loss. This preserves the false-positive fix above
-        // while still alerting the user when the file vanished from its
-        // original path. Goes to stderr only — no _shutdownFileMissing flag,
-        // so exit code stays 0 and existing rename-then-close flows are
-        // unchanged.
-        else if (!File.Exists(_filePath))
+        // BUG-INTERVIEW-EDIT-R10-B: the backing file was removed from its
+        // original path during the session (rm/Trash, or an external
+        // rename/mv). The atomic writer's move-fallback has now recreated it
+        // at that path with the in-memory edits, so the bytes are NOT lost —
+        // but the removal is still worth surfacing: the user deleted or moved
+        // the file and we brought it back, which is surprising if unannounced,
+        // and in the rename case a stale copy also exists at the new path.
+        // stderr only — no _shutdownFileMissing flag, so the exit code stays 0.
+        else if (backingMissingBeforeFlush)
         {
             _shutdownFileVanishedAfterDispose = true;
             LogStderr(
-                $"WARNING: backing file is missing at the original path: {_filePath}. " +
-                "If you renamed/moved it, your changes were saved to the new location. " +
-                "If you deleted it, your changes are lost.");
+                $"WARNING: the backing file was missing at its original path during save: {_filePath}. " +
+                "It was deleted or moved externally; your changes were rebuilt at that path. " +
+                "If you renamed/moved it, a separate copy also exists at the new location.");
         }
 
         // 5. NOW cancel ping + idle. Clients observing the ping pipe from

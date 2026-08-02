@@ -298,6 +298,22 @@ internal static class OutputFormatter
         return result;
     }
 
+    /// <summary>
+    /// Machine-readable code for a per-item failure (batch results[].code).
+    /// Same derivation as the envelope-level error.code — CliException.Code
+    /// verbatim, else the message-pattern inference — EXCEPT the
+    /// internal_error catch-all: at item level an unclassifiable failure
+    /// leaves the code ABSENT (null) so consumers fall back to the message
+    /// text instead of branching on a fake bucket.
+    /// </summary>
+    internal static string? InferErrorCode(Exception ex)
+    {
+        if (ex is CliException cli) return cli.Code;
+        var tmp = new ErrorResult();
+        EnrichFromMessage(tmp, ex);
+        return tmp.Code == "internal_error" ? null : tmp.Code;
+    }
+
     private static void EnrichFromMessage(ErrorResult result, Exception ex)
     {
         var msg = ex.Message;
@@ -362,6 +378,51 @@ internal static class OutputFormatter
             return;
         }
 
+        // Pattern: "Unsupported MIME type: <mime>. Supported: image/png, …"
+        // (data: URI with an unrecognized or empty media type).
+        if (msg.Contains("Unsupported MIME type"))
+        {
+            result.Code = "invalid_value";
+            var mimeValid = System.Text.RegularExpressions.Regex.Match(msg, @"Supported:\s*(.+?)\.?$");
+            if (mimeValid.Success)
+                result.ValidValues = mimeValid.Groups[1].Value.Split(", ");
+            return;
+        }
+
+        // Pattern: "add-part extpart: parent must be /presentation, /slide[N], …"
+        // — an add-part host outside the allowed set; the value is well-formed
+        // but not an accepted parent for this part type.
+        if (msg.Contains(": parent must be "))
+        {
+            result.Code = "invalid_value";
+            return;
+        }
+
+        // Pattern: "Cannot resolve @name= outside of a slide context" — a
+        // selector feature used on a path segment that doesn't support it.
+        if (msg.Contains("Cannot resolve @name="))
+        {
+            result.Code = "invalid_path";
+            return;
+        }
+
+        // Pattern: "invalid showDataAs: 'X'" / "invalid subtotal: …" — pivot
+        // enum rejections phrased with a lowercase 'invalid', missed by the
+        // case-sensitive "Invalid " prefix rule above.
+        if (msg.StartsWith("invalid ", StringComparison.Ordinal))
+        {
+            result.Code = "invalid_value";
+            return;
+        }
+
+        // Pattern: "raw-set: XPath matched no elements: <xpath>. Hint: …" —
+        // the addressed element does not exist, same family as path_not_found.
+        if (msg.Contains("XPath matched no elements"))
+        {
+            result.Code = "not_found";
+            return;
+        }
+
         // Pattern: "diagram type 'X' is not supported yet (currently: ...)" —
         // DiagramCompiler rejects a mermaid diagram kind it can't render. It's a
         // bad-input value (fix by choosing a supported type), not a handler
@@ -394,7 +455,12 @@ internal static class OutputFormatter
         // to leak a raw LINQ "Sequence contains no elements".)
         if (msg.StartsWith("diagram requires ", StringComparison.Ordinal)
             || msg.StartsWith("diagram has no nodes", StringComparison.Ordinal)
-            || msg.StartsWith("sequence diagram has no ", StringComparison.Ordinal))
+            || msg.StartsWith("sequence diagram has no ", StringComparison.Ordinal)
+            // markdown input-validation mirrors diagram: no inline text and no
+            // readable src file is a bad-input value the caller can fix, not a
+            // handler crash. Align its code with diagram's (was leaking
+            // internal_error because no pattern matched the message).
+            || msg.StartsWith("markdown requires ", StringComparison.Ordinal))
         {
             result.Code = "invalid_value";
             return;
@@ -530,6 +596,58 @@ internal static class OutputFormatter
         if (msg.Contains("property is required"))
         {
             result.Code = "missing_property";
+            return;
+        }
+
+        // Pattern: batch item shape errors — "'add-part' command requires
+        // 'parent' field" / "requires 'type' or 'from' field" / "requires
+        // 'path' and 'path2' (or 'to') fields" / "Batch item missing required
+        // 'command' field" / "add-part extpart requires property 'data'" /
+        // "pivottable requires 'source' property" / "'shapes' property
+        // required" / "Chart requires data".
+        if (System.Text.RegularExpressions.Regex.IsMatch(msg, @"requires .{0,40}'[\w-]+'.{0,20}\bfields?\b")
+            || System.Text.RegularExpressions.Regex.IsMatch(msg, @"requires (property )?'[\w-]+'( property)?")
+            || msg.Contains("property required")
+            || msg.Contains("requires data")
+            || msg.Contains("missing required"))
+        {
+            result.Code = "missing_property";
+            return;
+        }
+
+        // Pattern: "batch item[3] is null. Each entry must be a JSON object" —
+        // malformed batch payload, same class as unparseable JSON.
+        if (System.Text.RegularExpressions.Regex.IsMatch(msg, @"^batch item\[\d+\] is null"))
+        {
+            result.Code = "invalid_json";
+            return;
+        }
+
+        // Pattern: "add-part extpart: 'data' is not valid base64" (ours) or
+        // "The input is not a valid Base-64 string…" (raw .NET
+        // FormatException, e.g. a data: URI with a corrupt payload) or
+        // "Only base64-encoded data URIs are supported" (data:, / non-base64
+        // data URI) — malformed payload value, same class as "Invalid <…>".
+        if (msg.Contains("is not valid base64")
+            || msg.Contains("not a valid Base-64")
+            || msg.Contains("Only base64-encoded data URIs"))
+        {
+            result.Code = "invalid_value";
+            return;
+        }
+
+        // Pattern: "…overlaps existing pivot… choose a different anchor" —
+        // placement conflict, a well-formed but unusable value.
+        if (msg.Contains("overlaps existing pivot"))
+        {
+            result.Code = "invalid_value";
+            return;
+        }
+
+        // Pattern: batch item carries unknown field(s) — payload shape error.
+        if (msg.Contains("unknown field"))
+        {
+            result.Code = "invalid_input";
             return;
         }
 

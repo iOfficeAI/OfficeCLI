@@ -227,72 +227,83 @@ static partial class CommandBuilder
             return false;
         }
 
-        // On Windows, .NET's UseShellExecute=false always calls CreateProcess
-        // with bInheritHandles=TRUE (even without explicit redirects), which
-        // leaks the caller's pipe handles into the resident child.  When the
-        // caller's stdout is a pipe ($(), | cat, CI, SDK), the pipe never
-        // gets EOF until the resident exits (~60s idle), blocking the caller.
+        // The resident is a long-lived background server that talks to clients
+        // only over a named pipe — it must inherit NOTHING from the transient
+        // CLI invocation that spawns it. The failure this guards against: on
+        // Windows, .NET's UseShellExecute=false path calls CreateProcess with
+        // bInheritHandles=TRUE, which duplicates EVERY inheritable handle in
+        // our process into the child — including any handle to the caller's
+        // stdout/stderr pipe. When the caller's stdout is a pipe ($(), | cat,
+        // CI, an SDK/agent shell), that leaked write handle keeps the pipe open
+        // in the resident, so the caller's read never sees EOF until the
+        // resident idle-exits (~60s) even though the command already returned.
         //
-        // Fix: temporarily mark our own std handles as non-inheritable before
-        // spawning, then restore.  This prevents the shell's pipe handles
-        // from leaking into the resident while still allowing .NET's internal
-        // handle plumbing to work.
+        // Clearing the inherit flag on our three std handles is NOT enough: if
+        // a second inheritable handle to the same pipe exists in our process
+        // (a duplicate left by an injected module, the runtime, or the
+        // launching shell), it still leaks. The robust fix is to inherit ONLY
+        // the handles we explicitly hand the child: CreateProcess with a
+        // PROC_THREAD_ATTRIBUTE_HANDLE_LIST whitelist (the child's own std
+        // handles), so no stray handle can cross no matter how many exist.
         //
         // On macOS/Linux, posix_spawn inherits fds unless the child's
-        // stdout/stderr are explicitly redirected.  RedirectStandardOutput /
+        // stdout/stderr are explicitly redirected. RedirectStandardOutput /
         // RedirectStandardError = true makes .NET plumb a fresh pipe from
         // parent to child, so the caller's shell pipe (e.g. `| tail -1`,
         // $(...)) is NOT inherited and EOFs promptly when the client exits.
         // See ResidentStdoutInheritanceTests for the regression lock-in.
-        // CONSISTENCY(child-process-args): forward verb + path via ArgumentList,
-        // not a hand-quoted Arguments string. .NET re-parses the Arguments
-        // string with Windows-style quoting rules even on Unix, so a filePath
-        // containing a literal '"' (legal on macOS/Linux) or a trailing '\'
-        // would split into stray argv and the resident would reject startup.
-        // ArgumentList passes argv losslessly. Matches BlankDocCreator /
-        // FormatHandlerSession, which fork this same exe the same way.
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = exePath,
-            ArgumentList = { "__resident-serve__", filePath },
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
-        };
-
-        if (idleSeconds.HasValue)
-            startInfo.Environment["OFFICECLI_RESIDENT_IDLE_SECONDS"] = idleSeconds.Value.ToString();
-
-        // Prevent the shell's pipe handles from leaking into the resident.
         bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-        nint hStdOut = 0, hStdErr = 0, hStdIn = 0;
+
+        // Uniform view over the two spawn paths so the readiness loop below is
+        // identical: has the child exited yet, read its stderr once (crash
+        // diagnostics), release our handle to it.
+        Func<bool> hasExited;
+        Func<string> readStderr;
+        Action dispose;
+
         if (isWindows)
         {
-            hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
-            hStdErr = GetStdHandle(STD_ERROR_HANDLE);
-            hStdIn  = GetStdHandle(STD_INPUT_HANDLE);
-            SetHandleInformation(hStdOut, HANDLE_FLAG_INHERIT, 0);
-            SetHandleInformation(hStdErr, HANDLE_FLAG_INHERIT, 0);
-            SetHandleInformation(hStdIn,  HANDLE_FLAG_INHERIT, 0);
-        }
-
-        Process? process;
-        try { process = Process.Start(startInfo); }
-        finally
-        {
-            if (isWindows)
+            if (!StartResidentWindows(exePath, filePath, idleSeconds, out var hProcess, out readStderr, out var startError))
             {
-                SetHandleInformation(hStdOut, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-                SetHandleInformation(hStdErr, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-                SetHandleInformation(hStdIn,  HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+                error = startError ?? "Failed to start resident process.";
+                return false;
             }
+            hasExited = () => WaitForSingleObject(hProcess, 0) == 0 /* WAIT_OBJECT_0 */;
+            dispose = () => CloseHandle(hProcess);
         }
-
-        if (process == null)
+        else
         {
-            error = "Failed to start resident process.";
-            return false;
+            // CONSISTENCY(child-process-args): forward verb + path via ArgumentList,
+            // not a hand-quoted Arguments string. .NET re-parses the Arguments
+            // string with Windows-style quoting rules even on Unix, so a filePath
+            // containing a literal '"' (legal on macOS/Linux) or a trailing '\'
+            // would split into stray argv and the resident would reject startup.
+            // ArgumentList passes argv losslessly. Matches BlankDocCreator /
+            // FormatHandlerSession, which fork this same exe the same way.
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = exePath,
+                ArgumentList = { "__resident-serve__", filePath },
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                // CONSISTENCY(child-stream-encoding): see BlankDocCreator.
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8
+            };
+            if (idleSeconds.HasValue)
+                startInfo.Environment["OFFICECLI_RESIDENT_IDLE_SECONDS"] = idleSeconds.Value.ToString();
+
+            Process? process = Process.Start(startInfo);
+            if (process == null)
+            {
+                error = "Failed to start resident process.";
+                return false;
+            }
+            hasExited = () => process.HasExited;
+            readStderr = () => process.StandardError.ReadToEnd();
+            dispose = () => process.Dispose();
         }
 
         // Wait briefly for the server to start accepting connections.
@@ -301,12 +312,12 @@ static partial class CommandBuilder
             Thread.Sleep(100);
             if (ResidentClient.TryConnect(filePath, out _))
             {
-                process.Dispose();
+                dispose();
                 return true;
             }
-            if (process.HasExited)
+            if (hasExited())
             {
-                var stderr = process.StandardError.ReadToEnd();
+                var stderr = readStderr();
                 // CONSISTENCY(cli-error-first-line): the resident process dumps its
                 // full call stack on a startup crash; surface only the first line
                 // (typically the exception message). The stack is still in the
@@ -318,29 +329,231 @@ static partial class CommandBuilder
                 error = string.IsNullOrEmpty(firstLine)
                     ? "Resident process exited."
                     : $"Resident process exited. {firstLine}";
-                process.Dispose();
+                dispose();
                 return false;
             }
         }
 
         error = "Resident process started but not responding.";
-        process.Dispose();
+        dispose();
         return false;
     }
 
-    // ==================== Win32 P/Invoke for handle inheritance control ==========
+    // ==================== Win32 resident spawn (Windows) ====================
+    //
+    // Spawn __resident-serve__ so it inherits ONLY the child's own std handles
+    // (stdin/stdout -> NUL, stderr -> a private pipe we read on a startup
+    // crash), never the caller's console/pipe handles. The explicit handle
+    // whitelist means no stray inheritable handle can cross into the resident,
+    // regardless of how many exist. UseShellExecute stays false, so args go via
+    // a CommandLineToArgvW-safe quoted string and the idle override reaches the
+    // child through the inherited environment (no window, works headless).
+    private static bool StartResidentWindows(string exePath, string filePath, int? idleSeconds,
+        out nint hProcess, out Func<string> readStderr, out string? error)
+    {
+        hProcess = 0;
+        readStderr = static () => "";
+        error = null;
 
-    private const int STD_INPUT_HANDLE  = -10;
-    private const int STD_OUTPUT_HANDLE = -11;
-    private const int STD_ERROR_HANDLE  = -12;
+        var sa = new SECURITY_ATTRIBUTES
+        {
+            nLength = Marshal.SizeOf<SECURITY_ATTRIBUTES>(),
+            lpSecurityDescriptor = 0,
+            bInheritHandle = 1
+        };
+
+        nint nulIn = CreateFileW("NUL", GENERIC_READ, FILE_SHARE_RW, ref sa, OPEN_EXISTING, 0, 0);
+        nint nulOut = CreateFileW("NUL", GENERIC_WRITE, FILE_SHARE_RW, ref sa, OPEN_EXISTING, 0, 0);
+        if (!CreatePipe(out nint errRead, out nint errWrite, ref sa, 0))
+        {
+            error = "CreatePipe failed: " + Marshal.GetLastWin32Error();
+            return false;
+        }
+        SetHandleInformation(errRead, HANDLE_FLAG_INHERIT, 0); // read end stays private to us
+
+        var siex = new STARTUPINFOEX();
+        siex.StartupInfo.cb = Marshal.SizeOf<STARTUPINFOEX>();
+        siex.StartupInfo.dwFlags = (int)STARTF_USESTDHANDLES;
+        siex.StartupInfo.hStdInput = nulIn;
+        siex.StartupInfo.hStdOutput = nulOut;
+        siex.StartupInfo.hStdError = errWrite;
+
+        nint size = 0;
+        InitializeProcThreadAttributeList(0, 1, 0, ref size);
+        nint attr = Marshal.AllocHGlobal(size);
+        var inheritList = new[] { nulIn, nulOut, errWrite };
+        var pin = GCHandle.Alloc(inheritList, GCHandleType.Pinned);
+        bool ok = false;
+        try
+        {
+            if (!InitializeProcThreadAttributeList(attr, 1, 0, ref size))
+            {
+                error = "InitializeProcThreadAttributeList failed: " + Marshal.GetLastWin32Error();
+                return false;
+            }
+            if (!UpdateProcThreadAttribute(attr, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                    pin.AddrOfPinnedObject(), (nint)(nint.Size * inheritList.Length), 0, 0))
+            {
+                error = "UpdateProcThreadAttribute failed: " + Marshal.GetLastWin32Error();
+                return false;
+            }
+            siex.lpAttributeList = attr;
+
+            var cmd = new StringBuilder();
+            cmd.Append(EscapeWindowsArg(exePath)).Append(' ')
+               .Append(EscapeWindowsArg("__resident-serve__")).Append(' ')
+               .Append(EscapeWindowsArg(filePath));
+
+            // The resident reads OFFICECLI_RESIDENT_IDLE_SECONDS from its
+            // environment; with bInheritHandles handled explicitly we pass a
+            // null env block (child inherits ours). Set the override only around
+            // the spawn so we don't mutate our own process environment for good.
+            string? prevIdle = null;
+            bool setIdle = idleSeconds.HasValue;
+            if (setIdle)
+            {
+                prevIdle = Environment.GetEnvironmentVariable("OFFICECLI_RESIDENT_IDLE_SECONDS");
+                Environment.SetEnvironmentVariable("OFFICECLI_RESIDENT_IDLE_SECONDS", idleSeconds!.Value.ToString());
+            }
+            try
+            {
+                ok = CreateProcessW(null, cmd, 0, 0, /*bInheritHandles*/ true,
+                    CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, 0, null, ref siex, out var pi);
+                if (ok)
+                {
+                    CloseHandle(pi.hThread);
+                    hProcess = pi.hProcess;
+                }
+            }
+            finally
+            {
+                if (setIdle) Environment.SetEnvironmentVariable("OFFICECLI_RESIDENT_IDLE_SECONDS", prevIdle);
+            }
+            if (!ok)
+            {
+                error = "CreateProcess failed: " + Marshal.GetLastWin32Error();
+                return false;
+            }
+
+            nint errReadCaptured = errRead;
+            readStderr = () =>
+            {
+                try
+                {
+                    var sb = new StringBuilder();
+                    var buf = new byte[4096];
+                    while (ReadFile(errReadCaptured, buf, (uint)buf.Length, out uint n, 0) && n > 0)
+                        sb.Append(Encoding.UTF8.GetString(buf, 0, (int)n));
+                    return sb.ToString();
+                }
+                catch { return ""; }
+            };
+            return true;
+        }
+        finally
+        {
+            if (attr != 0) { DeleteProcThreadAttributeList(attr); Marshal.FreeHGlobal(attr); }
+            pin.Free();
+            // Our copies of the child's inheritable handles; the child holds its
+            // own inherited copies. errRead stays open for readStderr (released
+            // when this short-lived CLI process exits) unless the spawn failed.
+            CloseHandle(nulIn);
+            CloseHandle(nulOut);
+            CloseHandle(errWrite);
+            if (!ok) CloseHandle(errRead);
+        }
+    }
+
+    /// <summary>
+    /// Quote one argv token for the Windows command line so CommandLineToArgvW
+    /// round-trips it exactly (spaces, quotes, trailing backslashes).
+    /// </summary>
+    private static string EscapeWindowsArg(string arg)
+    {
+        if (arg.Length > 0 && arg.IndexOfAny(new[] { ' ', '\t', '"' }) < 0)
+            return arg;
+        var sb = new StringBuilder();
+        sb.Append('"');
+        int slashes = 0;
+        foreach (char c in arg)
+        {
+            if (c == '\\') { slashes++; continue; }
+            if (c == '"') { sb.Append('\\', slashes * 2 + 1); sb.Append('"'); }
+            else { sb.Append('\\', slashes); sb.Append(c); }
+            slashes = 0;
+        }
+        sb.Append('\\', slashes * 2);
+        sb.Append('"');
+        return sb.ToString();
+    }
+
+    // ==================== Win32 P/Invoke ====================
+
     private const uint HANDLE_FLAG_INHERIT = 0x00000001;
+    private const uint STARTF_USESTDHANDLES = 0x00000100;
+    private const uint CREATE_NO_WINDOW = 0x08000000;
+    private const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
+    private static readonly nint PROC_THREAD_ATTRIBUTE_HANDLE_LIST = 0x00020002;
+    private const uint GENERIC_READ = 0x80000000;
+    private const uint GENERIC_WRITE = 0x40000000;
+    private const uint FILE_SHARE_RW = 0x00000003;
+    private const uint OPEN_EXISTING = 3;
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern nint GetStdHandle(int nStdHandle);
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SECURITY_ATTRIBUTES { public int nLength; public nint lpSecurityDescriptor; public int bInheritHandle; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct STARTUPINFO
+    {
+        public int cb; public nint lpReserved, lpDesktop, lpTitle;
+        public int dwX, dwY, dwXSize, dwYSize, dwXCountChars, dwYCountChars, dwFillAttribute, dwFlags;
+        public short wShowWindow, cbReserved2; public nint lpReserved2, hStdInput, hStdOutput, hStdError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct STARTUPINFOEX { public STARTUPINFO StartupInfo; public nint lpAttributeList; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROCESS_INFORMATION { public nint hProcess, hThread; public int dwProcessId, dwThreadId; }
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetHandleInformation(nint hObject, uint dwMask, uint dwFlags);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(nint hObject);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern nint CreateFileW(string name, uint access, uint share, ref SECURITY_ATTRIBUTES sa, uint disposition, uint flags, nint template);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreatePipe(out nint hReadPipe, out nint hWritePipe, ref SECURITY_ATTRIBUTES sa, uint size);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ReadFile(nint hFile, byte[] buffer, uint count, out uint read, nint overlapped);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint WaitForSingleObject(nint handle, uint ms);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateProcessW(string? applicationName, StringBuilder commandLine,
+        nint processAttributes, nint threadAttributes, bool inheritHandles, uint creationFlags,
+        nint environment, string? currentDirectory, ref STARTUPINFOEX startupInfo, out PROCESS_INFORMATION processInformation);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool InitializeProcThreadAttributeList(nint list, int count, int flags, ref nint size);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UpdateProcThreadAttribute(nint list, uint flags, nint attribute, nint value, nint size, nint previous, nint returnSize);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern void DeleteProcThreadAttributeList(nint list);
 
     // ==================== Helper: try forwarding to resident ====================
     //
@@ -592,6 +805,98 @@ static partial class CommandBuilder
         return new SetApplyOutcome(applied, unsupported, autoCorrected);
     }
 
+    /// <summary>
+    /// Cheap single-node Format snapshot for the set-receipt normalization
+    /// echo. Selector paths (no leading '/') and unresolvable paths return
+    /// null — the echo is skipped rather than paying a query or guessing.
+    /// </summary>
+    internal static Dictionary<string, string>? TryGetFormatSnapshot(
+        OfficeCli.Core.IDocumentHandler handler, string path)
+    {
+        if (string.IsNullOrEmpty(path) || !path.StartsWith("/")) return null;
+        try
+        {
+            var node = handler.Get(path);
+            if (node?.Format == null) return null;
+            var snap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in node.Format)
+                snap[kv.Key] = kv.Value switch
+                {
+                    null => "",
+                    bool b => b ? "true" : "false",
+                    _ => kv.Value.ToString() ?? "",
+                };
+            return snap;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// " (applied: key=value, ...)" — the canonical form the handler actually
+    /// stored, appended to the set receipt ONLY when it differs from the
+    /// request (bare font → font.latin/font.ea, red → #FF0000, 14 → 14pt).
+    /// A write-read-identical set keeps its receipt byte-for-byte unchanged
+    /// (frozen-text discipline: extend by suffix, and only when informative).
+    /// Diff entries are restricted to keys attributable to a requested key
+    /// (same name or a dotted expansion of it) so recomputed unrelated
+    /// Format entries can never add noise.
+    /// </summary>
+    internal static string BuildAppliedSuffix(
+        List<KeyValuePair<string, string>> applied,
+        Dictionary<string, string>? before,
+        Dictionary<string, string>? after)
+    {
+        if (after == null || applied.Count == 0) return "";
+        bool DiffAttributable(string diffKey, KeyValuePair<string, string> req) =>
+            diffKey.Equals(req.Key, StringComparison.OrdinalIgnoreCase)
+            || diffKey.StartsWith(req.Key + ".", StringComparison.OrdinalIgnoreCase)
+            || req.Key.StartsWith(diffKey + ".", StringComparison.OrdinalIgnoreCase);
+        // Fallback attribution (post-state, no diff evidence): exact key
+        // match, or a dotted expansion whose value equals the SAME request's
+        // value — pairing both conditions per request keeps a pre-existing
+        // sibling whose value collides with a DIFFERENT request out of the
+        // echo (border=thin + wrap=true must not claim
+        // border.diagonalUp=true). A same-request sibling genuinely carrying
+        // the requested value can still appear — value-truthful, accepted.
+        bool FallbackAttributable(KeyValuePair<string, string> kv, KeyValuePair<string, string> req) =>
+            kv.Key.Equals(req.Key, StringComparison.OrdinalIgnoreCase)
+            || (kv.Key.StartsWith(req.Key + ".", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(kv.Value, req.Value, StringComparison.Ordinal));
+        var diff = new List<KeyValuePair<string, string>>();
+        if (before != null)
+            foreach (var kv in after)
+                if (!before.TryGetValue(kv.Key, out var old) || !string.Equals(old, kv.Value, StringComparison.Ordinal))
+                    diff.Add(kv);
+        // Resolve PER REQUEST, not per whole set: a request covered by the
+        // diff uses its diff entries; a request with no diff evidence (an
+        // idempotent re-write — the stored value already matched — or a first
+        // write the before-snapshot couldn't resolve) falls back to the
+        // post-state. Resolving the whole set at once made a key's echo
+        // depend on whether some OTHER key in the same command happened to
+        // change, so identical requests echoed different shapes run to run.
+        var picked = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var req in applied)
+        {
+            var fromDiff = diff.Where(kv => DiffAttributable(kv.Key, req)).ToList();
+            foreach (var kv in fromDiff.Count > 0
+                ? fromDiff
+                : after.Where(kv => FallbackAttributable(kv, req)))
+                picked[kv.Key] = kv.Value;
+        }
+        var related = picked
+            .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase).ToList();
+        if (related.Count == 0) return "";
+        // Identity — the stored form matches the request exactly: no echo.
+        var identical = applied.All(req => related.Any(d =>
+                d.Key.Equals(req.Key, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(d.Value, req.Value, StringComparison.Ordinal)))
+            && related.All(d => applied.Any(req =>
+                d.Key.Equals(req.Key, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(d.Value, req.Value, StringComparison.Ordinal)));
+        if (identical) return "";
+        return $" (applied: {string.Join(", ", related.Select(kv => $"{kv.Key}={kv.Value}"))})";
+    }
+
     internal static string ExecuteBatchItem(OfficeCli.Core.IDocumentHandler handler, BatchItem item, bool json)
     {
         var format = json ? OfficeCli.Core.OutputFormat.Json : OfficeCli.Core.OutputFormat.Text;
@@ -625,6 +930,11 @@ static partial class CommandBuilder
 
         switch (item.Command.ToLowerInvariant())
         {
+            // NEWLINE-SEMANTICS-V2: version-stamp items are normally stripped
+            // by BatchCompat.PrepareForReplay; tolerate one that reaches the
+            // executor (plugin NDJSON lines bypass the list-level prepare).
+            case "meta":
+                return "meta";
             case "get":
             {
                 var path = item.Path ?? "/";
@@ -980,17 +1290,47 @@ static partial class CommandBuilder
                 // shortcuts (so `--prop c1='a\nb'` breaks the line exactly like
                 // `--prop text=` does); other props (colors, paths, numbers)
                 // are passed through untouched.
-                if (key.Equals("text", StringComparison.OrdinalIgnoreCase)
-                    || key.Equals("value", StringComparison.OrdinalIgnoreCase)
-                    || IsCellTextShortcutKey(key))
+                if (KeyTakesCEscapes(key))
                 {
                     value = OfficeCli.Core.TextEscape.Resolve(value);
                 }
                 dict[key] = value;
             }
         }
+
+        // NEWLINE-SEMANTICS-V2 + CONSISTENCY(text-escape-boundary): find /
+        // replace get the same C-escape convenience as text= (`--find '\v'
+        // --replace '\n'` works without shell $'..' quoting) — EXCEPT when
+        // the find is a regex (r"..." prefix or regex=true): regex has its
+        // own escape language (\\., \b, \d) that C-escape resolution would
+        // corrupt, so regex invocations are passed through verbatim, same
+        // stance as Word's wildcard mode. Post-pass here (not in the per-key
+        // loop) because the decision needs the regex key's value.
+        bool findIsRegex =
+            (dict.TryGetValue("regex", out var rxFlag) && OfficeCli.Core.ParseHelpers.IsTruthySafe(rxFlag))
+            || (dict.TryGetValue("find", out var fv)
+                && (fv.StartsWith("r\"", StringComparison.Ordinal) || fv.StartsWith("r'", StringComparison.Ordinal)));
+        if (!findIsRegex)
+        {
+            if (dict.TryGetValue("find", out var findVal))
+                dict["find"] = OfficeCli.Core.TextEscape.Resolve(findVal);
+            if (dict.TryGetValue("replace", out var replVal))
+                dict["replace"] = OfficeCli.Core.TextEscape.Resolve(replVal);
+        }
         return dict;
     }
+
+    /// <summary>
+    /// CONSISTENCY(text-escape-boundary): the --prop keys whose values go
+    /// through TextEscape.Resolve on the way in. Anything that builds argv from
+    /// a payload where escapes are ALREADY literal — a JSON body, a batch item —
+    /// must run those same values through TextEscape.Protect first, or the
+    /// resolution happens a second time and eats the user's backslashes.
+    /// </summary>
+    internal static bool KeyTakesCEscapes(string key)
+        => key.Equals("text", StringComparison.OrdinalIgnoreCase)
+           || key.Equals("value", StringComparison.OrdinalIgnoreCase)
+           || IsCellTextShortcutKey(key);
 
     // Row-level cell-text shortcut key: `c` followed by digits (c1, c2, …, cN).
     // These carry table-cell text, so they take the same `\n`/`\t` escape
@@ -1003,7 +1343,7 @@ static partial class CommandBuilder
         return true;
     }
 
-    internal static void PrintBatchResults(List<BatchResult> results, bool json, int totalCount = 0, TextWriter? output = null)
+    internal static void PrintBatchResults(List<BatchResult> results, bool json, int totalCount = 0, TextWriter? output = null, bool atomicRolledBack = false)
     {
         var @out = output ?? Console.Out;
         if (totalCount == 0) totalCount = results.Count;
@@ -1026,6 +1366,10 @@ static partial class CommandBuilder
                 writer.WriteNumber("succeeded", succeeded);
                 writer.WriteNumber("failed", failed);
                 writer.WriteNumber("skipped", skipped);
+                // Additive field, only present when the atomic default
+                // discarded the batch — parsers keying on the existing
+                // summary fields are unaffected.
+                if (atomicRolledBack) writer.WriteBoolean("atomicRolledBack", true);
                 writer.WriteEndObject();
                 writer.WriteEndObject();
             }
@@ -1057,6 +1401,8 @@ static partial class CommandBuilder
                         if (r.Error != null)
                         {
                             slimWriter.WriteString("error", r.Error);
+                            if (r.Code != null)
+                                slimWriter.WriteString("code", r.Code);
                             if (r.Item != null)
                             {
                                 slimWriter.WritePropertyName("item");
@@ -1072,6 +1418,7 @@ static partial class CommandBuilder
                     slimWriter.WriteNumber("succeeded", succeeded);
                     slimWriter.WriteNumber("failed", failed);
                     slimWriter.WriteNumber("skipped", skipped);
+                    if (atomicRolledBack) slimWriter.WriteBoolean("atomicRolledBack", true);
                     slimWriter.WriteEndObject();
                     slimWriter.WriteEndObject();
                 }
@@ -1099,7 +1446,10 @@ static partial class CommandBuilder
 
             var succeeded = results.Count(r => r.Success);
             var failed = results.Count - succeeded;
-            @out.WriteLine($"\nBatch complete: {succeeded} succeeded, {failed} failed, {results.Count} total");
+            // FROZEN TEXT: the "Batch complete: N succeeded, M failed" skeleton
+            // is a machine-consumed contract — extend by SUFFIX only.
+            var atomicNote = atomicRolledBack ? " (atomic: no changes were applied)" : "";
+            @out.WriteLine($"\nBatch complete: {succeeded} succeeded, {failed} failed, {results.Count} total{atomicNote}");
         }
     }
 

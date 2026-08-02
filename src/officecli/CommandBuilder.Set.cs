@@ -234,6 +234,10 @@ static partial class CommandBuilder
             // CLI / batch / MCP / resident; see ApplySetWithCorrection). The rich
             // CLI envelope below — find-count, position overlap, --json warnings,
             // exit codes — stays here.
+            // CONSISTENCY(applied-echo): pre/post Format snapshots feed the
+            // " (applied: ...)" normalization echo; mirrored in
+            // ResidentServer.ExecuteSet.
+            var beforeSnap = TryGetFormatSnapshot(handler, path);
             var (applied, stillUnsupported, autoCorrected) = ApplySetWithCorrection(handler, path, properties);
 
             // Get find match count if applicable.
@@ -268,8 +272,11 @@ static partial class CommandBuilder
             // oMath), changing its canonical path. Report the NEW resolvable
             // path so the "Updated …" line points at a path that still resolves.
             var reportPath = (handler as OfficeCli.Handlers.WordHandler)?.LastSetNewPath ?? path;
+            var appliedSuffix = BuildAppliedSuffix(applied,
+                beforeSnap, TryGetFormatSnapshot(handler, reportPath));
             var message = applied.Count > 0
                 ? $"Updated {reportPath}: {string.Join(", ", applied.Select(kv => $"{kv.Key}={kv.Value}"))}"
+                  + appliedSuffix
                   + (findMatchCount.HasValue ? $" ({findMatchCount.Value} matched)" : "")
                   + (selectorCount > 1 ? $" ({selectorCount} elements matched)" : "")
                 : $"Error: No properties applied to {path}";

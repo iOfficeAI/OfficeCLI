@@ -604,6 +604,49 @@ public partial class PowerPointHandler
     /// </summary>
     private static void ApplyBulletRaw(Drawing.ParagraphProperties pProps, string rawXml)
     {
+        // Validate and parse FIRST — every throw must happen before any
+        // mutation, or the invalid_value error leaves a pPr stripped of its
+        // bullet group behind it (the single-command path autosaves the dirty
+        // DOM on Dispose). Same order contract as ApplyListStyle.
+        List<OpenXmlElement>? newChildren = null;
+        if (!string.IsNullOrWhiteSpace(rawXml))
+        {
+            // Reject non-XML input up front: a free-form string ("buFont=Wingdings")
+            // survived the wrap-parse as TEXT CONTENT of <a:pPr> — an element with
+            // no text model — producing a file schema validation passes but real
+            // PowerPoint refuses to open (0x80070570).
+            if (!rawXml.TrimStart().StartsWith("<"))
+                throw new ArgumentException(
+                    $"Invalid 'bulletRaw' value: '{rawXml}'. Expected verbatim bullet-group XML " +
+                    "(e.g. <a:buChar char=\"•\"/> or <a:buAutoNum type=\"arabicPeriod\"/>) " +
+                    "as emitted by Get; use list= for keyword bullets.");
+            // Wrap in a throwaway pPr that declares the a: namespace so each child
+            // fragment parses with its prefix bound; then lift the parsed children.
+            const string aNs = "http://schemas.openxmlformats.org/drawingml/2006/main";
+            var wrapped = $"<a:pPr xmlns:a=\"{aNs}\">{rawXml}</a:pPr>";
+            // Materialize the children INSIDE the try: the SDK parses the
+            // outer-XML constructor lazily, so a malformed fragment throws
+            // XmlException only when ChildElements is first enumerated —
+            // outside a constructor-only try it escaped the ArgumentException
+            // wrap and surfaced as internal_error with a misleading
+            // "corrupted OOXML part" message.
+            try
+            {
+                newChildren = new Drawing.ParagraphProperties(wrapped).ChildElements.ToList();
+            }
+            catch (Exception ex)
+            {
+                throw new ArgumentException($"Invalid 'bulletRaw' XML: '{rawXml}' ({ex.Message}).", ex);
+            }
+            foreach (var child in newChildren)
+            {
+                if (child is OpenXmlUnknownElement || child is OpenXmlMiscNode)
+                    throw new ArgumentException(
+                        $"Invalid 'bulletRaw' XML: unrecognized fragment '{child.OuterXml}'. " +
+                        "Expected a:bu* bullet-group elements.");
+            }
+        }
+
         // Strip the prior bullet group so a re-apply is idempotent.
         pProps.RemoveAllChildren<Drawing.BulletColorText>();
         pProps.RemoveAllChildren<Drawing.BulletColor>();
@@ -617,32 +660,9 @@ public partial class PowerPointHandler
         pProps.RemoveAllChildren<Drawing.CharacterBullet>();
         pProps.RemoveAllChildren<Drawing.PictureBullet>();
 
-        if (string.IsNullOrWhiteSpace(rawXml)) return;
-        // Reject non-XML input up front: a free-form string ("buFont=Wingdings")
-        // survived the wrap-parse as TEXT CONTENT of <a:pPr> — an element with
-        // no text model — producing a file schema validation passes but real
-        // PowerPoint refuses to open (0x80070570).
-        if (!rawXml.TrimStart().StartsWith("<"))
-            throw new ArgumentException(
-                $"Invalid 'bulletRaw' value: '{rawXml}'. Expected verbatim bullet-group XML " +
-                "(e.g. <a:buChar char=\"•\"/> or <a:buAutoNum type=\"arabicPeriod\"/>) " +
-                "as emitted by Get; use list= for keyword bullets.");
-        // Wrap in a throwaway pPr that declares the a: namespace so each child
-        // fragment parses with its prefix bound; then lift the parsed children.
-        const string aNs = "http://schemas.openxmlformats.org/drawingml/2006/main";
-        var wrapped = $"<a:pPr xmlns:a=\"{aNs}\">{rawXml}</a:pPr>";
-        Drawing.ParagraphProperties parsed;
-        try { parsed = new Drawing.ParagraphProperties(wrapped); }
-        catch (Exception ex)
+        if (newChildren == null) return;
+        foreach (var child in newChildren)
         {
-            throw new ArgumentException($"Invalid 'bulletRaw' XML: '{rawXml}' ({ex.Message}).", ex);
-        }
-        foreach (var child in parsed.ChildElements.ToList())
-        {
-            if (child is OpenXmlUnknownElement || child is OpenXmlMiscNode)
-                throw new ArgumentException(
-                    $"Invalid 'bulletRaw' XML: unrecognized fragment '{child.OuterXml}'. " +
-                    "Expected a:bu* bullet-group elements.");
             child.Remove();
             InsertPPrChild(pProps, child);
         }

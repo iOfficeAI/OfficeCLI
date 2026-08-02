@@ -288,8 +288,8 @@ officecli add sales.xlsx '/Sheet1' --type pivottable \
 `merge` replaces `{{key}}` placeholders in any `.docx` / `.xlsx` / `.pptx` with JSON data — across paragraphs, table cells, shapes, headers, footers, and chart titles. Agent designs the layout once (expensive); production code fills it N times (cheap, deterministic, zero token cost). Avoids the failure mode where an agent regenerates each report from scratch and produces N inconsistent layouts.
 
 ```bash
-officecli merge invoice-template.docx out-001.docx '{"client":"Acme","total":"$5,200"}'
-officecli merge q4-template.pptx q4-acme.pptx data.json
+officecli merge invoice-template.docx out-001.docx --data '{"client":"Acme","total":"$5,200"}'
+officecli merge q4-template.pptx q4-acme.pptx --data data.json
 ```
 
 #### Round-trip dump — learn from existing docs
@@ -314,7 +314,7 @@ officecli set report.docx /body/p[1]/r[1] --prop bold=true
 officecli set report.docx /body/p[2]/r[1] --prop color=FF0000
 officecli close report.docx
 
-# Batch mode — multi-command execution (continues on error by default; --stop-on-error to abort)
+# Batch mode — multi-command execution (atomic by default: any failed item rolls back the whole batch)
 echo '[{"command":"set","path":"/slide[1]/shape[1]","props":{"text":"Hello"}},
       {"command":"set","path":"/slide[1]/shape[2]","props":{"fill":"FF0000"}}]' \
   | officecli batch deck.pptx --json
@@ -322,7 +322,10 @@ echo '[{"command":"set","path":"/slide[1]/shape[1]","props":{"text":"Hello"}},
 # Inline batch with --commands (no stdin needed)
 officecli batch deck.pptx --commands '[{"op":"set","path":"/slide[1]/shape[1]","props":{"text":"Hi"}}]'
 
-# Abort on the first failing command (default is continue-on-error)
+# Keep whatever succeeds even if some items fail (pre-1.0.137 behavior)
+officecli batch deck.pptx --input updates.json --best-effort --json
+
+# Stop at the first failing command instead of running the rest (still rolls back everything unless combined with --best-effort)
 officecli batch deck.pptx --input updates.json --stop-on-error --json
 ```
 
@@ -424,10 +427,9 @@ curl -fsSL https://officecli.ai/SKILL.md -o ~/.claude/skills/officecli.md
 Don't guess property names — drill into the help:
 
 ```bash
-officecli pptx set              # All settable elements and properties
-officecli pptx set shape        # Detail for one element type
-officecli pptx set shape.fill   # One property: format and examples
-officecli docx query            # Selector reference: attributes, :contains, :has(), etc.
+officecli help pptx set              # All settable elements and properties
+officecli help pptx set shape        # Detail for one element type
+officecli help docx query            # Selector reference: attributes, :contains, :has(), etc.
 ```
 
 Run `officecli --help` for the full overview.
@@ -521,7 +523,7 @@ See `officecli --help` for full details on exit codes and error formats.
 | [`swap`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-swap) | Swap two elements |
 | [`validate`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-validate) | Validate against OpenXML schema |
 | `view <file> issues` | Enumerate document issues (text overflow, missing alt text, formula errors, ...) |
-| [`batch`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-batch) | Multiple operations applied in a single pass (stdin, `--input`, or `--commands`; continues on error by default, `--stop-on-error` to abort) |
+| [`batch`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-batch) | Multiple operations applied in a single pass (stdin, `--input`, or `--commands`; atomic by default — any failed item rolls back the whole batch — `--best-effort` to keep partial progress, `--stop-on-error` to abort early) |
 | [`dump`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-dump) | Serialize a `.docx`, `.pptx`, or `.xlsx` into a replayable batch JSON (round-trip via `batch`); accepts a subtree path |
 | [`refresh`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-refresh) | Recalculate TOC page numbers / `PAGE` / cross-references (`.docx`; Word backend on Windows, headless-HTML fallback) |
 | [`plugins`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-plugins) | List / inspect / lint installed plugins (extend to `.doc`, `.hwpx`, `.pdf` export via dump-reader / exporter / format-handler kinds) |
@@ -535,7 +537,7 @@ See `officecli --help` for full details on exit codes and error formats.
 | `close` | Save and close resident mode |
 | [`install`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-install) | Install binary + skills + MCP (`all`, `claude`, `cursor`, etc.) |
 | `config` | Get or set configuration |
-| `<format> <command>` | [Built-in help](https://github.com/iOfficeAI/OfficeCLI/wiki/command-reference) (e.g. `officecli pptx set shape`) |
+| `help <format> <command>` | [Built-in help](https://github.com/iOfficeAI/OfficeCLI/wiki/command-reference) (e.g. `officecli help pptx set shape`) |
 
 ## End-to-End Workflow Example
 
@@ -588,10 +590,11 @@ officecli get deck.pptx / --depth 2 --json
 officecli batch budget.xlsx --input updates.json --json
 
 # Import CSV data into an Excel sheet
-officecli add budget.xlsx / --type sheet --prop name="Q1 Data" --prop csv=sales.csv
+officecli add budget.xlsx / --type sheet --prop name="Q1 Data"
+officecli import budget.xlsx "/Q1 Data" sales.csv --header
 
 # Template merge for batch reports
-officecli merge invoice-template.docx invoice-001.docx '{"client":"Acme","total":"$5,200"}'
+officecli merge invoice-template.docx invoice-001.docx --data '{"client":"Acme","total":"$5,200"}'
 
 # Check document quality before delivery
 officecli validate report.docx && officecli view report.docx issues --json
@@ -601,18 +604,19 @@ officecli validate report.docx && officecli view report.docx issues --json
 
 ```python
 # Python — `pip install officecli-sdk`
-from officecli import Doc
-with Doc("deck.pptx") as d:
-    d.add("/", type="slide", title="Q4 Report")
-    print(d.get("/slide[1]"))
+import officecli
+with officecli.create("deck.pptx") as doc:          # or officecli.open("deck.pptx")
+    doc.send({"command": "add", "parent": "/", "type": "slide"})
+    print(doc.send({"command": "get", "path": "/slide[1]"}))
 ```
 
 ```javascript
 // Node.js — `npm install @officecli/sdk`
-import { Doc } from "@officecli/sdk";
-await using d = await Doc.open("deck.pptx");
-await d.add("/", { type: "slide", title: "Q4 Report" });
-console.log(await d.get("/slide[1]"));
+const oc = require("@officecli/sdk");
+const doc = await oc.create("deck.pptx");            // or oc.open("deck.pptx")
+await doc.send({ command: "add", parent: "/", type: "slide" });
+console.log(await doc.send({ command: "get", path: "/slide[1]" }));
+await doc.close();
 ```
 
 Both SDKs auto-provision the native CLI when missing (mirror-first, Windows-capable) and announce the install rather than doing it silently.

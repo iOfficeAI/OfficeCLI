@@ -482,7 +482,7 @@ public partial class PowerPointHandler
                 // ops against the connector path.
                 if (properties.TryGetValue("text", out var cxnText) && !string.IsNullOrEmpty(cxnText))
                 {
-                    XmlTextValidator.ValidateOrThrow(cxnText, "text");
+                    XmlTextValidator.ValidateOrThrow(cxnText, "text", allowSoftBreakChar: true);
                     var cxnRunProps = new Drawing.RunProperties { Language = "en-US" };
                     var cxnPara = new Drawing.Paragraph(new Drawing.Run(cxnRunProps,
                         MakePreservingText(cxnText)));
@@ -1529,7 +1529,7 @@ public partial class PowerPointHandler
         );
         if (properties.TryGetValue("text", out var phText) && phText.Length > 0)
         {
-            XmlTextValidator.ValidateOrThrow(phText, "text");
+            XmlTextValidator.ValidateOrThrow(phText, "text", allowSoftBreakChar: true);
             // CONSISTENCY(text-escape-boundary): \n / \t resolution is at the
             // CLI --prop boundary; phText already contains real newlines.
             var lines = phText.Split('\n');

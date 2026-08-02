@@ -60,7 +60,11 @@ internal partial class FormulaEvaluator
         int rows = g.GetLength(0);
         var outc = new FormulaResult?[rows, 1];
         for (int r = 0; r < rows; r++)
-            outc[r, 0] = InvokeLambda(lam, new List<FormulaResult> { RowArea(g, r) });
+        {
+            var v = InvokeLambda(lam, new List<FormulaResult> { RowArea(g, r) });
+            if (v is { IsRange: true } or { IsArray: true }) return FormulaResult.Error("#CALC!");   // lambda must yield a scalar
+            outc[r, 0] = v;
+        }
         return MakeArea(outc);
     }
 
@@ -72,7 +76,11 @@ internal partial class FormulaEvaluator
         int cols = g.GetLength(1);
         var outc = new FormulaResult?[1, cols];
         for (int c = 0; c < cols; c++)
-            outc[0, c] = InvokeLambda(lam, new List<FormulaResult> { ColArea(g, c) });
+        {
+            var v = InvokeLambda(lam, new List<FormulaResult> { ColArea(g, c) });
+            if (v is { IsRange: true } or { IsArray: true }) return FormulaResult.Error("#CALC!");   // lambda must yield a scalar
+            outc[0, c] = v;
+        }
         return MakeArea(outc);
     }
 

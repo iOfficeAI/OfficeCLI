@@ -180,6 +180,62 @@ public partial class WordHandler
                         ?.GetFirstChild<ShowingPlaceholder>();
                     plcHdr?.Remove();
                     break;
+                // P1 (sdt post-creation mutation): checkbox state, list choices,
+                // combo/dropdown/date current values, and placeholder markers are
+                // all settable after the control exists. `type` stays immutable
+                // (schema set:false) — changing the content-type element would
+                // corrupt the control; recreate it instead. Wrong-control-type
+                // targets throw a clear error rather than silently no-op.
+                case "checked":
+                    SetSdtChecked(element, sdtProps, IsTruthy(value));
+                    break;
+                case "items" or "choices":
+                    SetSdtItems(sdtProps, value);
+                    break;
+                case "dropdown.lastvalue":
+                    RequireSdtType<SdtContentDropDownList>(sdtProps, "dropDown.lastValue", "dropdown").LastValue = value;
+                    break;
+                case "combobox.lastvalue":
+                    RequireSdtType<SdtContentComboBox>(sdtProps, "comboBox.lastValue", "combobox").LastValue = value;
+                    break;
+                case "format":
+                    RequireSdtType<SdtContentDate>(sdtProps, "format", "date").DateFormat = new DateFormat { Val = value };
+                    break;
+                case "date.fulldate":
+                    if (!DateTime.TryParse(value, System.Globalization.CultureInfo.InvariantCulture,
+                            System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
+                            out var fdVal))
+                        throw new ArgumentException($"Invalid date.fullDate '{value}'. Expected ISO-8601 (e.g. 2026-01-01T00:00:00Z).");
+                    RequireSdtType<SdtContentDate>(sdtProps, "date.fullDate", "date").FullDate = fdVal;
+                    break;
+                case "date.calendar":
+                    RequireSdtType<SdtContentDate>(sdtProps, "date.calendar", "date").Calendar =
+                        new Calendar { Val = new EnumValue<CalendarValues>(new CalendarValues(value)) };
+                    break;
+                case "date.lid":
+                    RequireSdtType<SdtContentDate>(sdtProps, "date.lid", "date").LanguageId = new LanguageId { Val = value };
+                    break;
+                case "date.storemappeddataas":
+                    RequireSdtType<SdtContentDate>(sdtProps, "date.storeMappedDataAs", "date").SdtDateMappingType =
+                        new SdtDateMappingType { Val = new EnumValue<DateFormatValues>(new DateFormatValues(value)) };
+                    break;
+                case "placeholder":
+                    var existingPlc = sdtProps.GetFirstChild<ShowingPlaceholder>();
+                    if (IsTruthy(value))
+                    {
+                        if (existingPlc == null) InsertSdtPropSchemaOrdered(sdtProps, new ShowingPlaceholder());
+                    }
+                    else existingPlc?.Remove();
+                    break;
+                case "placeholdertext":
+                    var existingDocPart = sdtProps.GetFirstChild<SdtPlaceholder>();
+                    if (string.IsNullOrEmpty(value)) existingDocPart?.Remove();
+                    else if (existingDocPart != null)
+                        existingDocPart.DocPartReference = new DocPartReference { Val = value };
+                    else
+                        InsertSdtPropSchemaOrdered(sdtProps,
+                            new SdtPlaceholder { DocPartReference = new DocPartReference { Val = value } });
+                    break;
                 default:
                     unsupported.Add(key);
                     break;
@@ -187,6 +243,69 @@ public partial class WordHandler
         }
         SaveDoc();
         return unsupported;
+    }
+
+    // P1 sdt helpers. Mirror the Add-side builders (ApplySdtExtraProps /
+    // BuildSdtCheckBox / ParseSdtItems in WordHandler.Add.Misc.cs) so Set and
+    // Add produce the identical OOXML shape; the difference is mutate-in-place
+    // vs build-fresh.
+
+    /// <summary>Fetch the content-type child that a typed prop requires; throw a
+    /// clear error when the control is a different variant (type is immutable).</summary>
+    private static T RequireSdtType<T>(SdtProperties sdtProps, string prop, string typeName)
+        where T : OpenXmlElement
+    {
+        return sdtProps.GetFirstChild<T>()
+            ?? throw new ArgumentException(
+                $"'{prop}' applies only to a {typeName} content control; this control is a different type " +
+                "(type cannot be changed after creation — recreate the control instead).");
+    }
+
+    /// <summary>Insert an sdtPr child before the type-content element per CT_SdtPr
+    /// schema order (placeholder / showingPlcHdr / dataBinding precede the type).</summary>
+    private static void InsertSdtPropSchemaOrdered(SdtProperties sdtProps, OpenXmlElement el)
+    {
+        var typeElement = sdtProps.LastChild;
+        bool typeIsContent = typeElement is SdtContentDate or SdtContentComboBox
+            or SdtContentDropDownList or SdtContentText
+            or SdtContentGroup or SdtContentPicture
+            or DocumentFormat.OpenXml.Office2010.Word.SdtContentCheckBox;
+        if (typeIsContent) sdtProps.InsertBefore(el, typeElement);
+        else sdtProps.AppendChild(el);
+    }
+
+    /// <summary>Flip a checkbox control's checked flag and repaint its glyph run
+    /// (☒ checked / ☐ unchecked) so `view text` and Word both reflect the state.</summary>
+    private void SetSdtChecked(OpenXmlElement element, SdtProperties sdtProps, bool isChecked)
+    {
+        var checkBox = RequireSdtType<DocumentFormat.OpenXml.Office2010.Word.SdtContentCheckBox>(
+            sdtProps, "checked", "checkbox");
+        checkBox.Checked ??= new DocumentFormat.OpenXml.Office2010.Word.Checked();
+        checkBox.Checked.Val = isChecked
+            ? DocumentFormat.OpenXml.Office2010.Word.OnOffValues.One
+            : DocumentFormat.OpenXml.Office2010.Word.OnOffValues.Zero;
+
+        // Repaint the box glyph only when the content run currently holds a box
+        // glyph (☒/☐) — never clobber user-typed content beside the checkbox.
+        var glyph = isChecked ? "☒" : "☐";
+        var content = (OpenXmlElement?)(element as SdtBlock)?.SdtContentBlock
+            ?? (element as SdtRun)?.SdtContentRun;
+        foreach (var t in content?.Descendants<Text>() ?? Enumerable.Empty<Text>())
+            if (t.Text is "☒" or "☐") t.Text = glyph;
+    }
+
+    /// <summary>Replace the list choices on a dropdown/combobox control.</summary>
+    private void SetSdtItems(SdtProperties sdtProps, string items)
+    {
+        OpenXmlElement list = (OpenXmlElement?)sdtProps.GetFirstChild<SdtContentDropDownList>()
+            ?? sdtProps.GetFirstChild<SdtContentComboBox>()
+            ?? throw new ArgumentException(
+                "'items' applies only to a dropdown or combobox content control; this control is a different type " +
+                "(type cannot be changed after creation — recreate the control instead).");
+        // LastValue (a combo/dropdown attribute) lives on the list element, not a
+        // child; RemoveAllChildren clears only the ListItem set, preserving it.
+        foreach (var li in list.Elements<ListItem>().ToList()) li.Remove();
+        foreach (var li in ParseSdtItems(items)) list.AppendChild(li);
     }
 
     private List<string> SetElementRun(Run run, Dictionary<string, string> properties)
@@ -1450,46 +1569,46 @@ public partial class WordHandler
                 case "framepr.w":
                 case "framepr.h":
                 {
-                    // OOXML w:framePr/@w:w and @w:h are ST_TwipsMeasure
-                    // (unsigned int, MaxInclusive=31680). SDK Width is
-                    // StringValue and Height is UInt32Value, but the generic
-                    // TypedAttributeFallback below sets Width as a raw string
-                    // so "auto" or oversized integers slip through and Word
-                    // 422s. Validate explicitly and mirror Add.Text.cs.
-                    if (!uint.TryParse(value, System.Globalization.NumberStyles.Integer,
-                            System.Globalization.CultureInfo.InvariantCulture, out var fpUInt)
-                        || fpUInt > 31680)
-                        throw new ArgumentException($"Invalid '{key}' value: '{value}'. Must be a non-negative integer 0..31680 (twips, ST_TwipsMeasure).");
+                    // OOXML w:framePr/@w:w and @w:h are ST_TwipsMeasure (unsigned,
+                    // MaxInclusive=31680). CONSISTENCY(length-units): accept pt/cm/in
+                    // (bare = twips) via SpacingConverter, then enforce the bound on
+                    // the resolved twips. Mirrors Add.Text.cs FrameTwips.
+                    uint fpUInt;
+                    try { fpUInt = OfficeCli.Core.SpacingConverter.ParseWordSpacing(value); }
+                    catch (ArgumentException) { throw new ArgumentException($"Invalid '{key}' value: '{value}'. Must resolve to a twips length (bare number, or a pt/cm/in value)."); }
+                    if (fpUInt > 31680)
+                        throw new ArgumentException($"Invalid '{key}' value: '{value}'. Must resolve to 0..31680 twips (bare number, or a pt/cm/in length).");
                     var fp = pProps.FrameProperties ?? (pProps.FrameProperties = new FrameProperties());
-                    if (k == "framepr.w") fp.Width = value;
+                    if (k == "framepr.w") fp.Width = fpUInt.ToString();
                     else fp.Height = fpUInt;
                     break;
                 }
                 case "framepr.x":
                 case "framepr.y":
                 {
-                    // ST_SignedTwipsMeasure: -31680 <= v <= 31680. SDK X/Y are
-                    // StringValue → TypedAttributeFallback passes anything.
-                    if (!int.TryParse(value, System.Globalization.NumberStyles.Integer,
-                            System.Globalization.CultureInfo.InvariantCulture, out var fpSigned)
-                        || fpSigned < -31680 || fpSigned > 31680)
-                        throw new ArgumentException($"Invalid '{key}' value: '{value}'. Must be a signed integer -31680..31680 (twips, ST_SignedTwipsMeasure).");
+                    // ST_SignedTwipsMeasure: -31680 <= v <= 31680.
+                    int fpSigned;
+                    try { fpSigned = OfficeCli.Core.SpacingConverter.ParseWordSpacingSigned(value); }
+                    catch (ArgumentException) { throw new ArgumentException($"Invalid '{key}' value: '{value}'. Must resolve to a twips length (bare number, or a pt/cm/in value)."); }
+                    if (fpSigned < -31680 || fpSigned > 31680)
+                        throw new ArgumentException($"Invalid '{key}' value: '{value}'. Must resolve to -31680..31680 twips (bare number, or a pt/cm/in length).");
                     var fp = pProps.FrameProperties ?? (pProps.FrameProperties = new FrameProperties());
-                    if (k == "framepr.x") fp.X = value;
-                    else fp.Y = value;
+                    if (k == "framepr.x") fp.X = fpSigned.ToString();
+                    else fp.Y = fpSigned.ToString();
                     break;
                 }
                 case "framepr.hspace":
                 case "framepr.vspace":
                 {
                     // ST_TwipsMeasure unsigned, MaxInclusive=31680.
-                    if (!uint.TryParse(value, System.Globalization.NumberStyles.Integer,
-                            System.Globalization.CultureInfo.InvariantCulture, out var fpSp)
-                        || fpSp > 31680)
-                        throw new ArgumentException($"Invalid '{key}' value: '{value}'. Must be a non-negative integer 0..31680 (twips, ST_TwipsMeasure).");
+                    uint fpSp;
+                    try { fpSp = OfficeCli.Core.SpacingConverter.ParseWordSpacing(value); }
+                    catch (ArgumentException) { throw new ArgumentException($"Invalid '{key}' value: '{value}'. Must resolve to a twips length (bare number, or a pt/cm/in value)."); }
+                    if (fpSp > 31680)
+                        throw new ArgumentException($"Invalid '{key}' value: '{value}'. Must resolve to 0..31680 twips (bare number, or a pt/cm/in length).");
                     var fp = pProps.FrameProperties ?? (pProps.FrameProperties = new FrameProperties());
-                    if (k == "framepr.hspace") fp.HorizontalSpace = value;
-                    else fp.VerticalSpace = value;
+                    if (k == "framepr.hspace") fp.HorizontalSpace = fpSp.ToString();
+                    else fp.VerticalSpace = fpSp.ToString();
                     break;
                 }
                 case "framepr.wrap":
@@ -2544,7 +2663,7 @@ public partial class WordHandler
                     if (!string.IsNullOrEmpty(value))
                         trPr.AppendChild(new TableCellSpacing
                         {
-                            Width = ParseHelpers.SafeParseUint(value, "cellspacing").ToString(),
+                            Width = OfficeCli.Core.SpacingConverter.ParseWordSpacing(value).ToString(),
                             Type = TableWidthUnitValues.Dxa
                         });
                     break;
@@ -2735,12 +2854,14 @@ public partial class WordHandler
                     // BUG-DUMP-R34-TBLIND: honour a pct-typed indent ("2%") so it
                     // round-trips as <w:tblInd w:type="pct"> rather than collapsing
                     // to dxa twips (which shifts the whole table horizontally).
+                    // CONSISTENCY(length-units): non-pct indent accepts pt/cm/in
+                    // (bare = twips) via SpacingConverter, matching Add + tc padding.
                     tblPr.TableIndentation = value.TrimEnd().EndsWith("%", StringComparison.Ordinal)
                         ? new TableIndentation { Width = (int)Math.Round(ParseHelpers.SafeParseDouble(value.TrimEnd().TrimEnd('%'), "indent") * 50), Type = TableWidthUnitValues.Pct }
-                        : new TableIndentation { Width = ParseHelpers.SafeParseInt(value, "indent"), Type = TableWidthUnitValues.Dxa };
+                        : new TableIndentation { Width = OfficeCli.Core.SpacingConverter.ParseWordSpacingSigned(value), Type = TableWidthUnitValues.Dxa };
                     break;
                 case "cellspacing":
-                    tblPr.TableCellSpacing = new TableCellSpacing { Width = ParseHelpers.SafeParseUint(value, "cellspacing").ToString(), Type = TableWidthUnitValues.Dxa };
+                    tblPr.TableCellSpacing = new TableCellSpacing { Width = OfficeCli.Core.SpacingConverter.ParseWordSpacing(value).ToString(), Type = TableWidthUnitValues.Dxa };
                     break;
                 case "layout":
                     tblPr.TableLayout = new TableLayout
@@ -3400,12 +3521,16 @@ public partial class WordHandler
             // group. Mirrors the pptx group's rejection.
             if (newCx is <= 0) throw new ArgumentException($"Invalid width '{widthRaw}': width must be a positive size.");
             if (newCy is <= 0) throw new ArgumentException($"Invalid height '{heightRaw}': height must be a positive size.");
-            // Single dimension → scale the OTHER proportionally so the diagram
-            // stays aspect-correct (a lone width/height squashes the group). Both
-            // given → exact box (the caller's explicit choice).
-            if (newCx != null && newCy == null && preCx > 0)
+            // keepAspect=true + a single dimension → scale the OTHER
+            // proportionally so a diagram group stays aspect-correct (a lone
+            // width/height stretch squashes a flowchart). Default honors exactly
+            // the axes the caller passed, matching `set width` on a plain shape
+            // (GitHub #237 — the lock must be opt-in; mirrors the pptx group).
+            bool keepAspect = properties.Any(kv =>
+                kv.Key.Equals("keepAspect", StringComparison.OrdinalIgnoreCase) && IsTruthy(kv.Value));
+            if (keepAspect && newCx != null && newCy == null && preCx > 0)
                 newCy = (long)Math.Round(preCy * (newCx.Value / (double)preCx));
-            else if (newCy != null && newCx == null && preCy > 0)
+            else if (keepAspect && newCy != null && newCx == null && preCy > 0)
                 newCx = (long)Math.Round(preCx * (newCy.Value / (double)preCy));
 
             // The anchor wrapper carries the matching <wp:extent> for the whole group.
@@ -3451,7 +3576,7 @@ public partial class WordHandler
         }
 
         foreach (var k in properties.Keys)
-            if (k.ToLowerInvariant() is not ("width" or "height" or "x" or "y"))
+            if (k.ToLowerInvariant() is not ("width" or "height" or "x" or "y" or "keepaspect"))
                 unsupported.Add(k);
         SaveDoc();
         return unsupported;
