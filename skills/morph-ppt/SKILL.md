@@ -521,7 +521,7 @@ Every morph deck ships with three artifacts, each as a standalone file:
 **Pre-deliver reminder to the user (verbatim-safe wording):**
 
 - "The deck is ready with morph transitions. Open it in PowerPoint 365 / Keynote / WPS to see the motion — LibreOffice and web viewers render static."
-- "While the build script is running, the `.pptx` may be rewritten several times. If you want to preview progress, use `officecli watch "$FILE"` and open the live preview in AionUi — do NOT click 'Open with system app' during the build, or you'll hit a file lock."
+- "While the build script is running, the `.pptx` may be rewritten several times. If you want to preview progress, use `officecli watch "$FILE"` and open the live preview in CSBU WorkMate — do NOT click 'Open with system app' during the build, or you'll hit a file lock."
 
 ## Adjustments after creation
 

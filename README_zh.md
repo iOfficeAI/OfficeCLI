@@ -18,10 +18,10 @@
 </p>
 
 <p align="center">
-  <img src="assets/ppt-process.webp" alt="在 AionUi 上使用 OfficeCLI 的 PPT 制作过程" width="100%">
+  <img src="assets/ppt-process.webp" alt="在 CSBU WorkMate 上使用 OfficeCLI 的 PPT 制作过程" width="100%">
 </p>
 
-<p align="center"><em>在 <a href="https://github.com/iOfficeAI/AionUi">AionUi</a> 上使用 OfficeCLI 的 PPT 制作过程</em></p>
+<p align="center"><em>在 <a href="https://github.com/iOfficeAI/AionUi">CSBU WorkMate</a> 上使用 OfficeCLI 的 PPT 制作过程</em></p>
 
 <p align="center"><strong>PowerPoint 演示文稿</strong></p>
 
@@ -74,7 +74,7 @@ curl -fsSL https://officecli.ai/SKILL.md
 
 ## 普通用户
 
-**方式 A — 图形界面：** 安装 [**AionUi**](https://github.com/iOfficeAI/AionUi) — 一款桌面应用，用自然语言就能创建和编辑 Office 文档，底层由 OfficeCLI 驱动。只需描述你想要什么，AionUi 帮你搞定。
+**方式 A — 图形界面：** 安装 [**CSBU WorkMate**](https://github.com/iOfficeAI/AionUi) — 一款桌面应用，用自然语言就能创建和编辑 Office 文档，底层由 OfficeCLI 驱动。只需描述你想要什么，CSBU WorkMate 帮你搞定。
 
 **方式 B — 命令行：** 从 [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases) 下载对应平台的二进制文件，然后运行：
 

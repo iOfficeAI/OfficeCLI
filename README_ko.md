@@ -18,10 +18,10 @@
 </p>
 
 <p align="center">
-  <img src="assets/ppt-process.webp" alt="AionUi에서 OfficeCLI로 PPT 제작 과정" width="100%">
+  <img src="assets/ppt-process.webp" alt="CSBU WorkMate에서 OfficeCLI로 PPT 제작 과정" width="100%">
 </p>
 
-<p align="center"><em><a href="https://github.com/iOfficeAI/AionUi">AionUi</a>에서 OfficeCLI로 PPT 제작 과정</em></p>
+<p align="center"><em><a href="https://github.com/iOfficeAI/AionUi">CSBU WorkMate</a>에서 OfficeCLI로 PPT 제작 과정</em></p>
 
 <p align="center"><strong>PowerPoint 프레젠테이션</strong></p>
 
@@ -74,7 +74,7 @@ curl -fsSL https://officecli.ai/SKILL.md
 
 ## 일반 사용자용
 
-**옵션 A — GUI:** [**AionUi**](https://github.com/iOfficeAI/AionUi)를 설치하세요 — 자연어로 Office 문서를 만들고 편집할 수 있는 데스크톱 앱입니다. 내부적으로 OfficeCLI가 구동됩니다. 원하는 것을 설명하기만 하면 AionUi가 모든 것을 처리합니다.
+**옵션 A — GUI:** [**CSBU WorkMate**](https://github.com/iOfficeAI/AionUi)를 설치하세요 — 자연어로 Office 문서를 만들고 편집할 수 있는 데스크톱 앱입니다. 내부적으로 OfficeCLI가 구동됩니다. 원하는 것을 설명하기만 하면 CSBU WorkMate가 모든 것을 처리합니다.
 
 **옵션 B — CLI:** [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases)에서 플랫폼에 맞는 바이너리를 다운로드한 후 실행:
 

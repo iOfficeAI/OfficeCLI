@@ -1,7 +1,7 @@
-# AionUI 推广宣传PPT - 大纲
+# CSBU WorkMate 推广宣传PPT - 大纲
 
 ## 总结论
-AionUI — 让AI变得触手可及，人人都能使用的AI交互平台
+CSBU WorkMate — 让AI变得触手可及，人人都能使用的AI交互平台
 
 ---
 
@@ -18,9 +18,9 @@ vision_driven（愿景驱动）
 
 ## 幻灯片大纲
 
-**S1: [hero] AionUI — 让AI触手可及**
+**S1: [hero] CSBU WorkMate — 让AI触手可及**
 - 封面页，树立品牌印象
-- 核心论点：AionUI是一个让AI变得简单易用的平台
+- 核心论点：CSBU WorkMate是一个让AI变得简单易用的平台
 
 **S2: [statement] 从复杂到简单：人人都能使用的AI平台**
 - 过渡页，点明产品定位
@@ -28,7 +28,7 @@ vision_driven（愿景驱动）
 
 **S3: [pillars] 三大核心特性：智能 / 灵活 / 开放** ★重点页
 - 产品特性展示
-- 核心论点：AionUI通过三大特性降低AI使用门槛
+- 核心论点：CSBU WorkMate通过三大特性降低AI使用门槛
 
 **S4: [showcase] 强大的功能，优雅的体验**
 - 功能亮点展示
@@ -40,7 +40,7 @@ vision_driven（愿景驱动）
 
 **S6: [cta] 立即开始你的AI之旅**
 - 行动号召
-- 核心论点：现在就开始使用AionUI
+- 核心论点：现在就开始使用CSBU WorkMate
 
 ---
 

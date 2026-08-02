@@ -18,10 +18,10 @@ Open-source. Single binary. No Office installation. No dependencies. Works every
 </p>
 
 <p align="center">
-  <img src="assets/ppt-process.webp" alt="OfficeCLI creating a PowerPoint presentation on AionUi" width="100%">
+  <img src="assets/ppt-process.webp" alt="OfficeCLI creating a PowerPoint presentation on CSBU WorkMate" width="100%">
 </p>
 
-<p align="center"><em>PPT creation process using OfficeCLI on <a href="https://github.com/iOfficeAI/AionUi">AionUi</a></em></p>
+<p align="center"><em>PPT creation process using OfficeCLI on <a href="https://github.com/iOfficeAI/AionUi">CSBU WorkMate</a></em></p>
 
 <p align="center"><strong>PowerPoint Presentations</strong></p>
 
@@ -74,7 +74,7 @@ That's it. The skill file teaches the agent how to install the binary and use al
 
 ## For Humans
 
-**Option A — GUI:** Install [**AionUi**](https://github.com/iOfficeAI/AionUi) — a desktop app that lets you create and edit Office documents through natural language, powered by OfficeCLI under the hood. Just describe what you want, and AionUi handles the rest.
+**Option A — GUI:** Install [**CSBU WorkMate**](https://github.com/iOfficeAI/AionUi) — a desktop app that lets you create and edit Office documents through natural language, powered by OfficeCLI under the hood. Just describe what you want, and CSBU WorkMate handles the rest.
 
 **Option B — CLI:** Download the binary for your platform from [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases), then run:
 

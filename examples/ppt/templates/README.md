@@ -25,7 +25,7 @@ All templates include working build scripts and pre-generated `.pptx` files read
 |-----------|------------|-------------|----------|
 | brand--aura-coffee | Aura Coffee (Light) | Minimal brand showcase for coffee | aura_coffee.pptx |
 | brand--aura-coffee-dark | Aura Coffee (Dark) | Luxury minimal dark theme for coffee brand | AURA_COFFEE.pptx |
-| product--aionui-promo | AionUI Promo | Product promotion for AionUI | AionUI-推广.pptx |
+| product--aionui-promo | CSBU WorkMate Promo | Product promotion for CSBU WorkMate | CSBU WorkMate-推广.pptx |
 | product--geminicli-timetravel | GeminiCLI Time Travel | Tech product showcase with time travel theme | GeminiCLI-TimeTravel.pptx |
 
 ---
