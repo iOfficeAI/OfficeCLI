@@ -132,6 +132,8 @@ static partial class CommandBuilder
         var batchFileArg = new Argument<FileInfo>("file") { Description = "Office document path" };
         var batchInputOpt = new Option<FileInfo?>("--input") { Description = "JSON file containing batch commands. If omitted, reads from stdin" };
         var batchCommandsOpt = new Option<string?>("--commands") { Description = "Inline JSON array of batch commands (alternative to --input or stdin)" };
+        var batchCreateIfMissingOpt = new Option<bool>("--create-if-missing") { Description = "Create a blank document when the target does not exist, then apply the batch in the same process. Existing files are never overwritten." };
+        var batchSaveOpt = new Option<bool>("--save") { Description = "Flush the document to disk after the batch. Resident batches save once at the end; non-resident batches are already saved once on completion." };
         // BUG-R4-BT2: default flipped to continue-on-error. A 700-command
         // dump replay losing 80% of the document on the first failing item
         // (e.g. one unsupported prop) is a far worse default than reporting
@@ -153,6 +155,8 @@ static partial class CommandBuilder
         batchCommand.Add(batchFileArg);
         batchCommand.Add(batchInputOpt);
         batchCommand.Add(batchCommandsOpt);
+        batchCommand.Add(batchCreateIfMissingOpt);
+        batchCommand.Add(batchSaveOpt);
         batchCommand.Add(batchForceOpt);
         batchCommand.Add(batchStopOpt);
         batchCommand.Add(batchBestEffortOpt);
@@ -163,6 +167,8 @@ static partial class CommandBuilder
             var file = result.GetValue(batchFileArg)!;
             var inputFile = result.GetValue(batchInputOpt);
             var inlineCommands = result.GetValue(batchCommandsOpt);
+            var createIfMissing = result.GetValue(batchCreateIfMissingOpt);
+            var saveAfterBatch = result.GetValue(batchSaveOpt);
             // Default: continue on error. --stop-on-error flips it to strict.
             // --force still acts as the docx-protection bypass (matches set
             // --force semantics) but no longer doubles as the continue-on-
@@ -326,6 +332,21 @@ static partial class CommandBuilder
                     throw new ArgumentException(
                         $"batch item[{ni}] is null. Each entry must be a JSON object (e.g. {{\"command\":\"get\",\"path\":\"/\"}}).");
             }
+
+            // A batch normally requires an existing document. Opt-in creation
+            // keeps the blank-package construction and the one-open/one-save
+            // replay in this process, avoiding the separate `create` CLI and
+            // its short-lived resident startup. Do this only after the input
+            // has parsed and passed structural validation, so malformed JSON
+            // never leaves a blank file behind.
+            var createdForBatch = false;
+            if (!File.Exists(file.FullName) && createIfMissing)
+            {
+                var locale = OfficeCli.Core.LocaleFontRegistry.ResolveEffectiveLocale(null);
+                OfficeCli.BlankDocCreator.Create(file.FullName, locale, minimal: false);
+                file.Refresh();
+                createdForBatch = true;
+            }
             if (items.Count == 0)
             {
                 // BUG-R6-07: empty command array previously short-circuited
@@ -410,6 +431,26 @@ static partial class CommandBuilder
                 {
                     Console.Error.WriteLine($"Resident for {file.Name} is running but the batch could not be delivered (main pipe busy or unresponsive). Retry, or run 'officecli close {file.Name}' and try again.");
                     return 3;
+                }
+                // A resident normally defers disk serialization until its
+                // idle debounce or an explicit save/close. --save turns this
+                // batch into a deterministic persistence boundary without
+                // paying for a second CLI process.
+                if (saveAfterBatch)
+                {
+                    var saveResponse = ResidentClient.TrySend(
+                        file.FullName,
+                        new ResidentRequest { Command = "save", Json = json },
+                        maxRetries: 3,
+                        connectTimeoutMs: 30000);
+                    if (saveResponse == null || saveResponse.ExitCode != 0)
+                    {
+                        var saveError = saveResponse?.Stderr;
+                        throw new CliException(string.IsNullOrWhiteSpace(saveError)
+                            ? $"Batch completed, but {file.Name} could not be saved."
+                            : $"Batch completed, but {file.Name} could not be saved: {saveError}")
+                        { Code = "save_failed" };
+                    }
                 }
                 // The resident returns the formatted batch output directly
                 if (!string.IsNullOrEmpty(response.Stdout))
@@ -512,21 +553,24 @@ static partial class CommandBuilder
                 var guid = Guid.NewGuid().ToString("N");
                 var prepPath = System.IO.Path.Combine(tmpDir, $".{tmpStem}.batchprep-{guid}{tmpExt}");
                 tmpPath = System.IO.Path.Combine(tmpDir, $".{tmpStem}.batch-{guid}{tmpExt}");
-                using (var src = new System.IO.FileStream(targetPath, System.IO.FileMode.Open,
-                    System.IO.FileAccess.Read, System.IO.FileShare.Read))
-                using (var dst = new System.IO.FileStream(prepPath, System.IO.FileMode.CreateNew,
-                    System.IO.FileAccess.ReadWrite, System.IO.FileShare.None))
+                if (createdForBatch)
                 {
-                    src.CopyTo(dst);
+                    System.IO.File.Move(targetPath, tmpPath);
                 }
-                // The final promote is a rename, which would hand the document
-                // the temp's default permissions — carry the original mode
-                // over. (Windows File.Replace preserves the destination's ACL
-                // by itself.)
-                if (!OperatingSystem.IsWindows())
-                    try { System.IO.File.SetUnixFileMode(prepPath, System.IO.File.GetUnixFileMode(targetPath)); }
-                    catch { /* best-effort */ }
-                System.IO.File.Move(prepPath, tmpPath);
+                else
+                {
+                    using (var src = new System.IO.FileStream(targetPath, System.IO.FileMode.Open,
+                        System.IO.FileAccess.Read, System.IO.FileShare.Read))
+                    using (var dst = new System.IO.FileStream(prepPath, System.IO.FileMode.CreateNew,
+                        System.IO.FileAccess.ReadWrite, System.IO.FileShare.None))
+                    {
+                        src.CopyTo(dst);
+                    }
+                    if (!OperatingSystem.IsWindows())
+                        try { System.IO.File.SetUnixFileMode(prepPath, System.IO.File.GetUnixFileMode(targetPath)); }
+                        catch { /* best-effort */ }
+                    System.IO.File.Move(prepPath, tmpPath);
+                }
                 workPath = tmpPath;
             }
             List<BatchResult> batchResults;
@@ -548,6 +592,8 @@ static partial class CommandBuilder
                             Console.Error.WriteLine($"ERROR: {protBlock}");
                         if (tmpPath != null)
                             try { System.IO.File.Delete(tmpPath); } catch { /* best-effort */ }
+                        if (createdForBatch)
+                            try { System.IO.File.Delete(file.FullName); } catch { /* best-effort */ }
                         return 1;
                     }
                 }
@@ -568,6 +614,8 @@ static partial class CommandBuilder
                 // SafeRun): never leave the temp copy behind, never promote it.
                 if (tmpPath != null)
                     try { System.IO.File.Delete(tmpPath); } catch { /* best-effort */ }
+                if (createdForBatch)
+                    try { System.IO.File.Delete(file.FullName); } catch { /* best-effort */ }
                 throw;
             }
             // The using-Dispose above fully serialized the (temp) document;
@@ -584,7 +632,10 @@ static partial class CommandBuilder
                     // temp copy must not leak on that path.
                     try
                     {
-                        System.IO.File.Replace(tmpPath, targetPath, destinationBackupFileName: null);
+                        if (createdForBatch)
+                            System.IO.File.Move(tmpPath, targetPath);
+                        else
+                            System.IO.File.Replace(tmpPath, targetPath, destinationBackupFileName: null);
                     }
                     catch
                     {
@@ -613,6 +664,11 @@ static partial class CommandBuilder
             // signal. Two `success` fields appear in the JSON (outer batch
             // verdict, inner per-step) — disambiguate by JSON path.
             var batchSuccess = batchResults.Count == 0 || !batchResults.Any(r => !r.Success);
+            // Atomic failure on a target created by this invocation restores
+            // the true pre-batch state: no file at all, rather than a leaked
+            // blank document.
+            if (!batchSuccess && createdForBatch)
+                try { System.IO.File.Delete(file.FullName); } catch { /* best-effort */ }
             // BUG-BT2: surface per-item unrecognized-LaTeX warnings the same way
             // single-shot add/set do (warning + JSON envelope + exit 2). A batch
             // whose only issue is an unknown LaTeX command otherwise exited 0
