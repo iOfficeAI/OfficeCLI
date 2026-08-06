@@ -97,6 +97,7 @@ internal class BatchItemConverter : JsonConverter<BatchItem>
                 case "to": item.To = reader.GetString(); break;
                 case "path2": item.Path2 = reader.GetString(); break;
                 case "props": item.Props = PropsConverter.Read(ref reader, typeof(Dictionary<string, string>), options); break;
+                case "options": item.Options = PropsConverter.Read(ref reader, typeof(Dictionary<string, string>), options); break;
                 case "selector": item.Selector = reader.GetString(); break;
                 case "text": item.Text = reader.GetString(); break;
                 case "mode": item.Mode = reader.GetString(); break;
@@ -126,6 +127,7 @@ internal class BatchItemConverter : JsonConverter<BatchItem>
         if (value.To != null) writer.WriteString("to", value.To);
         if (value.Path2 != null) writer.WriteString("path2", value.Path2);
         if (value.Props != null) { writer.WritePropertyName("props"); PropsConverter.Write(writer, value.Props, options); }
+        if (value.Options != null) { writer.WritePropertyName("options"); PropsConverter.Write(writer, value.Options, options); }
         if (value.Selector != null) writer.WriteString("selector", value.Selector);
         if (value.Text != null) writer.WriteString("text", value.Text);
         if (value.Mode != null) writer.WriteString("mode", value.Mode);
@@ -157,6 +159,8 @@ public class BatchItem
     // off-name `to`. Accept both — see the swap case in ExecuteBatchItem.
     public string? Path2 { get; set; }
     public Dictionary<string, string>? Props { get; set; }
+    /// <summary>Command-line-style execution options (without leading --).</summary>
+    public Dictionary<string, string>? Options { get; set; }
     public string? Selector { get; set; }
     public string? Text { get; set; }
     public string? Mode { get; set; }
@@ -176,7 +180,7 @@ public class BatchItem
     internal static readonly HashSet<string> KnownFields = new(StringComparer.OrdinalIgnoreCase)
     {
         "command", "op", "path", "parent", "type", "from", "index", "after", "before", "to", "path2",
-        "props", "selector", "text", "mode", "depth", "part", "xpath", "action", "xml", "dumpversion"
+        "props", "options", "selector", "text", "mode", "depth", "part", "xpath", "action", "xml", "dumpversion"
     };
 
     public ResidentRequest ToResidentRequest()
@@ -203,6 +207,9 @@ public class BatchItem
 
         if (Props != null)
             req.Props = Props;
+        if (Options != null)
+            foreach (var (key, value) in Options)
+                req.Args[key] = value;
 
         return req;
     }
