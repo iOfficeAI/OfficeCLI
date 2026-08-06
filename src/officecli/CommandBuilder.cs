@@ -1180,146 +1180,27 @@ static partial class CommandBuilder
             case "view":
             {
                 var mode = item.Mode ?? "text";
-                var options = item.Options ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                var allowedViewOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    "start", "end", "max-lines", "cols", "range", "type", "limit",
-                    "page", "out", "render", "screenshot-width", "screenshot-height", "grid", "range-mode"
-                };
-                var unknownOptions = options.Keys.Where(k => !allowedViewOptions.Contains(k)).ToList();
-                if (unknownOptions.Count > 0)
-                    throw new CliException($"Unknown view option(s): {string.Join(", ", unknownOptions)}")
-                    { Code = "unknown_option" };
-
-                int? IntOption(string key)
-                {
-                    if (!options.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value)) return null;
-                    if (int.TryParse(value, out var parsed)) return parsed;
-                    throw new CliException($"view option '{key}' requires an integer; got '{value}'.")
-                    { Code = "invalid_value" };
-                }
-                var start = IntOption("start");
-                var end = IntOption("end");
-                var maxLines = IntOption("max-lines");
-                var limit = IntOption("limit");
-                    var range = options.GetValueOrDefault("range");
-                HashSet<string>? cols = options.TryGetValue("cols", out var colsValue)
-                    ? colsValue.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                        .ToHashSet(StringComparer.OrdinalIgnoreCase)
-                    : null;
                 if (mode.ToLowerInvariant() is "html" or "h")
                 {
                     if (handler is OfficeCli.Handlers.PowerPointHandler pptH)
-                    {
-                        var (pStart, pEnd) = ParsePptHtmlPage(options.GetValueOrDefault("page"), start, end, pptH);
-                        return RenderViaRegistry(pptH, "pptx", new OfficeCli.Core.Rendering.RenderOptions
-                        { StartPage = pStart, EndPage = pEnd })!;
-                    }
+                        return pptH.ViewAsHtml();
                     if (handler is OfficeCli.Handlers.ExcelHandler excelH)
-                        return RenderViaRegistry(excelH, "xlsx", new OfficeCli.Core.Rendering.RenderOptions())!;
+                        return excelH.ViewAsHtml();
                     if (handler is OfficeCli.Handlers.WordHandler wordH)
-                        return RenderViaRegistry(wordH, "docx", new OfficeCli.Core.Rendering.RenderOptions
-                        { PageFilter = options.GetValueOrDefault("page") })!;
+                        return wordH.ViewAsHtml();
                 }
                 if (mode.ToLowerInvariant() is "svg" or "g" && handler is OfficeCli.Handlers.PowerPointHandler pptSvg)
                 {
-                    var page = IntOption("page") ?? 1;
-                    return pptSvg.ViewAsSvg(page);
-                }
-                if (mode.ToLowerInvariant() is "screenshot" or "p")
-                {
-                    var rangeMode = (options.GetValueOrDefault("range-mode") ?? "element").ToLowerInvariant();
-                    if (rangeMode is not ("element" or "pages"))
-                        throw new CliException($"Invalid range-mode value: {rangeMode}. Valid: element, pages")
-                        { Code = "invalid_value", ValidValues = ["element", "pages"] };
-                    if (rangeMode == "pages" && string.IsNullOrEmpty(range))
-                        throw new CliException("range-mode=pages requires options.range with an element path.")
-                        { Code = "missing_argument" };
-                    var render = (options.GetValueOrDefault("render") ?? "auto").ToLowerInvariant();
-                    if (render is not ("auto" or "html" or "native"))
-                        throw new CliException($"Invalid render value: {render}. Valid: auto, native, html")
-                        { Code = "invalid_render", ValidValues = ["auto", "native", "html"] };
-                    // Batch renders the live in-memory DOM. A native Office
-                    // renderer can only read the on-disk package and would
-                    // therefore miss earlier unflushed items in this batch.
-                    if (render == "native")
-                        throw new CliException("Batch screenshots cannot use render=native because earlier batch edits are still in memory. Use render=html or auto.")
-                        { Code = "native_requires_flush", Suggestion = "Use options.render=html (or auto), or run a standalone screenshot after batch --save." };
-
-                    var sw = IntOption("screenshot-width") ?? 1600;
-                    var sh = IntOption("screenshot-height") ?? 1200;
-                    var pageFilter = options.GetValueOrDefault("page");
-                    var gridSpec = options.GetValueOrDefault("grid");
-                    var gridCols = gridSpec == null ? 0 : ParseGridSpec(gridSpec);
-                    string html;
-                    if (handler is OfficeCli.Handlers.PowerPointHandler pptShot)
-                    {
-                        var effectivePage = pageFilter;
-                        if (range != null && string.IsNullOrEmpty(effectivePage)
-                            && System.Text.RegularExpressions.Regex.Match(range, @"^/slide\[(\d+)\]") is { Success: true } sm)
-                            effectivePage = sm.Groups[1].Value;
-                        if (string.IsNullOrEmpty(effectivePage) && start is null && end is null && gridCols == 0)
-                            effectivePage = "1";
-                        var (pStart, pEnd) = ParsePptHtmlPage(effectivePage, start, end, pptShot);
-                        var (nativeW, nativeH) = pptShot.GetSlideNativePixels();
-                        var resolvedGrid = gridCols < 0
-                            ? OfficeCli.Core.HtmlScreenshot.AutoGridColumns(
-                                (pEnd ?? pptShot.GetSlideCount()) - (pStart ?? 1) + 1, nativeW, nativeH)
-                            : gridCols;
-                        html = RenderViaRegistry(pptShot, "pptx", new OfficeCli.Core.Rendering.RenderOptions
-                        { StartPage = pStart, EndPage = pEnd, GridColumns = resolvedGrid, ViewportPx = sw })!;
-                        if (pStart == pEnd && resolvedGrid == 0)
-                        {
-                            if (sw == 1600 && sh == 1200) { sw = nativeW; sh = nativeH; }
-                            else if (sh == 1200) sh = Math.Max(1, (int)Math.Round(sw * (double)nativeH / nativeW));
-                        }
-                    }
-                    else if (handler is OfficeCli.Handlers.ExcelHandler excelShot)
-                        html = RenderViaRegistry(excelShot, "xlsx", new OfficeCli.Core.Rendering.RenderOptions())!;
-                    else if (handler is OfficeCli.Handlers.WordHandler wordShot)
-                    {
-                        var effectivePage = range != null ? pageFilter : (string.IsNullOrEmpty(pageFilter) ? "1" : pageFilter);
-                        html = RenderViaRegistry(wordShot, "docx", new OfficeCli.Core.Rendering.RenderOptions
-                        { PageFilter = effectivePage })!;
-                        if (int.TryParse(effectivePage, out _) && gridCols == 0)
-                        {
-                            var (nativeW, nativeH) = wordShot.GetPageNativePixels();
-                            if (sw == 1600 && sh == 1200) { sw = nativeW; sh = nativeH; }
-                            else if (sh == 1200) sh = Math.Max(1, (int)Math.Round(sw * (double)nativeH / nativeW));
-                        }
-                    }
-                    else
-                        throw new CliException("Screenshot mode is only supported for .pptx, .xlsx, and .docx files.")
-                        { Code = "unsupported_type" };
-
-                    var pngPath = options.GetValueOrDefault("out")
-                        ?? Path.Combine(Path.GetTempPath(), $"officecli_screenshot_{Guid.NewGuid():N}.png");
-                    var tmpHtml = Path.Combine(Path.GetTempPath(), $"officecli_preview_{Guid.NewGuid():N}.html");
-                    try
-                    {
-                        File.WriteAllText(tmpHtml, html);
-                        var capture = range != null
-                            ? OfficeCli.Core.HtmlScreenshot.CaptureClipped(tmpHtml, pngPath,
-                                OfficeCli.Core.HtmlScreenshot.ResolveClipDataPaths(range),
-                                containingPages: rangeMode == "pages")
-                            : OfficeCli.Core.HtmlScreenshot.Capture(tmpHtml, pngPath, sw, sh);
-                        if (!capture.Ok)
-                            throw new CliException("No headless browser available for batch screenshot."
-                                + (capture.Error != null ? $" Last error: {capture.Error}" : ""))
-                            { Code = "no_screenshot_backend" };
-                    }
-                    finally { try { File.Delete(tmpHtml); } catch { } }
-                    return Path.GetFullPath(pngPath);
+                    return pptSvg.ViewAsSvg(1);
                 }
                 return mode.ToLowerInvariant() switch
                 {
-                    "text" or "t" => handler.ViewAsText(start, end, maxLines, cols, range),
-                    "annotated" or "a" => handler.ViewAsAnnotated(start, end, maxLines, cols),
+                    "text" or "t" => handler.ViewAsText(null, null, null, null),
+                    "annotated" or "a" => handler.ViewAsAnnotated(null, null, null, null),
                     "outline" or "o" => handler.ViewAsOutline(),
                     "stats" or "s" => handler.ViewAsStats(),
-                    "issues" or "i" => OfficeCli.Core.OutputFormatter.FormatIssues(
-                        handler.ViewAsIssues(OfficeCli.Core.IssueSubtypes.Validate(options.GetValueOrDefault("type")), limit), format),
-                    _ => throw new CliException($"Unknown view mode: {mode}") { Code = "invalid_value" }
+                    "issues" or "i" => OfficeCli.Core.OutputFormatter.FormatIssues(handler.ViewAsIssues(null, null), format),
+                    _ => $"Unknown mode: {mode}"
                 };
             }
             case "raw":
@@ -1356,11 +1237,7 @@ static partial class CommandBuilder
                     if (err.Path != null) lines.Add($"    Path: {err.Path}");
                     if (err.Part != null) lines.Add($"    Part: {err.Part}");
                 }
-                // Validation is a judgment step, not a report-only read. A
-                // schema-invalid document must fail the item so an atomic
-                // edit+validate batch rolls its mutations back.
-                throw new CliException(string.Join("\n", lines))
-                { Code = "validation_failed" };
+                return string.Join("\n", lines);
             }
             default:
                 if (string.IsNullOrEmpty(item.Command))
