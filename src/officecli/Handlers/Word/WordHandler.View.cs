@@ -1321,7 +1321,9 @@ public partial class WordHandler
             if (pProps != null && IsNormalStyle(styleName))
             {
                 var indent = pProps.Indentation;
-                if (indent?.FirstLine == null || indent.FirstLine.Value == "0")
+                var hasFirstLine = indent?.FirstLine != null && indent.FirstLine.Value != "0";
+                var hasFirstLineChars = indent?.FirstLineChars != null && indent.FirstLineChars.Value > 0;
+                if (!hasFirstLine && !hasFirstLineChars)
                 {
                     // Skip paragraphs where first-line indent is not expected:
                     // - hanging indent (e.g. bibliography entries)
