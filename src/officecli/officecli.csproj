@@ -11,6 +11,9 @@
     <Copyright>Copyright © 2026 OfficeCLI (https://OfficeCLI.AI)</Copyright>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishReadyToRunEmitIntoCompositeImage>true</PublishReadyToRunEmitIntoCompositeImage>
     <SelfContained>true</SelfContained>
     <PublishTrimmed>true</PublishTrimmed>
     <CETCompat>false</CETCompat>
