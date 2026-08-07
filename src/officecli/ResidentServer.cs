@@ -72,6 +72,7 @@ public class ResidentServer : IDisposable
     // idle-shutdown follows. Autosave firing does NOT reset the shutdown timer,
     // so the resident still exits the configured time after the last command.
     private CancellationTokenSource _autosaveCts = new();
+    private Core.CdpScreenshotClient? _cdpClient;
     private bool _disposed;
 
     // Safe stderr logging: the parent process may have redirected our stderr
@@ -1737,17 +1738,38 @@ public class ResidentServer : IDisposable
             {
                 var tmpHtml = Path.Combine(Path.GetTempPath(), $"officecli_preview_{Path.GetFileNameWithoutExtension(_filePath)}_{DateTime.Now:HHmmss}_{Guid.NewGuid():N}.html");
                 File.WriteAllText(tmpHtml, html!);
-                var rs = rangeArg != null
-                    ? OfficeCli.Core.HtmlScreenshot.CaptureClipped(tmpHtml, pngPath,
-                        OfficeCli.Core.HtmlScreenshot.ResolveClipDataPaths(rangeArg))
-                    : OfficeCli.Core.HtmlScreenshot.Capture(tmpHtml, pngPath, sw, sh);
-                try { File.Delete(tmpHtml); } catch { /* ignore */ }
-                if (!rs.Ok)
+
+                bool captured = false;
+                if (rangeArg == null)
                 {
-                    Console.Error.WriteLine("No headless browser available. Install Chrome/Edge/Chromium or Firefox, or `pip install playwright && playwright install chromium`."
-                        + (rs.Error != null ? $" Last error: {rs.Error}" : ""));
-                    return;
+                    try
+                    {
+                        _cdpClient ??= new Core.CdpScreenshotClient();
+                        var cdpBytes = _cdpClient.CaptureScreenshotAsync(html!, sw, sh, isRawHtml: true).GetAwaiter().GetResult();
+                        if (cdpBytes != null && cdpBytes.Length > 0)
+                        {
+                            File.WriteAllBytes(pngPath, cdpBytes);
+                            captured = true;
+                        }
+                    }
+                    catch { }
                 }
+
+                if (!captured)
+                {
+                    var rs = rangeArg != null
+                        ? OfficeCli.Core.HtmlScreenshot.CaptureClipped(tmpHtml, pngPath,
+                            OfficeCli.Core.HtmlScreenshot.ResolveClipDataPaths(rangeArg))
+                        : OfficeCli.Core.HtmlScreenshot.Capture(tmpHtml, pngPath, sw, sh);
+                    if (!rs.Ok)
+                    {
+                        Console.Error.WriteLine("No headless browser available. Install Chrome/Edge/Chromium or Firefox, or `pip install playwright && playwright install chromium`."
+                            + (rs.Error != null ? $" Last error: {rs.Error}" : ""));
+                        try { File.Delete(tmpHtml); } catch { /* ignore */ }
+                        return;
+                    }
+                }
+                try { File.Delete(tmpHtml); } catch { /* ignore */ }
             }
             Console.WriteLine(Path.GetFullPath(pngPath));
             if (_handler is OfficeCli.Handlers.PowerPointHandler pptCnt)
@@ -2773,6 +2795,7 @@ public class ResidentServer : IDisposable
             disposeFailed = true;
             LogStderr($"Warning: handler dispose error: {ex.Message}");
         }
+        try { _cdpClient?.Dispose(); } catch { }
 
         // BUG-BT-R26-2 / BUG-R43: detect data loss. The original probe used
         // File.Exists(_filePath) post-Dispose — but on macOS, renaming the
