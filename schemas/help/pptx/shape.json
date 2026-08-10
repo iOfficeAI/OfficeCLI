@@ -316,7 +316,7 @@
     },
     "spacing": {
       "type": "number",
-      "description": "character spacing in 1/100 pt (drawingML rPr/@spc).",
+      "description": "character spacing in points. Stored as 1/100 pt in OOXML (drawingML rPr/@spc). Negative values tighten.",
       "aliases": [
         "spc",
         "charspacing",
@@ -326,7 +326,8 @@
       "set": true,
       "get": true,
       "examples": [
-        "--prop spacing=200"
+        "--prop spacing=2",
+        "--prop spacing=-0.5"
       ],
       "readback": "integer",
       "enforcement": "report"
