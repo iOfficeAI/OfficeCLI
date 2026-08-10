@@ -872,7 +872,25 @@ internal partial class FormulaEvaluator
     {
         if (r.IsBlank) { val = 0; return true; }
         if (r.IsString)
-            return double.TryParse(r.StringValue, NumberStyles.Any, CultureInfo.InvariantCulture, out val);
+        {
+            if (double.TryParse(r.StringValue, NumberStyles.Any, CultureInfo.InvariantCulture, out val))
+                return true;
+            // Excel coerces date/time-formatted text to its serial in arithmetic
+            // (e.g. "2024-08-01" - "2024-08-01" = 0), so fall back to date parsing
+            // when the text isn't a plain number.
+            //
+            // Time-only text ("12:00") is a time-of-day fraction (0.5), NOT today's
+            // date + 12h — DateTime.TryParse would prepend the current date, giving
+            // a wrong AND non-deterministic serial. Handle it first via TimeSpan,
+            // mirroring the sibling coercion helper (CoerceStringToNumber).
+            var s = r.StringValue ?? "";
+            if (Regex.IsMatch(s, @"^\d{1,2}:\d{2}(:\d{2})?$")
+                && TimeSpan.TryParse(s, CultureInfo.InvariantCulture, out var ts))
+            { val = ts.TotalDays; return true; }
+            if (DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+            { val = dt.ToOADate(); return true; }
+            return false;
+        }
         val = r.AsNumber();
         return true;
     }

@@ -386,6 +386,13 @@ public partial class WordHandler
                 foreach (var child in existingPPr.ChildElements)
                 {
                     if (child is ParagraphPropertiesChange) continue;
+                    // The pPrChange snapshot is CT_PPrBase (ParagraphPropertiesExtended),
+                    // which does NOT allow the paragraph-mark <w:rPr> or <w:sectPr> —
+                    // those two live only in the full CT_PPr. Cloning them in makes the
+                    // snapshot schema-invalid ("invalid child element 'rPr'"). Paragraph-
+                    // mark run-property changes are tracked separately via
+                    // <w:pPr><w:rPr><w:rPrChange>, not inside pPrChange.
+                    if (child is ParagraphMarkRunProperties or SectionProperties) continue;
                     previous.AppendChild(child.CloneNode(true));
                 }
             }
