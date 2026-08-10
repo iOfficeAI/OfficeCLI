@@ -69,7 +69,8 @@ public partial class PowerPointHandler
     /// Each slide is rendered as an absolutely-positioned div with CSS styling.
     /// Images are embedded as base64 data URIs.
     /// </summary>
-    public string ViewAsHtml(int? startSlide = null, int? endSlide = null, int gridCols = 0, int viewportPx = 1600)
+    public string ViewAsHtml(int? startSlide = null, int? endSlide = null, int gridCols = 0,
+        int viewportPx = 1600, bool includeSlideNumbers = true)
     {
         // CSS demands '.' as the decimal separator; under comma-decimal locales
         // (de-DE, fr-FR, …) every `$"{double}pt"` interpolation deep in the
@@ -213,8 +214,9 @@ public partial class PowerPointHandler
             sb.AppendLine(">");
 
             // Render slide elements + inherited layout placeholders
-            RenderLayoutPlaceholders(sb, slidePart, slideColors, slideNum);
-            RenderSlideElements(sb, slidePart, slideNum, slideWidthEmu, slideHeightEmu, slideColors);
+            RenderLayoutPlaceholders(sb, slidePart, slideColors, slideNum, includeSlideNumbers);
+            RenderSlideElements(sb, slidePart, slideNum, slideWidthEmu, slideHeightEmu, slideColors,
+                includeSlideNumbers);
 
             sb.AppendLine("    </div>");
             sb.AppendLine("  </div>");
@@ -297,7 +299,7 @@ public partial class PowerPointHandler
     /// Render a single slide's HTML fragment (slide-container div) for incremental updates.
     /// Returns null if the slide number is out of range.
     /// </summary>
-    public string? RenderSlideHtml(int slideNum)
+    public string? RenderSlideHtml(int slideNum, bool includeSlideNumbers = true)
     {
         // Each slide-render call must be self-contained: the receiver (watch
         // SSE replace) has no other source for the GLB data scripts.
@@ -328,8 +330,9 @@ public partial class PowerPointHandler
             sb.Append($" style=\"{string.Join("", slideStyles)}\"");
         sb.AppendLine(">");
 
-        RenderLayoutPlaceholders(sb, slidePart, slideColors, slideNum);
-        RenderSlideElements(sb, slidePart, slideNum, slideWidthEmu, slideHeightEmu, slideColors);
+        RenderLayoutPlaceholders(sb, slidePart, slideColors, slideNum, includeSlideNumbers);
+        RenderSlideElements(sb, slidePart, slideNum, slideWidthEmu, slideHeightEmu, slideColors,
+            includeSlideNumbers);
 
         sb.AppendLine("    </div>");
         sb.AppendLine("  </div>");
@@ -666,7 +669,8 @@ public partial class PowerPointHandler
     // ==================== Render Slide Elements ====================
 
     private void RenderSlideElements(StringBuilder sb, SlidePart slidePart, int slideNum,
-        long slideWidthEmu, long slideHeightEmu, Dictionary<string, string> themeColors)
+        long slideWidthEmu, long slideHeightEmu, Dictionary<string, string> themeColors,
+        bool includeSlideNumbers = true)
     {
         var shapeTree = GetSlide(slidePart).CommonSlideData?.ShapeTree;
         if (shapeTree == null) return;
@@ -685,7 +689,11 @@ public partial class PowerPointHandler
             {
                 case Shape shape:
                     shapeIdx++;
-                    RenderShape(sb, shape, slidePart, themeColors, dataPath: PathFor("shape", shape, shapeIdx), slideNumber: slideNum);
+                    if (!includeSlideNumbers && IsSlideNumberPlaceholder(shape))
+                        break;
+                    RenderShape(sb, shape, slidePart, themeColors,
+                        dataPath: PathFor("shape", shape, shapeIdx), slideNumber: slideNum,
+                        includeSlideNumbers: includeSlideNumbers);
                     break;
                 case Picture pic:
                     picIdx++;
@@ -747,7 +755,8 @@ public partial class PowerPointHandler
     /// overridden by the slide itself. This includes footers, slide numbers,
     /// date/time, logos, and decorative shapes from the layout/master.
     /// </summary>
-    private void RenderLayoutPlaceholders(StringBuilder sb, SlidePart slidePart, Dictionary<string, string> themeColors, int slideNum = 1)
+    private void RenderLayoutPlaceholders(StringBuilder sb, SlidePart slidePart,
+        Dictionary<string, string> themeColors, int slideNum = 1, bool includeSlideNumbers = true)
     {
         // Collect placeholder identifiers already present on the slide
         var slidePlaceholders = new HashSet<string>();
@@ -766,7 +775,8 @@ public partial class PowerPointHandler
         // Render shapes from SlideLayout (higher priority)
         var layoutPart = slidePart.SlideLayoutPart;
         if (layoutPart != null)
-            RenderInheritedShapes(sb, layoutPart.SlideLayout?.CommonSlideData?.ShapeTree, layoutPart, slidePlaceholders, themeColors, slideNum);
+            RenderInheritedShapes(sb, layoutPart.SlideLayout?.CommonSlideData?.ShapeTree,
+                layoutPart, slidePlaceholders, themeColors, slideNum, includeSlideNumbers);
 
         // Render shapes from SlideMaster (lower priority, only if not in layout).
         // R12-2: <p:sld showMasterSp="0"> suppresses master-level decoration.
@@ -775,7 +785,8 @@ public partial class PowerPointHandler
         var showMasterSp = GetSlide(slidePart).ShowMasterShapes?.Value ?? true;
         var masterPart = layoutPart?.SlideMasterPart;
         if (masterPart != null && showMasterSp)
-            RenderInheritedShapes(sb, masterPart.SlideMaster?.CommonSlideData?.ShapeTree, masterPart, slidePlaceholders, themeColors, slideNum);
+            RenderInheritedShapes(sb, masterPart.SlideMaster?.CommonSlideData?.ShapeTree,
+                masterPart, slidePlaceholders, themeColors, slideNum, includeSlideNumbers);
     }
 
     // RenderInheritedShapes — render the layout/master shapes that the slide
@@ -795,7 +806,8 @@ public partial class PowerPointHandler
     //      placeholder authored without an explicit type leaked its prompt
     //      text onto the slide.
     private void RenderInheritedShapes(StringBuilder sb, ShapeTree? shapeTree, OpenXmlPart part,
-        HashSet<string> skipIndices, Dictionary<string, string> themeColors, int slideNum = 1)
+        HashSet<string> skipIndices, Dictionary<string, string> themeColors, int slideNum = 1,
+        bool includeSlideNumbers = true)
     {
         if (shapeTree == null) return;
 
@@ -804,7 +816,8 @@ public partial class PowerPointHandler
             switch (element)
             {
                 case Shape shape:
-                    RenderInheritedShape(sb, shape, part, skipIndices, themeColors, slideNum);
+                    RenderInheritedShape(sb, shape, part, skipIndices, themeColors, slideNum,
+                        includeSlideNumbers);
                     break;
                 // R12-1: PowerPoint renders group/connector/graphic-frame
                 // decoration from the layout/master tree too. The old code
@@ -835,10 +848,14 @@ public partial class PowerPointHandler
     }
 
     private void RenderInheritedShape(StringBuilder sb, Shape shape, OpenXmlPart part,
-        HashSet<string> skipIndices, Dictionary<string, string> themeColors, int slideNum = 1)
+        HashSet<string> skipIndices, Dictionary<string, string> themeColors, int slideNum = 1,
+        bool includeSlideNumbers = true)
     {
         var ph = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
             ?.GetFirstChild<PlaceholderShape>();
+
+        if (!includeSlideNumbers && IsSlideNumberPlaceholder(shape))
+            return;
 
         bool suppressText = false;
         if (ph != null)
@@ -888,8 +905,13 @@ public partial class PowerPointHandler
         if (string.IsNullOrWhiteSpace(text) && !hasFill && !hasLine)
             return;
 
-        RenderShape(sb, shape, part, themeColors, suppressText: suppressText, slideNumber: slideNum);
+        RenderShape(sb, shape, part, themeColors, suppressText: suppressText,
+            slideNumber: slideNum, includeSlideNumbers: includeSlideNumbers);
     }
+
+    private static bool IsSlideNumberPlaceholder(Shape shape) =>
+        shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
+            ?.GetFirstChild<PlaceholderShape>()?.Type?.Value == PlaceholderValues.SlideNumber;
 
     private static bool IsLayoutSuppliedTextPlaceholder(PlaceholderValues type) =>
         type == PlaceholderValues.DateAndTime

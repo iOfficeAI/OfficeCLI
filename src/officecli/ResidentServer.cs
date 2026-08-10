@@ -1490,6 +1490,8 @@ public class ResidentServer : IDisposable
         var limit = req.GetIntArg("limit");
         var cols = req.GetCols("cols");
         var pageFilter = req.GetArgOrNull("page");
+        var includeSlideNumbers = !req.GetArg("slide-numbers", "true")
+            .Equals("false", StringComparison.OrdinalIgnoreCase);
 
         if (mode!.ToLowerInvariant() is "html" or "h")
         {
@@ -1499,7 +1501,12 @@ public class ResidentServer : IDisposable
                 // BUG-R36-B7: honor --page on pptx html with strict bounds.
                 var (pStart, pEnd) = ResolvePptHtmlPage(pageFilter, start, end, pptHandler);
                 html = CommandBuilder.RenderViaRegistry(_handler, "pptx",
-                    new OfficeCli.Core.Rendering.RenderOptions { StartPage = pStart, EndPage = pEnd });
+                    new OfficeCli.Core.Rendering.RenderOptions
+                    {
+                        StartPage = pStart,
+                        EndPage = pEnd,
+                        IncludeSlideNumbers = includeSlideNumbers,
+                    });
             }
             else if (_handler is OfficeCli.Handlers.ExcelHandler)
                 html = CommandBuilder.RenderViaRegistry(_handler, "xlsx", new OfficeCli.Core.Rendering.RenderOptions());
