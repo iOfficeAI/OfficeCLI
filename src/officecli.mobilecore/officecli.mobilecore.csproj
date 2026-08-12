@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\officecli\officecli.csproj" />
+  </ItemGroup>
+</Project>
