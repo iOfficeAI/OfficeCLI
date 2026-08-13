@@ -696,7 +696,53 @@ internal static class RawXmlHelper
         // it would fail `validate` (and the Delivery Gate) over a gap in the
         // OpenXmlValidator's schema model, not a real defect.
         errors.RemoveAll(IsBenignChartExValAttributeError);
+        // Drop known SDK-validator false positives on xlsx <font> child order —
+        // see IsBenignFontChildOrderError.
+        errors.RemoveAll(IsBenignFontChildOrderError);
         return errors;
+    }
+
+    /// <summary>
+    /// Children of the spreadsheetml <c>CT_Font</c> particle. ECMA-376 defines it
+    /// as <c>&lt;xsd:choice maxOccurs="unbounded"&gt;</c> (sml.xsd), i.e. the child
+    /// elements may appear in ANY order.
+    /// </summary>
+    private static readonly HashSet<string> FontChildElementNames = new(StringComparer.Ordinal)
+    {
+        "name", "charset", "family", "b", "i", "strike", "outline", "shadow",
+        "condense", "extend", "color", "sz", "u", "vertAlign", "scheme"
+    };
+
+    /// <summary>
+    /// True for the OpenXmlValidator false positive on an xlsx <c>&lt;font&gt;</c>
+    /// whose children are not in the SDK's expected order — e.g. openpyxl writes
+    /// <c>name, family, color, sz, scheme</c> while Excel writes
+    /// <c>sz, color, name, family, scheme</c>. The SDK models CT_Font as an ordered
+    /// sequence, but ECMA-376 declares it as an unbounded <c>xsd:choice</c>, so
+    /// every order is schema-legal and Excel opens both forms. Suppress narrowly:
+    /// styles part + the offending element is a <c>font</c> + the "unexpected child"
+    /// really is one of CT_Font's own children, so a foreign element still surfaces.
+    /// </summary>
+    private static bool IsBenignFontChildOrderError(ValidationError e)
+    {
+        if (!(e.Part ?? "").EndsWith("/styles.xml", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var path = e.Path ?? "";
+        // Last path step must be the font element itself (fonts/font[N] or
+        // dxfs/dxf[N]/font[N]) — the validator reports the parent's path.
+        var lastSlash = path.LastIndexOf('/');
+        var last = lastSlash >= 0 ? path[(lastSlash + 1)..] : path;
+        if (!last.StartsWith("x:font[", StringComparison.Ordinal)) return false;
+        var d = e.Description ?? "";
+        if (!d.Contains("unexpected child element", StringComparison.OrdinalIgnoreCase))
+            return false;
+        const string ns = "spreadsheetml/2006/main:";
+        var i = d.IndexOf(ns, StringComparison.Ordinal);
+        if (i < 0) return false;
+        var start = i + ns.Length;
+        var end = start;
+        while (end < d.Length && (char.IsLetterOrDigit(d[end]))) end++;
+        return FontChildElementNames.Contains(d[start..end]);
     }
 
     /// <summary>
