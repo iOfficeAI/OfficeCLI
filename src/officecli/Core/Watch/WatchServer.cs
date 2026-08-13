@@ -141,7 +141,9 @@ internal class WatchServer : IDisposable
 
     public static string GetWatchPipeName(string filePath)
     {
-        var fullPath = Path.GetFullPath(filePath);
+        // CONSISTENCY(path-identity): symlink-resolved so `watch test.pptx` and
+        // `set /tmp/dir/test.pptx …` name the same pipe (see PathIdentity).
+        var fullPath = PathIdentity.Canonical(filePath);
         if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS())
             fullPath = fullPath.ToUpperInvariant();
         var hash = Convert.ToHexString(
