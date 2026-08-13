@@ -555,19 +555,48 @@ public partial class WordHandler
                     if (isRegex && matchObjs != null && i < matchObjs.Count)
                         effectiveReplace = matchObjs[i].Result(replace);
 
-                    // Cross-hyperlink replacement is still rejected — the wrapped
-                    // form would corrupt the URL/format-binding of the hyperlink
-                    // structure just as the unwrapped form did.
+                    // Cross-hyperlink matches are allowed only when every hyperlink
+                    // the match crosses into is FULLY covered — its runs are then
+                    // wrapped in w:del IN PLACE (inside the w:hyperlink), the shape
+                    // Word itself produces for tracked link-text deletion. Schema-wise
+                    // there is no alternative: CT_RunTrackChange has no w:hyperlink
+                    // member, so the hyperlink element itself can never sit under
+                    // w:del. A PARTIALLY covered hyperlink is still rejected — a
+                    // revision deleting half a label would corrupt the URL/format
+                    // binding just as the unwrapped form did. Issue #279 (tracked
+                    // deletion of link text, e.g. --find " 原文" --replace "").
+                    bool spansHyperlinkBoundary;
                     {
-                        var affected = BuildRunTexts(para)
+                        var preSplit = BuildRunTexts(para);
+                        var affected = preSplit
                             .Where(rt => rt.End > matchStart && rt.Start < matchEnd)
                             .Select(rt => rt.Run.Ancestors<Hyperlink>().FirstOrDefault())
                             .Distinct()
                             .ToList();
-                        if (affected.Count > 1)
-                            throw new ArgumentException(
-                                $"find/replace+revision cannot span a hyperlink boundary "
-                                + $"(match at offset {matchStart}, length {matchLen})");
+                        spansHyperlinkBoundary = affected.Count > 1;
+                        if (spansHyperlinkBoundary)
+                        {
+                            foreach (var link in affected)
+                            {
+                                if (link == null) continue;
+                                int linkStart = int.MaxValue, linkEnd = 0;
+                                foreach (var rt in preSplit)
+                                {
+                                    if (!ReferenceEquals(rt.Run.Ancestors<Hyperlink>().FirstOrDefault(), link))
+                                        continue;
+                                    linkStart = Math.Min(linkStart, rt.Start);
+                                    linkEnd = Math.Max(linkEnd, rt.End);
+                                }
+                                if (matchStart > linkStart || matchEnd < linkEnd)
+                                    throw new ArgumentException(
+                                        $"find/replace+revision cannot span a hyperlink boundary "
+                                        + $"(match at offset {matchStart}, length {matchLen}): the "
+                                        + "match covers only part of a hyperlink's text. Widen it to "
+                                        + "cover the hyperlink's whole text (the link label is then "
+                                        + "marked deleted in place), or keep it fully inside or "
+                                        + "outside the hyperlink.");
+                            }
+                        }
                     }
 
                     // Split the runs so the matched span is a contiguous list of
@@ -620,13 +649,26 @@ public partial class WordHandler
 
                     // Insert replacement (skip if user passed --prop replace="" — a
                     // deletion-only operation). The new w:ins sibling sits right
-                    // after the last w:del wrapper.
+                    // after the last w:del wrapper — except when the match CROSSED
+                    // into a hyperlink (necessarily fully covered, so its whole
+                    // label is now deleted): then the anchor is hoisted to the
+                    // hyperlink element itself, because the replacement belongs
+                    // beside the dying link, not inside it, where it would silently
+                    // inherit the URL of a label that no longer exists. A match
+                    // fully INSIDE one hyperlink keeps the in-link placement (label
+                    // edit keeps the link).
                     if (!string.IsNullOrEmpty(effectiveReplace) && lastDelWrapper?.Parent != null)
                     {
+                        OpenXmlElement insAnchor = lastDelWrapper;
+                        if (spansHyperlinkBoundary)
+                        {
+                            var host = lastDelWrapper.Ancestors<Hyperlink>().FirstOrDefault();
+                            if (host?.Parent != null) insAnchor = host;
+                        }
                         var newRun = new Run(
                             templateRPr,
                             new Text(effectiveReplace) { Space = SpaceProcessingModeValues.Preserve });
-                        lastDelWrapper.Parent.InsertAfter(newRun, lastDelWrapper);
+                        insAnchor.Parent!.InsertAfter(newRun, insAnchor);
                         WrapRunAsInserted(newRun, author, date, null);
                     }
                 }
