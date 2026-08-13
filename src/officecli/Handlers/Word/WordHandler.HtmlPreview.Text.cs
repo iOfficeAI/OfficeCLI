@@ -235,6 +235,17 @@ public partial class WordHandler
         return hasText;
     }
 
+    // True when the run's OWN rPr carries a visible <w:u> (anything but "none").
+    // Distinguishes an author-applied underline from one inherited through the
+    // style chain — only the latter is phantom on a whitespace-only run.
+    private static bool HasDirectUnderline(Run run)
+    {
+        var u = run.RunProperties?.Underline;
+        if (u == null) return false;
+        var val = u.Val?.InnerText;
+        return !string.Equals(val, "none", StringComparison.OrdinalIgnoreCase);
+    }
+
     // Removes the "underline" keyword from a space-separated text-decoration
     // declaration while preserving any co-present "line-through". Leaves all
     // other style declarations untouched.
@@ -865,8 +876,13 @@ public partial class WordHandler
         // underlined-tab heading separator (RunHasContentAfter path below) and
         // positional-tab leaders keep their decoration. line-through is
         // preserved (strike on a blank run is unusual but harmless).
+        // A DIRECT <w:u> on the run is not phantom: underlined spaces are how
+        // forms and bid documents author a fill-in blank ("Name:______"), and
+        // real Word paints that rule. Only an underline the run merely INHERITED
+        // (paragraph/character style, docDefaults) is suppressed here.
         if (!string.IsNullOrEmpty(style)
             && style.Contains("text-decoration:underline", StringComparison.Ordinal)
+            && !HasDirectUnderline(run)
             && IsWhitespaceOnlyTextRun(run))
         {
             style = StripUnderlineDecoration(style);
