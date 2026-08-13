@@ -785,8 +785,18 @@ internal static class UpdateChecker
         => IsPackageManagedPath(Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName);
 
     internal static bool IsPackageManagedPath(string? exePath)
+        => PackageManagerName(exePath) != null;
+
+    /// <summary>
+    /// Name of the package manager that owns <paramref name="exePath"/>
+    /// ("Homebrew" / "Scoop"), or null when the binary is self-managed. Single
+    /// source of truth: both the self-updater (never replace a managed binary)
+    /// and the self-installer (never drop a second copy next to a managed one)
+    /// key on this — CONSISTENCY(package-managed).
+    /// </summary>
+    internal static string? PackageManagerName(string? exePath)
     {
-        if (string.IsNullOrEmpty(exePath)) return false;
+        if (string.IsNullOrEmpty(exePath)) return null;
         var candidates = new List<string> { exePath };
         try
         {
@@ -794,9 +804,35 @@ internal static class UpdateChecker
             if (!string.IsNullOrEmpty(resolved)) candidates.Add(resolved);
         }
         catch { /* not a link or inaccessible — fall back to the raw path */ }
-        return candidates.Any(p =>
-            p.Contains("/Cellar/", StringComparison.Ordinal) ||
-            p.Contains("/Caskroom/", StringComparison.Ordinal));
+        if (candidates.Any(p =>
+                p.Contains("/Cellar/", StringComparison.Ordinal) ||
+                p.Contains("/Caskroom/", StringComparison.Ordinal)))
+            return "Homebrew";
+        if (candidates.Any(IsScoopPath)) return "Scoop";
+        return null;
+    }
+
+    /// <summary>
+    /// True when the path lives inside a Scoop apps directory. Covers the
+    /// default root (<c>%USERPROFILE%\scoop</c>), a relocated one
+    /// (<c>SCOOP</c>) and a global install (<c>SCOOP_GLOBAL</c>). Scoop
+    /// installs the executable under <c>&lt;root&gt;\apps\officecli\current\</c>
+    /// and exposes it through a shim in <c>&lt;root&gt;\shims\</c>, so the
+    /// running path is never itself on PATH.
+    /// </summary>
+    private static bool IsScoopPath(string path)
+    {
+        var normalized = path.Replace('/', '\\');
+        if (normalized.Contains(@"\scoop\apps\", StringComparison.OrdinalIgnoreCase))
+            return true;
+        foreach (var envVar in new[] { "SCOOP", "SCOOP_GLOBAL" })
+        {
+            var root = Environment.GetEnvironmentVariable(envVar);
+            if (string.IsNullOrWhiteSpace(root)) continue;
+            var apps = Path.Combine(root.Replace('/', '\\').TrimEnd('\\'), "apps") + "\\";
+            if (normalized.StartsWith(apps, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
     }
 
     internal static string? GetCurrentVersionPublic() => GetCurrentVersion();

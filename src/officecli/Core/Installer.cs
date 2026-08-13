@@ -137,24 +137,19 @@ internal static class Installer
             return false;
         }
 
-        // Skip binary copy when managed by a package manager (Homebrew, etc.)
-        if (src.Contains("/Caskroom/") || src.Contains("/Cellar/"))
-        {
-            if (!quiet)
-                Console.WriteLine("Skipping binary install: managed by Homebrew.");
-            RecordInstalledVersion();
-            return false;
-        }
-
-        // Same for Scoop. The on-PATH check above does not catch it: scoop puts
+        // Skip the binary copy when a package manager owns this executable
+        // (Homebrew, Scoop) — it upgrades and removes the file, so a second copy
+        // in the canonical dir would survive `scoop uninstall` / `brew uninstall`
+        // and shadow it. The on-PATH check above does not cover Scoop: it puts
         // the executable under <scoop>\apps\officecli\current\ and exposes it
         // through a shim in <scoop>\shims\, so the process path is never itself
-        // on PATH. Without this we drop a SECOND officecli.exe into
-        // %LOCALAPPDATA%\OfficeCli that `scoop uninstall` cannot remove.
-        if (IsScoopManaged(src))
+        // on PATH. CONSISTENCY(package-managed): same detector the self-updater
+        // uses to decide it must not replace the binary.
+        var packageManager = UpdateChecker.PackageManagerName(src);
+        if (packageManager != null)
         {
             if (!quiet)
-                Console.WriteLine("Skipping binary install: managed by Scoop.");
+                Console.WriteLine($"Skipping binary install: managed by {packageManager}.");
             RecordInstalledVersion();
             return false;
         }
@@ -358,28 +353,6 @@ internal static class Installer
     /// <summary>True if <paramref name="dir"/> is one of the PATH entries
     /// (case-insensitive on Windows), i.e. a binary living there is invokable by
     /// bare command name.</summary>
-    /// <summary>
-    /// True when the running binary lives inside a Scoop apps directory. Covers
-    /// the default root (<c>%USERPROFILE%\scoop</c>), a relocated one
-    /// (<c>SCOOP</c>), and a global install (<c>SCOOP_GLOBAL</c>, default
-    /// <c>%ProgramData%\scoop</c>).
-    /// </summary>
-    private static bool IsScoopManaged(string src)
-    {
-        if (!OperatingSystem.IsWindows()) return false;
-        var normalized = src.Replace('/', '\\');
-        if (normalized.Contains(@"\scoop\apps\", StringComparison.OrdinalIgnoreCase))
-            return true;
-        foreach (var envVar in new[] { "SCOOP", "SCOOP_GLOBAL" })
-        {
-            var root = Environment.GetEnvironmentVariable(envVar);
-            if (string.IsNullOrWhiteSpace(root)) continue;
-            var apps = Path.Combine(root.Replace('/', '\\').TrimEnd('\\'), "apps") + "\\";
-            if (normalized.StartsWith(apps, StringComparison.OrdinalIgnoreCase)) return true;
-        }
-        return false;
-    }
-
     private static bool IsDirOnPath(string? dir)
     {
         if (string.IsNullOrEmpty(dir)) return false;
