@@ -6,6 +6,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\officecli\officecli.csproj" />
+    <!-- officecli's net10.0-android target is opt-in (see officecli.csproj);
+         mobilecore always needs it, so request it explicitly here instead
+         of requiring every caller to remember to pass the property. -->
+    <ProjectReference Include="..\officecli\officecli.csproj">
+      <Properties>IncludeAndroidTarget=true</Properties>
+    </ProjectReference>
   </ItemGroup>
 </Project>

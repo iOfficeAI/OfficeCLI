@@ -1,7 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
+    <!-- The Android target is opt-in behind IncludeAndroidTarget: it needs
+         the Android SDK/workload, which most desktop-CLI consumers (this
+         project's own release CI included) don't have installed. Building,
+         running, or publishing this project with no extra property behaves
+         exactly as it did before this target existed - single net10.0
+         target, no Android SDK required. -->
+    <TargetFrameworks Condition="'$(IncludeAndroidTarget)' == 'true'">net10.0;net10.0-android</TargetFrameworks>
+    <TargetFramework Condition="'$(IncludeAndroidTarget)' != 'true'">net10.0</TargetFramework>
     <OutputType Condition="'$(TargetFramework)' == 'net10.0'">Exe</OutputType>
     <OutputType Condition="'$(TargetFramework)' == 'net10.0-android'">Library</OutputType>
     <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24</SupportedOSPlatformVersion>
