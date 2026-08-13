@@ -1321,7 +1321,12 @@ public partial class WordHandler
             if (pProps != null && IsNormalStyle(styleName))
             {
                 var indent = pProps.Indentation;
-                if (indent?.FirstLine == null || indent.FirstLine.Value == "0")
+                // w:firstLineChars is the character-relative twin of w:firstLine
+                // (200 = 2 characters, exactly what the suggestion below asks
+                // for) and satisfies the check on its own — CJK documents carry
+                // the indent that way and never emit w:firstLine.
+                var hasFirstLineChars = indent?.FirstLineChars != null && indent.FirstLineChars.Value > 0;
+                if (!hasFirstLineChars && (indent?.FirstLine == null || indent.FirstLine.Value == "0"))
                 {
                     // Skip paragraphs where first-line indent is not expected:
                     // - hanging indent (e.g. bibliography entries)
