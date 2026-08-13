@@ -1651,12 +1651,19 @@ public partial class WordHandler
             var lockVal = lockEl?.Val?.InnerText;
 
             // Determine SDT type
+            var checkBox = sdtProps.GetFirstChild<DocumentFormat.OpenXml.Office2010.Word.SdtContentCheckBox>();
             string sdtType;
-            if (sdtProps.GetFirstChild<SdtContentDropDownList>() != null) sdtType = "dropdown";
+            if (checkBox != null) sdtType = "checkbox";
+            else if (sdtProps.GetFirstChild<SdtContentDropDownList>() != null) sdtType = "dropdown";
             else if (sdtProps.GetFirstChild<SdtContentComboBox>() != null) sdtType = "combobox";
             else if (sdtProps.GetFirstChild<SdtContentDate>() != null) sdtType = "date";
             else if (sdtProps.GetFirstChild<SdtContentText>() != null) sdtType = "text";
             else sdtType = "richtext";
+
+            bool? checkedState = checkBox == null
+                ? null
+                : checkBox.Checked?.Val?.InnerText == "1"
+                    || string.Equals(checkBox.Checked?.Val?.InnerText, "true", StringComparison.OrdinalIgnoreCase);
 
             // Items for dropdown/combobox
             string? items = null;
@@ -1678,9 +1685,10 @@ public partial class WordHandler
                 FieldType: sdtType,
                 Editable: editable,
                 Alias: alias ?? tag,
-                Value: displayValue,
+                Value: checkBox == null ? displayValue : null,
                 Items: items,
-                Lock: lockVal));
+                Lock: lockVal,
+                Checked: checkedState));
         }
 
         // 2. Collect legacy form fields
