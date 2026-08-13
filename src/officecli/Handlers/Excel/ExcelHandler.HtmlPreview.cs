@@ -855,6 +855,7 @@ public partial class ExcelHandler
                     ? richHtml
                     : BuildCellContent(cellRef, value, ctx.DataBarMap, ctx.IconSetMap);
                 content = WrapVerticalAlign(content, GetCellVerticalAlign(cell, ctx.Stylesheet, ctx.RenderStyles), richHtml);
+                content = WrapRotatedText(cell, ctx.RenderStyles, content);
                 if (ctx.SparklineMap.TryGetValue(cellRef, out var spkSvg)) content = spkSvg + content;
                 var diagSvg = TryBuildCellDiagonalSvg(cell, ctx.Stylesheet, ctx.RenderStyles) ?? "";
                 if (ctx.AutoFilterCells.Contains(cellRef)) content += AutoFilterIndicatorHtml;
@@ -873,6 +874,7 @@ public partial class ExcelHandler
                     ? richHtml
                     : BuildCellContent(cellRef, value, ctx.DataBarMap, ctx.IconSetMap);
                 content = WrapVerticalAlign(content, GetCellVerticalAlign(cell, ctx.Stylesheet, ctx.RenderStyles), richHtml);
+                content = WrapRotatedText(cell, ctx.RenderStyles, content);
                 if (ctx.SparklineMap.TryGetValue(cellRef, out var spkSvg)) content = spkSvg + content;
                 var diagSvg = TryBuildCellDiagonalSvg(cell, ctx.Stylesheet, ctx.RenderStyles) ?? "";
                 // Text-spill emulation (Excel-fidelity): a non-wrapped left/general
@@ -2382,6 +2384,38 @@ public partial class ExcelHandler
     /// formatting) and when there's no content. <sup>/<sub> give both the
     /// raised/lowered baseline and the ~0.83em size reduction natively.
     /// </summary>
+    /// <summary>
+    /// Wrap a rotated cell's content in the span that carries the rotation.
+    /// The rotation must NOT sit on the &lt;td&gt;: a CSS transform rotates the
+    /// element box, so a tall narrow (typically vertically merged) cell paints
+    /// its fill and borders sideways across the neighbouring column, and the
+    /// text is clipped to the swapped extent. Excel rotates only the glyphs.
+    /// Right angles use writing-mode, which lays the text out in a naturally
+    /// narrow-and-tall box (no transform, no layout overflow); oblique angles
+    /// keep a transform on the inline-block span, whose overflow the td already
+    /// allows.
+    /// </summary>
+    private static string WrapRotatedText(Cell? cell, RenderStyleArrays renderStyles, string content)
+    {
+        if (cell == null || string.IsNullOrEmpty(content)) return content;
+        var si = (int)(cell.StyleIndex?.Value ?? 0);
+        var xfsArr = renderStyles.CellFormats;
+        if (si >= xfsArr.Length) return content;
+        var rot = xfsArr[si].Alignment?.TextRotation;
+        if (rot?.HasValue != true || rot.Value == 0 || rot.Value == 255) return content;
+
+        // Excel: 1–90 = counter-clockwise, 91–180 = clockwise (180 = 90° CW).
+        var css = rot.Value switch
+        {
+            // Bottom-to-top: vertical flow, then flipped so it reads upward.
+            90 => "writing-mode:vertical-rl;transform:rotate(180deg)",
+            // Top-to-bottom.
+            180 => "writing-mode:vertical-rl",
+            _ => $"transform:rotate({(rot.Value <= 90 ? -(int)rot.Value : (int)rot.Value - 90)}deg)"
+        };
+        return $"<span class=\"rot-text\" style=\"display:inline-block;white-space:nowrap;{css}\">{content}</span>";
+    }
+
     private static string WrapVerticalAlign(string content, string? vAlign, string? richHtml)
     {
         if (vAlign == null || richHtml != null || string.IsNullOrEmpty(content)) return content;
@@ -2619,13 +2653,17 @@ public partial class ExcelHandler
                 // Excel: 0-90 = counter-clockwise, 91-180 = clockwise (91=1°CW, 180=90°CW)
                 // Excel: 1-90 = CCW (CSS negative), 91-180 = CW (CSS positive, 91=1°, 180=90°)
                 int cssDeg = rot <= 90 ? -(int)rot : (int)rot - 90;
+                // The rotation itself lives on an inner span (see WrapRotatedText):
+                // a transform on the <td> rotates the whole cell BOX, so a tall
+                // narrow merged cell's fill and borders swing out over the
+                // neighbouring column. Excel rotates only the text.
+                _ = cssDeg;
                 // The td's default rule clips its content (overflow:hidden +
                 // text-overflow:ellipsis + max-width:500px) to the un-rotated column
                 // width, so after the rotate the string truncates ("Rotat…") even
                 // though the row was grown tall enough. Override those for rotated
                 // cells: keep the box at column width but let the rotated text run to
                 // its full length (vertically, within the expanded row height).
-                styles.Add($"transform:rotate({cssDeg}deg)");
                 styles.Add("white-space:nowrap");
                 styles.Add("overflow:visible");
                 styles.Add("text-overflow:clip");
