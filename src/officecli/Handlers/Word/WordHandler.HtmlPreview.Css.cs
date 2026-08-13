@@ -1661,26 +1661,21 @@ public partial class WordHandler
         // OOXML vals: single, double, thick, dotted, dottedHeavy, dash, dashedHeavy,
         //   dashLong, dashLongHeavy, dotDash, dotDashHeavy, dotDotDash, dotDotDashHeavy,
         //   wave, wavyHeavy, wavyDouble, words, none
-        if (rProps.Underline?.Val != null)
+        if (rProps.Underline != null)
         {
-            var ulVal = rProps.Underline.Val.InnerText;
+            // CT_Underline defaults a missing w:val to single. Treat <w:u/>
+            // the same as <w:u w:val="single"/> for both visible text and the
+            // whitespace fill-line path in HtmlPreview.Text.
+            var ulVal = UnderlineValue(rProps.Underline);
             if (ulVal != "none")
             {
                 parts.Add("text-decoration:underline");
                 // Map to text-decoration-style
-                string? style = ulVal switch
-                {
-                    "double" or "wavyDouble" => "double",
-                    "dotted" or "dottedHeavy" => "dotted",
-                    "dash" or "dashedHeavy" or "dashLong" or "dashLongHeavy"
-                        or "dotDash" or "dotDashHeavy" or "dotDotDash" or "dotDotDashHeavy" => "dashed",
-                    "wave" or "wavyHeavy" => "wavy",
-                    _ => null,
-                };
+                var style = UnderlineDecorationStyle(ulVal);
                 if (style != null)
                     parts.Add($"text-decoration-style:{style}");
                 // Thickness: "thick" and any *Heavy variant
-                if (ulVal == "thick" || (ulVal?.EndsWith("Heavy") ?? false))
+                if (IsHeavyUnderline(ulVal))
                     parts.Add("text-decoration-thickness:2px");
                 // Per-underline color via w:u w:color="RRGGBB"
                 var ulColor = rProps.Underline.Color?.Value;

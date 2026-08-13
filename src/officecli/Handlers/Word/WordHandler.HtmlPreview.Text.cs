@@ -154,6 +154,53 @@ public partial class WordHandler
         return $"border-bottom:{width} {lineStyle} {color};";
     }
 
+    private static string UnderlineValue(Underline underline)
+        => underline.Val?.InnerText ?? "single";
+
+    private static string? UnderlineDecorationStyle(string ulVal) => ulVal switch
+    {
+        "double" or "wavyDouble" => "double",
+        "dotted" or "dottedHeavy" => "dotted",
+        "dash" or "dashedHeavy" or "dashLong" or "dashLongHeavy"
+            or "dotDash" or "dotDashHeavy" or "dotDotDash" or "dotDotDashHeavy" => "dashed",
+        "wave" or "wavyHeavy" => "wavy",
+        _ => null,
+    };
+
+    private static bool IsHeavyUnderline(string ulVal)
+        => ulVal == "thick" || ulVal.EndsWith("Heavy", StringComparison.Ordinal);
+
+    // Map a directly declared w:u to the border used for a whitespace-only
+    // fill-in line. Unlike UnderlineBorderFromStyle, this reads the underline
+    // element itself so a co-present double-strike's CSS style cannot turn a
+    // single underline into a double border. A missing w:val defaults to single;
+    // `words` intentionally returns no border because it never decorates spaces.
+    private static string UnderlineBorderFromUnderline(Underline? underline)
+    {
+        if (underline == null) return "";
+        var ulVal = UnderlineValue(underline);
+        if (ulVal is "none" or "words") return "";
+
+        var width = "1px";
+        var lineStyle = "solid";
+        var decorationStyle = UnderlineDecorationStyle(ulVal);
+        if (decorationStyle == "double")
+        { width = "3px"; lineStyle = decorationStyle; }
+        else if (decorationStyle is "dotted" or "dashed")
+            lineStyle = decorationStyle;
+        // wavy has no border equivalent → keep solid.
+        if (IsHeavyUnderline(ulVal))
+            width = "2px";
+
+        var color = "currentColor";
+        var ulColor = underline.Color?.Value;
+        if (!string.IsNullOrEmpty(ulColor)
+            && !ulColor.Equals("auto", StringComparison.OrdinalIgnoreCase)
+            && IsHexColor(ulColor))
+            color = $"#{ulColor}";
+        return $"border-bottom:{width} {lineStyle} {color};";
+    }
+
     /// <summary>
     /// True when <paramref name="run"/> holds the LAST &lt;w:tab&gt; in the
     /// paragraph (counting tabs at any depth, e.g. inside a &lt;w:hyperlink&gt;
@@ -238,7 +285,7 @@ public partial class WordHandler
     // Removes the "underline" keyword from a space-separated text-decoration
     // declaration while preserving any co-present "line-through". Leaves all
     // other style declarations untouched.
-    private static string StripUnderlineDecoration(string style)
+    private static string StripUnderlineDecoration(string style, bool preserveDoubleStrikeStyle)
     {
         var parts = style.Split(';');
         var kept = new List<string>(parts.Length);
@@ -257,8 +304,19 @@ public partial class WordHandler
             }
             // Underline-only sub-properties become meaningless once underline
             // is gone; drop them so no orphan style/thickness/color lingers.
-            if (trimmed.StartsWith("text-decoration-style:", StringComparison.Ordinal)
-                || trimmed.StartsWith("text-decoration-thickness:", StringComparison.Ordinal)
+            if (trimmed.StartsWith("text-decoration-style:", StringComparison.Ordinal))
+            {
+                // GetRunInlineCss uses this declaration for w:dstrike too. Once
+                // underline is removed, keep exactly one double style when the
+                // remaining line-through is a double strike; discard underline-
+                // only styles such as dotted/dashed/wavy.
+                if (preserveDoubleStrikeStyle
+                    && trimmed == "text-decoration-style:double"
+                    && !kept.Contains(trimmed))
+                    kept.Add(trimmed);
+                continue;
+            }
+            if (trimmed.StartsWith("text-decoration-thickness:", StringComparison.Ordinal)
                 || trimmed.StartsWith("text-decoration-color:", StringComparison.Ordinal))
                 continue;
             if (trimmed.Length > 0) kept.Add(trimmed);
@@ -858,18 +916,33 @@ public partial class WordHandler
         var style = GetRunInlineCss(rProps, para);
 
         // Phantom-underline suppression: a run whose entire visible content is
-        // whitespace (e.g. a 30-space spacer carrying a Heading2 style's
-        // <w:u w:val="single"/>) draws NO underline in real Word. Strip the
-        // inherited underline from such a run's style. Restricted to runs whose
+        // whitespace (e.g. a 30-space spacer inheriting Heading2's underline)
+        // draws NO underline in real Word. A DIRECT w:u on the run is different:
+        // it is a deliberate fill-in line, so preserve its advance width and
+        // re-express the underline as a border (Chromium does not reliably paint
+        // text-decoration across trailing spaces). Restricted to runs whose
         // content is purely whitespace TEXT — tab-only runs are excluded so the
         // underlined-tab heading separator (RunHasContentAfter path below) and
-        // positional-tab leaders keep their decoration. line-through is
-        // preserved (strike on a blank run is unusual but harmless).
+        // positional-tab leaders keep their decoration. StripUnderlineDecoration
+        // preserves any co-present line-through; other run CSS such as character
+        // spacing remains on the inline-block.
         if (!string.IsNullOrEmpty(style)
             && style.Contains("text-decoration:underline", StringComparison.Ordinal)
             && IsWhitespaceOnlyTextRun(run))
         {
-            style = StripUnderlineDecoration(style);
+            var underlineBorder = UnderlineBorderFromUnderline(run.RunProperties?.Underline);
+            var preserveDoubleStrikeStyle = rProps.DoubleStrike != null
+                && (rProps.DoubleStrike.Val == null || rProps.DoubleStrike.Val.Value);
+            if (!string.IsNullOrEmpty(underlineBorder))
+            {
+                style = StripUnderlineDecoration(style, preserveDoubleStrikeStyle);
+                var fillLineCss = $"display:inline-block;white-space:pre;{underlineBorder}";
+                style = string.IsNullOrEmpty(style) ? fillLineCss : style + ";" + fillLineCss;
+            }
+            else
+            {
+                style = StripUnderlineDecoration(style, preserveDoubleStrikeStyle);
+            }
         }
 
         // Format revision (w:rPrChange) — a tracked formatting change. The
