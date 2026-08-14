@@ -87,7 +87,8 @@ public sealed class PptBasicRenderer : IRenderer
             return RenderResult.Svg(h.ViewAsSvg(options.StartPage ?? 1));
 
         var viewport = options.ViewportPx > 0 ? options.ViewportPx : DefaultViewportPx;
-        var html = h.ViewAsHtml(options.StartPage, options.EndPage, options.GridColumns, viewport);
+        var html = h.ViewAsHtml(options.StartPage, options.EndPage, options.GridColumns, viewport,
+            options.IncludeSlideNumbers);
         return RenderResult.Html(html);
     }
 }

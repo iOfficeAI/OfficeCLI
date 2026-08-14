@@ -16,7 +16,7 @@ public partial class PowerPointHandler
 
     private static void RenderTextBody(StringBuilder sb, OpenXmlElement textBody, Dictionary<string, string> themeColors,
         Shape? placeholderShape = null, OpenXmlPart? placeholderPart = null, string? fontRefDefaultColor = null,
-        int? slideNumber = null)
+        int? slideNumber = null, bool includeSlideNumbers = true)
     {
         // Per-textbody auto-number counters, keyed by scheme type + paragraph level.
         // Resets when switching type/level. Paragraphs aren't wrapped in <ol>, so
@@ -377,7 +377,7 @@ public partial class PowerPointHandler
             var hasMath = para.OuterXml.Contains("oMath");
             var runs = para.Elements<Drawing.Run>().ToList();
             bool hasVisibleField = para.Elements<Drawing.Field>()
-                .Any(f => !string.IsNullOrEmpty(ResolveFieldText(f, slideNumber)));
+                .Any(f => !string.IsNullOrEmpty(ResolveFieldText(f, slideNumber, includeSlideNumbers)));
             bool hasVisibleText = runs.Any(r => !string.IsNullOrEmpty(r.Text?.Text)) || hasVisibleField;
             bool isEmptyPara = !hasVisibleText && !hasMath;
 
@@ -647,7 +647,7 @@ public partial class PowerPointHandler
                         // size / color exactly like a real run. slidenum is
                         // recomputed to the actual 1-based slide position when known
                         // (matching PowerPoint); other fields emit their cached <a:t>.
-                        var fldText = ResolveFieldText(fld, slideNumber);
+                        var fldText = ResolveFieldText(fld, slideNumber, includeSlideNumbers);
                         if (string.IsNullOrEmpty(fldText)) continue;
                         var fldRun = new Drawing.Run();
                         var fldRpr = fld.GetFirstChild<Drawing.RunProperties>();
@@ -664,16 +664,20 @@ public partial class PowerPointHandler
         }
     }
 
-    // Effective display text for an <a:fld> in the HTML preview. For
-    // type="slidenum" we prefer the ACTUAL 1-based slide number when the
-    // renderer threaded it (PowerPoint recomputes slidenum to the real slide
-    // position), falling back to the cached <a:t> when unknown. All other field
-    // types (datetime*, etc.) emit their cached <a:t> verbatim. Mirrors
-    // GetShapeText's field handling for the non-render extractor.
-    private static string ResolveFieldText(Drawing.Field fld, int? slideNumber)
+    // Effective display text for an <a:fld> in the HTML preview. A disabled
+    // slide-number option suppresses type="slidenum" entirely. Otherwise we
+    // prefer the ACTUAL 1-based slide number when the renderer threaded it
+    // (PowerPoint recomputes slidenum to the real slide position), falling back
+    // to the cached <a:t> when unknown. All other field types (datetime*, etc.)
+    // emit their cached <a:t> verbatim. Mirrors GetShapeText's field handling
+    // for the non-render extractor.
+    private static string ResolveFieldText(Drawing.Field fld, int? slideNumber,
+        bool includeSlideNumbers = true)
     {
         var cached = string.Concat(fld.Elements<Drawing.Text>().Select(t => t.Text));
         var fldType = fld.Type?.Value ?? "";
+        if (fldType == "slidenum" && !includeSlideNumbers)
+            return "";
         if (fldType == "slidenum" && slideNumber.HasValue)
             return slideNumber.Value.ToString();
         return cached;

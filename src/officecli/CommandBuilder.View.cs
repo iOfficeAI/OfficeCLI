@@ -33,6 +33,11 @@ static partial class CommandBuilder
         };
         var renderOpt = new Option<string>("--render") { Description = "Screenshot rendering path (docx/pptx): auto (default; native on Windows w/ Word/PowerPoint, html elsewhere), native (force OS-native, error if unavailable), html", DefaultValueFactory = _ => "auto" };
         var withPagesOpt = new Option<bool>("--page-count") { Description = "stats mode (docx only): also report total page count via Word repagination (Win + Word required; slow on long docs)" };
+        var slideNumbersOpt = new Option<string>("--slide-numbers")
+        {
+            Description = "PPTX HTML mode: render slide-number placeholders and slidenum fields (true by default; pass false to hide page-internal slide numbers)",
+            DefaultValueFactory = _ => "true",
+        };
 
         var viewCommand = new Command("view", "View document in different modes");
         viewCommand.Add(viewFileArg);
@@ -52,6 +57,7 @@ static partial class CommandBuilder
         viewCommand.Add(gridOpt);
         viewCommand.Add(renderOpt);
         viewCommand.Add(withPagesOpt);
+        viewCommand.Add(slideNumbersOpt);
         viewCommand.Add(jsonOption);
 
         viewCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
@@ -80,6 +86,11 @@ static partial class CommandBuilder
             if (renderMode is not ("auto" or "native" or "html"))
                 throw new OfficeCli.Core.CliException($"Invalid --render value: {renderMode}. Valid: auto, native, html") { Code = "invalid_render", ValidValues = ["auto", "native", "html"] };
             var withPages = result.GetValue(withPagesOpt);
+            var slideNumbersValue = result.GetValue(slideNumbersOpt) ?? "true";
+            if (!bool.TryParse(slideNumbersValue, out var includeSlideNumbers))
+                throw new OfficeCli.Core.CliException(
+                    $"Invalid --slide-numbers value: {slideNumbersValue}. Valid: true, false")
+                { Code = "invalid_value", ValidValues = ["true", "false"] };
 
             // pdf mode runs entirely through an exporter plugin (no handler
             // open, no resident hop — the plugin gets a snapshot of the
@@ -133,6 +144,7 @@ static partial class CommandBuilder
                 if (gridCols != 0) req.Args["grid"] = gridCols.ToString(); // -1 = auto
                 if (renderMode != "auto") req.Args["render"] = renderMode;
                 if (withPages) req.Args["page-count"] = "true";
+                if (!includeSlideNumbers) req.Args["slide-numbers"] = "false";
             }, json) is {} rc) return rc;
 
             var format = json ? OutputFormat.Json : OutputFormat.Text;
@@ -151,7 +163,12 @@ static partial class CommandBuilder
                     // range checking, matching SVG mode's CONSISTENCY(strict-page).
                     var (pStart, pEnd) = ParsePptHtmlPage(pageFilter, start, end, pptHandler);
                     html = RenderViaRegistry(handler, "pptx",
-                        new OfficeCli.Core.Rendering.RenderOptions { StartPage = pStart, EndPage = pEnd });
+                        new OfficeCli.Core.Rendering.RenderOptions
+                        {
+                            StartPage = pStart,
+                            EndPage = pEnd,
+                            IncludeSlideNumbers = includeSlideNumbers,
+                        });
                 }
                 else if (handler is OfficeCli.Handlers.ExcelHandler)
                     html = RenderViaRegistry(handler, "xlsx", new OfficeCli.Core.Rendering.RenderOptions());

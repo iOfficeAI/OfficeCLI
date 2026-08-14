@@ -120,6 +120,7 @@ officecli view deck.pptx outline
 
 # View as HTML — opens a rendered preview in your browser, no server needed
 officecli view deck.pptx html
+officecli view deck.pptx html --slide-numbers false  # hide slide-number fields inside slides
 
 # Get structured JSON for any element
 officecli get deck.pptx '/slide[1]/shape[1]' --json

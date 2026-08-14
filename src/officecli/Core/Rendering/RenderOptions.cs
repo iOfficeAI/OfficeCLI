@@ -6,7 +6,7 @@ namespace OfficeCli.Core.Rendering;
 /// <summary>
 /// A render request. Unifies the per-handler entry points that exist today
 /// (WordHandler.ViewAsHtml(pageFilter, gridCols, gridCellWpx),
-/// PowerPointHandler.ViewAsHtml(start, end, gridCols, viewportPx),
+/// PowerPointHandler.ViewAsHtml(start, end, gridCols, viewportPx, includeSlideNumbers),
 /// ExcelHandler.ViewAsHtml(), FormatHandlerProxy.ViewAsHtml(page)) into a single
 /// options object so dispatch no longer branches on the concrete handler type.
 /// <para>
@@ -40,6 +40,9 @@ public sealed class RenderOptions
 
     /// <summary>Viewport width in px for slide-style scaling (pptx). 0 = renderer default.</summary>
     public int ViewportPx { get; init; }
+
+    /// <summary>Whether PPTX HTML renders slide-number placeholders and slidenum fields.</summary>
+    public bool IncludeSlideNumbers { get; init; } = true;
 
     /// <summary>Target raster width in px for Png/Pdf output. 0 = renderer default.</summary>
     public int RasterWidthPx { get; init; }
