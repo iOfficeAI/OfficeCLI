@@ -18,8 +18,19 @@ namespace OfficeCli;
 /// </summary>
 public static class McpServer
 {
+    /// <summary>
+    /// True once this process is serving the MCP stdio protocol. Handlers use
+    /// it to refuse things that are fine on a terminal but destructive here —
+    /// chiefly reading stdin, which under MCP is the JSON-RPC transport rather
+    /// than a payload channel (see CommandBuilder.ReadBatchStdIn).
+    ///
+    /// Set once, never cleared: `officecli mcp` serves MCP for its whole life.
+    /// </summary>
+    internal static volatile bool InMcpMode;
+
     public static async Task RunAsync()
     {
+        InMcpMode = true;
         using var reader = new StreamReader(Console.OpenStandardInput());
         using var writer = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
 
@@ -445,18 +456,149 @@ public static class McpServer
     /// flag (e.g. batch's --commands/--input) — instead of a terse, usage-
     /// stripped one-liner. Surfacing only `pr.Errors` here used to drop that
     /// usage block, making MCP less informative than the bare CLI.
+    ///
+    /// stdin is redirected to TextReader.Null for the same reason stdout is
+    /// captured: under MCP our stdin IS the JSON-RPC transport, a pipe the
+    /// client holds open for the life of the session. A handler that reads it
+    /// waits for an EOF that never arrives — and since this Invoke runs inline
+    /// on the single reader loop in RunAsync, that hangs the WHOLE server, not
+    /// just the one call: every later request queues behind it unanswered until
+    /// the process is restarted. Null stdin turns that deadlock into an
+    /// immediate empty-input error the agent can act on.
+    ///
+    /// This is the cheap half of the guard and the fragile half: it only
+    /// defuses reads that go through Console.In, and CommandBuilder.StdIn opens
+    /// the standard input handle directly, sailing straight past it.
+    /// CommandBuilder.ReadBatchStdIn is the durable half, keying off InMcpMode
+    /// rather than the reader.
+    ///
+    /// None of the redirects is restored afterwards, and that is deliberate.
+    /// RunCliRaw is only reached in MCP mode, where the protocol stream is the
+    /// private StreamWriter in RunAsync — Console.Out is never the transport,
+    /// so restoring it buys nothing and costs a corruption channel: a command
+    /// abandoned on the timeout below keeps running, and anything it prints
+    /// later would land in the middle of the JSON-RPC stream.
     /// </summary>
     private static CliResult RunCliRaw(string[] argv)
     {
         var pr = RootCommand.Parse(argv);
-        var prevOut = Console.Out;
-        var prevErr = Console.Error;
+        // Install the routers once; they stay Console.Out/Error for the rest of
+        // the process (see the note above on never restoring).
+        Console.SetOut(RoutedOut);
+        Console.SetError(RoutedErr);
+        Console.SetIn(System.IO.TextReader.Null);
+
         var so = new System.IO.StringWriter();
         var se = new System.IO.StringWriter();
-        int exit;
-        try { Console.SetOut(so); Console.SetError(se); exit = pr.Invoke(); }
-        finally { Console.SetOut(prevOut); Console.SetError(prevErr); }
+        int exit = 0;
+        Exception? handlerFailure = null;
+        var finished = new System.Threading.ManualResetEventSlim(false);
+        // A dedicated background thread, not Task.Run: an abandoned command
+        // occupies its thread forever, and leaking those out of the thread pool
+        // would starve everything else that needs it. IsBackground also keeps a
+        // wedged command from holding process exit open.
+        var worker = new System.Threading.Thread(() =>
+        {
+            ThreadRoutedWriter.Bind(so, se);
+            try { exit = pr.Invoke(); }
+            catch (Exception ex) { handlerFailure = ex; }
+            finally { finished.Set(); }
+        })
+        { IsBackground = true, Name = "officecli-mcp-command" };
+        worker.Start();
+
+        if (!finished.Wait(CommandTimeout))
+        {
+            // Deliberately NOT killed — .NET cannot safely abort a thread, and
+            // the command may be mid-write on a document. Abandon it and answer
+            // the client: a leaked thread is a bounded cost, a server that never
+            // answers again is not. Its buffers go with it: the routing above is
+            // per-thread, so whatever it prints later lands in ITS StringWriter,
+            // not in whichever command is running by then. (Swapping Console.Out
+            // per call instead does NOT achieve that — Console.Out resolves at
+            // call time, so an abandoned command follows the swap and dumps its
+            // output into the next command's response.)
+            return new CliResult(1, "",
+                $"Error: command exceeded the {CommandTimeout.TotalSeconds:0}s MCP execution limit and was abandoned. "
+                + "It may still be running in the background. Raise or disable the limit with "
+                + "OFFICECLI_MCP_COMMAND_TIMEOUT_SECONDS (0 = no limit).");
+        }
+
+        // Rethrow on the loop thread with the original stack intact, so RunAsync's
+        // handler still turns it into the same -32603 it always did.
+        if (handlerFailure != null)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(handlerFailure).Throw();
+
         return new CliResult(exit, so.ToString(), se.ToString());
+    }
+
+    /// <summary>
+    /// Wall-clock ceiling on a single CLI invocation, as a backstop rather than
+    /// a policy: no document operation an agent asks for should run for minutes,
+    /// and one that does is likelier wedged than working. The default clears the
+    /// slowest legitimate path with room to spare (an mmdc diagram render allows
+    /// itself 120s). Override via OFFICECLI_MCP_COMMAND_TIMEOUT_SECONDS; 0 means
+    /// no limit, which restores the old hang-forever behaviour.
+    /// </summary>
+    private static readonly TimeSpan CommandTimeout = ResolveCommandTimeout();
+
+    private static TimeSpan ResolveCommandTimeout()
+    {
+        var raw = Environment.GetEnvironmentVariable("OFFICECLI_MCP_COMMAND_TIMEOUT_SECONDS");
+        if (int.TryParse(raw, out var seconds) && seconds >= 0)
+            return seconds == 0 ? System.Threading.Timeout.InfiniteTimeSpan : TimeSpan.FromSeconds(seconds);
+        return TimeSpan.FromSeconds(180);
+    }
+
+    private static readonly ThreadRoutedWriter RoutedOut = new(isError: false);
+    private static readonly ThreadRoutedWriter RoutedErr = new(isError: true);
+
+    /// <summary>
+    /// Console.Out/Error stand-in that delivers each write to the buffer owned
+    /// by the thread doing the writing.
+    ///
+    /// Console.Out is process-global and resolved per call, which makes the
+    /// obvious design — swap in a fresh StringWriter around each invocation —
+    /// silently wrong as soon as a command is abandoned on the timeout: the
+    /// abandoned command keeps running, keeps calling Console.Write, and those
+    /// calls follow the swap into whatever buffer is current, so a dead command
+    /// pollutes a later command's response. Routing on thread identity pins each
+    /// command's output to the buffer it was started with, so an abandoned one
+    /// talks only to its own garbage.
+    ///
+    /// Writes from a thread with no binding — the RunAsync loop itself — are
+    /// dropped rather than forwarded to real stdout, which is the safe default
+    /// here: stdout is the JSON-RPC transport, and RunAsync writes to it through
+    /// its own StreamWriter, never through Console.
+    /// </summary>
+    private sealed class ThreadRoutedWriter : System.IO.TextWriter
+    {
+        [ThreadStatic] private static System.IO.StringWriter? _out;
+        [ThreadStatic] private static System.IO.StringWriter? _err;
+
+        private readonly bool _isError;
+        internal ThreadRoutedWriter(bool isError) => _isError = isError;
+
+        internal static void Bind(System.IO.StringWriter stdout, System.IO.StringWriter stderr)
+        {
+            _out = stdout;
+            _err = stderr;
+        }
+
+        private System.IO.StringWriter? Target => _isError ? _err : _out;
+
+        public override Encoding Encoding => Encoding.UTF8;
+
+        // Override the bulk paths too; TextWriter's defaults funnel everything
+        // through Write(char), which would turn every string into a per-char loop.
+        public override void Write(char value) => Target?.Write(value);
+        public override void Write(string? value) => Target?.Write(value);
+        public override void Write(char[] buffer, int index, int count) => Target?.Write(buffer, index, count);
+        public override void Write(ReadOnlySpan<char> buffer) => Target?.Write(buffer);
+        public override void WriteLine() => Target?.WriteLine();
+        public override void WriteLine(string? value) => Target?.WriteLine(value);
+        public override void WriteLine(ReadOnlySpan<char> buffer) => Target?.WriteLine(buffer);
+        public override void Flush() => Target?.Flush();
     }
 
     // Translate a CLI invocation's (exit, stdout, stderr) into MCP content.
