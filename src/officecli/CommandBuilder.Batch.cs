@@ -186,7 +186,12 @@ static partial class CommandBuilder
             // /dev/null redirect) with zero length carries no second payload
             // — skip the warning. Pipes (CanSeek=false) still warn: someone
             // is actively piping data that will be ignored.
-            bool stdinHasInput = Console.IsInputRedirected;
+            // Under MCP stdin is the JSON-RPC transport, never a second payload,
+            // so there is nothing to warn about — and the Peek below must not
+            // run: StdIn is a shared buffered reader over that same pipe, so a
+            // successful Peek consumes a protocol byte into a buffer the MCP
+            // reader loop never looks at, silently corrupting the stream.
+            bool stdinHasInput = !McpServer.InMcpMode && Console.IsInputRedirected;
             if (stdinHasInput)
             {
                 // Peek with a short timeout: /dev/null and closed stdin hit
@@ -237,7 +242,7 @@ static partial class CommandBuilder
                 // skipped on purpose — '-' is not a path.)
                 if (inputFile.Name == "-")
                 {
-                    jsonText = StripBom(StdIn.ReadToEnd());
+                    jsonText = ReadBatchStdIn();
                 }
                 else
                 {
@@ -256,7 +261,7 @@ static partial class CommandBuilder
                 // System.Text.Json.Parse with "'﻿' is an invalid start of
                 // a value" while `batch --input utf8bom.json` succeeded —
                 // splitting the contract on the input source.
-                jsonText = StripBom(StdIn.ReadToEnd());
+                jsonText = ReadBatchStdIn();
             }
 
             // Pre-validate: check for unknown JSON fields before deserializing
@@ -649,6 +654,33 @@ static partial class CommandBuilder
         }, json); });
 
         return batchCommand;
+    }
+
+    /// <summary>
+    /// Read the batch JSON payload from stdin — unless this process is serving
+    /// MCP, in which case refuse.
+    ///
+    /// Under MCP, stdin is not a payload channel: it IS the JSON-RPC transport,
+    /// a pipe the client holds open for the whole session. ReadToEnd on it waits
+    /// for an EOF that never arrives, and since McpServer invokes commands inline
+    /// on its single reader loop, that one call hangs the ENTIRE server — every
+    /// later request queues behind it, unanswered, until the process is
+    /// restarted. Fail fast instead, naming the two flags that do work.
+    ///
+    /// McpServer.RunCliRaw also points Console.In at TextReader.Null, but that
+    /// alone does not cover this: StdIn deliberately bypasses Console.In and
+    /// opens the standard input handle itself, so the redirect never sees it.
+    /// This guard keys off the mode rather than the reader, so it holds however
+    /// the read is spelled.
+    /// </summary>
+    private static string ReadBatchStdIn()
+    {
+        if (McpServer.InMcpMode)
+            throw new ArgumentException(
+                "batch: cannot read commands from stdin under MCP — stdin is the JSON-RPC "
+                + "transport, not a payload channel. Pass the JSON array via --commands "
+                + "'<json>' or --input <file> instead.");
+        return StripBom(StdIn.ReadToEnd());
     }
 
     // UTF-8 BOM trim. File.ReadAllText handles this implicitly via
