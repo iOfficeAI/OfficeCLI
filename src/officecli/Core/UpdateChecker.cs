@@ -13,7 +13,8 @@ namespace OfficeCli.Core;
 
 /// <summary>
 /// Daily auto-update against GitHub releases.
-/// - Config stored in ~/.officecli/config.json
+/// - Config stored in the XDG config directory on new Linux installs
+/// - Existing Linux installs and non-Linux platforms keep ~/.officecli/config.json
 /// - Checks at most once per day
 /// - Zero performance impact: spawns background process to check and upgrade
 /// - Silently skips if config dir is not writable
@@ -22,11 +23,13 @@ namespace OfficeCli.Core;
 /// </summary>
 internal static class UpdateChecker
 {
-    // Resolved per-call rather than cached so tests can override $HOME between
-    // cases without restarting the process. Production behavior is unchanged —
-    // $HOME never moves under a running officecli invocation.
-    internal static string ConfigDir => Path.Combine(
+    // Logs and other existing state remain under ~/.officecli. Only config.json
+    // follows XDG on fresh Linux installs.
+    internal static string LegacyStateDir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".officecli");
+    // Resolved per-call rather than cached so tests and isolated invocations can
+    // override $HOME/XDG_CONFIG_HOME without restarting the process.
+    private static string ConfigDir => ConfigPathResolver.ResolveCurrent();
     private static string ConfigPath => Path.Combine(ConfigDir, "config.json");
     private const string GitHubRepo = "iOfficeAI/OfficeCLI";
     // PrimaryBase is the project-controlled mirror (Cloudflare-fronted nginx on
@@ -564,10 +567,10 @@ internal static class UpdateChecker
         return false;
     }
 
-    /// <summary>Order: $HOME first; $TMPDIR appended only when running in a
+    /// <summary>Order: the platform config path first; $TMPDIR appended only when running in a
     /// container. The /tmp fallback exists for read-only-rootfs containers
     /// (docker --read-only, K8s readOnlyRootFilesystem, Lambda, Cloud Run)
-    /// where ~/.officecli can't be written but /tmp is a tmpfs. Iteration
+    /// where the config directory can't be written but /tmp is a tmpfs. Iteration
     /// stops at the first success — non-container hosts never touch /tmp,
     /// and containers with writable home never touch /tmp either.</summary>
     private static IEnumerable<string> ConfigPathCandidates()

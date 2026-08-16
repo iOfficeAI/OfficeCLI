@@ -243,7 +243,7 @@ officecli install    # 明示的インストール
 officecli            # 直接実行でもインストールがトリガー
 ```
 
-更新はバックグラウンドで自動チェックされます。`officecli config autoUpdate false` で無効化、または `OFFICECLI_SKIP_UPDATE=1` で単回スキップ可能。設定は `~/.officecli/config.json` にあります。
+更新はバックグラウンドで自動チェックされます。`officecli config autoUpdate false` で無効化、または `OFFICECLI_SKIP_UPDATE=1` で単回スキップ可能。新規 Linux インストールでは XDG に従い、`$XDG_CONFIG_HOME` が設定されている場合は `$XDG_CONFIG_HOME/officecli/config.json`、未設定の場合は `~/.config/officecli/config.json` に保存されます。既存の Linux インストールとその他のプラットフォームでは、引き続き `~/.officecli/config.json` を使用します。
 
 ## 主な機能
 

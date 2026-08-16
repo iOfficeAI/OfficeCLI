@@ -246,7 +246,7 @@ officecli install    # explicit
 officecli            # bare invocation also triggers install
 ```
 
-Updates are checked automatically in the background. Disable with `officecli config autoUpdate false` or skip per-invocation with `OFFICECLI_SKIP_UPDATE=1`. Configuration lives under `~/.officecli/config.json`.
+Updates are checked automatically in the background. Disable with `officecli config autoUpdate false` or skip per-invocation with `OFFICECLI_SKIP_UPDATE=1`. On new Linux installs, configuration follows XDG: `$XDG_CONFIG_HOME/officecli/config.json` when set, otherwise `~/.config/officecli/config.json`. Existing Linux installs and other platforms continue using `~/.officecli/config.json`.
 
 ## Key Features
 

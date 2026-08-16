@@ -243,7 +243,7 @@ officecli install    # 명시적 설치
 officecli            # 직접 실행으로도 설치 트리거
 ```
 
-업데이트는 백그라운드에서 자동 확인됩니다. `officecli config autoUpdate false`로 비활성화하거나 `OFFICECLI_SKIP_UPDATE=1`로 단일 실행 시 건너뛸 수 있습니다. 설정은 `~/.officecli/config.json`에 있습니다.
+업데이트는 백그라운드에서 자동 확인됩니다. `officecli config autoUpdate false`로 비활성화하거나 `OFFICECLI_SKIP_UPDATE=1`로 단일 실행 시 건너뛸 수 있습니다. 새 Linux 설치에서는 XDG를 따르며, `$XDG_CONFIG_HOME`이 설정된 경우 `$XDG_CONFIG_HOME/officecli/config.json`에, 설정되지 않은 경우 `~/.config/officecli/config.json`에 저장됩니다. 기존 Linux 설치와 다른 플랫폼에서는 계속 `~/.officecli/config.json`을 사용합니다.
 
 ## 주요 기능
 

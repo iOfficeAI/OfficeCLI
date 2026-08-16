@@ -9,7 +9,7 @@ namespace OfficeCli.Core;
 /// </summary>
 internal static class CliLogger
 {
-    private static readonly string LogPath = Path.Combine(UpdateChecker.ConfigDir, "officecli.log");
+    private static readonly string LogPath = Path.Combine(UpdateChecker.LegacyStateDir, "officecli.log");
     private const long MaxLogSize = 1024 * 1024; // 1 MB
 
     internal static bool Enabled
@@ -51,7 +51,7 @@ internal static class CliLogger
     {
         try
         {
-            Directory.CreateDirectory(UpdateChecker.ConfigDir);
+            Directory.CreateDirectory(UpdateChecker.LegacyStateDir);
 
             var escaped = message.ReplaceLineEndings("\\n");
             TrimIfNeeded();

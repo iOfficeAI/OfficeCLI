@@ -129,8 +129,8 @@ internal static class Installer
         // install (added to PATH manually, or by install.ps1 into a pre-existing
         // on-PATH dir). Don't drop a second copy into the canonical dir; treat the
         // on-PATH location as the install. Mirrors install.ps1, which upgrades an
-        // existing on-PATH copy in place rather than relocating it. Config and
-        // plugins live in ~/.officecli regardless, so nothing else moves.
+        // existing on-PATH copy in place rather than relocating it. Per-user
+        // configuration and plugins are independent of the binary location.
         if (IsDirOnPath(Path.GetDirectoryName(src)))
         {
             RecordInstalledVersion();

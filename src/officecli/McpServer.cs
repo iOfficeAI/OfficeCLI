@@ -62,7 +62,7 @@ public static class McpServer
         // (applies any pending .update from a previous run and kicks a
         // fresh check if >24h stale), then every hour. The hourly wake
         // is cheap because CheckInBackground is debounced by the same
-        // 24h timestamp in ~/.officecli/config.json as the normal CLI
+        // 24h timestamp in the same per-user config.json as the normal CLI
         // path, so 23 of 24 wakes no-op. The actual download / verify /
         // File.Move happens in a spawned subprocess whose stdio is
         // redirected (see UpdateChecker.SpawnRefreshProcess), so

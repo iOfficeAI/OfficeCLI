@@ -243,7 +243,7 @@ officecli install    # 显式安装
 officecli            # 直接运行也会触发安装
 ```
 
-OfficeCLI 会在后台自动检查更新。通过 `officecli config autoUpdate false` 关闭，或通过 `OFFICECLI_SKIP_UPDATE=1` 跳过单次检查。配置文件位于 `~/.officecli/config.json`。
+OfficeCLI 会在后台自动检查更新。通过 `officecli config autoUpdate false` 关闭，或通过 `OFFICECLI_SKIP_UPDATE=1` 跳过单次检查。新安装的 Linux 版本遵循 XDG：设置了 `$XDG_CONFIG_HOME` 时，配置文件位于 `$XDG_CONFIG_HOME/officecli/config.json`；否则位于 `~/.config/officecli/config.json`。已有 Linux 安装和其他平台继续使用 `~/.officecli/config.json`。
 
 ## 核心功能
 
