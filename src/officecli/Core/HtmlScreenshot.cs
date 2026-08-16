@@ -411,6 +411,13 @@ internal static class HtmlScreenshot
 
     private static string? FindChrome()
     {
+        // Explicit override first: lets hosts that ship their own Chromium
+        // (e.g. a Chrome for Testing build outside the standard install
+        // paths) point OfficeCLI at it without touching PATH.
+        var explicitBrowser = Environment.GetEnvironmentVariable("OFFICECLI_BROWSER");
+        if (!string.IsNullOrWhiteSpace(explicitBrowser) && File.Exists(explicitBrowser))
+            return explicitBrowser;
+
         string[] names = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser",
                           "chrome", "microsoft-edge", "microsoft-edge-stable", "msedge"];
         var pathHit = WhichFirst(names);
