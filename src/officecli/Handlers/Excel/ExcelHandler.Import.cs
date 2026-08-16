@@ -237,6 +237,9 @@ public partial class ExcelHandler
             sheetView.InsertAt(pane, 0);
         }
 
+        // Mark modified so Dispose flushes the import (the !Modified
+        // byte-preserving discard path would otherwise drop it).
+        Modified = true;
         SaveWorksheet(worksheet);
         return $"Imported {rows.Count} rows x {maxCols} cols into /{sheetName} starting at {startCell.ToUpperInvariant()}";
     }
