@@ -3269,16 +3269,20 @@ public partial class WordHandler
             // .Value, which throws on producers that emit w:w="9440.0".
             if (SafeWidth(tp.TableWidth?.Width) is int twWidth)
             {
-                var wType = tp.TableWidth!.Type?.Value;
+                // Read the raw token rather than EnumValue.Value. Word-compatible
+                // producers sometimes emit extension/legacy tokens that the SDK
+                // does not recognize; touching Value then aborts get/query for the
+                // entire document with "not a valid enumeration value".
+                var wType = tp.TableWidth!.Type?.InnerText;
                 // BUG-DUMP19-03: type=auto must round-trip as "auto", not
                 // collapse to a bare dxa integer (Width="0").
-                node.Format["width"] = wType == TableWidthUnitValues.Pct
+                node.Format["width"] = string.Equals(wType, "pct", StringComparison.OrdinalIgnoreCase)
                     ? FormatPctWidth(twWidth)
-                    : wType == TableWidthUnitValues.Auto
+                    : string.Equals(wType, "auto", StringComparison.OrdinalIgnoreCase)
                         ? "auto"
                         : twWidth.ToString(System.Globalization.CultureInfo.InvariantCulture);
             }
-            else if (tp.TableWidth?.Type?.Value == TableWidthUnitValues.Auto)
+            else if (string.Equals(tp.TableWidth?.Type?.InnerText, "auto", StringComparison.OrdinalIgnoreCase))
             {
                 // Some producers emit <w:tblW w:type="auto"/> without w:w.
                 node.Format["width"] = "auto";
@@ -3294,8 +3298,9 @@ public partial class WordHandler
                 node.Format["_noTblW"] = true;
             }
             // Alignment
-            if (tp.TableJustification?.Val?.Value != null)
-                node.Format["align"] = tp.TableJustification.Val.InnerText;
+            var tableAlignment = tp.TableJustification?.Val?.InnerText;
+            if (!string.IsNullOrEmpty(tableAlignment))
+                node.Format["align"] = tableAlignment;
             // Indent
             // BUG-R4B(BUG1): decimal-tolerant width read (w:tblInd w:w="0.0").
             // BUG-DUMP-R34-TBLIND: preserve the indent UNIT. A pct-typed tblInd
@@ -3305,7 +3310,8 @@ public partial class WordHandler
             // (and its bordered answer boxes) left. Encode pct as the same "X%"
             // form table width uses, so Add/Set re-parse the unit.
             if (SafeWidth(tp.TableIndentation?.Width) is int tblIndW)
-                node.Format["indent"] = tp.TableIndentation!.Type?.Value == TableWidthUnitValues.Pct
+                node.Format["indent"] = string.Equals(
+                    tp.TableIndentation!.Type?.InnerText, "pct", StringComparison.OrdinalIgnoreCase)
                     ? FormatPctWidth(tblIndW)
                     : (object)tblIndW;
             // Cell spacing
@@ -3316,8 +3322,16 @@ public partial class WordHandler
             // table add/set help. Set accepts both "auto" and "autofit"
             // (anything not "fixed" maps to Autofit), so this only affects
             // get and is round-trip safe with the dump/replay pipeline.
-            if (tp.TableLayout?.Type?.Value != null)
-                node.Format["layout"] = tp.TableLayout.Type.Value == TableLayoutValues.Fixed ? "fixed" : "autofit";
+            var tableLayout = tp.TableLayout?.Type?.InnerText;
+            if (!string.IsNullOrEmpty(tableLayout))
+            {
+                node.Format["layout"] = tableLayout.Equals("fixed", StringComparison.OrdinalIgnoreCase)
+                    ? "fixed"
+                    : tableLayout.Equals("auto", StringComparison.OrdinalIgnoreCase)
+                        || tableLayout.Equals("autofit", StringComparison.OrdinalIgnoreCase)
+                        ? "autofit"
+                        : tableLayout;
+            }
             // BUG-DUMP-R40-5: <w:tblLook> conditional-formatting bitmask
             // (firstRow/lastRow/firstColumn/lastColumn/noHBand/noVBand) controls
             // which banded/conditional table-style facets apply. Previously
@@ -3418,18 +3432,18 @@ public partial class WordHandler
             var tblpPr = tp.GetFirstChild<TablePositionProperties>();
             if (tblpPr != null)
             {
-                if (tblpPr.HorizontalAnchor?.HasValue == true)
-                    node.Format["tblp.horzAnchor"] = tblpPr.HorizontalAnchor.InnerText;
-                if (tblpPr.VerticalAnchor?.HasValue == true)
-                    node.Format["tblp.vertAnchor"] = tblpPr.VerticalAnchor.InnerText;
+                if (tblpPr.HorizontalAnchor?.InnerText is { Length: > 0 } horzAnchor)
+                    node.Format["tblp.horzAnchor"] = horzAnchor;
+                if (tblpPr.VerticalAnchor?.InnerText is { Length: > 0 } vertAnchor)
+                    node.Format["tblp.vertAnchor"] = vertAnchor;
                 if (tblpPr.TablePositionX?.HasValue == true)
                     node.Format["tblp.tblpX"] = tblpPr.TablePositionX.Value!;
                 if (tblpPr.TablePositionY?.HasValue == true)
                     node.Format["tblp.tblpY"] = tblpPr.TablePositionY.Value!;
-                if (tblpPr.TablePositionXAlignment?.HasValue == true)
-                    node.Format["tblp.tblpXSpec"] = tblpPr.TablePositionXAlignment.InnerText;
-                if (tblpPr.TablePositionYAlignment?.HasValue == true)
-                    node.Format["tblp.tblpYSpec"] = tblpPr.TablePositionYAlignment.InnerText;
+                if (tblpPr.TablePositionXAlignment?.InnerText is { Length: > 0 } xSpec)
+                    node.Format["tblp.tblpXSpec"] = xSpec;
+                if (tblpPr.TablePositionYAlignment?.InnerText is { Length: > 0 } ySpec)
+                    node.Format["tblp.tblpYSpec"] = ySpec;
                 if (tblpPr.LeftFromText?.HasValue == true)
                     node.Format["tblp.leftFromText"] = tblpPr.LeftFromText.Value!;
                 if (tblpPr.RightFromText?.HasValue == true)
@@ -3440,8 +3454,8 @@ public partial class WordHandler
                     node.Format["tblp.bottomFromText"] = tblpPr.BottomFromText.Value!;
             }
             var tblOverlap = tp.GetFirstChild<TableOverlap>();
-            if (tblOverlap?.Val?.HasValue == true)
-                node.Format["tblOverlap.val"] = tblOverlap.Val.InnerText;
+            if (tblOverlap?.Val?.InnerText is { Length: > 0 } overlap)
+                node.Format["tblOverlap.val"] = overlap;
             if (tp.Shading != null)
             {
                 var tShdVal = tp.Shading.Val?.InnerText;
