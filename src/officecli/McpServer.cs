@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.CommandLine;
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -18,6 +19,8 @@ namespace OfficeCli;
 /// </summary>
 public static class McpServer
 {
+    private sealed record InFlightRequest(CancellationTokenSource Cancellation);
+
     public static async Task RunAsync()
     {
         using var reader = new StreamReader(Console.OpenStandardInput());
@@ -69,6 +72,11 @@ public static class McpServer
         // nothing it does can corrupt our stdout JSON-RPC stream.
         using var upgradeCts = new CancellationTokenSource();
         var upgradeTask = RunPeriodicUpgradeCheckAsync(upgradeCts.Token);
+        var inFlight = new ConcurrentDictionary<string, InFlightRequest>();
+        var requestTasks = new ConcurrentDictionary<int, Task>();
+        using var executionGate = new SemaphoreSlim(1, 1);
+        using var writeGate = new SemaphoreSlim(1, 1);
+        var nextTaskId = 0;
 
         try
         {
@@ -78,7 +86,6 @@ public static class McpServer
                 if (line == null) break;
                 if (string.IsNullOrWhiteSpace(line)) continue;
 
-                JsonElement? id = null;
                 try
                 {
                     using var doc = JsonDocument.Parse(line);
@@ -92,12 +99,12 @@ public static class McpServer
                         var msg = root.ValueKind == JsonValueKind.Array
                             ? "Invalid Request: batch requests are not supported"
                             : "Invalid Request: request must be a JSON object";
-                        await writer.WriteLineAsync(ErrorJson(null, -32600, msg));
+                        await WriteResponseAsync(writer, writeGate, ErrorJson(null, -32600, msg));
                         continue;
                     }
                     // Parse id BEFORE method so a malformed method ('method': 42)
                     // can still echo the original id back per JSON-RPC 2.0 §5.
-                    id = root.TryGetProperty("id", out var idEl) ? idEl.Clone() : null;
+                    JsonElement? id = root.TryGetProperty("id", out var idEl) ? idEl.Clone() : null;
                     // method must be a string per spec; non-string is an
                     // Invalid Request (-32600), not an internal error.
                     string? method = null;
@@ -105,41 +112,140 @@ public static class McpServer
                     {
                         if (m.ValueKind != JsonValueKind.String)
                         {
-                            await writer.WriteLineAsync(ErrorJson(id, -32600, "Invalid Request: 'method' must be a string"));
+                            await WriteResponseAsync(writer, writeGate, ErrorJson(id, -32600, "Invalid Request: 'method' must be a string"));
                             continue;
                         }
                         method = m.GetString();
                     }
 
-                    var response = method switch
+                    if (method == "notifications/cancelled")
                     {
-                        "initialize" => HandleInitialize(id),
-                        "notifications/initialized" => null,
-                        "tools/list" => HandleToolsList(id),
-                        "tools/call" => HandleToolsCall(id, root),
-                        "ping" => WriteJson(w => { w.WriteStartObject(); Rpc(w, id); w.WriteStartObject("result"); w.WriteEndObject(); w.WriteEndObject(); }),
-                        // CONSISTENCY(mcp-error): truncate caller-supplied value to prevent
-                        // response amplification (echo arbitrary-length input back unchanged).
-                        _ => id.HasValue ? ErrorJson(id, -32601, $"Method not found: {OfficeCli.Help.SchemaHelpLoader.TruncateForError(method ?? "", 64)}") : null,
-                    };
+                        CancelRequest(root, inFlight);
+                        continue;
+                    }
 
-                    if (response != null)
-                        await writer.WriteLineAsync(response);
+                    var requestRoot = root.Clone();
+                    var taskId = Interlocked.Increment(ref nextTaskId);
+                    var task = ProcessRequestAsync(
+                        method,
+                        id,
+                        requestRoot,
+                        writer,
+                        writeGate,
+                        executionGate,
+                        inFlight);
+                    requestTasks[taskId] = task;
+                    _ = task.ContinueWith(
+                        completedTask => requestTasks.TryRemove(taskId, out _),
+                        CancellationToken.None,
+                        TaskContinuationOptions.ExecuteSynchronously,
+                        TaskScheduler.Default);
                 }
                 catch (JsonException)
                 {
-                    await writer.WriteLineAsync(ErrorJson(null, -32700, "Parse error"));
-                }
-                catch (Exception ex)
-                {
-                    await writer.WriteLineAsync(ErrorJson(id, -32603, $"Internal error: {ex.Message}"));
+                    await WriteResponseAsync(writer, writeGate, ErrorJson(null, -32700, "Parse error"));
                 }
             }
+
+            await Task.WhenAll(requestTasks.Values);
         }
         finally
         {
             upgradeCts.Cancel();
             try { await upgradeTask; } catch { }
+        }
+    }
+
+    private static async Task ProcessRequestAsync(
+        string? method,
+        JsonElement? id,
+        JsonElement root,
+        StreamWriter writer,
+        SemaphoreSlim writeGate,
+        SemaphoreSlim executionGate,
+        ConcurrentDictionary<string, InFlightRequest> inFlight)
+    {
+        var requestKey = id.HasValue ? id.Value.GetRawText() : null;
+        using var cancellation = new CancellationTokenSource();
+        if (requestKey != null && !inFlight.TryAdd(requestKey, new InFlightRequest(cancellation)))
+        {
+            await WriteResponseAsync(writer, writeGate, ErrorJson(id, -32600, "Invalid Request: duplicate in-flight request id"));
+            return;
+        }
+
+        try
+        {
+            string? response;
+            if (method == "tools/call")
+            {
+                await executionGate.WaitAsync(cancellation.Token);
+                try
+                {
+                    cancellation.Token.ThrowIfCancellationRequested();
+                    response = await Task.Run(() => HandleToolsCall(id, root), CancellationToken.None);
+                }
+                finally
+                {
+                    executionGate.Release();
+                }
+            }
+            else
+            {
+                response = method switch
+                {
+                    "initialize" => HandleInitialize(id),
+                    "notifications/initialized" => null,
+                    "tools/list" => HandleToolsList(id),
+                    "ping" => WriteJson(w => { w.WriteStartObject(); Rpc(w, id); w.WriteStartObject("result"); w.WriteEndObject(); w.WriteEndObject(); }),
+                    _ => id.HasValue ? ErrorJson(id, -32601, $"Method not found: {OfficeCli.Help.SchemaHelpLoader.TruncateForError(method ?? "", 64)}") : null,
+                };
+            }
+
+            // MCP cancellation is fire-and-forget. A cancelled request must not
+            // race a late response onto stdout. Synchronous Office operations
+            // are allowed to finish safely once entered; queued work is stopped.
+            if (response != null && !cancellation.IsCancellationRequested)
+                await WriteResponseAsync(writer, writeGate, response);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            // Per MCP 2024-11-05, cancellation notifications have no response.
+        }
+        catch (Exception ex)
+        {
+            if (!cancellation.IsCancellationRequested)
+                await WriteResponseAsync(writer, writeGate, ErrorJson(id, -32603, $"Internal error: {ex.Message}"));
+        }
+        finally
+        {
+            if (requestKey != null)
+                inFlight.TryRemove(requestKey, out _);
+        }
+    }
+
+    private static void CancelRequest(
+        JsonElement root,
+        ConcurrentDictionary<string, InFlightRequest> inFlight)
+    {
+        if (!root.TryGetProperty("params", out var parameters)
+            || parameters.ValueKind != JsonValueKind.Object
+            || !parameters.TryGetProperty("requestId", out var requestId))
+            return;
+
+        if (inFlight.TryGetValue(requestId.GetRawText(), out var request))
+            request.Cancellation.Cancel();
+    }
+
+    private static async Task WriteResponseAsync(StreamWriter writer, SemaphoreSlim writeGate, string response)
+    {
+        await writeGate.WaitAsync();
+        try
+        {
+            await writer.WriteLineAsync(response);
+        }
+        finally
+        {
+            writeGate.Release();
         }
     }
 
