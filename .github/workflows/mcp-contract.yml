@@ -1,0 +1,22 @@
+name: MCP Contract Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Run MCP contract tests
+        run: dotnet run --project tests/OfficeCli.McpContractTests/OfficeCli.McpContractTests.csproj -c Release --nologo

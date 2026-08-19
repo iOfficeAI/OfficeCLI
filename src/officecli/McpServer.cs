@@ -18,7 +18,7 @@ namespace OfficeCli;
 /// </summary>
 public static class McpServer
 {
-    private sealed record InFlightRequest(CancellationTokenSource Cancellation);
+    internal sealed record InFlightRequest(CancellationTokenSource Cancellation);
 
     public static async Task RunAsync()
     {
@@ -210,7 +210,7 @@ public static class McpServer
         }
     }
 
-    private static void CancelRequest(
+    internal static void CancelRequest(
         JsonElement root,
         ConcurrentDictionary<string, InFlightRequest> inFlight)
     {
@@ -267,7 +267,7 @@ public static class McpServer
 
     // ==================== Handlers ====================
 
-    private static string HandleInitialize(JsonElement? id) => WriteJson(w =>
+    internal static string HandleInitialize(JsonElement? id) => WriteJson(w =>
     {
         w.WriteStartObject();
         Rpc(w, id);
@@ -282,7 +282,7 @@ public static class McpServer
         w.WriteEndObject();
     });
 
-    private static string HandleToolsList(JsonElement? id) => WriteJson(w =>
+    internal static string HandleToolsList(JsonElement? id) => WriteJson(w =>
     {
         w.WriteStartObject();
         Rpc(w, id);
@@ -294,7 +294,7 @@ public static class McpServer
         w.WriteEndObject();
     });
 
-    private static async Task<string> HandleToolsCallAsync(
+    internal static async Task<string> HandleToolsCallAsync(
         JsonElement? id,
         JsonElement root,
         CancellationToken cancellationToken)

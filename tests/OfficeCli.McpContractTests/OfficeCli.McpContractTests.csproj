@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>OfficeCli.McpContractTests</AssemblyName>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference
+      Include="../../src/officecli/officecli.csproj"
+      AdditionalProperties="SelfContained=false;PublishSingleFile=false;PublishTrimmed=false" />
+  </ItemGroup>
+</Project>
