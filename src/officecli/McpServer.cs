@@ -1,7 +1,6 @@
 // Copyright 2026 OfficeCLI (https://OfficeCLI.AI)
 // SPDX-License-Identifier: Apache-2.0
 
-using System.CommandLine;
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text;
@@ -74,7 +73,6 @@ public static class McpServer
         var upgradeTask = RunPeriodicUpgradeCheckAsync(upgradeCts.Token);
         var inFlight = new ConcurrentDictionary<string, InFlightRequest>();
         var requestTasks = new ConcurrentDictionary<int, Task>();
-        using var executionGate = new SemaphoreSlim(1, 1);
         using var writeGate = new SemaphoreSlim(1, 1);
         var nextTaskId = 0;
 
@@ -132,7 +130,6 @@ public static class McpServer
                         requestRoot,
                         writer,
                         writeGate,
-                        executionGate,
                         inFlight);
                     requestTasks[taskId] = task;
                     _ = task.ContinueWith(
@@ -162,7 +159,6 @@ public static class McpServer
         JsonElement root,
         StreamWriter writer,
         SemaphoreSlim writeGate,
-        SemaphoreSlim executionGate,
         ConcurrentDictionary<string, InFlightRequest> inFlight)
     {
         var requestKey = id.HasValue ? id.Value.GetRawText() : null;
@@ -178,16 +174,7 @@ public static class McpServer
             string? response;
             if (method == "tools/call")
             {
-                await executionGate.WaitAsync(cancellation.Token);
-                try
-                {
-                    cancellation.Token.ThrowIfCancellationRequested();
-                    response = await Task.Run(() => HandleToolsCall(id, root), CancellationToken.None);
-                }
-                finally
-                {
-                    executionGate.Release();
-                }
+                response = await HandleToolsCallAsync(id, root, cancellation.Token);
             }
             else
             {
@@ -202,8 +189,8 @@ public static class McpServer
             }
 
             // MCP cancellation is fire-and-forget. A cancelled request must not
-            // race a late response onto stdout. Synchronous Office operations
-            // are allowed to finish safely once entered; queued work is stopped.
+            // race a late response onto stdout. Tool execution runs in an
+            // isolated child process, so cancellation can stop actual work.
             if (response != null && !cancellation.IsCancellationRequested)
                 await WriteResponseAsync(writer, writeGate, response);
         }
@@ -307,7 +294,10 @@ public static class McpServer
         w.WriteEndObject();
     });
 
-    private static string HandleToolsCall(JsonElement? id, JsonElement root)
+    private static async Task<string> HandleToolsCallAsync(
+        JsonElement? id,
+        JsonElement root,
+        CancellationToken cancellationToken)
     {
         if (!root.TryGetProperty("params", out var p))
             return ErrorJson(id, -32602, "Missing params");
@@ -325,7 +315,7 @@ public static class McpServer
         {
             // Thin shell: the officecli tool takes a CLI command line in
             // `command` and runs it through the shared System.CommandLine root.
-            var (contents, isError) = ExecuteCommandLine(args);
+            var (contents, isError) = await ExecuteCommandLineAsync(args, cancellationToken);
             return WriteJson(w =>
             {
                 w.WriteStartObject();
@@ -346,6 +336,10 @@ public static class McpServer
                 w.WriteEndObject();
                 w.WriteEndObject();
             });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -386,7 +380,9 @@ public static class McpServer
     // means no argument can be silently dropped (every CLI flag works for free),
     // and the model writes exactly what the skills' CLI examples show.
 
-    private static (IReadOnlyList<McpContent> Contents, bool IsError) ExecuteCommandLine(JsonElement args)
+    private static async Task<(IReadOnlyList<McpContent> Contents, bool IsError)> ExecuteCommandLineAsync(
+        JsonElement args,
+        CancellationToken cancellationToken)
     {
         var argv = ExtractArgv(args);
         if (argv.Length == 0)
@@ -398,8 +394,8 @@ public static class McpServer
         if (argv[0] is "load_skill" or "skill" or "skills")
             return (new[] { new McpContent("text", Text: HandleSkillCommand(argv)) }, false);
         if (IsScreenshot(argv))
-            return (RunScreenshotArgv(argv), false);
-        return SurfaceCliResult(RunCliRaw(argv));
+            return (await RunScreenshotArgvAsync(argv, cancellationToken), false);
+        return SurfaceCliResult(await RunCliProcessAsync(argv, cancellationToken));
     }
 
     private static string[] ExtractArgv(JsonElement args)
@@ -491,7 +487,9 @@ public static class McpServer
     // screenshot delegates to the CLI (view <file> screenshot ... -o <tmp>) and
     // returns the rendered PNG inline as an image content block. Injects an -o
     // path when the caller didn't give one so we know which file to read back.
-    private static IReadOnlyList<McpContent> RunScreenshotArgv(string[] argv)
+    private static async Task<IReadOnlyList<McpContent>> RunScreenshotArgvAsync(
+        string[] argv,
+        CancellationToken cancellationToken)
     {
         var list = argv.ToList();
         int oi = list.FindIndex(a => a == "-o" || a == "--out");
@@ -499,7 +497,7 @@ public static class McpServer
         string? autoTemp = null;
         if (oi >= 0 && oi + 1 < list.Count) outPath = list[oi + 1];
         else { outPath = Path.Combine(Path.GetTempPath(), $"officecli_mcp_shot_{Guid.NewGuid():N}.png"); autoTemp = outPath; list.Add("-o"); list.Add(outPath); }
-        var r = RunCliRaw(list.ToArray());
+        var r = await RunCliProcessAsync(list.ToArray(), cancellationToken);
         if (r.Exit != 0)
             throw new ArgumentException(StripErrPrefix(FirstNonEmpty(r.Stderr.Trim(), r.Stdout.Trim())));
         if (!File.Exists(outPath))
@@ -533,10 +531,50 @@ public static class McpServer
     // validation, business logic, and the {success,data} envelope are shared
     // by construction — not re-marshalled (and re-bugged) by hand here.
     // ====================================================================
-    private static RootCommand? _rootCommand;
-    private static RootCommand RootCommand => _rootCommand ??= CommandBuilder.BuildRootCommand();
-
     private readonly record struct CliResult(int Exit, string Stdout, string Stderr);
+
+    private static async Task<CliResult> RunCliProcessAsync(string[] argv, CancellationToken cancellationToken)
+    {
+        var processPath = Environment.ProcessPath
+            ?? throw new InvalidOperationException("Unable to resolve the OfficeCLI executable path.");
+        var entryPath = Assembly.GetEntryAssembly()?.Location;
+        var startInfo = new System.Diagnostics.ProcessStartInfo(processPath)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        if (Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrEmpty(entryPath))
+            startInfo.ArgumentList.Add(entryPath);
+        foreach (var arg in argv)
+            startInfo.ArgumentList.Add(arg);
+
+        using var process = new System.Diagnostics.Process { StartInfo = startInfo };
+        if (!process.Start())
+            throw new InvalidOperationException("Unable to start the OfficeCLI tool process.");
+        var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+            return new CliResult(process.ExitCode, await stdout, await stderr);
+        }
+        catch (OperationCanceledException)
+        {
+            try
+            {
+                if (!process.HasExited)
+                    process.Kill(entireProcessTree: true);
+            }
+            catch
+            {
+                // The process may have exited between the state check and kill.
+            }
+            throw;
+        }
+    }
 
     /// <summary>
     /// Parse+invoke argv through the shared CLI root, capturing stdout AND
@@ -552,19 +590,6 @@ public static class McpServer
     /// stripped one-liner. Surfacing only `pr.Errors` here used to drop that
     /// usage block, making MCP less informative than the bare CLI.
     /// </summary>
-    private static CliResult RunCliRaw(string[] argv)
-    {
-        var pr = RootCommand.Parse(argv);
-        var prevOut = Console.Out;
-        var prevErr = Console.Error;
-        var so = new System.IO.StringWriter();
-        var se = new System.IO.StringWriter();
-        int exit;
-        try { Console.SetOut(so); Console.SetError(se); exit = pr.Invoke(); }
-        finally { Console.SetOut(prevOut); Console.SetError(prevErr); }
-        return new CliResult(exit, so.ToString(), se.ToString());
-    }
-
     // Translate a CLI invocation's (exit, stdout, stderr) into MCP content.
     //
     // Always surface stdout AND stderr together when both are present, so the
