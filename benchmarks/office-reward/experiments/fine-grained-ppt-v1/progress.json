@@ -1,0 +1,2709 @@
+{
+  "metadata": {
+    "model": "gpt-5.5",
+    "reasoning_effort": "medium",
+    "rubric_sha256": "e23fd259f88524aac2996761a39730a8dcd045752949e5576818eee9322d672f"
+  },
+  "cases": {
+    "slide_0459": {
+      "slide_id": "slide_0459",
+      "case_id": "RSS_2024_Mobile_ALOHA",
+      "title": "RSS 2024 Mobile ALOHA",
+      "role": "title",
+      "image": "/benchmark-slides/slide_0459.png",
+      "image_sha256": "b9f313d267f364270e5ce8bb9d5a4cda1fb0ce2ba4f0593a78570526eeb09bc2",
+      "human_aesthetics_grade_0_3": 3,
+      "human_agreement": 0.67,
+      "human_reason": "",
+      "results": [
+        {
+          "criterion_id": "ppt-layout",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.93,
+          "evidence": "左侧标题、说明文字和RSS信息块形成清晰纵向分组，右侧大型机器人占据画面右半区，左右视觉重量平衡；标题下蓝色横线与左侧内容对齐，边距充足。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-typography",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.92,
+          "evidence": "标题“Low-Cost Mobile Bimanual Imitation”字号很大且深蓝高对比；正文和RSS 2024信息字号清晰，$32K用蓝色加粗形成稳定强调层级。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-graphics",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.87,
+          "evidence": "右侧机器人插画清晰且直接对应移动双臂平台主题；左侧圆形图标和底部RSS标识也较清楚。",
+          "defects": [
+            "机器人为带阴影的复杂插画，左侧图标和RSS模块为扁平风格，图形风格略不统一"
+          ]
+        },
+        {
+          "criterion_id": "ppt-technical",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.95,
+          "evidence": "标题、正文、图标、RSS信息块和机器人均完整可见；未见文字截断、元素溢出、异常重叠或断裂连接线。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-economy",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.91,
+          "evidence": "页面只包含标题、核心一句说明、RSS信息块和机器人主视觉，信息密度适中；右下与左侧留白帮助分隔内容，没有明显冗余装饰或拥挤区域。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-central-claim",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-numbers",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-labels",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-scope",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-reference-coverage",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-takeaway",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.93,
+          "evidence": "大标题写明“Low-Cost Mobile Bimanual Imitation”，正文进一步说明“Mobile ALOHA is a $32K bimanual mobile manipulation platform plus imitation-learning recipe…”，可快速复述为介绍低成本移动双臂模仿/遥操作平台。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-alignment",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.88,
+          "evidence": "标题中的“Low-Cost”“Mobile”“Bimanual”“Imitation”分别由正文“$32K”“mobile manipulation platform”“bimanual”“imitation-learning recipe”支撑，右侧机器人图也呼应移动双臂平台。",
+          "defects": [
+            "底部“RSS 2024 Robotics: Science and Systems”更像出处信息，不直接支撑核心结论。"
+          ]
+        },
+        {
+          "criterion_id": "ppt-reading-path",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.86,
+          "evidence": "最大视觉落点是左上大标题，其次是左中正文说明，右侧大机器人插图作为补充视觉；整体按左上到左中再到右侧理解较自然。",
+          "defects": [
+            "右侧机器人插图面积很大，可能与正文争夺第二视觉落点。",
+            "底部会议信息块与主体内容的阅读终点关系较弱。"
+          ]
+        },
+        {
+          "criterion_id": "ppt-comprehension",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.82,
+          "evidence": "正文用一句话解释了 Mobile ALOHA 的价格、平台类型和用途，关键数字“$32K”用蓝色突出，图像帮助理解机器人形态。",
+          "defects": [
+            "“ALOHA”缩写未解释。",
+            "“bimanual”“imitation-learning”“whole-body teleoperation”等术语对非机器人受众需要额外背景。"
+          ]
+        },
+        {
+          "criterion_id": "ppt-information-economy",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.84,
+          "evidence": "页面主要由标题、一句核心说明、会议来源块和机器人图组成，信息量较少，核心数字“$32K”突出。",
+          "defects": [
+            "左侧圆形图标与右侧机器人图存在一定功能重复。",
+            "会议来源块占用独立区域，但与本页核心信息关系较间接。"
+          ]
+        }
+      ],
+      "calls": {
+        "aesthetics": {
+          "response_id": "resp_0ae82756ca3a5689016a7adc92f31881939867d99d86489369",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1941,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 735,
+            "output_tokens_details": {
+              "reasoning_tokens": 301
+            },
+            "total_tokens": 2676
+          },
+          "prompt_sha256": "138634ca9b1770b95205e23f9778c777755ef1d1e4cc8685735e5efa11bd39a9"
+        },
+        "communication_effectiveness": {
+          "response_id": "resp_0c38ae9f54d4c825016a7adc9f69e48193ab4c7025ae1c1c7e",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1872,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 881,
+            "output_tokens_details": {
+              "reasoning_tokens": 334
+            },
+            "total_tokens": 2753
+          },
+          "prompt_sha256": "e82b103974b4d5d7025eeac5c12a9cc59c118f107513199f5e18655325aea827"
+        }
+      }
+    },
+    "slide_0002": {
+      "slide_id": "slide_0002",
+      "case_id": "ICML_2025_An_analytic_theory_of_creativity_in_convolutional_diffusion_models",
+      "title": "ICML 2025 An analytic theory of creativity in convolutional diffusion models",
+      "role": "method",
+      "image": "/benchmark-slides/slide_0002.png",
+      "image_sha256": "efd1004cfde24973798377a65aa78031f230a74e060e69d408d59eb038bf94e8",
+      "human_aesthetics_grade_0_3": 2,
+      "human_agreement": 0.67,
+      "human_reason": "",
+      "results": [
+        {
+          "criterion_id": "ppt-layout",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.88,
+          "evidence": "左侧深蓝栏与右侧主内容区分明确；右侧按 1-4 模块分区排列，卡片边距较一致，顶部标题线和多个圆角框形成清晰网格。",
+          "defects": [
+            "右侧下半部分模块 3 与模块 4 高度和内容密度差异较大，视觉重心偏右下",
+            "模块数量较多，整体略显繁密"
+          ]
+        },
+        {
+          "criterion_id": "ppt-typography",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.9,
+          "evidence": "左侧大标题“How the Method Works”和右侧模块标题清晰；但多处说明文字很小，例如模块 2 的描述、模块 4 图下/图内标注和底部说明在演示距离下较难读。",
+          "defects": [
+            "正文和图中标签字号偏小",
+            "英文说明文字行距紧、信息多",
+            "局部层级较多，阅读路径需要停留辨认"
+          ]
+        },
+        {
+          "criterion_id": "ppt-graphics",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.84,
+          "evidence": "页面使用网格图标、箭头、训练集小图和流程图来解释各模块，蓝/绿/橙/紫色分区风格基本统一，并与对应文本内容相连。",
+          "defects": [
+            "部分小图和表格细节过密，远看难辨认",
+            "模块 4 的多张小矩阵和问号格较小，标注不够醒目"
+          ]
+        },
+        {
+          "criterion_id": "ppt-technical",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.86,
+          "evidence": "可见元素均在画布内完整呈现；圆角框、箭头、图标和文字没有明显裁切、溢出或相互遮挡。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-economy",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.87,
+          "evidence": "整页包含左侧标题栏、四个大模块、多个子卡片、说明文字和多组示意图；虽然分区清楚，但右侧内容密度较高。",
+          "defects": [
+            "信息量偏大，接近讲义式页面",
+            "小字说明和多组小图同时出现，增加视觉负担",
+            "留白主要被卡片边距占用，对阅读缓冲有限"
+          ]
+        },
+        {
+          "criterion_id": "ppt-central-claim",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-numbers",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-labels",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-scope",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-reference-coverage",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-takeaway",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.86,
+          "evidence": "页面标题为“ANALYTIC VIEW OF DIFFUSION CREATIVITY”，左下角总结写明“generation is patch retrieval and assembly: LS constrains matches to the same location; ELS allows matches from anywhere”，主区按 1-4 展示偏置、匹配方案、分析机器和马赛克生成机制。",
+          "defects": [
+            "核心信息需要把多个区域合并理解，不是单一句子直接呈现",
+            "“Two Inductive Biases”“Two Matching Schemes”“Analytic Machines”“Mechanism”并列，数秒内可能只记住流程而非唯一结论"
+          ]
+        },
+        {
+          "criterion_id": "ppt-alignment",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.88,
+          "evidence": "标题强调 diffusion creativity 的 analytic view；第1部分列出“Finite Receptive-Field Locality”和“Translational Equivariance”，第2部分对比 LS/ELS，第4部分明确“Generation as a Locally Consistent Mosaic”，均指向用局部 patch 匹配解释生成机制。",
+          "defects": [
+            "第3部分“Analytic Machines / No explicit training”与第4部分马赛克机制的关系需要阅读正文才能连接",
+            "左侧大标题“How the Method Works”和顶部标题“ANALYTIC VIEW OF DIFFUSION CREATIVITY”存在两个层级的主旨入口"
+          ]
+        },
+        {
+          "criterion_id": "ppt-reading-path",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.84,
+          "evidence": "主内容使用明显编号 1、2、3、4，从上方“Two Inductive Biases”到中部“Two Matching Schemes”，再到底部“Analytic Machines”和“Mechanism”，基本形成顺序；卡片边框和分区帮助分组。",
+          "defects": [
+            "左侧栏、顶部标题、编号1和左下角总结框同时吸引注意，第一视觉落点不完全唯一",
+            "底部第3和第4并排，阅读时可能在两者之间跳转"
+          ]
+        },
+        {
+          "criterion_id": "ppt-comprehension",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.9,
+          "evidence": "页面包含“Finite Receptive-Field Locality”“Translational Equivariance”“LS”“ELS”“coarse-to-fine patch selection”等专业术语，部分有解释，如 ELS 下写有“match patches from any spatial location”，但图中小标签如“Training Set same location/any location”较小。",
+          "defects": [
+            "LS、ELS缩写虽在标题中展开，但需要读多处说明才能掌握区别",
+            "多个小图、网格和箭头的含义依赖细读，远距离可读性较弱",
+            "术语密度高，非专业受众理解成本较高"
+          ]
+        },
+        {
+          "criterion_id": "ppt-information-economy",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.82,
+          "evidence": "多数内容块都围绕偏置、匹配方案和生成机制展开；但同一思想在左下总结框、第2部分 LS/ELS 对比和第4部分机制说明中多次出现，且页面有大量小网格、箭头和训练集示意图。",
+          "defects": [
+            "信息密度较高，四个大模块加侧栏说明容易淹没重点",
+            "LS/ELS 的说明在多个位置重复出现",
+            "部分小型示意图和标签过多，可能更适合放入讲者解释或后续页"
+          ]
+        }
+      ],
+      "calls": {
+        "aesthetics": {
+          "response_id": "resp_0a0f29c5034c08e1016a7adc92f534819798ab53ad77b3c4a0",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1941,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 749,
+            "output_tokens_details": {
+              "reasoning_tokens": 185
+            },
+            "total_tokens": 2690
+          },
+          "prompt_sha256": "138634ca9b1770b95205e23f9778c777755ef1d1e4cc8685735e5efa11bd39a9"
+        },
+        "communication_effectiveness": {
+          "response_id": "resp_031bebdc668a4044016a7adc9fc7e081939dcee0da3861ed59",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1872,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 1314,
+            "output_tokens_details": {
+              "reasoning_tokens": 516
+            },
+            "total_tokens": 3186
+          },
+          "prompt_sha256": "e82b103974b4d5d7025eeac5c12a9cc59c118f107513199f5e18655325aea827"
+        }
+      }
+    },
+    "slide_0479": {
+      "slide_id": "slide_0479",
+      "case_id": "F1000_talks_6",
+      "title": "F1000 talks 6",
+      "role": "results",
+      "image": "/benchmark-slides/slide_0479.png",
+      "image_sha256": "ad97251fb8c78deab33fcd533c80c872ba998a0651244a05bef57c4b7df7f852",
+      "human_aesthetics_grade_0_3": 3,
+      "human_agreement": 0.67,
+      "human_reason": "",
+      "results": [
+        {
+          "criterion_id": "ppt-layout",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.91,
+          "evidence": "页面采用上方标题区、左侧数据与要点栏、右侧表格和双柱状图、底部结论框的分区结构；竖向分隔线和底部横向提示框使视觉重心清晰。",
+          "defects": [
+            "右侧表格与两张图占用区域较满，底部结论框贴近页面下方，整体略显紧凑"
+          ]
+        },
+        {
+          "criterion_id": "ppt-typography",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.88,
+          "evidence": "主标题字号大且深蓝加粗，副标题斜体，左侧小标题和右侧图表标题层级清楚；正文关键词如“5,745”“over 70%”有蓝色加粗强调。",
+          "defects": [
+            "表格单元格文字、图表坐标轴标签和左下角注释字号较小，远距离阅读会吃力"
+          ]
+        },
+        {
+          "criterion_id": "ppt-graphics",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.87,
+          "evidence": "右侧表格有清晰表头和分组，下面两张柱状图颜色区分模型并直接对应 F1 对比；左侧圆形图标和底部勾选图标风格较统一。",
+          "defects": [
+            "两张柱状图的坐标轴与类别标签偏小，左侧图的纵轴标签靠近绘图区，视觉上略拥挤"
+          ]
+        },
+        {
+          "criterion_id": "ppt-technical",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.86,
+          "evidence": "标题、副标题、表格、柱状图、左侧说明和底部绿色结论框均完整显示；未见明显裁切、溢出、元素遮挡或断裂连接线。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-economy",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.84,
+          "evidence": "页面信息密度较高但分组明确，左侧要点、右侧量化结果和底部总结各自承担功能，留白主要用于分隔阅读路径。",
+          "defects": [
+            "表格与两张柱状图展示了部分重复数值，右侧区域略显信息压缩"
+          ]
+        },
+        {
+          "criterion_id": "ppt-central-claim",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-numbers",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-labels",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-scope",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-reference-coverage",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-takeaway",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.86,
+          "evidence": "副标题直接写明“Fine-tuned BERT models outperform GPT across datasets; sentence-level filtering substantially reduces curation workload”，底部绿色框再次强调“reduce curation workload by over 70%”。",
+          "defects": [
+            "页面同时突出模型性能优于GPT和过滤减少工作量两个核心点，不是单一结论",
+            "底部最终强调点与右侧F1性能表的主视觉重点不完全一致"
+          ]
+        },
+        {
+          "criterion_id": "ppt-alignment",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.84,
+          "evidence": "右侧表格和柱状图显示BioBERT、SciBERT的F1高于GPT-3.5/GPT-4，支持副标题中“BERT models outperform GPT”；底部绿色结论强调“over 70%”工作量降低。",
+          "defects": [
+            "“over 70%”工作量降低缺少对应图表或计算证据，只在文字中出现",
+            "右侧最大证据区是模型F1对比，而页面最终强调的是工作量降低，重点存在竞争",
+            "Key Findings包含三条不同发现，削弱标题与单一结论的一致性"
+          ]
+        },
+        {
+          "criterion_id": "ppt-reading-path",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.78,
+          "evidence": "页面有明确大标题、斜体副标题，左侧为Dataset和Key Findings，右侧为Performance Comparison，底部绿色横幅作为最终结论。",
+          "defects": [
+            "标题之后的第二视觉落点可能在左侧Key Findings，也可能在右侧表格，顺序不唯一",
+            "右侧同时有表格和两个柱状图，阅读时需要在重复数据之间切换"
+          ]
+        },
+        {
+          "criterion_id": "ppt-comprehension",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.8,
+          "evidence": "表格列出Precision、Recall、F1，模型名包括BioBERT、SciBERT、GPT-3.5、GPT-4，柱状图标注F1数值如0.87、0.86、0.78、0.81。",
+          "defects": [
+            "F1、few-shot、fine-tuned、biocuration等术语未解释",
+            "右侧表格与两张图信息密度较高，需要反复对照",
+            "“over 70%”的含义和计算来源没有在页面中说明"
+          ]
+        },
+        {
+          "criterion_id": "ppt-information-economy",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.82,
+          "evidence": "右侧表格已包含两组数据的F1值，下面两个柱状图又重复展示同一F1对比；左侧Key Findings和底部绿色框都提到“over 70%”。",
+          "defects": [
+            "表格与柱状图重复呈现F1信息",
+            "工作量降低结论在Key Findings和底部横幅重复出现",
+            "Dataset计数、三条发现、完整指标表、两张图和底部结论同时出现，页面负载偏高"
+          ]
+        }
+      ],
+      "calls": {
+        "aesthetics": {
+          "response_id": "resp_0c229a29c708045f016a7adc92e72481978dc5b959eefb1fef",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1941,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 907,
+            "output_tokens_details": {
+              "reasoning_tokens": 367
+            },
+            "total_tokens": 2848
+          },
+          "prompt_sha256": "138634ca9b1770b95205e23f9778c777755ef1d1e4cc8685735e5efa11bd39a9"
+        },
+        "communication_effectiveness": {
+          "response_id": "resp_0dc49c930f867729016a7adca288c0819591a2ee03dc1926b2",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1872,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 1401,
+            "output_tokens_details": {
+              "reasoning_tokens": 701
+            },
+            "total_tokens": 3273
+          },
+          "prompt_sha256": "e82b103974b4d5d7025eeac5c12a9cc59c118f107513199f5e18655325aea827"
+        }
+      }
+    },
+    "slide_0437": {
+      "slide_id": "slide_0437",
+      "case_id": "ICLR_2025_Kolmogorov_Arnold_Networks",
+      "title": "ICLR 2025 Kolmogorov Arnold Networks",
+      "role": "takeaway",
+      "image": "/benchmark-slides/slide_0437.png",
+      "image_sha256": "1c171c0b8980378f893ff841734e63685b5d8c05285050cae1203ac7d2ea0ea7",
+      "human_aesthetics_grade_0_3": 3,
+      "human_agreement": 0.67,
+      "human_reason": "",
+      "results": [
+        {
+          "criterion_id": "ppt-layout",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.89,
+          "evidence": "页面采用上方标题、左右双栏内容区和底部结论条；左侧解释卡片与右侧三张结果表边界对齐，整体重心清晰。",
+          "defects": [
+            "内容区信息较多，左侧图示和说明框、右侧三表之间显得略紧凑",
+            "底部横幅进一步压缩主体区域"
+          ]
+        },
+        {
+          "criterion_id": "ppt-typography",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.86,
+          "evidence": "主标题字号大且深蓝突出，副标题、栏标题、表头和正文层级明确；关键数值用蓝色加粗强调。",
+          "defects": [
+            "表格中的模型名、架构和图示标注字号偏小，远距离阅读压力较大",
+            "正文中加粗蓝字较多，视觉强调略分散"
+          ]
+        },
+        {
+          "criterion_id": "ppt-graphics",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.87,
+          "evidence": "左侧 MLP/KAN 示意图、绿色图标说明和右侧三张表格风格统一，均直接支撑 KAN 与 MLP 对比主题。",
+          "defects": [
+            "网络图中的权重数字和小型 spline 图标细节较小，不易辨认",
+            "右侧三张表信息重复结构较多，视觉变化有限"
+          ]
+        },
+        {
+          "criterion_id": "ppt-technical",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.92,
+          "evidence": "所有文本、表格、图标和边框均完整显示；未见明显裁切、重叠、溢出或断裂连接线。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-economy",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.84,
+          "evidence": "页面几乎无无意义空白，左侧概念解释、右侧结果表和底部结论各有明确功能，信息密度较高但分区清楚。",
+          "defects": [
+            "整体偏满，三张结果表加底部结论条造成一定拥挤感",
+            "底部结论与标题信息有轻微重复，增加视觉负担"
+          ]
+        },
+        {
+          "criterion_id": "ppt-central-claim",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-numbers",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-labels",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-scope",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-reference-coverage",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-takeaway",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.93,
+          "evidence": "页眉直接写“Key Takeaway: Spline Edges Beat MLP Weights”，底部总结“KANs ... deliver state-of-the-art accuracy with far fewer parameters and greater interpretability”。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-alignment",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.9,
+          "evidence": "左侧解释“KAN”用“learnable 1D spline activation function on the edge”，右侧三组结果均突出“KAN (ours)”或“Best KAN (ours)”的更低误差，底部结论强调“accuracy”“fewer parameters”“interpretability”。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-reading-path",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.82,
+          "evidence": "视觉路径大体为顶部标题、左侧“What is a KAN?”解释、右侧编号1/2/3结果表、底部黄色结论条。",
+          "defects": [
+            "标题后左侧解释区和右侧结果区权重接近，第二落点可能在两栏之间竞争",
+            "页面内容较密，最终落到底部结论虽明确但需要扫过较多表格"
+          ]
+        },
+        {
+          "criterion_id": "ppt-comprehension",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.78,
+          "evidence": "页面解释了“KANs replace each scalar weight...”并用图示对比“MLP (scalar weights)”和“KAN (spline edges)”，表格中用“Test MSE (↓)”“# Parameters (≈)”提示指标含义。",
+          "defects": [
+            "“PDE Solving: 2D Poisson Equation”“Bessel Jν(x)”“ellipkinc(m)”等专业术语未解释",
+            "“[2, 2, 1]”“width-10”等架构记法需要领域背景"
+          ]
+        },
+        {
+          "criterion_id": "ppt-information-economy",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.8,
+          "evidence": "主要内容块均服务于KAN优于MLP：左侧定义和三条优势，右侧三张结果表，底部一句结论。",
+          "defects": [
+            "三张结果表信息量较大，部分数字和重复的表头占据较多空间",
+            "左侧图示、三条优势和底部结论存在一定重复强调"
+          ]
+        }
+      ],
+      "calls": {
+        "aesthetics": {
+          "response_id": "resp_0a86d8ac556197ff016a7adc9430148196a0307b037638b7ab",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1941,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 801,
+            "output_tokens_details": {
+              "reasoning_tokens": 285
+            },
+            "total_tokens": 2742
+          },
+          "prompt_sha256": "138634ca9b1770b95205e23f9778c777755ef1d1e4cc8685735e5efa11bd39a9"
+        },
+        "communication_effectiveness": {
+          "response_id": "resp_0783cf8d7ac3f864016a7adcb5c7508194b864c9e6221c9999",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1872,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 1070,
+            "output_tokens_details": {
+              "reasoning_tokens": 516
+            },
+            "total_tokens": 2942
+          },
+          "prompt_sha256": "e82b103974b4d5d7025eeac5c12a9cc59c118f107513199f5e18655325aea827"
+        }
+      }
+    },
+    "slide_0005": {
+      "slide_id": "slide_0005",
+      "case_id": "ICLR_2024_ToolLLM",
+      "title": "ICLR 2024 ToolLLM",
+      "role": "method",
+      "image": "/benchmark-slides/slide_0005.png",
+      "image_sha256": "c67c1a7633e94aba2c317278a30364b207f6d803cd782215adb471999ba855d6",
+      "human_aesthetics_grade_0_3": 2,
+      "human_agreement": 0.67,
+      "human_reason": "3、4、6 的箭头存在严重问题。",
+      "results": [
+        {
+          "criterion_id": "ppt-layout",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.9,
+          "evidence": "页面采用六个等宽纵向步骤卡片，从左到右排列，顶部标题和底部 Outcome 横条对齐，整体视觉重心清晰。",
+          "defects": [
+            "六栏内容较多，部分栏内下方留白与文字集中区不完全均衡"
+          ]
+        },
+        {
+          "criterion_id": "ppt-typography",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.88,
+          "evidence": "主标题“TooiLLaMA: How the Method Works”和各栏步骤标题清晰，但多处说明文字很小，如第5栏 Training Setup 列表、第3栏和第4栏底部项目符号。",
+          "defects": [
+            "正文和图内标注字号偏小，演示距离下阅读困难",
+            "部分栏内存在多级小字，层级不够轻松"
+          ]
+        },
+        {
+          "criterion_id": "ppt-graphics",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.86,
+          "evidence": "各步骤使用图标、流程框、树形图和训练流程图表达过程，颜色和圆角框风格基本统一，能支撑六步方法说明。",
+          "defects": [
+            "第4栏树图和第6栏流程图的细小标注较难辨认",
+            "部分图形信息量较高，视觉负担偏大"
+          ]
+        },
+        {
+          "criterion_id": "ppt-technical",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.9,
+          "evidence": "所有六个卡片、标题、图形、箭头和底部 Outcome 条均完整显示，未见明显裁切、溢出、重叠或断裂连接线。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-economy",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.87,
+          "evidence": "一页同时承载六个步骤、多个图示和大量项目符号，信息密度很高；虽然分栏组织清楚，但多个区域呈现文档式小字说明。",
+          "defects": [
+            "页面偏拥挤，尤其是第3、4、5、6栏的小字说明和图内标注",
+            "细节过多削弱快速浏览效率"
+          ]
+        },
+        {
+          "criterion_id": "ppt-central-claim",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-numbers",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-labels",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-scope",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-reference-coverage",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-takeaway",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.88,
+          "evidence": "标题写着“ToolLLaMA: How the Method Works”，页面用编号1到6展示从“Crawl RapidAPI & Filter”到“Train Dense API Retriever”的流程，底部 Outcome 明确说明 ToolLLaMA 学会规划和执行真实 API 调用。",
+          "defects": [
+            "六个栏位信息量较大，数秒内只能稳定恢复总体流程，难以恢复具体机制",
+            "每栏包含小字说明和图示，核心结论被大量步骤细节稀释"
+          ]
+        },
+        {
+          "criterion_id": "ppt-alignment",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.9,
+          "evidence": "标题是方法工作原理，六个编号模块依次呈现数据收集、指令生成、API执行、搜索、微调和检索器训练，底部 Outcome 总结为通过标注解路径监督微调并用检索器提供相关 API。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-reading-path",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.87,
+          "evidence": "页面顶部标题后，六个竖向卡片用深蓝圆点编号1、2、3、4、5、6从左到右排列，最终落点是底部横向 Outcome 总结框。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-comprehension",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.86,
+          "evidence": "页面出现“DFSDT”“API-Call”“LLaMA-2-7B”“Sentence-BERT”“Dense Embeddings”等术语，部分如第5栏训练参数和第4栏图例文字较小。",
+          "defects": [
+            "多个缩写和技术术语未在页面中充分解释",
+            "小字号训练设置、图例和项目符号需要放大阅读",
+            "第4栏树搜索图和第6栏检索器训练流程对非专业受众理解成本较高"
+          ]
+        },
+        {
+          "criterion_id": "ppt-information-economy",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.82,
+          "evidence": "六个内容块都对应方法流程中的必要环节，底部 Outcome 将这些步骤收束为最终训练与推理效果。",
+          "defects": [
+            "第5栏的训练超参数列表、第1栏的多条筛选规则和第4栏底部搜索细节较细，可能更适合放入讲者备注",
+            "RapidAPI、LLaMA-2-7B、Sentence-BERT 标识和多个小图标增加了视觉负担"
+          ]
+        }
+      ],
+      "calls": {
+        "aesthetics": {
+          "response_id": "resp_0d8e4b301b90044a016a7adcac4a508190b4b4530781e606c0",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1941,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 779,
+            "output_tokens_details": {
+              "reasoning_tokens": 269
+            },
+            "total_tokens": 2720
+          },
+          "prompt_sha256": "138634ca9b1770b95205e23f9778c777755ef1d1e4cc8685735e5efa11bd39a9"
+        },
+        "communication_effectiveness": {
+          "response_id": "resp_0f2e182f1ff516f7016a7adcb8b3e08195a6c949c4c62e4f0f",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1872,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 1077,
+            "output_tokens_details": {
+              "reasoning_tokens": 482
+            },
+            "total_tokens": 2949
+          },
+          "prompt_sha256": "e82b103974b4d5d7025eeac5c12a9cc59c118f107513199f5e18655325aea827"
+        }
+      }
+    },
+    "slide_0010": {
+      "slide_id": "slide_0010",
+      "case_id": "CVPR_2025_DepthCrafter",
+      "title": "CVPR 2025 DepthCrafter",
+      "role": "title",
+      "image": "/benchmark-slides/slide_0010.png",
+      "image_sha256": "935c5d5027f46b996a09de2ac17dcbe2bba2861689fc32cafd0bf3bff383f8a3",
+      "human_aesthetics_grade_0_3": 1,
+      "human_agreement": 0.67,
+      "human_reason": "左侧留白过多。",
+      "results": [
+        {
+          "criterion_id": "ppt-layout",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.92,
+          "evidence": "标题居中，三块流程卡片横向均匀排列并用箭头连接，下方“CORE CONTRIBUTION”信息条与主体对齐；底部留白较大但有页脚和淡色装饰圆形。",
+          "defects": [
+            "下半屏留白偏多，视觉重心集中在上半部分",
+            "右上背景斜面占位较大，略拉偏画面重心"
+          ]
+        },
+        {
+          "criterion_id": "ppt-typography",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.9,
+          "evidence": "主标题“Depth for Long Videos”字号大且对比强，流程卡片内关键词加粗，贡献说明中重点短语加粗形成层级。",
+          "defects": [
+            "卡片顶部小标签如“REFRAMES”“USING”和底部页脚字号较小，远距离可读性一般",
+            "贡献说明正文行长较长，阅读负担略高"
+          ]
+        },
+        {
+          "criterion_id": "ppt-graphics",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.88,
+          "evidence": "三张立体卡片、青色箭头、斜纹背景和贡献信息条风格统一，箭头清楚表达从左到右的流程关系。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-technical",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.93,
+          "evidence": "标题、卡片文字、箭头和底部信息条均完整显示，未见文字截断、元素重叠或连接线断裂。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-economy",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.9,
+          "evidence": "页面主要信息集中为标题、三步流程和一条核心贡献说明，装饰线条较克制，整体不拥挤。",
+          "defects": [
+            "底部大面积深色空白信息量较低",
+            "背景装饰圆环和斜面虽不干扰但增加了少量非必要视觉元素"
+          ]
+        },
+        {
+          "criterion_id": "ppt-central-claim",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-numbers",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-labels",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-scope",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-reference-coverage",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-takeaway",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.95,
+          "evidence": "页面中央流程和底部“CORE CONTRIBUTION”都明确表达：DepthCrafter 将 zero-shot video depth estimation 重新表述为 generative video-to-depth prediction，并使用 pre-trained image-to-video diffusion model。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-alignment",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.9,
+          "evidence": "标题“Depth for Long Videos”、三段式流程“REFRAMES → AS → USING”和底部总结句共同指向同一贡献，没有出现相反或竞争结论。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-reading-path",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.94,
+          "evidence": "视觉路径从顶部大标题开始，随后按左到右箭头阅读三个内容框，最后落到底部“CORE CONTRIBUTION”总结，顺序清晰。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-comprehension",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.82,
+          "evidence": "文本密度低，关键短语加粗，底部句子完整复述贡献；但包含“zero-shot”“generative video-to-depth prediction”“image-to-video diffusion model”等专业术语。",
+          "defects": [
+            "专业术语未在页面内解释",
+            "非该领域受众可能需要额外背景理解"
+          ]
+        },
+        {
+          "criterion_id": "ppt-information-economy",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.86,
+          "evidence": "三个主框和底部贡献栏都服务于核心信息，页面没有大量无关文字；但底部句子基本重复了上方流程内容。",
+          "defects": [
+            "上方流程与底部总结存在可见重复",
+            "背景纹理、页脚和装饰线条不直接承载核心信息"
+          ]
+        }
+      ],
+      "calls": {
+        "aesthetics": {
+          "response_id": "resp_0f4c1eff6adba74b016a7adcb870148196b0b08f669f26fb34",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1941,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 722,
+            "output_tokens_details": {
+              "reasoning_tokens": 238
+            },
+            "total_tokens": 2663
+          },
+          "prompt_sha256": "138634ca9b1770b95205e23f9778c777755ef1d1e4cc8685735e5efa11bd39a9"
+        },
+        "communication_effectiveness": {
+          "response_id": "resp_0a4c6ded6dd6e875016a7adcc4dc708195b62591e4c6d1288d",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1872,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 894,
+            "output_tokens_details": {
+              "reasoning_tokens": 462
+            },
+            "total_tokens": 2766
+          },
+          "prompt_sha256": "e82b103974b4d5d7025eeac5c12a9cc59c118f107513199f5e18655325aea827"
+        }
+      }
+    },
+    "slide_0014": {
+      "slide_id": "slide_0014",
+      "case_id": "TMLR_2024_Voyager",
+      "title": "TMLR 2024 Voyager",
+      "role": "takeaway",
+      "image": "/benchmark-slides/slide_0014.png",
+      "image_sha256": "539478e65a9bcfb5f7e77a3ead82793090f17f52e6e96bd93f573c5c62480142",
+      "human_aesthetics_grade_0_3": 2,
+      "human_agreement": 0.67,
+      "human_reason": "底部留白过多。",
+      "results": [
+        {
+          "criterion_id": "ppt-layout",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.88,
+          "evidence": "页面采用左侧核心信息栏、右侧流程卡片与表格的分栏结构，边距和对齐整体统一，视觉重心清晰。",
+          "defects": [
+            "右下大面板在说明框下方留有较大浅灰空白，略显未充分利用"
+          ]
+        },
+        {
+          "criterion_id": "ppt-typography",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.86,
+          "evidence": "主标题字号大且醒目，左侧“63”和表格行列标题层级清楚，蓝绿高亮文字对比明显。",
+          "defects": [
+            "顶部三张流程卡内的说明文字较小",
+            "页脚文字在演示距离下偏难读"
+          ]
+        },
+        {
+          "criterion_id": "ppt-graphics",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.84,
+          "evidence": "三步流程卡、技术树表格和两条结果提示框样式清晰，颜色编码区分 Voyager 成功行与 N/A 失败项，直接支撑页面信息。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-technical",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.91,
+          "evidence": "可见元素均完整呈现，标题、卡片、表格、提示框和左侧指标块没有明显重叠、裁切或溢出。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-economy",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.87,
+          "evidence": "信息密度较高但分组明确，左侧重点数字和右侧表格/说明框没有明显拥挤，留白帮助区分模块。",
+          "defects": [
+            "右下内容区底部空白偏大",
+            "部分小指标卡和流程卡内文字较密"
+          ]
+        },
+        {
+          "criterion_id": "ppt-central-claim",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-numbers",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-labels",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-scope",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-reference-coverage",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-takeaway",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.94,
+          "evidence": "标题直接写明“Voyager combines GPT-4 prompting with self-built skills to accelerate open-ended Minecraft progress”，左侧“CORE CLAIM”再次概括三部分机制，中央大号“63”突出结果。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-alignment",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.9,
+          "evidence": "标题强调 GPT-4 prompting、自建技能和加速进展；“What makes it work”列出 automatic curriculum、executable skill library、iterative prompting loop；“Tech-tree mastery”表格和底部结果框展示 Voyager 优于 AutoGPT/ReAct/Reflexion 的里程碑表现。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-reading-path",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.82,
+          "evidence": "视觉起点较自然地从左上大标题开始，再到左侧核心声明和大号“63”，随后转向右侧三部分 recipe 与下方 tech-tree 表格。",
+          "defects": [
+            "左侧大号“63”和右侧大表格同时抢占注意力，第二落点不完全唯一",
+            "底部两个结论框与左侧指标卡存在多个可能终点"
+          ]
+        },
+        {
+          "criterion_id": "ppt-comprehension",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.78,
+          "evidence": "三张机制卡分别用短句解释“Automatic curriculum”“Executable skill library”“Iterative prompting loop”；表格列名清楚标出 WOODEN、STONE、IRON、DIAMOND 和“ITERATIONS TO MILESTONE”。",
+          "defects": [
+            "GPT-4、AutoGPT、ReAct、Reflexion、TMLR 等缩写或基线名称未解释",
+            "表格中的“6±2”“N/A”等符号需要受众具备一定研究背景",
+            "部分小字号说明阅读成本较高"
+          ]
+        },
+        {
+          "criterion_id": "ppt-information-economy",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.8,
+          "evidence": "左侧核心声明、63 个物品、3.3×/2.3×/160/15.3×指标、右侧机制和里程碑表格都围绕 Voyager 的机制与进展优势展开。",
+          "defects": [
+            "三部分机制在标题下核心声明和右侧 recipe 中重复出现",
+            "“63 distinct Minecraft items”和“3.3× more novel items”等结果在左侧卡片与底部 headline results 中有重复",
+            "信息块较多，部分细节可移入备注"
+          ]
+        }
+      ],
+      "calls": {
+        "aesthetics": {
+          "response_id": "resp_02e01fa083135ee1016a7adcb34da48195afe143fa752f3876",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1941,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 927,
+            "output_tokens_details": {
+              "reasoning_tokens": 495
+            },
+            "total_tokens": 2868
+          },
+          "prompt_sha256": "138634ca9b1770b95205e23f9778c777755ef1d1e4cc8685735e5efa11bd39a9"
+        },
+        "communication_effectiveness": {
+          "response_id": "resp_0f40dfb6c02da17e016a7adcc2c6f081949f35395c1ce5c673",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1872,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 1216,
+            "output_tokens_details": {
+              "reasoning_tokens": 623
+            },
+            "total_tokens": 3088
+          },
+          "prompt_sha256": "e82b103974b4d5d7025eeac5c12a9cc59c118f107513199f5e18655325aea827"
+        }
+      }
+    },
+    "slide_0032": {
+      "slide_id": "slide_0032",
+      "case_id": "OSDI_2025_Tigon",
+      "title": "OSDI 2025 Tigon",
+      "role": "results",
+      "image": "/benchmark-slides/slide_0032.png",
+      "image_sha256": "3dd47066088d660b2eec390b9863a70c199676cfe955844ed06c26785f52c8e7",
+      "human_aesthetics_grade_0_3": 1,
+      "human_agreement": 0.67,
+      "human_reason": "不必要的空白过多。",
+      "results": [
+        {
+          "criterion_id": "ppt-layout",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.9,
+          "evidence": "左侧深色信息栏与右侧主内容区分区清晰；顶部说明条、四张指标卡和底部对比表在右侧画布内整齐对齐，16:9 空间利用均衡。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-typography",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.86,
+          "evidence": "主标题“Database for CXL Pods”和右上标题字号大、层级明确；卡片标题与编号风格一致。",
+          "defects": [
+            "四张卡片中的说明文字较小",
+            "底部表格单元格文字在演示距离下偏小"
+          ]
+        },
+        {
+          "criterion_id": "ppt-graphics",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.84,
+          "evidence": "四张渐变卡片、柱状条、进度条和 pod-scale 图标风格统一，并对应吞吐、延迟、尾延迟、增长等主题。",
+          "defects": [
+            "卡片内的小型图表缺少具体刻度或标注",
+            "部分图形偏装饰化，信息表达较概略"
+          ]
+        },
+        {
+          "criterion_id": "ppt-technical",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.92,
+          "evidence": "可见元素均完整呈现；顶部路径框、四张卡片、底部表格和左侧栏没有明显重叠、裁切、溢出或断裂连接线。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-economy",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.86,
+          "evidence": "页面信息密度较高但分组明确，左侧栏、顶部说明、指标卡和底部表格之间留白稳定，装饰元素未明显干扰阅读。",
+          "defects": [
+            "底部表格与四张卡片共同出现，使右侧内容略显密集",
+            "部分卡片内部留白较大而文字和图表偏小"
+          ]
+        },
+        {
+          "criterion_id": "ppt-central-claim",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-numbers",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-labels",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-scope",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-reference-coverage",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-takeaway",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.86,
+          "evidence": "主标题写明“CXL pod results emphasize faster access paths and memory-aware design”，顶部流程图显示“Network round trips → Memory accesses”，四张卡片列出 higher throughput、lower latency、better tail latency、pod-scale growth。",
+          "defects": [
+            "核心信息不是单一结果，而是同时包含吞吐、延迟、尾延迟、规模增长和 indexing 多个改进点",
+            "缺少一句明确的最终结论或优先级"
+          ]
+        },
+        {
+          "criterion_id": "ppt-alignment",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.88,
+          "evidence": "标题强调 faster access paths，顶部对比图把 baseline path 的“Network round trips”指向 CXL pod path 的“Memory accesses”；下方表格中 Throughput=Higher、Latency=Lower、Tail latency=Better，与四张指标卡同向。",
+          "defects": [
+            "底部表格包含“Indexing / CXL-aware improves”，但上方四张卡没有对应卡片",
+            "“Pod-scale growth”出现在卡片和左侧 result focus，但底部表格未对应呈现"
+          ]
+        },
+        {
+          "criterion_id": "ppt-reading-path",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.8,
+          "evidence": "页面采用左侧背景信息栏、右侧主内容区；主内容从顶部标题和路径图，到中部 01-04 四张卡，再到底部“Qualitative comparison / What improves?”表格，整体顺序较自然。",
+          "defects": [
+            "左侧大标题“Database for CXL Pods”与右侧主标题同时抢占首个视觉落点",
+            "四张卡片和底部表格都像总结区，最终落点不唯一"
+          ]
+        },
+        {
+          "criterion_id": "ppt-comprehension",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.83,
+          "evidence": "可见术语包括“CXL pod”“tail latency”“CXL-aware indexing”“network-based distributed baselines”“CXL-naive data structures”，页面未解释 CXL 或这些比较对象；底部表格和卡片文字较小。",
+          "defects": [
+            "关键缩写 CXL 未定义",
+            "多个专业术语依赖背景知识",
+            "图形条形和加号图示缺少坐标、数值或图例，难以精确理解"
+          ]
+        },
+        {
+          "criterion_id": "ppt-information-economy",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.87,
+          "evidence": "左侧“RESULT FOCUS”重复列出 throughput、latency、tail latency、pod-scale growth、CXL-aware indexing；中部四张卡和底部表格再次重复 throughput、latency、tail latency 等方向性结论；卡片内有无数值的条形装饰。",
+          "defects": [
+            "同一批改进点在侧栏、卡片和表格中重复出现",
+            "多处视觉图形没有数据标签或坐标，信息贡献有限",
+            "页面元素较多，核心结论被分散到多个区域"
+          ]
+        }
+      ],
+      "calls": {
+        "aesthetics": {
+          "response_id": "resp_0cdd08dbf4a9cc1d016a7adcca24e481969561ce19dc286b59",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1941,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 696,
+            "output_tokens_details": {
+              "reasoning_tokens": 224
+            },
+            "total_tokens": 2637
+          },
+          "prompt_sha256": "138634ca9b1770b95205e23f9778c777755ef1d1e4cc8685735e5efa11bd39a9"
+        },
+        "communication_effectiveness": {
+          "response_id": "resp_0e94471886c585bd016a7adcd51efc8194ab696d501cc32b9f",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1872,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 1199,
+            "output_tokens_details": {
+              "reasoning_tokens": 510
+            },
+            "total_tokens": 3071
+          },
+          "prompt_sha256": "e82b103974b4d5d7025eeac5c12a9cc59c118f107513199f5e18655325aea827"
+        }
+      }
+    },
+    "slide_0387": {
+      "slide_id": "slide_0387",
+      "case_id": "RSS_2024_Mobile_ALOHA",
+      "title": "RSS 2024 Mobile ALOHA",
+      "role": "motivation",
+      "image": "/benchmark-slides/slide_0387.png",
+      "image_sha256": "a095e6bae9cc07ebfa13a4405282d20420d2a0baf74a907bd997a8aed644a1a5",
+      "human_aesthetics_grade_0_3": 0,
+      "human_agreement": 1.0,
+      "human_reason": "大面积留白且文字内容明显重叠，部分文字完全无法阅读，整体像未完成的草稿。",
+      "results": [
+        {
+          "criterion_id": "ppt-layout",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.9,
+          "evidence": "页面采用左侧问题说明、右侧数据对比图、底部动机条的结构，主标题和底部条对齐清楚；但左上说明文字严重叠在一起，左侧中部两条分隔线之间留有较大空白。",
+          "defects": [
+            "左上文本区域构图破碎，影响左栏分组完整性",
+            "左侧中部存在较大未利用空白",
+            "右侧内容较重，左侧有效信息不足导致视觉重心偏右"
+          ]
+        },
+        {
+          "criterion_id": "ppt-typography",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 2,
+          "confidence_0_1": 0.95,
+          "evidence": "标题“Problem & Motivation”和底部说明文字清晰；但左上段落多行文字完全重叠，几乎无法辨认，演示距离下不可读。",
+          "defects": [
+            "左上核心说明文字重叠导致不可读",
+            "同一区域字重和行距表现混乱",
+            "部分小号注释如问号旁说明文字较小"
+          ]
+        },
+        {
+          "criterion_id": "ppt-graphics",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.85,
+          "evidence": "右侧移动数据与静态数据的插图、箭头、数据卡片和色块说明整体清晰，左右对比关系明确；左侧圆形图标和底部灯泡图标风格统一。",
+          "defects": [
+            "问号旁的小注释文字偏小，图形说明可读性一般",
+            "左侧图标旁的文字损坏削弱了图文整合"
+          ]
+        },
+        {
+          "criterion_id": "ppt-technical",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 2,
+          "confidence_0_1": 0.96,
+          "evidence": "左上文本出现明显多层重叠，字符压在一起，影响该段内容理解；其他主要图形和底部栏没有明显裁切或溢出。",
+          "defects": [
+            "左上文字严重重叠",
+            "重叠区域造成核心内容不可读",
+            "左栏分隔区域呈现未完成感"
+          ]
+        },
+        {
+          "criterion_id": "ppt-economy",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.88,
+          "evidence": "右侧图示和底部动机条信息密度较合适；但左侧上方文字拥挤重叠，左侧中部又有明显空白，信息分布不均。",
+          "defects": [
+            "同时存在左上拥挤和左中空白",
+            "左栏有效信息密度不均衡",
+            "重叠文字形成视觉噪声"
+          ]
+        },
+        {
+          "criterion_id": "ppt-central-claim",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-numbers",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-labels",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-scope",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-reference-coverage",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-takeaway",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.86,
+          "evidence": "底部黄色框明确写着“Our Motivation: Leverage abundant static bimanual datasets to improve low-cost mobile bimanual imitation...”，右侧图也标出“Mobile Bimanual Data (Scarce)”与“Static Bimanual Data (Abundant)”。",
+          "defects": [
+            "主标题“Problem & Motivation”较泛，不能直接表达结论",
+            "左上方问题文字严重重叠，削弱快速复述稳定性"
+          ]
+        },
+        {
+          "criterion_id": "ppt-alignment",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.84,
+          "evidence": "左侧可读问题指出“Existing bimanual mobile robots are often expensive...”，右侧对比移动数据稀缺与静态数据丰富，底部动机提出利用静态数据改善低成本移动双臂模仿，整体方向一致。",
+          "defects": [
+            "左上方证据文字不可读，无法有效支撑标题",
+            "标题只说问题与动机，强调不如底部结论直接"
+          ]
+        },
+        {
+          "criterion_id": "ppt-reading-path",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.78,
+          "evidence": "页面有大标题、左侧问题栏、右侧大示意图、底部动机框，视觉上可形成从标题到内容再到底部结论的路径。",
+          "defects": [
+            "标题下方左上文字重叠，造成早期阅读中断",
+            "左侧问题栏与右侧示意图并列，第二视觉落点不唯一",
+            "底部结论虽明显，但与上方内容的连接关系主要靠读者推断"
+          ]
+        },
+        {
+          "criterion_id": "ppt-comprehension",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.82,
+          "evidence": "右侧图用“Scarce”“Abundant”和项目符号解释两类数据，底部动机句完整说明用途；但出现“whole-body coordination”“base-motion stochasticity”等术语。",
+          "defects": [
+            "左上段落文字重叠到几乎不可读",
+            "专业术语和缩写如“RSS 2024”“base-motion stochasticity”未解释",
+            "部分项目符号字号较小，需要细读"
+          ]
+        },
+        {
+          "criterion_id": "ppt-information-economy",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.8,
+          "evidence": "右侧数据对比、左侧成本问题和底部“Our Motivation”都与核心动机相关；图中机器人、静态样本和项目符号共同说明数据差异。",
+          "defects": [
+            "左上重叠文字占据空间但无法传递有效信息",
+            "左侧大量横线和图标装饰占用版面",
+            "右侧示意图元素较多，核心结论被比较图和细节分散"
+          ]
+        }
+      ],
+      "calls": {
+        "aesthetics": {
+          "response_id": "resp_070ae2eea0b616ef016a7adcd34f9c81909fcfaad1d55bfa80",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1941,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 937,
+            "output_tokens_details": {
+              "reasoning_tokens": 340
+            },
+            "total_tokens": 2878
+          },
+          "prompt_sha256": "138634ca9b1770b95205e23f9778c777755ef1d1e4cc8685735e5efa11bd39a9"
+        },
+        "communication_effectiveness": {
+          "response_id": "resp_0f6b241ee6fe7ec3016a7adce23a408197aff7a8fe45f68b77",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1872,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 1118,
+            "output_tokens_details": {
+              "reasoning_tokens": 475
+            },
+            "total_tokens": 2990
+          },
+          "prompt_sha256": "e82b103974b4d5d7025eeac5c12a9cc59c118f107513199f5e18655325aea827"
+        }
+      }
+    },
+    "slide_0026": {
+      "slide_id": "slide_0026",
+      "case_id": "ICLR_2024_SALMONN",
+      "title": "ICLR 2024 SALMONN",
+      "role": "takeaway",
+      "image": "/benchmark-slides/slide_0026.png",
+      "image_sha256": "8a7025d21cb5dfa5bc6cc27697b23e1b3a6d3ff34cb08d2aa90220fda5b628a2",
+      "human_aesthetics_grade_0_3": 1,
+      "human_agreement": 0.67,
+      "human_reason": "存在大面积空白。",
+      "results": [
+        {
+          "criterion_id": "ppt-layout",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.9,
+          "evidence": "页面采用顶部横幅、左侧说明栏、右侧架构与三张结果卡片的网格布局；卡片边缘基本对齐，视觉重心清晰。",
+          "defects": [
+            "三张结果卡片下半部分留白较多，空间利用略不均衡",
+            "左侧栏信息块较多，局部稍显密集"
+          ]
+        },
+        {
+          "criterion_id": "ppt-typography",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.88,
+          "evidence": "主标题“SALMONN: Generic Hearing for LLMs”和分区标题清晰，蓝色加粗标题与正文层级稳定。",
+          "defects": [
+            "结果卡片中的表头、脚注和小字说明字号偏小",
+            "左侧说明栏内多行小字在演示距离下可读性一般"
+          ]
+        },
+        {
+          "criterion_id": "ppt-graphics",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.86,
+          "evidence": "架构流程用圆角模块和箭头清楚连接，从“Audio-text LLM”到“Vicuna + LoRA”方向明确；结果表格用统一的圆角单元格和绿色高亮支持信息表达。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-technical",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 5,
+          "confidence_0_1": 0.92,
+          "evidence": "未见文字被裁切、图形重叠或连接线断裂；顶部按钮、左侧卡片、架构框和底部结果卡片均完整显示在画布内。",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-economy",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.87,
+          "evidence": "页面信息量较大但通过卡片分组、浅色背景和留白分隔，整体仍能快速区分架构、说明和结果区域。",
+          "defects": [
+            "三张结果卡片内部存在较大空白而上方内容较密",
+            "左侧栏同时包含多组说明、故事、SAC和Takeaway，视觉负荷偏高"
+          ]
+        },
+        {
+          "criterion_id": "ppt-central-claim",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-numbers",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-labels",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-scope",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-reference-coverage",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-takeaway",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.87,
+          "evidence": "页面有明确标题“SALMONN: Generic Hearing for LLMs”，左下角蓝框写明“Takeaway: SALMONN equips Vicuna with generic hearing; activation tuning preserves trained-task performance and unlocks emergent tasks.”",
+          "defects": [
+            "页面同时呈现架构、模型成分和三组结果表，核心信息虽可恢复但需要从多个区域确认",
+            "“generic hearing”“emergent tasks”等表述仍需一定上下文"
+          ]
+        },
+        {
+          "criterion_id": "ppt-alignment",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.82,
+          "evidence": "左侧说明SALMONN通过Whisper、BEATs、window-level Q-Former、LoRA给Vicuna增加听觉能力；右侧架构图按同样组件串联；底部结果区展示ASR、speech translation、audio captioning指标。",
+          "defects": [
+            "部分结果并非完全同向，例如Audio captioning中SALMONN的METEOR 24.0低于Reference 25.0、SPIDEr 40.3低于48.5",
+            "“preserves trained-task performance”和多项指标之间的结论关系需要读者自行判断"
+          ]
+        },
+        {
+          "criterion_id": "ppt-reading-path",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.78,
+          "evidence": "视觉上先看到顶部大标题，再进入左侧“What SALMONN does”或右上“SALMONN architecture”，最后阅读下方“Headline results”三张结果卡，版面分区清楚。",
+          "defects": [
+            "左侧说明栏和右侧架构区并列，第二视觉落点不唯一",
+            "底部三张结果卡之间没有编号或箭头，最终阅读顺序需要自行选择"
+          ]
+        },
+        {
+          "criterion_id": "ppt-comprehension",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.86,
+          "evidence": "页面包含大量术语和缩写：Vicuna、LLM、Whisper、BEATs、Q-Former、LoRA、ASR、WER、BLEU4、METEOR、SPIDEr、FR等，只有部分组件有简短解释。",
+          "defects": [
+            "“FR”“SAC”“0.00 FR”“window-level Q-Former”等未在可见内容中充分解释",
+            "结果表的比较方向和绿色高亮含义需要读者理解具体指标",
+            "表格和注释字号较小，快速阅读成本较高"
+          ]
+        },
+        {
+          "criterion_id": "ppt-information-economy",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.8,
+          "evidence": "页面同时放入模型成分列表、两条绿色故事/SAC说明、架构流水线、三张结果表和底部takeaway，信息量明显偏多。",
+          "defects": [
+            "“SALMONN w/ activation”“Reference”等说明在多个结果卡中重复出现",
+            "具体数据集行如LibriSpeech clean/other、GigaSpeech、EnDe/EnJa等增加细节负担",
+            "若作为Key Takeaway页，部分指标明细可移入备注或备份页"
+          ]
+        }
+      ],
+      "calls": {
+        "aesthetics": {
+          "response_id": "resp_09365e2c7532222b016a7adcc81c648196a4ec5e6391927add",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1941,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 924,
+            "output_tokens_details": {
+              "reasoning_tokens": 432
+            },
+            "total_tokens": 2865
+          },
+          "prompt_sha256": "138634ca9b1770b95205e23f9778c777755ef1d1e4cc8685735e5efa11bd39a9"
+        },
+        "communication_effectiveness": {
+          "response_id": "resp_06f94e9f2dd0470f016a7adcd7902c819092640456508f2a75",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1872,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 1183,
+            "output_tokens_details": {
+              "reasoning_tokens": 473
+            },
+            "total_tokens": 3055
+          },
+          "prompt_sha256": "e82b103974b4d5d7025eeac5c12a9cc59c118f107513199f5e18655325aea827"
+        }
+      }
+    },
+    "slide_0452": {
+      "slide_id": "slide_0452",
+      "case_id": "USENIX_WebRR",
+      "title": "USENIX WebRR",
+      "role": "takeaway",
+      "image": "/benchmark-slides/slide_0452.png",
+      "image_sha256": "887c3e2acfc829272cfed150634e4756662cbbb99668551bccffb1b5c8556e4d",
+      "human_aesthetics_grade_0_3": 0,
+      "human_agreement": 0.67,
+      "human_reason": "内容存在明显重叠，布局混乱，整体像粗糙草稿，不适合正式展示。",
+      "results": [
+        {
+          "criterion_id": "ppt-layout",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.86,
+          "evidence": "页面采用顶部横幅和左右双栏结构，右侧结果卡片对齐整齐；但左侧深蓝卡片下半部正文与三条圆角标签挤在一起，局部构图拥挤。",
+          "defects": [
+            "左侧卡片底部元素堆叠拥挤",
+            "圆角标签与正文区域分组不清",
+            "左侧信息区视觉重心偏重"
+          ]
+        },
+        {
+          "criterion_id": "ppt-typography",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 2,
+          "confidence_0_1": 0.9,
+          "evidence": "“Key Takeaway”“Headline Results”和右侧三条结果文字清晰；但左侧说明文字底部被多条标签文字覆盖，如“scheduling enable deterministic”等行与标签重叠，演示距离下难以读清。",
+          "defects": [
+            "左侧正文与标签文字严重重叠",
+            "底部多行小字不可读",
+            "左侧正文行长和密度偏高"
+          ]
+        },
+        {
+          "criterion_id": "ppt-graphics",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.82,
+          "evidence": "右侧三行指标配有清晰图标和浅色分区，左上盾牌图标清楚；但左侧底部三条圆角条形图形与正文文字冲突，降低整合度。",
+          "defects": [
+            "左侧圆角标签图形干扰正文阅读",
+            "装饰曲线与底部内容叠加显得杂乱",
+            "部分图形未与文字留出足够间距"
+          ]
+        },
+        {
+          "criterion_id": "ppt-technical",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 2,
+          "confidence_0_1": 0.93,
+          "evidence": "左侧卡片底部可见明显重叠：白色正文、三条半透明圆角标签及其内部文字相互覆盖，部分核心内容无法辨认；其他区域未见明显裁切。",
+          "defects": [
+            "存在影响理解的文字重叠",
+            "标签与正文发生覆盖",
+            "底部小字局部不可读"
+          ]
+        },
+        {
+          "criterion_id": "ppt-economy",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 2,
+          "confidence_0_1": 0.88,
+          "evidence": "右侧信息密度适中，但左侧在同一卡片内同时放置大标题、长段落和三条说明标签，底部形成拥挤的文档式堆叠。",
+          "defects": [
+            "左侧信息量过多",
+            "底部标签和正文冗余拥挤",
+            "留白未能帮助左侧内容分隔"
+          ]
+        },
+        {
+          "criterion_id": "ppt-central-claim",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-numbers",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-labels",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-scope",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-reference-coverage",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-takeaway",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.86,
+          "evidence": "页面标题为“Key Takeaway”，左侧突出“WEBRR”，右侧列出“0(zero) Edit Distance”“~1.0 Visual Similarity”“2.94% Median Runtime Overhead”等结果。",
+          "defects": [
+            "没有一句明确结论句说明最终核心 takeaway",
+            "左侧定义文字与右侧三项指标并列，核心信息需要观众自行整合",
+            "左下方多条文字重叠，削弱快速复述稳定性"
+          ]
+        },
+        {
+          "criterion_id": "ppt-alignment",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.82,
+          "evidence": "右侧“Headline Results”的三张卡片均围绕 WEBRR 的重放准确性和开销展示；左侧文字也说明 WEBRR 是 record-and-replay system。",
+          "defects": [
+            "标题“Key Takeaway”过于泛化，没有直接表达与证据同向的结论",
+            "左侧功能描述和右侧实验指标之间缺少显式连接句",
+            "左下重叠标签干扰对支持证据的理解"
+          ]
+        },
+        {
+          "criterion_id": "ppt-reading-path",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.8,
+          "evidence": "视觉上先看到左上“Key Takeaway”，随后左侧大字“WEBRR”，右侧“Headline Results”三项从上到下排列。",
+          "defects": [
+            "左右两大内容块权重接近，读者可能不确定先读定义还是先读结果",
+            "顶部右侧“Deterministic Web Attack Replay USEINX research paper”形成额外视觉落点",
+            "左下重叠文字造成阅读路径在左侧中断"
+          ]
+        },
+        {
+          "criterion_id": "ppt-comprehension",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 2,
+          "confidence_0_1": 0.88,
+          "evidence": "可见术语包括“JEU”“API sequences”“Edit Distance”“Visual Similarity”“Median Runtime Overhead”“Service Workers”，且左侧段落下方文字相互覆盖。",
+          "defects": [
+            "多个缩写和技术术语未解释",
+            "左侧正文较长，部分内容被半透明条和文字覆盖，难以读完",
+            "右侧指标含义需要专业背景才能理解，如 edit distance 与 JEU/API sequences"
+          ]
+        },
+        {
+          "criterion_id": "ppt-information-economy",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 2,
+          "confidence_0_1": 0.84,
+          "evidence": "页面包含左侧大图标、大标题、长段落、三条重叠的胶囊形标签，以及右侧三张结果卡和多个图标。",
+          "defects": [
+            "左下重叠标签重复且不可读，明显不利于信息传达",
+            "装饰性图标和背景圆形占用较多空间",
+            "左侧长定义与右侧结果并列，缺少取舍，核心结论被稀释"
+          ]
+        }
+      ],
+      "calls": {
+        "aesthetics": {
+          "response_id": "resp_059a146b27033e19016a7adcd65cdc8193ba3437033e6f79ab",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1941,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 1028,
+            "output_tokens_details": {
+              "reasoning_tokens": 439
+            },
+            "total_tokens": 2969
+          },
+          "prompt_sha256": "138634ca9b1770b95205e23f9778c777755ef1d1e4cc8685735e5efa11bd39a9"
+        },
+        "communication_effectiveness": {
+          "response_id": "resp_07d40c984187d03f016a7adce7c2408197ba21a29dd44988e8",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1872,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 1091,
+            "output_tokens_details": {
+              "reasoning_tokens": 438
+            },
+            "total_tokens": 2963
+          },
+          "prompt_sha256": "e82b103974b4d5d7025eeac5c12a9cc59c118f107513199f5e18655325aea827"
+        }
+      }
+    },
+    "slide_0025": {
+      "slide_id": "slide_0025",
+      "case_id": "ICLR_2024_Less_is_More",
+      "title": "ICLR 2024 Less is More",
+      "role": "method",
+      "image": "/benchmark-slides/slide_0025.png",
+      "image_sha256": "d3274a43f16a8300dc52a0e3a789cd4b636e88b948941aae61049403bf5486d8",
+      "human_aesthetics_grade_0_3": 0,
+      "human_agreement": 1.0,
+      "human_reason": "大面积空白且多处文字重叠，整体呈现粗糙草稿状态。",
+      "results": [
+        {
+          "criterion_id": "ppt-layout",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.88,
+          "evidence": "页面采用左侧 Pipeline 卡片、右侧目标函数组件矩阵的两栏结构，主体区域基本对齐；但顶部深蓝横幅内标题、说明文字和标签集中在同一区域，视觉重心偏重且显得拥挤。",
+          "defects": [
+            "顶部标题区元素叠压感明显",
+            "左上标题与小字说明距离过近",
+            "右侧主体卡片下方留白较大"
+          ]
+        },
+        {
+          "criterion_id": "ppt-typography",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 2,
+          "confidence_0_1": 0.9,
+          "evidence": "主标题“How Our Method Works”较大，但与上方“Post-Processing Refinement”和背景说明文字交叠；多个正文段落如 Pipeline 步骤说明、组件说明文字字号很小，演示距离下不易读。",
+          "defects": [
+            "标题层级混乱",
+            "顶部深色文字在深蓝背景上对比不足",
+            "正文和公式周边说明字号偏小",
+            "部分文字被大标题视觉遮挡"
+          ]
+        },
+        {
+          "criterion_id": "ppt-graphics",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.84,
+          "evidence": "左侧步骤图标、地图示意图、右侧四色功能卡片和公式框风格统一，图形边框和图标较清晰，能辅助表达流程与四个组件。",
+          "defects": [
+            "左侧缩略图细节较小",
+            "部分图标与文字区域略显紧凑"
+          ]
+        },
+        {
+          "criterion_id": "ppt-technical",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 2,
+          "confidence_0_1": 0.9,
+          "evidence": "顶部区域可见明显重叠：大标题覆盖或贴近上方小标题与说明文字，深蓝横幅内还有深色说明文字难以辨认。主体卡片内部元素基本完整。",
+          "defects": [
+            "标题区存在文字重叠",
+            "顶部说明文字可读性受背景和覆盖影响",
+            "左上角装饰/标题区域层叠复杂"
+          ]
+        },
+        {
+          "criterion_id": "ppt-economy",
+          "dimension": "aesthetics",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.86,
+          "evidence": "主体信息被整理成流程卡和四个组件卡，信息密度总体可控；但顶部横幅同时放置大标题、副标题、长说明和会议标签，造成局部拥挤，而页面下方浅色背景区域相对空。",
+          "defects": [
+            "顶部信息堆叠过多",
+            "正文小字较多形成文档感",
+            "下方背景留白利用较弱"
+          ]
+        },
+        {
+          "criterion_id": "ppt-central-claim",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-numbers",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-labels",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-scope",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-reference-coverage",
+          "dimension": "content_accuracy",
+          "status": "not_assessable",
+          "source": "abstention",
+          "score_1_5": null,
+          "confidence_0_1": 0.0,
+          "evidence": "No authoritative reference evidence supplied.",
+          "defects": []
+        },
+        {
+          "criterion_id": "ppt-takeaway",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.86,
+          "evidence": "可见大标题为“How Our Method Works”，顶部流程句写有“Split → group with saliency prior → optimize a submodular objective → greedily select top-k informative regions”，左侧也按1-3展示同一流程。",
+          "defects": [
+            "核心信息可恢复为方法通过分组、子模目标和贪心搜索选择top-k区域，但标题较泛",
+            "右侧同时强调四个目标组件，形成次级重点，数秒内可能不够唯一"
+          ]
+        },
+        {
+          "criterion_id": "ppt-alignment",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.84,
+          "evidence": "左侧“Pipeline”三步与右侧“Submodular objective”四个组件、公式“F(S)=...”共同围绕方法流程和目标函数展开。",
+          "defects": [
+            "顶部“Post-Processing Refinement”说明、主标题和右侧组件矩阵层级略混杂",
+            "右侧标题文字出现重叠/重复，削弱结论一致性"
+          ]
+        },
+        {
+          "criterion_id": "ppt-reading-path",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 4,
+          "confidence_0_1": 0.82,
+          "evidence": "视觉上先看到顶部大标题和横向流程句，再到左侧编号1、2、3的Pipeline，最后到右侧四个彩色组件卡片和公式。",
+          "defects": [
+            "右侧公式位于组件标题右上方，可能抢在说明文字前被阅读",
+            "顶部标题区文字有遮挡重叠，起点略不干净"
+          ]
+        },
+        {
+          "criterion_id": "ppt-comprehension",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.87,
+          "evidence": "页面包含“saliency prior”“submodular objective”“cosine distance”“f_conf(S)”“λ”等术语和公式，四个组件卡片有简短解释。",
+          "defects": [
+            "核心依赖较多未展开的数学符号和专业术语",
+            "部分说明文字较小，如组件解释和顶部说明，需仔细读",
+            "右侧标题处文字重叠影响理解"
+          ]
+        },
+        {
+          "criterion_id": "ppt-information-economy",
+          "dimension": "communication_effectiveness",
+          "status": "scored",
+          "source": "model",
+          "score_1_5": 3,
+          "confidence_0_1": 0.8,
+          "evidence": "主要内容块包括顶部说明、左侧三步流程、右侧公式与四个组件卡片，基本都服务于方法介绍。",
+          "defects": [
+            "同一信息在顶部流程句和左侧三步Pipeline中重复出现",
+            "背景装饰、底部小字“Method slide · same content...”和多个图标增加视觉负担",
+            "右侧同时放公式、标题说明和四个解释卡片，信息密度偏高"
+          ]
+        }
+      ],
+      "calls": {
+        "aesthetics": {
+          "response_id": "resp_04bc3403f909991b016a7adce5f08c81939381437f79fa9ab9",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1941,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 1269,
+            "output_tokens_details": {
+              "reasoning_tokens": 678
+            },
+            "total_tokens": 3210
+          },
+          "prompt_sha256": "138634ca9b1770b95205e23f9778c777755ef1d1e4cc8685735e5efa11bd39a9"
+        },
+        "communication_effectiveness": {
+          "response_id": "resp_08148944c763ef25016a7adcffe0d08190bf60230c89f471f6",
+          "served_model": "gpt-5.5",
+          "usage": {
+            "input_tokens": 1872,
+            "input_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0
+            },
+            "output_tokens": 1038,
+            "output_tokens_details": {
+              "reasoning_tokens": 425
+            },
+            "total_tokens": 2910
+          },
+          "prompt_sha256": "e82b103974b4d5d7025eeac5c12a9cc59c118f107513199f5e18655325aea827"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,218 @@
+[
+  {
+    "id": "ppt-executive-review",
+    "format": "pptx",
+    "title": "Executive Review",
+    "subtitle": "Three-slide leadership update with KPI hierarchy",
+    "image": "/cases/ppt-executive-review.png",
+    "unitType": "slide",
+    "unitCount": 3,
+    "scores": {
+      "aesthetics": 88,
+      "content_accuracy": 92,
+      "communication_effectiveness": 84
+    },
+    "overall_raw_score_100": 88.4,
+    "reward_0_1": 0.884,
+    "coverage_0_1": 1,
+    "status": "complete",
+    "evidence": [
+      "All three slides rendered at 1280x720",
+      "KPI labels match the supplied reference",
+      "Reading order remains consistent across sections"
+    ],
+    "issueSummary": "No blocking Office issues; one low-severity spacing warning."
+  },
+  {
+    "id": "ppt-research-results",
+    "format": "pptx",
+    "title": "Research Results",
+    "subtitle": "Three-slide experiment summary with benchmark and ablation results",
+    "image": "/cases/ppt-research-results.png",
+    "unitType": "slide",
+    "unitCount": 3,
+    "scores": {
+      "aesthetics": 82,
+      "content_accuracy": 89,
+      "communication_effectiveness": 80
+    },
+    "overall_raw_score_100": 83.95,
+    "reward_0_1": 0.8395,
+    "coverage_0_1": 1,
+    "status": "complete",
+    "evidence": [
+      "Three slides cover scope, held-out gain, and ablation",
+      "The reported 7.4-point gain agrees with the reference fixture",
+      "Ablation contributions remain visible and ordered"
+    ],
+    "issueSummary": "Two informational font substitutions; no failed units."
+  },
+  {
+    "id": "ppt-product-roadmap",
+    "format": "pptx",
+    "title": "Product Roadmap",
+    "subtitle": "Three-slide roadmap with foundation and scale milestones",
+    "image": "/cases/ppt-product-roadmap.png",
+    "unitType": "slide",
+    "unitCount": 3,
+    "scores": {
+      "aesthetics": 90,
+      "content_accuracy": 85,
+      "communication_effectiveness": 88
+    },
+    "overall_raw_score_100": 87.75,
+    "reward_0_1": 0.8775,
+    "coverage_0_1": 1,
+    "status": "complete",
+    "evidence": [
+      "Milestone sequence is visible without overlap",
+      "Owner and quarter labels remain legible",
+      "The main takeaway is recoverable from every slide"
+    ],
+    "issueSummary": "Validation clean; all slide units scored."
+  },
+  {
+    "id": "word-quarterly-report",
+    "format": "docx",
+    "title": "Quarterly Report",
+    "subtitle": "Paginated report with executive summary and outlook",
+    "image": "/cases/word-quarterly-report.png",
+    "unitType": "page",
+    "unitCount": 4,
+    "scores": {
+      "aesthetics": 84,
+      "content_accuracy": 93,
+      "communication_effectiveness": 82
+    },
+    "overall_raw_score_100": 86.65,
+    "reward_0_1": 0.8665,
+    "coverage_0_1": 1,
+    "status": "complete",
+    "evidence": [
+      "Four stable rendered pages were detected",
+      "Headings and body figures match the reference",
+      "Page breaks preserve section continuity"
+    ],
+    "issueSummary": "One widow-control advisory; no content loss."
+  },
+  {
+    "id": "word-table-analysis",
+    "format": "docx",
+    "title": "Table Analysis",
+    "subtitle": "Structured analysis with dense comparison tables",
+    "image": "/cases/word-table-analysis.png",
+    "unitType": "section",
+    "unitCount": 3,
+    "scores": {
+      "aesthetics": 78,
+      "content_accuracy": 90,
+      "communication_effectiveness": 76
+    },
+    "overall_raw_score_100": 81.7,
+    "reward_0_1": 0.817,
+    "coverage_0_1": 1,
+    "status": "complete",
+    "evidence": [
+      "Table cells are included in the section context",
+      "Comparison values agree with supplied evidence",
+      "Three non-overlapping heading sections were scored"
+    ],
+    "issueSummary": "Table density lowers readability but produces no render failure."
+  },
+  {
+    "id": "word-policy-brief",
+    "format": "docx",
+    "title": "Policy Brief",
+    "subtitle": "Short policy document with numbered recommendations",
+    "image": "/cases/word-policy-brief.png",
+    "unitType": "section",
+    "unitCount": 4,
+    "scores": {
+      "aesthetics": 86,
+      "content_accuracy": 95,
+      "communication_effectiveness": 89
+    },
+    "overall_raw_score_100": 89.9,
+    "reward_0_1": 0.899,
+    "coverage_0_1": 1,
+    "status": "complete",
+    "evidence": [
+      "Recommendation numbering remains intact",
+      "Policy claims are fully grounded in the reference",
+      "Heading hierarchy supports fast scanning"
+    ],
+    "issueSummary": "No schema or rendering findings."
+  },
+  {
+    "id": "excel-revenue-model",
+    "format": "xlsx",
+    "title": "Revenue Model",
+    "subtitle": "Two-sheet model with formulas and a revenue chart",
+    "image": "/cases/excel-revenue-model.png",
+    "unitType": "sheet",
+    "unitCount": 2,
+    "scores": {
+      "aesthetics": 85,
+      "content_accuracy": 94,
+      "communication_effectiveness": 80
+    },
+    "overall_raw_score_100": 86.9,
+    "reward_0_1": 0.869,
+    "coverage_0_1": 1,
+    "status": "complete",
+    "evidence": [
+      "Used-range text contains every monthly value",
+      "Formula and chart references resolve correctly",
+      "Both visible sheets produced nonblank screenshots"
+    ],
+    "issueSummary": "Formula cache and computed values agree."
+  },
+  {
+    "id": "excel-chart-dashboard",
+    "format": "xlsx",
+    "title": "Chart Dashboard",
+    "subtitle": "Executive dashboard with chart crops and KPI tiles",
+    "image": "/cases/excel-chart-dashboard.png",
+    "unitType": "sheet",
+    "unitCount": 1,
+    "scores": {
+      "aesthetics": 92,
+      "content_accuracy": 88,
+      "communication_effectiveness": 90
+    },
+    "overall_raw_score_100": 90.1,
+    "reward_0_1": 0.901,
+    "coverage_0_1": 1,
+    "status": "complete",
+    "evidence": [
+      "Full-sheet render and supplemental chart crop are available",
+      "KPI values agree with the source cells",
+      "Dashboard scan order is explicit and compact"
+    ],
+    "issueSummary": "No chart crop failures or hidden-sheet ambiguity."
+  },
+  {
+    "id": "excel-operations-sheet",
+    "format": "xlsx",
+    "title": "Operations Sheet",
+    "subtitle": "Formula-driven tracker with status and owner columns",
+    "image": "/cases/excel-operations-sheet.png",
+    "unitType": "sheet",
+    "unitCount": 3,
+    "scores": {
+      "aesthetics": 80,
+      "content_accuracy": 91,
+      "communication_effectiveness": 83
+    },
+    "overall_raw_score_100": 84.6,
+    "reward_0_1": 0.846,
+    "coverage_0_1": 1,
+    "status": "complete",
+    "evidence": [
+      "Shared formulas and owner fields are represented",
+      "All three visible sheets are included in coverage",
+      "Status formatting remains readable in the screenshot"
+    ],
+    "issueSummary": "One informational number-format warning; all units complete."
+  }
+]

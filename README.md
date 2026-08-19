@@ -194,6 +194,8 @@ officecli add deck.pptx / --type slide --prop title="Q4 Report"
 - Generate presentations from user prompts (see examples above)
 - Extract structured data from documents to JSON
 - Validate and check document quality before delivery
+- Evaluate rendered PPTX, DOCX, and XLSX output with the
+  [fine-grained Office reward workbench](benchmarks/office-reward/)
 
 **For Teams:**
 - Clone document templates and populate with data

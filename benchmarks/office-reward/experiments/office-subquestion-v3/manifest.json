@@ -1,0 +1,242 @@
+[
+  {
+    "case_uid": "docx-officecli-document-formatting",
+    "format": "docx",
+    "source": "repo://examples/word/document-formatting.docx",
+    "source_set": "OfficeCLI feature example",
+    "source_name": "document-formatting.docx",
+    "source_document_sha256": "cfbcd83bb7bd44d82a8d7a68ad7df9b4dc577a652a9995f3681593e74026f16c",
+    "unit_type": "page",
+    "unit_name": "page 1"
+  },
+  {
+    "case_uid": "docx-officecli-charts",
+    "format": "docx",
+    "source": "repo://examples/word/charts.docx",
+    "source_set": "OfficeCLI feature example",
+    "source_name": "charts.docx",
+    "source_document_sha256": "86e0a54de0e308bc12dc4a4831ee466117cf7ae1aaa6f582c0bbd5062263fe10",
+    "unit_type": "page",
+    "unit_name": "page 1"
+  },
+  {
+    "case_uid": "docx-officecli-diagram",
+    "format": "docx",
+    "source": "repo://examples/word/diagram.docx",
+    "source_set": "OfficeCLI feature example",
+    "source_name": "diagram.docx",
+    "source_document_sha256": "de5daf0dfca99db95621ae23831b8d22750adb7c38398a822a5b0ac38458bbbd",
+    "unit_type": "page",
+    "unit_name": "page 1"
+  },
+  {
+    "case_uid": "docx-officecli-formulas",
+    "format": "docx",
+    "source": "repo://examples/word/formulas.docx",
+    "source_set": "OfficeCLI feature example",
+    "source_name": "formulas.docx",
+    "source_document_sha256": "513d9caab442d874cf17ce867d337af36cee15756cc2c33658a7e57580a8f123",
+    "unit_type": "page",
+    "unit_name": "page 1"
+  },
+  {
+    "case_uid": "docx-officecli-numbering",
+    "format": "docx",
+    "source": "repo://examples/word/numbering.docx",
+    "source_set": "OfficeCLI feature example",
+    "source_name": "numbering.docx",
+    "source_document_sha256": "07df42011cbcf3f1751b28ccf9010a9f813d68c5d7a120aeb230e2b5d34e46bb",
+    "unit_type": "page",
+    "unit_name": "page 1"
+  },
+  {
+    "case_uid": "docx-officecli-pictures",
+    "format": "docx",
+    "source": "repo://examples/word/pictures.docx",
+    "source_set": "OfficeCLI feature example",
+    "source_name": "pictures.docx",
+    "source_document_sha256": "aae77dac6d5bb3647b523470e99f37993c652638b488b854368f221b65018f79",
+    "unit_type": "page",
+    "unit_name": "page 1"
+  },
+  {
+    "case_uid": "docx-officecli-sections",
+    "format": "docx",
+    "source": "repo://examples/word/sections.docx",
+    "source_set": "OfficeCLI feature example",
+    "source_name": "sections.docx",
+    "source_document_sha256": "03953be4044371527a182667f18ef190961ed77b25989ffece0109380eddfa20",
+    "unit_type": "page",
+    "unit_name": "page 1"
+  },
+  {
+    "case_uid": "docx-officecli-tables",
+    "format": "docx",
+    "source": "repo://examples/word/tables.docx",
+    "source_set": "OfficeCLI feature example",
+    "source_name": "tables.docx",
+    "source_document_sha256": "494bd28da2fa906f4eef0f62c549b36ae82f313e1dae70ef272dbef93445141e",
+    "unit_type": "page",
+    "unit_name": "page 1"
+  },
+  {
+    "case_uid": "docx-real-dog-report",
+    "format": "docx",
+    "source": "corpus://docx/机器狗巡检系统测试关卡集合_大作业报告_完善版.docx",
+    "source_set": "real report",
+    "source_name": "机器狗巡检系统测试关卡集合_大作业报告_完善版.docx",
+    "source_document_sha256": "9336e28903f4bc6a3947bb1996a260f669cedecb221213b3c09324e4117ef225",
+    "unit_type": "page",
+    "unit_name": "page 1"
+  },
+  {
+    "case_uid": "docx-real-prithvi-report",
+    "format": "docx",
+    "source": "corpus://docx/prithvi_research_report.docx",
+    "source_set": "real report",
+    "source_name": "prithvi_research_report.docx",
+    "source_document_sha256": "30bdfd17dec319cffc5c779e68fe42a2a2acc1fd953e99204f2facbd26c2e524",
+    "unit_type": "page",
+    "unit_name": "page 1"
+  },
+  {
+    "case_uid": "docx-real-chinese-report",
+    "format": "docx",
+    "source": "corpus://docx/chinese_report_full.docx",
+    "source_set": "real report",
+    "source_name": "chinese_report_full.docx",
+    "source_document_sha256": "07419680f1b7ab5cfb49b88315f2a90a5360c0a0875437087ba70abe4834c83d",
+    "unit_type": "page",
+    "unit_name": "page 1"
+  },
+  {
+    "case_uid": "docx-real-graph-theory",
+    "format": "docx",
+    "source": "corpus://docx/图论问题.docx",
+    "source_set": "real report",
+    "source_name": "图论问题.docx",
+    "source_document_sha256": "1ab0d967c5bea302ba0a4073431366545041ef018d6b023dd1ff7d34a6ec3aab",
+    "unit_type": "page",
+    "unit_name": "page 1"
+  },
+  {
+    "case_uid": "xlsx-real-construction-progress",
+    "format": "xlsx",
+    "source": "corpus://xlsx/construction_site_progress.xlsx",
+    "source_set": "real operational workbook",
+    "source_name": "construction_site_progress.xlsx",
+    "source_document_sha256": "a75d6630fbdb28743742a7c61dd7d25aab1208a79a7cd824f00592e0d06283d7",
+    "unit_type": "sheet",
+    "unit_name": "first visible sheet"
+  },
+  {
+    "case_uid": "xlsx-real-fintech-fraud",
+    "format": "xlsx",
+    "source": "corpus://xlsx/fintech_transaction_fraud.xlsx",
+    "source_set": "real operational workbook",
+    "source_name": "fintech_transaction_fraud.xlsx",
+    "source_document_sha256": "dfb89dde6ef6f127b6e2e19c7f180a4e2a0833c6c930d90c8d5b09bf4e065d20",
+    "unit_type": "sheet",
+    "unit_name": "first visible sheet"
+  },
+  {
+    "case_uid": "xlsx-real-financial-dashboard",
+    "format": "xlsx",
+    "source": "corpus://xlsx/executive_financial_dashboard.xlsx",
+    "source_set": "real operational workbook",
+    "source_name": "executive_financial_dashboard.xlsx",
+    "source_document_sha256": "1c54e2d240b6142aef868be355d9c0ae35d9650ed1269e6dd1279ba006bc4f9a",
+    "unit_type": "sheet",
+    "unit_name": "first visible sheet"
+  },
+  {
+    "case_uid": "xlsx-officecli-basic-charts",
+    "format": "xlsx",
+    "source": "repo://examples/excel/charts/charts-basic.xlsx",
+    "source_set": "OfficeCLI feature example",
+    "source_name": "charts-basic.xlsx",
+    "source_document_sha256": "ba3866efb834e3d2880b5a07917a069ffba6c38097d8b8c3bf4cf544cf3ca1c3",
+    "unit_type": "sheet",
+    "unit_name": "first visible sheet"
+  },
+  {
+    "case_uid": "xlsx-real-hotel-revenue",
+    "format": "xlsx",
+    "source": "corpus://xlsx/hotel_bookings_revenue_ops.xlsx",
+    "source_set": "real operational workbook",
+    "source_name": "hotel_bookings_revenue_ops.xlsx",
+    "source_document_sha256": "20ae3089ca72483b743f2ad0b592eff40a3f1324a9a512fdc1ae1786bbc504a0",
+    "unit_type": "sheet",
+    "unit_name": "first visible sheet"
+  },
+  {
+    "case_uid": "xlsx-officecli-sparklines",
+    "format": "xlsx",
+    "source": "repo://examples/excel/sparklines.xlsx",
+    "source_set": "OfficeCLI feature example",
+    "source_name": "sparklines.xlsx",
+    "source_document_sha256": "ed6a11aedda96cd275db312030b937efa215de555def5d289199be2455eaf7af",
+    "unit_type": "sheet",
+    "unit_name": "first visible sheet"
+  },
+  {
+    "case_uid": "xlsx-real-construction-gantt",
+    "format": "xlsx",
+    "source": "corpus://xlsx/construction_gantt_control.xlsx",
+    "source_set": "real operational workbook",
+    "source_name": "construction_gantt_control.xlsx",
+    "source_document_sha256": "4593d49ca9a072b926aba268d9e2b131b54e19c061656c526d97612d6d590448",
+    "unit_type": "sheet",
+    "unit_name": "first visible sheet"
+  },
+  {
+    "case_uid": "xlsx-real-saas-failure",
+    "format": "xlsx",
+    "source": "corpus://xlsx/saas_revenue_noskills_fail.xlsx",
+    "source_set": "real operational workbook",
+    "source_name": "saas_revenue_noskills_fail.xlsx",
+    "source_document_sha256": "da0fe6a84d1242a3244a18993a81cb6b356c1a62afa04b6c7113c87b68c746ae",
+    "unit_type": "sheet",
+    "unit_name": "first visible sheet"
+  },
+  {
+    "case_uid": "xlsx-officecli-cell-formatting",
+    "format": "xlsx",
+    "source": "repo://examples/excel/cell-formatting.xlsx",
+    "source_set": "OfficeCLI feature example",
+    "source_name": "cell-formatting.xlsx",
+    "source_document_sha256": "3e59f43979c70712e57888e509eee5044fd3b6ce6cdf1ed84aa907883a568126",
+    "unit_type": "sheet",
+    "unit_name": "first visible sheet"
+  },
+  {
+    "case_uid": "xlsx-officecli-advanced-charts",
+    "format": "xlsx",
+    "source": "repo://examples/excel/charts/charts-advanced.xlsx",
+    "source_set": "OfficeCLI feature example",
+    "source_name": "charts-advanced.xlsx",
+    "source_document_sha256": "9479fb14a91f406f385c037e834fbe0431929288adf96fe996f3a7dfdaf8cd63",
+    "unit_type": "sheet",
+    "unit_name": "first visible sheet"
+  },
+  {
+    "case_uid": "xlsx-officecli-conditional-formatting",
+    "format": "xlsx",
+    "source": "repo://examples/excel/conditional-formatting.xlsx",
+    "source_set": "OfficeCLI feature example",
+    "source_name": "conditional-formatting.xlsx",
+    "source_document_sha256": "20b609f9449f7f14e472b15a54b043db4b10f5610c1aefc90f7be694a5df2bd6",
+    "unit_type": "sheet",
+    "unit_name": "first visible sheet"
+  },
+  {
+    "case_uid": "xlsx-officecli-pivot-tables",
+    "format": "xlsx",
+    "source": "repo://examples/excel/pivot-tables.xlsx",
+    "source_set": "OfficeCLI feature example",
+    "source_name": "pivot-tables.xlsx",
+    "source_document_sha256": "70c7d4c6e87d4721d7a7f4accac0ff0ba9f6591ebb9252a6e02cb0b31a2161dc",
+    "unit_type": "sheet",
+    "unit_name": "first visible sheet"
+  }
+]
