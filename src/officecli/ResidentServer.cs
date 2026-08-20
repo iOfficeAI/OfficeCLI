@@ -1597,7 +1597,9 @@ public class ResidentServer : IDisposable
                 int pptGridCols = gridCols < 0
                     ? OfficeCli.Core.HtmlScreenshot.AutoGridColumns((pEnd ?? pptShotHandler.GetSlideCount()) - (pStart ?? 1) + 1, nativeW, nativeH)
                     : gridCols;
-                if (renderMode != "html" && OperatingSystem.IsWindows())
+                Exception? nativeFailure = null;
+                bool nativeAttempted = renderMode != "html" && OperatingSystem.IsWindows();
+                if (nativeAttempted)
                 {
                     // A read-only handler holds only read access with FileShare.ReadWrite,
                     // so the app can open the file for read concurrently — no dispose
@@ -1620,7 +1622,7 @@ public class ResidentServer : IDisposable
                             ? OfficeCli.Core.PowerPointPngBackend.RenderGrid(_filePath, ps, gEnd, gCellW, gCellH, pptGridCols, gGap, gPad)
                             : OfficeCli.Core.PowerPointPngBackend.Render(_filePath, ps, pEnd ?? ps, exportW, exportH);
                     }
-                    catch { directPng = null; }
+                    catch (Exception e) { nativeFailure = e; directPng = null; }
                     if (_editable)
                     {
                         _handler = OfficeCli.Handlers.DocumentHandlerFactory.Open(_filePath, _editable);
@@ -1629,7 +1631,8 @@ public class ResidentServer : IDisposable
                 }
                 if (renderMode == "native" && directPng == null)
                 {
-                    Console.Error.WriteLine("--render native requires Windows with Microsoft PowerPoint installed.");
+                    Console.Error.WriteLine(OfficeCli.Core.NativeRenderDiagnostics.Create(
+                        "Microsoft PowerPoint", nativeAttempted, nativeFailure).Message);
                     return;
                 }
                 if (directPng == null)
@@ -1675,11 +1678,13 @@ public class ResidentServer : IDisposable
                 // Native-first on Windows: release an editable write lock (blocks
                 // Word) before rendering, then reopen — same dance as the single-page
                 // branch below.
-                if (renderMode != "html" && OperatingSystem.IsWindows())
+                Exception? nativeFailure = null;
+                bool nativeAttempted = renderMode != "html" && OperatingSystem.IsWindows();
+                if (nativeAttempted)
                 {
                     if (_editable) _handler.Dispose();
                     try { directPng = OfficeCli.Core.WordPdfBackend.RenderGrid(_filePath, $"1-{gPageCount}", (int)Math.Round(gCellW), (int)Math.Round(gCellH), gCols, gGap, gPad); }
-                    catch { directPng = null; }
+                    catch (Exception e) { nativeFailure = e; directPng = null; }
                     if (_editable)
                     {
                         _handler = OfficeCli.Handlers.DocumentHandlerFactory.Open(_filePath, _editable);
@@ -1688,7 +1693,8 @@ public class ResidentServer : IDisposable
                 }
                 if (renderMode == "native" && directPng == null)
                 {
-                    Console.Error.WriteLine("--render native requires Windows with Microsoft Word installed.");
+                    Console.Error.WriteLine(OfficeCli.Core.NativeRenderDiagnostics.Create(
+                        "Microsoft Word", nativeAttempted, nativeFailure).Message);
                     return;
                 }
                 if (directPng == null)
@@ -1704,14 +1710,17 @@ public class ResidentServer : IDisposable
                 var effectiveFilter = rangeArg != null
                     ? pageFilter
                     : (string.IsNullOrEmpty(pageFilter) ? "1" : pageFilter);
-                if (renderMode != "html" && OperatingSystem.IsWindows())
+                Exception? nativeFailure = null;
+                bool nativeAttempted = renderMode != "html" && OperatingSystem.IsWindows();
+                if (nativeAttempted)
                 {
                     // See the pptx branch: only an editable handler must be released
                     // (its write handle blocks Word); a read-only handler coexists.
                     if (_editable) _handler.Dispose();
                     // effectiveFilter is only null under --range, which forces
                     // renderMode=html — this native branch is then unreachable.
-                    try { directPng = OfficeCli.Core.WordPdfBackend.Render(_filePath, effectiveFilter!); } catch { directPng = null; }
+                    try { directPng = OfficeCli.Core.WordPdfBackend.Render(_filePath, effectiveFilter!); }
+                    catch (Exception e) { nativeFailure = e; directPng = null; }
                     if (_editable)
                     {
                         _handler = OfficeCli.Handlers.DocumentHandlerFactory.Open(_filePath, _editable);
@@ -1720,7 +1729,8 @@ public class ResidentServer : IDisposable
                 }
                 if (renderMode == "native" && directPng == null)
                 {
-                    Console.Error.WriteLine("--render native requires Windows with Microsoft Word installed.");
+                    Console.Error.WriteLine(OfficeCli.Core.NativeRenderDiagnostics.Create(
+                        "Microsoft Word", nativeAttempted, nativeFailure).Message);
                     return;
                 }
                 if (directPng == null) html = CommandBuilder.RenderViaRegistry(wordShotHandler, "docx",
