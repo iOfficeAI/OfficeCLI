@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text;
 using System.Text.Json;
 using OfficeCli;
 
@@ -68,5 +69,70 @@ using (var cancellation = Parse("""
 }
 Require(firstCancellation.IsCancellationRequested, "target request was not cancelled");
 Require(!secondCancellation.IsCancellationRequested, "cancelling one request affected another request");
+
+var slowStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+McpServer.CommandExecutorOverride = async (arguments, token) =>
+{
+    var command = arguments.GetProperty("command").GetString();
+    if (command == "slow")
+    {
+        slowStarted.SetResult();
+        await Task.Delay(Timeout.InfiniteTimeSpan, token);
+    }
+    if (command == "image")
+    {
+        return (new McpServer.McpContent[]
+        {
+            new("text", Text: "preview"),
+            new("image", Data: "iVBORw0KGgo=", MimeType: "image/png"),
+            new("resource", Text: "resource body", MimeType: "text/plain", Uri: "file:///report.txt", Name: "report"),
+        }, false);
+    }
+    return (new McpServer.McpContent[] { new("text", Text: "{\"ok\":true,\"request\":\"fast\"}") }, false);
+};
+
+try
+{
+    var stdioInput = string.Join('\n', new[]
+    {
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"contract\",\"version\":\"1\"}}}",
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"officecli\",\"arguments\":{\"command\":\"slow\"}}}",
+        "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"officecli\",\"arguments\":{\"command\":\"fast\"}}}",
+        "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\",\"params\":{\"requestId\":2,\"reason\":\"contract test\"}}",
+        "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"officecli\",\"arguments\":{\"command\":\"image\"}}}",
+        "",
+    });
+    await using var input = new MemoryStream(Encoding.UTF8.GetBytes(stdioInput));
+    await using var output = new MemoryStream();
+    await McpServer.RunAsync(input, output, enableUpgradeCheck: false);
+    await slowStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+    output.Position = 0;
+    using var outputReader = new StreamReader(output, Encoding.UTF8, false, 1024, leaveOpen: true);
+    var lines = (await outputReader.ReadToEndAsync()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+    var responses = lines.Select(line => JsonDocument.Parse(line)).ToArray();
+    try
+    {
+        Require(responses.All(response => response.RootElement.GetProperty("jsonrpc").GetString() == "2.0"), "stdout contained non-JSON-RPC output");
+        Require(responses.Any(response => response.RootElement.GetProperty("id").GetInt32() == 1), "initialize response missing");
+        Require(responses.Any(response => response.RootElement.GetProperty("id").GetInt32() == 3), "concurrent fast response missing");
+        Require(!responses.Any(response => response.RootElement.GetProperty("id").GetInt32() == 2), "cancelled request emitted a late response");
+        var structured = responses.Single(response => response.RootElement.GetProperty("id").GetInt32() == 3)
+            .RootElement.GetProperty("result").GetProperty("structuredContent");
+        Require(structured.GetProperty("ok").GetBoolean(), "structuredContent was flattened");
+        var richContent = responses.Single(response => response.RootElement.GetProperty("id").GetInt32() == 4)
+            .RootElement.GetProperty("result").GetProperty("content");
+        Require(richContent[1].GetProperty("type").GetString() == "image", "image content shape drifted");
+        Require(richContent[2].GetProperty("resource").GetProperty("uri").GetString() == "file:///report.txt", "resource content shape drifted");
+    }
+    finally
+    {
+        foreach (var response in responses) response.Dispose();
+    }
+}
+finally
+{
+    McpServer.CommandExecutorOverride = null;
+}
 
 Console.WriteLine("MCP contract tests passed.");

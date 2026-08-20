@@ -20,10 +20,12 @@ public static class McpServer
 {
     internal sealed record InFlightRequest(CancellationTokenSource Cancellation);
 
-    public static async Task RunAsync()
+    public static Task RunAsync() => RunAsync(Console.OpenStandardInput(), Console.OpenStandardOutput(), true);
+
+    internal static async Task RunAsync(Stream input, Stream output, bool enableUpgradeCheck)
     {
-        using var reader = new StreamReader(Console.OpenStandardInput());
-        using var writer = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
+        using var reader = new StreamReader(input, Encoding.UTF8, false, 1024, leaveOpen: true);
+        using var writer = new StreamWriter(output, new UTF8Encoding(false), 1024, leaveOpen: true) { AutoFlush = true };
 
         // Default this stdio process to NOT auto-spawn a resident. This opts
         // out of spawning only — it does NOT bypass an existing one: TryResident
@@ -70,7 +72,7 @@ public static class McpServer
         // redirected (see UpdateChecker.SpawnRefreshProcess), so
         // nothing it does can corrupt our stdout JSON-RPC stream.
         using var upgradeCts = new CancellationTokenSource();
-        var upgradeTask = RunPeriodicUpgradeCheckAsync(upgradeCts.Token);
+        var upgradeTask = enableUpgradeCheck ? RunPeriodicUpgradeCheckAsync(upgradeCts.Token) : Task.CompletedTask;
         var inFlight = new ConcurrentDictionary<string, InFlightRequest>();
         var requestTasks = new ConcurrentDictionary<int, Task>();
         using var writeGate = new SemaphoreSlim(1, 1);
@@ -316,6 +318,7 @@ public static class McpServer
             // Thin shell: the officecli tool takes a CLI command line in
             // `command` and runs it through the shared System.CommandLine root.
             var (contents, isError) = await ExecuteCommandLineAsync(args, cancellationToken);
+            var structuredContent = !isError ? TryParseStructuredContent(contents) : null;
             return WriteJson(w =>
             {
                 w.WriteStartObject();
@@ -326,12 +329,30 @@ public static class McpServer
                 {
                     w.WriteStartObject();
                     w.WriteString("type", c.Type);
-                    if (c.Text != null) w.WriteString("text", c.Text);
-                    if (c.Data != null) w.WriteString("data", c.Data);
-                    if (c.MimeType != null) w.WriteString("mimeType", c.MimeType);
+                    if (c.Type == "resource" && c.Uri != null)
+                    {
+                        w.WriteStartObject("resource");
+                        w.WriteString("uri", c.Uri);
+                        if (c.Name != null) w.WriteString("name", c.Name);
+                        if (c.MimeType != null) w.WriteString("mimeType", c.MimeType);
+                        if (c.Text != null) w.WriteString("text", c.Text);
+                        if (c.Data != null) w.WriteString("blob", c.Data);
+                        w.WriteEndObject();
+                    }
+                    else
+                    {
+                        if (c.Text != null) w.WriteString("text", c.Text);
+                        if (c.Data != null) w.WriteString("data", c.Data);
+                        if (c.MimeType != null) w.WriteString("mimeType", c.MimeType);
+                    }
                     w.WriteEndObject();
                 }
                 w.WriteEndArray();
+                if (structuredContent.HasValue)
+                {
+                    w.WritePropertyName("structuredContent");
+                    structuredContent.Value.WriteTo(w);
+                }
                 w.WriteBoolean("isError", isError);
                 w.WriteEndObject();
                 w.WriteEndObject();
@@ -371,7 +392,16 @@ public static class McpServer
     /// returns a text caption + an image block (base64 PNG). Fields not relevant
     /// to a given Type are left null and omitted on serialization.
     /// </summary>
-    private sealed record McpContent(string Type, string? Text = null, string? Data = null, string? MimeType = null);
+    internal sealed record McpContent(
+        string Type,
+        string? Text = null,
+        string? Data = null,
+        string? MimeType = null,
+        string? Uri = null,
+        string? Name = null);
+
+    internal static Func<JsonElement, CancellationToken, Task<(IReadOnlyList<McpContent> Contents, bool IsError)>>?
+        CommandExecutorOverride { get; set; }
 
     // ==================== Thin command-line exec ====================
     // The MCP tool is a thin shell over the CLI: the caller passes the officecli
@@ -384,6 +414,8 @@ public static class McpServer
         JsonElement args,
         CancellationToken cancellationToken)
     {
+        if (CommandExecutorOverride != null)
+            return await CommandExecutorOverride(args, cancellationToken);
         var argv = ExtractArgv(args);
         if (argv.Length == 0)
             throw new ArgumentException("Provide the officecli command line as `command`, e.g. "
@@ -396,6 +428,23 @@ public static class McpServer
         if (IsScreenshot(argv))
             return (await RunScreenshotArgvAsync(argv, cancellationToken), false);
         return SurfaceCliResult(await RunCliProcessAsync(argv, cancellationToken));
+    }
+
+    private static JsonElement? TryParseStructuredContent(IReadOnlyList<McpContent> contents)
+    {
+        if (contents.Count != 1 || contents[0].Type != "text" || string.IsNullOrWhiteSpace(contents[0].Text))
+            return null;
+        try
+        {
+            using var document = JsonDocument.Parse(contents[0].Text);
+            return document.RootElement.ValueKind is JsonValueKind.Object or JsonValueKind.Array
+                ? document.RootElement.Clone()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static string[] ExtractArgv(JsonElement args)
