@@ -605,10 +605,21 @@ public static class McpServer
             throw new InvalidOperationException("Unable to start the OfficeCLI tool process.");
         var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
+        await WaitForExitOrKillTreeAsync(process, cancellationToken);
+        return new CliResult(process.ExitCode, await stdout, await stderr);
+    }
+
+    /// <summary>
+    /// Production MCP child-process cancellation: wait for exit, or kill the
+    /// whole process tree when the request token is cancelled.
+    /// </summary>
+    internal static async Task WaitForExitOrKillTreeAsync(
+        System.Diagnostics.Process process,
+        CancellationToken cancellationToken)
+    {
         try
         {
             await process.WaitForExitAsync(cancellationToken);
-            return new CliResult(process.ExitCode, await stdout, await stderr);
         }
         catch (OperationCanceledException)
         {

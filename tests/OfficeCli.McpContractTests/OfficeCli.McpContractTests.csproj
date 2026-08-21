@@ -14,4 +14,12 @@
       Include="../../src/officecli/officecli.csproj"
       AdditionalProperties="SelfContained=false;PublishSingleFile=false;PublishTrimmed=false" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="JsonSchema.Net" Version="7.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="fixtures/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

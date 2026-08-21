@@ -1,6 +1,10 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using Json.Schema;
 using OfficeCli;
 
 static JsonElement Id(string json)
@@ -15,6 +19,36 @@ static void Require(bool condition, string message)
 {
     if (!condition)
         throw new InvalidOperationException(message);
+}
+
+static string FixturePath(string name)
+{
+    var dir = Path.Combine(AppContext.BaseDirectory, "fixtures");
+    if (!Directory.Exists(dir))
+        dir = Path.Combine(AppContext.BaseDirectory, "tests", "OfficeCli.McpContractTests", "fixtures");
+    return Path.Combine(dir, name);
+}
+
+static void RequireOfficialSchema(string json, string definition)
+{
+    var schemaPath = FixturePath("mcp-2024-11-05.schema.json");
+    using var schemaDoc = JsonDocument.Parse(File.ReadAllText(schemaPath));
+    var definitions = schemaDoc.RootElement.GetProperty("definitions").GetRawText();
+    var wrapper = $$"""
+        {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "$ref": "#/definitions/{{definition}}",
+          "definitions": {{definitions}}
+        }
+        """;
+    var schema = JsonSchema.FromText(wrapper);
+    var instance = JsonNode.Parse(json) ?? throw new InvalidOperationException($"invalid JSON for {definition}");
+    var result = schema.Evaluate(instance, new EvaluationOptions
+    {
+        EvaluateAs = SpecVersion.Draft7,
+        OutputFormat = OutputFormat.List,
+    });
+    Require(result.IsValid, $"{definition} failed official 2024-11-05 schema: {result}");
 }
 
 using (var initialize = Parse(McpServer.HandleInitialize(Id("17"))))
@@ -133,6 +167,91 @@ try
 finally
 {
     McpServer.CommandExecutorOverride = null;
+}
+
+var schemaBytes = File.ReadAllBytes(FixturePath("mcp-2024-11-05.schema.json"));
+using var sourceDoc = Parse(File.ReadAllText(FixturePath("SOURCE.json")));
+var expectedSha = sourceDoc.RootElement.GetProperty("sha256").GetString();
+var actualSha = Convert.ToHexString(SHA256.HashData(schemaBytes)).ToLowerInvariant();
+Require(sourceDoc.RootElement.GetProperty("protocolVersion").GetString() == "2024-11-05", "schema fixture protocol drifted");
+Require(sourceDoc.RootElement.GetProperty("gitBlobSha").GetString() == "97a92f0cc292ed4c602f4ee121732cc8ad3be973", "schema git blob sha drifted");
+Require(schemaBytes.Length == sourceDoc.RootElement.GetProperty("bytes").GetInt32(), "schema fixture size drifted");
+Require(actualSha == expectedSha, $"schema sha256 drifted: {actualSha}");
+
+var initializeJson = McpServer.HandleInitialize(Id("17"));
+RequireOfficialSchema(initializeJson, "JSONRPCResponse");
+using (var initializeResult = Parse(initializeJson))
+    RequireOfficialSchema(initializeResult.RootElement.GetProperty("result").GetRawText(), "InitializeResult");
+
+var toolsListJson = McpServer.HandleToolsList(Id("\"tools-1\""));
+RequireOfficialSchema(toolsListJson, "JSONRPCResponse");
+using (var toolsListResult = Parse(toolsListJson))
+    RequireOfficialSchema(toolsListResult.RootElement.GetProperty("result").GetRawText(), "ListToolsResult");
+
+using (var toolCall = Parse(concurrentResponses[0]))
+    RequireOfficialSchema(toolCall.RootElement.GetProperty("result").GetRawText(), "CallToolResult");
+
+var errorJson = await McpServer.HandleToolsCallAsync(
+    Id("99"),
+    Id("""{"jsonrpc":"2.0","id":99,"method":"tools/call","params":{"name":"missing"}}"""),
+    CancellationToken.None);
+RequireOfficialSchema(errorJson, "JSONRPCError");
+
+const string cancelJson = """{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":101,"reason":"test"}}""";
+RequireOfficialSchema(cancelJson, "JSONRPCNotification");
+RequireOfficialSchema(cancelJson, "CancelledNotification");
+
+{
+    var startInfo = new ProcessStartInfo
+    {
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        UseShellExecute = false,
+        CreateNoWindow = true,
+    };
+    if (OperatingSystem.IsWindows())
+    {
+        startInfo.FileName = "cmd.exe";
+        startInfo.ArgumentList.Add("/c");
+        startInfo.ArgumentList.Add("ping -n 60 127.0.0.1");
+    }
+    else
+    {
+        startInfo.FileName = "sh";
+        startInfo.ArgumentList.Add("-c");
+        startInfo.ArgumentList.Add("sleep 60 & wait");
+    }
+    using var hanging = Process.Start(startInfo)
+        ?? throw new InvalidOperationException("failed to start hanging child process");
+    var childPids = new List<int>();
+    await Task.Delay(150);
+    var childrenFile = $"/proc/{hanging.Id}/task/{hanging.Id}/children";
+    if (File.Exists(childrenFile))
+    {
+        childPids.AddRange((await File.ReadAllTextAsync(childrenFile))
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(int.Parse));
+    }
+    using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(400));
+    try
+    {
+        await McpServer.WaitForExitOrKillTreeAsync(hanging, timeout.Token);
+        throw new InvalidOperationException("hanging process exited before cancellation");
+    }
+    catch (OperationCanceledException)
+    {
+    }
+    using var waitExit = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+    try
+    {
+        await hanging.WaitForExitAsync(waitExit.Token);
+    }
+    catch (OperationCanceledException)
+    {
+    }
+    Require(hanging.HasExited, "production runner left the parent process running after cancel");
+    foreach (var childPid in childPids)
+        Require(!Directory.Exists($"/proc/{childPid}"), $"child process {childPid} survived tree kill");
 }
 
 Console.WriteLine("MCP contract tests passed.");
