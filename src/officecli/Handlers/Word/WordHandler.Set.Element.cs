@@ -344,6 +344,14 @@ public partial class WordHandler
 
         foreach (var (key, value) in properties)
         {
+            // A drawing/OLE/other non-text run has no writable <w:t>. Reject
+            // text before EnsureRunProperties can create an empty <w:rPr>, so
+            // a failed edit does not mutate the run structure.
+            if (key.Equals("text", StringComparison.OrdinalIgnoreCase) && !hasText)
+            {
+                unsupported.Add(key);
+                continue;
+            }
             // CONSISTENCY(run-special-content): typography props (font.* /
             // size / bold / color / underline …) are noise on the MARKER
             // runs (ptab / fieldChar / instrText / break) — their rPr paints
@@ -406,7 +414,9 @@ public partial class WordHandler
                     }
                     OfficeCli.Core.ParseHelpers.ValidateXmlText(value, "text");
                     var textEl = run.GetFirstChild<Text>();
-                    if (textEl != null) textEl.Text = value;
+                    // hasText was checked before run properties were touched.
+                    if (textEl == null) { unsupported.Add(key); break; }
+                    textEl.Text = value;
                     // CONSISTENCY(field-cache-stale): if this run sits between
                     // a field's `separate` and `end` fldChars, it is the
                     // cached result of the field — Word will recompute it
@@ -414,7 +424,7 @@ public partial class WordHandler
                     // refresh. Mark the owning field dirty so Word recomputes
                     // proactively on next open, surfacing the divergence
                     // instead of silently dropping the user's value.
-                    if (textEl != null && IsFieldCachedRun(run))
+                    if (IsFieldCachedRun(run))
                         MarkOwningFieldDirty(run);
                     break;
                 case "alt" or "alttext" or "description":
@@ -927,6 +937,11 @@ public partial class WordHandler
                     break;
             }
         }
+
+        // Do not stamp a new paragraph text id when every requested property
+        // was rejected.
+        if (unsupported.Count == properties.Count)
+            return unsupported;
 
         var affectedPara = run.Ancestors<Paragraph>().FirstOrDefault();
         if (affectedPara != null)
