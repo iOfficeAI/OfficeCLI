@@ -186,26 +186,28 @@ static partial class CommandBuilder
             // /dev/null redirect) with zero length carries no second payload
             // — skip the warning. Pipes (CanSeek=false) still warn: someone
             // is actively piping data that will be ignored.
-            bool stdinHasInput = Console.IsInputRedirected;
-            if (stdinHasInput)
+            // #340/#339: the warning below only needs to know whether a SECOND
+            // payload is sitting on stdin while --commands/--input is also given.
+            // The old refinement peeked a byte off stdin — but under `officecli
+            // mcp` stdin IS the JSON-RPC channel, and that consuming read (on an
+            // abandoned thread) swallowed the next request frame, so the client
+            // hung with no response. Determine it WITHOUT consuming: only a
+            // seekable stdin can be sized without reading. This makes the warning
+            // best-effort — most hosts expose redirected stdin as a non-seekable
+            // stream (Console.OpenStandardInput().CanSeek == false for pipes AND,
+            // on several platforms, for `< file` too), and those are deliberately
+            // left unconfirmed rather than consumed. Never swallowing a frame
+            // matters more than the warning. The actual stdin payload path below
+            // still reads stdin in full when batch has no explicit source.
+            bool stdinHasInput = false;
+            if (Console.IsInputRedirected)
             {
-                // Peek with a short timeout: /dev/null and closed stdin hit
-                // EOF instantly (no payload → no warning); a pipe carrying a
-                // real second payload has data ready (warn); an open-but-idle
-                // pipe times out and is treated as no payload — batch never
-                // reads stdin on this path anyway, so nothing is lost. The
-                // possibly-blocked Peek thread is abandoned; the process
-                // exits normally.
                 try
                 {
-                    var stdinPeek = System.Threading.Tasks.Task.Run(() =>
-                    {
-                        try { return StdIn.Peek() != -1; }
-                        catch { return false; }
-                    });
-                    stdinHasInput = stdinPeek.Wait(TimeSpan.FromMilliseconds(50)) && stdinPeek.Result;
+                    var probe = Console.OpenStandardInput(); // metadata only; never read/disposed
+                    stdinHasInput = probe.CanSeek && probe.Length > 0;
                 }
-                catch { /* keep IsInputRedirected verdict */ }
+                catch { /* treat as no confirmed payload */ }
             }
             if (inlineCommands != null && inputFile != null)
                 throw new ArgumentException(
