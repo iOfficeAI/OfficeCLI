@@ -115,6 +115,13 @@ public partial class WordHandler
         int rows, cols;
         if (tableData != null)
         {
+            // Empty `data=` (or a source that parses to zero rows) leaves the
+            // grid empty; Max() over it threw InvalidOperationException instead
+            // of a clean error. Reject with a clear message.
+            if (tableData.Length == 0 || tableData.All(r => r.Length == 0))
+                throw new ArgumentException(
+                    "Table 'data' is empty — provide at least one cell (e.g. data=\"a,b;c,d\"), "
+                    + "or omit 'data' and pass rows=/cols= to create a blank table.");
             rows = tableData.Length;
             cols = tableData.Max(r => r.Length);
         }

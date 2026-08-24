@@ -53,6 +53,13 @@ public partial class PowerPointHandler
                 int rows, cols;
                 if (tableData != null)
                 {
+                    // Empty data → Max() over an empty grid threw
+                    // InvalidOperationException; reject cleanly (mirrors the docx
+                    // add-table path).
+                    if (tableData.Length == 0 || tableData.All(r => r.Length == 0))
+                        throw new ArgumentException(
+                            "Table 'data' is empty — provide at least one cell (e.g. data=\"a,b;c,d\"), "
+                            + "or omit 'data' and pass rows=/cols= to create a blank table.");
                     rows = tableData.Length;
                     cols = tableData.Max(r => r.Length);
                 }
