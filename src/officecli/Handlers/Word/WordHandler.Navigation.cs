@@ -1997,7 +1997,10 @@ public partial class WordHandler
         // generic InnerText fallback below would return " fn-text".
         node.Text = GetFootnoteText(fnEl);
         if (fnEl.Id?.Value != null) node.Format["id"] = fnEl.Id.Value;
-        if (fnEl.Type?.Value != null) node.Format["type"] = fnEl.Type.InnerText;
+        // Read InnerText, never .Value (would parse the enum and throw on an
+        // unrecognized token — same crash class as #324's table jc).
+        if (fnEl.Type != null && !string.IsNullOrEmpty(fnEl.Type.InnerText))
+            node.Format["type"] = fnEl.Type.InnerText;
         // R44 minor-5: surface first-run formatting on footnote node so
         // bold/italic/size/color set via Add/Set round-trip through Get.
         // Mirrors the hyperlink firstRun pattern at line ~2746 above.
@@ -2085,7 +2088,9 @@ public partial class WordHandler
         node.Type = "endnote";
         node.Text = GetFootnoteText(enEl);
         if (enEl.Id?.Value != null) node.Format["id"] = enEl.Id.Value;
-        if (enEl.Type?.Value != null) node.Format["type"] = enEl.Type.InnerText;
+        // Read InnerText, never .Value (see #324 — parsing an unknown enum throws).
+        if (enEl.Type != null && !string.IsNullOrEmpty(enEl.Type.InnerText))
+            node.Format["type"] = enEl.Type.InnerText;
         // R44 minor-5: mirror footnote firstRun readback for endnote.
         var enFirstRun = enEl.Descendants<Run>().FirstOrDefault(r => r.GetFirstChild<Text>() != null);
         if (enFirstRun?.RunProperties != null)
@@ -3293,9 +3298,15 @@ public partial class WordHandler
                 // phantom `width=…` key.
                 node.Format["_noTblW"] = true;
             }
-            // Alignment
-            if (tp.TableJustification?.Val?.Value != null)
-                node.Format["align"] = tp.TableJustification.Val.InnerText;
+            // Alignment. Read InnerText, never .Value — reading the enum .Value
+            // parses it, and a table <w:jc> written by other producers can carry
+            // an ISO/paragraph value (start / end / distribute / both) that the
+            // SDK's TableRowAlignmentValues enum (left/center/right) rejects. That
+            // FormatException crashed the entire get/query traversal under /body
+            // (#324). InnerText returns the raw token safely and round-trips.
+            var tblJcVal = tp.TableJustification?.Val;
+            if (tblJcVal != null && !string.IsNullOrEmpty(tblJcVal.InnerText))
+                node.Format["align"] = tblJcVal.InnerText;
             // Indent
             // BUG-R4B(BUG1): decimal-tolerant width read (w:tblInd w:w="0.0").
             // BUG-DUMP-R34-TBLIND: preserve the indent UNIT. A pct-typed tblInd
