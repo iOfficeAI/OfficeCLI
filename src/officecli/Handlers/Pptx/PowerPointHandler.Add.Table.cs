@@ -62,6 +62,15 @@ public partial class PowerPointHandler
                             + "or omit 'data' and pass rows=/cols= to create a blank table.");
                     rows = tableData.Length;
                     cols = tableData.Max(r => r.Length);
+                    // ParseGrid drops all-empty rows (blank-line skip, right for
+                    // CSV import). When the caller ALSO gave explicit rows=/cols=,
+                    // honor them as a floor so `data="H1,H2;,," rows=2` still makes
+                    // a 2-row table (the second row padded empty) rather than
+                    // silently collapsing to one.
+                    if (properties.TryGetValue("rows", out var rWantStr)
+                        && int.TryParse(rWantStr, out var rWant) && rWant > rows) rows = rWant;
+                    if (properties.TryGetValue("cols", out var cWantStr)
+                        && int.TryParse(cWantStr, out var cWant) && cWant > cols) cols = cWant;
                 }
                 else
                 {
