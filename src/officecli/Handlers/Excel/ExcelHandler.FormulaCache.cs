@@ -121,6 +121,32 @@ public partial class ExcelHandler
     /// </summary>
     public bool LastSweepTruncatedByYield { get; private set; }
 
+    /// <summary>
+    /// #338: cheap raw-stream probe for a formula cell (<c>&lt;f&gt;</c>) that does
+    /// NOT materialize the worksheet DOM. Used to skip formula-free sheets in the
+    /// stale-cache sweep so their parts stay byte-identical on save. Any read error
+    /// falls back to <c>true</c> (process the sheet) — correctness over preservation.
+    /// </summary>
+    private static bool WorksheetPartHasFormula(DocumentFormat.OpenXml.Packaging.WorksheetPart part)
+    {
+        try
+        {
+            using var stream = part.GetStream(System.IO.FileMode.Open, System.IO.FileAccess.Read);
+            using var reader = System.Xml.XmlReader.Create(stream, new System.Xml.XmlReaderSettings
+            {
+                DtdProcessing = System.Xml.DtdProcessing.Prohibit,
+                XmlResolver = null,
+                IgnoreComments = true,
+                IgnoreWhitespace = true,
+            });
+            while (reader.Read())
+                if (reader.NodeType == System.Xml.XmlNodeType.Element && reader.LocalName == "f")
+                    return true;
+        }
+        catch { return true; }
+        return false;
+    }
+
     private void RefreshStaleFormulaCaches()
     {
         // Reset BEFORE any early return — a stale true from a previous save would
@@ -144,6 +170,14 @@ public partial class ExcelHandler
         foreach (var (sheetName, wsPart) in GetWorksheets())
         {
             if (budgetExhausted) break;
+            // Byte-preservation (#338): materializing a sheet's DOM forces the SDK
+            // to re-serialize that part on save — rewriting untouched sheets and
+            // flipping the default xmlns to the x: prefix. Only sheets we already
+            // dirtied (materialized anyway) or that actually contain a formula cell
+            // (its cache could be stale after a cross-sheet edit) need the sweep;
+            // a formula-free sheet is left untouched, so its part stays byte-identical.
+            if (!_dirtyWorksheets.Contains(wsPart) && !WorksheetPartHasFormula(wsPart))
+                continue;
             var sheetData = GetSheet(wsPart).GetFirstChild<SheetData>();
             if (sheetData == null) continue;
             Core.FormulaEvaluator? evaluator = null;
