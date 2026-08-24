@@ -373,8 +373,19 @@ static partial class CommandBuilder
     private static string CompactText(string? text)
     {
         if (string.IsNullOrEmpty(text)) return "(empty)";
+        // NEWLINE-SEMANTICS-V2 fix: a soft line break inside an element's text
+        // reads back as '\v' (174bd906 unified '\v'=soft break / '\n'=paragraph).
+        // That commit updated the run-text/view/dump paths but NOT this escape
+        // set, so a raw U+000B leaked into the one-line-per-element compact output
+        // — a line-oriented consumer treats the control byte as a line terminator
+        // and sees only the text up to the first soft break (looked like the field
+        // was truncated to its first line). Escape '\v' the same way '\n'/'\t' are
+        // so multi-line element text stays on a single, fully-visible line. This
+        // restores the format's "one line per element" contract; it does not
+        // change or reorder any existing token.
         var t = text.Replace("\\", "\\\\").Replace("\t", "\\t")
-                    .Replace("\r", "").Replace("\n", "\\n").Replace("\"", "\\\"");
+                    .Replace("\r", "").Replace("\n", "\\n").Replace("\v", "\\v")
+                    .Replace("\"", "\\\"");
         t = OfficeCli.Core.DisplayText.Truncate(t, 60);
         return "\"" + t + "\"";
     }
