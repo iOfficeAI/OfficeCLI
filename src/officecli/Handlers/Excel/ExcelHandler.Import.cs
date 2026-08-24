@@ -237,6 +237,12 @@ public partial class ExcelHandler
             sheetView.InsertAt(pane, 0);
         }
 
+        // Mark the document modified so Dispose flushes it. Without this, an
+        // `import` with no explicit Save (the CLI path) hits the !Modified
+        // byte-preserving discard branch in Dispose and the imported rows are
+        // silently dropped — success reported, disk unchanged. Same gap that
+        // affected Move/Swap/CopyFrom.
+        Modified = true;
         SaveWorksheet(worksheet);
         return $"Imported {rows.Count} rows x {maxCols} cols into /{sheetName} starting at {startCell.ToUpperInvariant()}";
     }
