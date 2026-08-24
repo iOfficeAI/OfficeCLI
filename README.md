@@ -8,7 +8,7 @@ Open-source. Single binary. No Office installation. No dependencies. Works every
 
 **OfficeCLI's built-in HTML rendering engine reproduces documents with high fidelity — and that's what gives AI eyes.** It renders `.docx` / `.xlsx` / `.pptx` to HTML or PNG, closing the *render → look → fix* loop.
 
-[![GitHub Release](https://img.shields.io/github/v/release/iOfficeAI/OfficeCLI)](https://github.com/iOfficeAI/OfficeCLI/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/suoak/OfficeCLI)](https://github.com/suoak/OfficeCLI/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 **English** | [中文](README_zh.md) | [日本語](README_ja.md) | [한국어](README_ko.md)
@@ -74,9 +74,9 @@ That's it. The skill file teaches the agent how to install the binary and use al
 
 ## For Humans
 
-**Option A — GUI:** Install [**CSBU WorkMate**](https://github.com/iOfficeAI/AionUi) — a desktop app that lets you create and edit Office documents through natural language, powered by OfficeCLI under the hood. Just describe what you want, and CSBU WorkMate handles the rest.
+**Option A — GUI:** Install [**CSBU WorkMate**](https://github.com/suoak/AionUi) — a desktop app that lets you create and edit Office documents through natural language, powered by OfficeCLI under the hood. Just describe what you want, and CSBU WorkMate handles the rest.
 
-**Option B — CLI:** Download the binary for your platform from [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases), then run:
+**Option B — CLI:** Download the binary for your platform from [GitHub Releases](https://github.com/suoak/OfficeCLI/releases), then run:
 
 ```bash
 officecli install
@@ -87,9 +87,9 @@ This copies the binary to your PATH and installs the **officecli skill** into ev
 ## For Developers — See It Live in 30 Seconds
 
 ```bash
-# 1. Install (macOS / Linux) — or: brew install officecli / npm install -g @officecli/officecli
-curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
-# Windows (PowerShell): irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+# 1. Install from the CSBU WorkMate fork (macOS / Linux)
+curl -fsSL https://raw.githubusercontent.com/suoak/OfficeCLI/main/install.sh | bash
+# Windows (PowerShell): irm https://raw.githubusercontent.com/suoak/OfficeCLI/main/install.ps1 | iex
 
 # 2. Create a blank PowerPoint
 officecli create deck.pptx
@@ -176,11 +176,11 @@ officecli add deck.pptx / --type slide --prop title="Q4 Report"
 | Excel (.xlsx) | ✅ | ✅ | ✅ |
 | PowerPoint (.pptx) | ✅ | ✅ | ✅ |
 
-**Word** — full [i18n & RTL support](https://github.com/iOfficeAI/OfficeCLI/wiki/i18n) (per-script font slots, per-script BCP-47 lang tags `lang.latin/ea/cs`, complex-script bold/italic/size, `direction=rtl` cascading through paragraph/run/section/table/style/header/footer/docDefaults, `rtlGutter` + `pgBorders` shorthand, locale-aware page numbering for Hindi/Arabic/Thai/CJK; `create --locale ar-SA` auto-enables RTL), [paragraphs](https://github.com/iOfficeAI/OfficeCLI/wiki/word-paragraph) (framePr, tabs shorthand, char-based indents), [runs](https://github.com/iOfficeAI/OfficeCLI/wiki/word-run) (underline.color, position half-pts), [tables](https://github.com/iOfficeAI/OfficeCLI/wiki/word-table) (virtual column ops add/remove/move/copyfrom, hMerge), [styles](https://github.com/iOfficeAI/OfficeCLI/wiki/word-style), [textbox](https://github.com/iOfficeAI/OfficeCLI/wiki/word-textbox) / [shape](https://github.com/iOfficeAI/OfficeCLI/wiki/word-shape) (textbox: rotation, `textDirection` `eaVert`/`vert270`, gradient, shadow, opacity), [headers/footers](https://github.com/iOfficeAI/OfficeCLI/wiki/word-header-footer), [images](https://github.com/iOfficeAI/OfficeCLI/wiki/word-picture) (PNG/JPG/GIF/SVG), [equations](https://github.com/iOfficeAI/OfficeCLI/wiki/word-equation) (LaTeX input), [diagrams](https://github.com/iOfficeAI/OfficeCLI/wiki/diagram) (mermaid → native editable shapes, or any mermaid type as a full-fidelity PNG), [comments](https://github.com/iOfficeAI/OfficeCLI/wiki/word-comment), [footnotes](https://github.com/iOfficeAI/OfficeCLI/wiki/word-footnote), [watermarks](https://github.com/iOfficeAI/OfficeCLI/wiki/word-watermark), [bookmarks](https://github.com/iOfficeAI/OfficeCLI/wiki/word-bookmark), [TOC](https://github.com/iOfficeAI/OfficeCLI/wiki/word-toc), [charts](https://github.com/iOfficeAI/OfficeCLI/wiki/word-chart), [hyperlinks](https://github.com/iOfficeAI/OfficeCLI/wiki/word-hyperlink), [sections](https://github.com/iOfficeAI/OfficeCLI/wiki/word-section), [form fields](https://github.com/iOfficeAI/OfficeCLI/wiki/word-formfield), [content controls (SDT)](https://github.com/iOfficeAI/OfficeCLI/wiki/word-sdt), [fields](https://github.com/iOfficeAI/OfficeCLI/wiki/word-field) (22 zero-param types + MERGEFIELD / REF / PAGEREF / SEQ / STYLEREF / DOCPROPERTY / IF), [OLE objects](https://github.com/iOfficeAI/OfficeCLI/wiki/word-ole), [revisions / tracked changes](https://github.com/iOfficeAI/OfficeCLI/wiki/word-revision) (`revision.type=ins\|del\|format\|moveFrom\|moveTo` + `revision.action=accept\|reject`, per-target `/revision[@author=Alice]` selector, tracked Find&Replace), page background color, [document properties](https://github.com/iOfficeAI/OfficeCLI/wiki/word-document)
+**Word** — full [i18n & RTL support](https://github.com/suoak/OfficeCLI/wiki/i18n) (per-script font slots, per-script BCP-47 lang tags `lang.latin/ea/cs`, complex-script bold/italic/size, `direction=rtl` cascading through paragraph/run/section/table/style/header/footer/docDefaults, `rtlGutter` + `pgBorders` shorthand, locale-aware page numbering for Hindi/Arabic/Thai/CJK; `create --locale ar-SA` auto-enables RTL), [paragraphs](https://github.com/suoak/OfficeCLI/wiki/word-paragraph) (framePr, tabs shorthand, char-based indents), [runs](https://github.com/suoak/OfficeCLI/wiki/word-run) (underline.color, position half-pts), [tables](https://github.com/suoak/OfficeCLI/wiki/word-table) (virtual column ops add/remove/move/copyfrom, hMerge), [styles](https://github.com/suoak/OfficeCLI/wiki/word-style), [textbox](https://github.com/suoak/OfficeCLI/wiki/word-textbox) / [shape](https://github.com/suoak/OfficeCLI/wiki/word-shape) (textbox: rotation, `textDirection` `eaVert`/`vert270`, gradient, shadow, opacity), [headers/footers](https://github.com/suoak/OfficeCLI/wiki/word-header-footer), [images](https://github.com/suoak/OfficeCLI/wiki/word-picture) (PNG/JPG/GIF/SVG), [equations](https://github.com/suoak/OfficeCLI/wiki/word-equation) (LaTeX input), [diagrams](https://github.com/suoak/OfficeCLI/wiki/diagram) (mermaid → native editable shapes, or any mermaid type as a full-fidelity PNG), [comments](https://github.com/suoak/OfficeCLI/wiki/word-comment), [footnotes](https://github.com/suoak/OfficeCLI/wiki/word-footnote), [watermarks](https://github.com/suoak/OfficeCLI/wiki/word-watermark), [bookmarks](https://github.com/suoak/OfficeCLI/wiki/word-bookmark), [TOC](https://github.com/suoak/OfficeCLI/wiki/word-toc), [charts](https://github.com/suoak/OfficeCLI/wiki/word-chart), [hyperlinks](https://github.com/suoak/OfficeCLI/wiki/word-hyperlink), [sections](https://github.com/suoak/OfficeCLI/wiki/word-section), [form fields](https://github.com/suoak/OfficeCLI/wiki/word-formfield), [content controls (SDT)](https://github.com/suoak/OfficeCLI/wiki/word-sdt), [fields](https://github.com/suoak/OfficeCLI/wiki/word-field) (22 zero-param types + MERGEFIELD / REF / PAGEREF / SEQ / STYLEREF / DOCPROPERTY / IF), [OLE objects](https://github.com/suoak/OfficeCLI/wiki/word-ole), [revisions / tracked changes](https://github.com/suoak/OfficeCLI/wiki/word-revision) (`revision.type=ins\|del\|format\|moveFrom\|moveTo` + `revision.action=accept\|reject`, per-target `/revision[@author=Alice]` selector, tracked Find&Replace), page background color, [document properties](https://github.com/suoak/OfficeCLI/wiki/word-document)
 
-**Excel** — [cells](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-cell) (phonetic guide / furigana on add, Excel-UI `--shift left\|up` on remove / `shift=right\|down` on add), formulas (350+ built-in functions with auto-evaluation, spilling dynamic arrays with `_xlfn.` auto-prefix, financial / bond and statistical families, OFFSET/INDIRECT, defined-name formula bodies inlined at parse, formula-ref rewrite on row/col insert), [sheets](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-sheet) (visible/hidden/veryHidden, print margins, printTitleRows/Cols, RTL `sheetView`, cascade-aware sheet rename, empty-cell bloat filter on open), boolean `and`/`or` selectors (`row[Salary>5000 and Region=EMEA]`), [tables](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-table), [sort](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-sort) (sheet / range, multi-key, sidecar-aware), [conditional formatting](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-conditionalformatting), [charts](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-chart) (including box-whisker, [pareto](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-chart-add) with auto-sort + cumulative-%, log axis), [pivot tables](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-pivottable) (multi-field, date grouping, showDataAs, sort, grandTotals, subtotals, compact/outline/tabular layout, repeat item labels, blank rows, calculated fields, persistent `labelFilter` / `topN` filters, cache CoW + cross-pivot sharing), [slicers](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-slicer), [named ranges](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-namedrange), [data validation](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-validation), [images](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-picture) (PNG/JPG/GIF/SVG with dual-representation fallback), [sparklines](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-sparkline), [comments](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-comment) (RTL), [autofilter](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-autofilter), [shapes](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-shape), [OLE objects](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-ole), CSV/TSV import, `$Sheet:A1` cell addressing
+**Excel** — [cells](https://github.com/suoak/OfficeCLI/wiki/excel-cell) (phonetic guide / furigana on add, Excel-UI `--shift left\|up` on remove / `shift=right\|down` on add), formulas (350+ built-in functions with auto-evaluation, spilling dynamic arrays with `_xlfn.` auto-prefix, financial / bond and statistical families, OFFSET/INDIRECT, defined-name formula bodies inlined at parse, formula-ref rewrite on row/col insert), [sheets](https://github.com/suoak/OfficeCLI/wiki/excel-sheet) (visible/hidden/veryHidden, print margins, printTitleRows/Cols, RTL `sheetView`, cascade-aware sheet rename, empty-cell bloat filter on open), boolean `and`/`or` selectors (`row[Salary>5000 and Region=EMEA]`), [tables](https://github.com/suoak/OfficeCLI/wiki/excel-table), [sort](https://github.com/suoak/OfficeCLI/wiki/excel-sort) (sheet / range, multi-key, sidecar-aware), [conditional formatting](https://github.com/suoak/OfficeCLI/wiki/excel-conditionalformatting), [charts](https://github.com/suoak/OfficeCLI/wiki/excel-chart) (including box-whisker, [pareto](https://github.com/suoak/OfficeCLI/wiki/excel-chart-add) with auto-sort + cumulative-%, log axis), [pivot tables](https://github.com/suoak/OfficeCLI/wiki/excel-pivottable) (multi-field, date grouping, showDataAs, sort, grandTotals, subtotals, compact/outline/tabular layout, repeat item labels, blank rows, calculated fields, persistent `labelFilter` / `topN` filters, cache CoW + cross-pivot sharing), [slicers](https://github.com/suoak/OfficeCLI/wiki/excel-slicer), [named ranges](https://github.com/suoak/OfficeCLI/wiki/excel-namedrange), [data validation](https://github.com/suoak/OfficeCLI/wiki/excel-validation), [images](https://github.com/suoak/OfficeCLI/wiki/excel-picture) (PNG/JPG/GIF/SVG with dual-representation fallback), [sparklines](https://github.com/suoak/OfficeCLI/wiki/excel-sparkline), [comments](https://github.com/suoak/OfficeCLI/wiki/excel-comment) (RTL), [autofilter](https://github.com/suoak/OfficeCLI/wiki/excel-autofilter), [shapes](https://github.com/suoak/OfficeCLI/wiki/excel-shape), [OLE objects](https://github.com/suoak/OfficeCLI/wiki/excel-ole), CSV/TSV import, `$Sheet:A1` cell addressing
 
-**PowerPoint** — [slides](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-slide) (header/footer/date/slidenum toggles, hidden), [shapes](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-shape) (pattern fill, blur effect, hyperlink tooltip + slide-jump links, **highlight color** on runs, `slideMaster`/`slideLayout` typed add/set/remove, arrow alias, effective.X + effective.X.src), [images](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-picture) (PNG/JPG/GIF/SVG, fill modes: stretch/contain/cover/tile, brightness/contrast/glow/shadow, rotation, link + tooltip), [tables](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-table) (built-in PowerPoint style catalogue, virtual `/col[C]` get + swap/copyFrom, row/col Move/CopyFrom, fill/background alias), [charts](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-chart) (pieOfPie, barOfPie, per-attr axisLine/gridline setters, series add/remove with theme palette, `anchor=x,y,w,h` shorthand), [animations](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-shape-set) (15 emphasis + 16 exit template-backed presets, multi-effect chains, motion-path presets, repeat/restart/autoReverse, chart animations + `chartBuild`), [transitions](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-morph-check) (morph + p14 + 12 p15 PowerPoint 2013+ presets), [3D models (.glb)](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-3dmodel) (combined `rotation=ax,ay,az`), [slide zoom](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-zoom), [equations](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-equation) (LaTeX input), [diagrams](https://github.com/iOfficeAI/OfficeCLI/wiki/diagram) (mermaid flowchart / sequence → native editable shapes, or any mermaid type as a full-fidelity PNG), [themes](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-theme), [connectors](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-connector) (`from`/`to` accept a full `/slide[N]/shape[@name=Foo]` path), [video/audio](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-video) (loop, autoStart), [groups](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-group) (link + tooltip; Get/Query/Add/Remove all descend into groups), [notes](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-notes) (RTL, lang), [comments](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-comment) (RTL, legacy + modern p188 threaded round-trip), SmartArt (round-trip via add-part + raw-set), [OLE objects](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-ole), [placeholders](https://github.com/iOfficeAI/OfficeCLI/wiki/ppt-placeholder) (add/set by phType)
+**PowerPoint** — [slides](https://github.com/suoak/OfficeCLI/wiki/ppt-slide) (header/footer/date/slidenum toggles, hidden), [shapes](https://github.com/suoak/OfficeCLI/wiki/ppt-shape) (pattern fill, blur effect, hyperlink tooltip + slide-jump links, **highlight color** on runs, `slideMaster`/`slideLayout` typed add/set/remove, arrow alias, effective.X + effective.X.src), [images](https://github.com/suoak/OfficeCLI/wiki/ppt-picture) (PNG/JPG/GIF/SVG, fill modes: stretch/contain/cover/tile, brightness/contrast/glow/shadow, rotation, link + tooltip), [tables](https://github.com/suoak/OfficeCLI/wiki/ppt-table) (built-in PowerPoint style catalogue, virtual `/col[C]` get + swap/copyFrom, row/col Move/CopyFrom, fill/background alias), [charts](https://github.com/suoak/OfficeCLI/wiki/ppt-chart) (pieOfPie, barOfPie, per-attr axisLine/gridline setters, series add/remove with theme palette, `anchor=x,y,w,h` shorthand), [animations](https://github.com/suoak/OfficeCLI/wiki/ppt-shape-set) (15 emphasis + 16 exit template-backed presets, multi-effect chains, motion-path presets, repeat/restart/autoReverse, chart animations + `chartBuild`), [transitions](https://github.com/suoak/OfficeCLI/wiki/ppt-morph-check) (morph + p14 + 12 p15 PowerPoint 2013+ presets), [3D models (.glb)](https://github.com/suoak/OfficeCLI/wiki/ppt-3dmodel) (combined `rotation=ax,ay,az`), [slide zoom](https://github.com/suoak/OfficeCLI/wiki/ppt-zoom), [equations](https://github.com/suoak/OfficeCLI/wiki/ppt-equation) (LaTeX input), [diagrams](https://github.com/suoak/OfficeCLI/wiki/diagram) (mermaid flowchart / sequence → native editable shapes, or any mermaid type as a full-fidelity PNG), [themes](https://github.com/suoak/OfficeCLI/wiki/ppt-theme), [connectors](https://github.com/suoak/OfficeCLI/wiki/ppt-connector) (`from`/`to` accept a full `/slide[N]/shape[@name=Foo]` path), [video/audio](https://github.com/suoak/OfficeCLI/wiki/ppt-video) (loop, autoStart), [groups](https://github.com/suoak/OfficeCLI/wiki/ppt-group) (link + tooltip; Get/Query/Add/Remove all descend into groups), [notes](https://github.com/suoak/OfficeCLI/wiki/ppt-notes) (RTL, lang), [comments](https://github.com/suoak/OfficeCLI/wiki/ppt-comment) (RTL, legacy + modern p188 threaded round-trip), SmartArt (round-trip via add-part + raw-set), [OLE objects](https://github.com/suoak/OfficeCLI/wiki/ppt-ole), [placeholders](https://github.com/suoak/OfficeCLI/wiki/ppt-placeholder) (add/set by phType)
 
 ## Use Cases
 
@@ -207,13 +207,13 @@ Ships as a single self-contained binary. The .NET runtime is embedded -- nothing
 
 ```bash
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/suoak/OfficeCLI/main/install.sh | bash
 
 # Windows (PowerShell)
-irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/suoak/OfficeCLI/main/install.ps1 | iex
 ```
 
-**Or via a package manager:**
+**Or via a native package manager:**
 
 ```bash
 # Homebrew (macOS / Linux)
@@ -221,12 +221,9 @@ brew install officecli
 
 # Scoop (Windows)
 scoop install officecli
-
-# npm (all platforms — fetches the native binary for your platform)
-npm install -g @officecli/officecli
 ```
 
-**Or download manually** from [GitHub Releases](https://github.com/iOfficeAI/OfficeCLI/releases):
+**Or download manually** from [GitHub Releases](https://github.com/suoak/OfficeCLI/releases):
 
 | Platform | Binary |
 |----------|--------|
@@ -336,7 +333,7 @@ officecli batch deck.pptx --input updates.json --stop-on-error --json
 > officecli save report.docx           # flush, keep the resident warm (or `close` to flush + release)
 > python my_reader.py report.docx      # now sees the edit
 > ```
-> A live resident also auto‑flushes shortly after going idle (adaptive 2–10s, scaled to the document's measured save cost). For a pipeline where another program reads after every command, set `OFFICECLI_RESIDENT_FLUSH=each` — every mutation is on disk before the command returns, while the resident stays warm. Full flush model (`each`/`auto`/fixed/`off`, save / close, env tuning): [wiki → open / close](https://github.com/iOfficeAI/OfficeCLI/wiki/command-open#when-the-file-on-disk-is-refreshed).
+> A live resident also auto‑flushes shortly after going idle (adaptive 2–10s, scaled to the document's measured save cost). For a pipeline where another program reads after every command, set `OFFICECLI_RESIDENT_FLUSH=each` — every mutation is on disk before the command returns, while the resident stays warm. Full flush model (`each`/`auto`/fixed/`off`, save / close, env tuning): [wiki → open / close](https://github.com/suoak/OfficeCLI/wiki/command-open#when-the-file-on-disk-is-refreshed).
 
 ### Three-Layer Architecture
 
@@ -511,33 +508,33 @@ See `officecli --help` for full details on exit codes and error formats.
 
 | Command | Description |
 |---------|-------------|
-| [`create`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-create) | Create a blank .docx, .xlsx, or .pptx (type from extension) |
-| [`view`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-view) | View content (modes: `outline`, `text`, `annotated`, `stats` (`--page-count`), `issues`, `html`, `svg`, `screenshot`, `pdf` (via exporter plugin), `forms` (via format-handler plugin)). docx supports `--render auto\|native\|html`. |
-| [`load_skill`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-skills) | Print embedded SKILL.md content for a specialized skill (no install) |
-| [`get`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-get) | Get element and children (`--depth N`, `--json`) |
-| [`query`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-query) | CSS-like query with boolean `and`/`or`, row-by-column-name (`row[Salary>5000]`), `--find` flag |
-| [`set`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-set) | Modify element properties; accepts selectors and Excel-native paths (parity with `get`/`query`), `--find`/`--replace` flags |
-| [`add`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-add) | Add element (or clone with `--from <path>`) |
-| [`remove`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-remove) | Remove an element |
-| [`move`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-move) | Move element (`--to <parent>`, `--index N`, `--after <path>`, `--before <path>`) |
-| [`swap`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-swap) | Swap two elements |
-| [`validate`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-validate) | Validate against OpenXML schema |
+| [`create`](https://github.com/suoak/OfficeCLI/wiki/command-create) | Create a blank .docx, .xlsx, or .pptx (type from extension) |
+| [`view`](https://github.com/suoak/OfficeCLI/wiki/command-view) | View content (modes: `outline`, `text`, `annotated`, `stats` (`--page-count`), `issues`, `html`, `svg`, `screenshot`, `pdf` (via exporter plugin), `forms` (via format-handler plugin)). docx supports `--render auto\|native\|html`. |
+| [`load_skill`](https://github.com/suoak/OfficeCLI/wiki/command-skills) | Print embedded SKILL.md content for a specialized skill (no install) |
+| [`get`](https://github.com/suoak/OfficeCLI/wiki/command-get) | Get element and children (`--depth N`, `--json`) |
+| [`query`](https://github.com/suoak/OfficeCLI/wiki/command-query) | CSS-like query with boolean `and`/`or`, row-by-column-name (`row[Salary>5000]`), `--find` flag |
+| [`set`](https://github.com/suoak/OfficeCLI/wiki/command-set) | Modify element properties; accepts selectors and Excel-native paths (parity with `get`/`query`), `--find`/`--replace` flags |
+| [`add`](https://github.com/suoak/OfficeCLI/wiki/command-add) | Add element (or clone with `--from <path>`) |
+| [`remove`](https://github.com/suoak/OfficeCLI/wiki/command-remove) | Remove an element |
+| [`move`](https://github.com/suoak/OfficeCLI/wiki/command-move) | Move element (`--to <parent>`, `--index N`, `--after <path>`, `--before <path>`) |
+| [`swap`](https://github.com/suoak/OfficeCLI/wiki/command-swap) | Swap two elements |
+| [`validate`](https://github.com/suoak/OfficeCLI/wiki/command-validate) | Validate against OpenXML schema |
 | `view <file> issues` | Enumerate document issues (text overflow, missing alt text, formula errors, ...) |
-| [`batch`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-batch) | Multiple operations applied in a single pass (stdin, `--input`, or `--commands`; atomic by default — any failed item rolls back the whole batch — `--best-effort` to keep partial progress, `--stop-on-error` to abort early) |
-| [`dump`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-dump) | Serialize a `.docx`, `.pptx`, or `.xlsx` into a replayable batch JSON (round-trip via `batch`); accepts a subtree path |
-| [`refresh`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-refresh) | Recalculate TOC page numbers / `PAGE` / cross-references (`.docx`; Word backend on Windows, headless-HTML fallback) |
-| [`plugins`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-plugins) | List / inspect / lint installed plugins (extend to `.doc`, `.hwpx`, `.pdf` export via dump-reader / exporter / format-handler kinds) |
-| [`merge`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-merge) | Template merge — replace `{{key}}` placeholders with JSON data |
-| [`watch`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-watch) | Live HTML preview in browser with auto-refresh |
-| [`mcp`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-mcp) | Start MCP server for AI tool integration |
-| [`raw`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-raw) | View raw XML of a document part |
-| [`raw-set`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-raw) | Modify raw XML via XPath |
+| [`batch`](https://github.com/suoak/OfficeCLI/wiki/command-batch) | Multiple operations applied in a single pass (stdin, `--input`, or `--commands`; atomic by default — any failed item rolls back the whole batch — `--best-effort` to keep partial progress, `--stop-on-error` to abort early) |
+| [`dump`](https://github.com/suoak/OfficeCLI/wiki/command-dump) | Serialize a `.docx`, `.pptx`, or `.xlsx` into a replayable batch JSON (round-trip via `batch`); accepts a subtree path |
+| [`refresh`](https://github.com/suoak/OfficeCLI/wiki/command-refresh) | Recalculate TOC page numbers / `PAGE` / cross-references (`.docx`; Word backend on Windows, headless-HTML fallback) |
+| [`plugins`](https://github.com/suoak/OfficeCLI/wiki/command-plugins) | List / inspect / lint installed plugins (extend to `.doc`, `.hwpx`, `.pdf` export via dump-reader / exporter / format-handler kinds) |
+| [`merge`](https://github.com/suoak/OfficeCLI/wiki/command-merge) | Template merge — replace `{{key}}` placeholders with JSON data |
+| [`watch`](https://github.com/suoak/OfficeCLI/wiki/command-watch) | Live HTML preview in browser with auto-refresh |
+| [`mcp`](https://github.com/suoak/OfficeCLI/wiki/command-mcp) | Start MCP server for AI tool integration |
+| [`raw`](https://github.com/suoak/OfficeCLI/wiki/command-raw) | View raw XML of a document part |
+| [`raw-set`](https://github.com/suoak/OfficeCLI/wiki/command-raw) | Modify raw XML via XPath |
 | `add-part` | Add a new document part (header, chart, etc.) |
-| [`open`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-open) | Start resident mode (keep document in memory) |
+| [`open`](https://github.com/suoak/OfficeCLI/wiki/command-open) | Start resident mode (keep document in memory) |
 | `close` | Save and close resident mode |
-| [`install`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-install) | Install binary + skills + MCP (`all`, `claude`, `cursor`, etc.) |
+| [`install`](https://github.com/suoak/OfficeCLI/wiki/command-install) | Install binary + skills + MCP (`all`, `claude`, `cursor`, etc.) |
 | `config` | Get or set configuration |
-| `help <format> <command>` | [Built-in help](https://github.com/iOfficeAI/OfficeCLI/wiki/command-reference) (e.g. `officecli help pptx set shape`) |
+| `help <format> <command>` | [Built-in help](https://github.com/suoak/OfficeCLI/wiki/command-reference) (e.g. `officecli help pptx set shape`) |
 
 ## End-to-End Workflow Example
 
@@ -600,7 +597,7 @@ officecli merge invoice-template.docx invoice-001.docx --data '{"client":"Acme",
 officecli validate report.docx && officecli view report.docx issues --json
 ```
 
-**From Python or Node.js** — install one of the thin resident-pipe SDKs (no per-call process spawn):
+**From Python** — install the thin resident-pipe SDK (no per-call process spawn):
 
 ```python
 # Python — `pip install officecli-sdk`
@@ -610,16 +607,7 @@ with officecli.create("deck.pptx") as doc:          # or officecli.open("deck.pp
     print(doc.send({"command": "get", "path": "/slide[1]"}))
 ```
 
-```javascript
-// Node.js — `npm install @officecli/sdk`
-const oc = require("@officecli/sdk");
-const doc = await oc.create("deck.pptx");            // or oc.open("deck.pptx")
-await doc.send({ command: "add", parent: "/", type: "slide" });
-console.log(await doc.send({ command: "get", path: "/slide[1]" }));
-await doc.close();
-```
-
-Both SDKs auto-provision the native CLI when missing (mirror-first, Windows-capable) and announce the install rather than doing it silently.
+The Node SDK source remains in the repository for local development, but this fork does not publish npm packages.
 
 Or wrap subprocess directly, one-shot:
 
@@ -632,13 +620,13 @@ cli("create", "deck.pptx")
 
 ## Documentation
 
-The [Wiki](https://github.com/iOfficeAI/OfficeCLI/wiki) has detailed guides for every command, element type, and property:
+The [Wiki](https://github.com/suoak/OfficeCLI/wiki) has detailed guides for every command, element type, and property:
 
-- **By format:** [Word](https://github.com/iOfficeAI/OfficeCLI/wiki/word-reference) | [Excel](https://github.com/iOfficeAI/OfficeCLI/wiki/excel-reference) | [PowerPoint](https://github.com/iOfficeAI/OfficeCLI/wiki/powerpoint-reference)
-- **Workflows:** [End-to-end examples](https://github.com/iOfficeAI/OfficeCLI/wiki/workflows) -- Word reports, Excel dashboards, PowerPoint decks, batch modifications, resident mode
+- **By format:** [Word](https://github.com/suoak/OfficeCLI/wiki/word-reference) | [Excel](https://github.com/suoak/OfficeCLI/wiki/excel-reference) | [PowerPoint](https://github.com/suoak/OfficeCLI/wiki/powerpoint-reference)
+- **Workflows:** [End-to-end examples](https://github.com/suoak/OfficeCLI/wiki/workflows) -- Word reports, Excel dashboards, PowerPoint decks, batch modifications, resident mode
 - **Runnable examples:** [examples/](examples/) -- copy-paste scripts (.sh/.py) for Word, Excel, and PowerPoint, with output files included
-- **Troubleshooting:** [Common errors and solutions](https://github.com/iOfficeAI/OfficeCLI/wiki/troubleshooting)
-- **AI agent guide:** [Decision tree for navigating the wiki](https://github.com/iOfficeAI/OfficeCLI/wiki/agent-guide)
+- **Troubleshooting:** [Common errors and solutions](https://github.com/suoak/OfficeCLI/wiki/troubleshooting)
+- **AI agent guide:** [Decision tree for navigating the wiki](https://github.com/suoak/OfficeCLI/wiki/agent-guide)
 
 ## Build from Source
 
@@ -652,13 +640,13 @@ Requires [.NET 10 SDK](https://dotnet.microsoft.com/download) for compilation on
 
 [Apache License 2.0](LICENSE)
 
-Bug reports and contributions are welcome on [GitHub Issues](https://github.com/iOfficeAI/OfficeCLI/issues).
+Bug reports and contributions are welcome on [GitHub Issues](https://github.com/suoak/OfficeCLI/issues).
 
 ---
 
-If you find OfficeCLI useful, please [give it a star on GitHub](https://github.com/iOfficeAI/OfficeCLI) — it helps others discover the project.
+If you find OfficeCLI useful, please [give it a star on GitHub](https://github.com/suoak/OfficeCLI) — it helps others discover the project.
 
-[OfficeCLI.AI](https://OfficeCLI.AI) | [GitHub](https://github.com/iOfficeAI/OfficeCLI)
+[GitHub](https://github.com/suoak/OfficeCLI)
 
 <!--
 yaml-frontmatter:
@@ -673,8 +661,8 @@ yaml-frontmatter:
   mcp-server: true
   skill-file: SKILL.md
 
-  install-command-unix: curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
-  install-command-windows: irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+  install-command-unix: curl -fsSL https://raw.githubusercontent.com/suoak/OfficeCLI/main/install.sh | bash
+  install-command-windows: irm https://raw.githubusercontent.com/suoak/OfficeCLI/main/install.ps1 | iex
 -->
 
 <!-- LLM/agent discovery metadata
@@ -692,6 +680,6 @@ mcp-server: true
 skill-file: SKILL.md
 skill-file-lines: 403
 alternatives: python-docx, openpyxl, python-pptx, libreoffice --headless
-install-command-unix: curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash
-install-command-windows: irm https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.ps1 | iex
+install-command-unix: curl -fsSL https://raw.githubusercontent.com/suoak/OfficeCLI/main/install.sh | bash
+install-command-windows: irm https://raw.githubusercontent.com/suoak/OfficeCLI/main/install.ps1 | iex
 -->

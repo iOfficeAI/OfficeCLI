@@ -1,10 +1,8 @@
 name: Skill parity
 
-# Root SKILL.md is the file the public URL serves
-# (https://d.officecli.ai/SKILL.md, raw GitHub URL) and is what
-# `curl ... | bash` consumers fetch. skills/officecli/SKILL.md is a
-# symlink to it — the spec-conforming location that `gh skill install`
-# and `npx skills add` discover, and what the binary embeds.
+# Root SKILL.md is the file the suoak/OfficeCLI raw GitHub URL serves.
+# skills/officecli/SKILL.md is a symlink to it — the spec-conforming
+# location that skill installers discover and what the binary embeds.
 #
 # On macOS / Linux the symlink resolves transparently and this diff
 # always passes. The check exists for the Windows case: git on Windows
@@ -34,7 +32,7 @@ jobs:
           if ! diff -q SKILL.md skills/officecli/SKILL.md; then
             echo "::error::SKILL.md and skills/officecli/SKILL.md are out of sync."
             echo "The two files must be byte-identical. The binary embeds skills/officecli/SKILL.md;"
-            echo "the public URL (d.officecli.ai/SKILL.md, raw GitHub) serves the root copy."
+            echo "the suoak/OfficeCLI raw GitHub URL serves the root copy."
             echo "Fix: cp SKILL.md skills/officecli/SKILL.md (or the reverse) and commit."
             exit 1
           fi
