@@ -1646,7 +1646,7 @@ public class ResidentServer : IDisposable
                 }
             }
             else if (_handler is OfficeCli.Handlers.ExcelHandler excelShotHandler)
-                html = CommandBuilder.RenderViaRegistry(excelShotHandler, "xlsx", new OfficeCli.Core.Rendering.RenderOptions())!;
+                html = CommandBuilder.RenderViaRegistry(excelShotHandler, "xlsx", new OfficeCli.Core.Rendering.RenderOptions { CellRange = rangeArg })!;
             else if (_handler is OfficeCli.Handlers.WordHandler wordShotGrid && gridCols != 0)
             {
                 // Contact-sheet grid — mirrors CommandBuilder.View.cs's docx grid
