@@ -53,7 +53,16 @@ public partial class ExcelHandler
             if (sst?.SharedStringTable != null && int.TryParse(value, out int idx))
             {
                 var item = sst.SharedStringTable.Elements<SharedStringItem>().ElementAtOrDefault(idx);
-                return item?.InnerText ?? value;
+                if (item != null)
+                {
+                    // CT_Rst.InnerText also includes <rPh> phonetic-guide text.
+                    // That text annotates the base value; it is not part of the
+                    // ordinary cell content. Read only the direct <t> value or
+                    // rich-text <r><t> runs, while BuildCellNode continues to
+                    // expose the guide separately as Format["phonetic"].
+                    return item.Text?.Text
+                        ?? string.Concat(item.Elements<Run>().Select(r => r.Text?.Text ?? ""));
+                }
             }
         }
 
