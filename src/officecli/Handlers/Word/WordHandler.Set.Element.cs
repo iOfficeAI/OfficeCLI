@@ -399,7 +399,12 @@ public partial class WordHandler
                     // injecting text would corrupt the OOXML structure
                     // (e.g. <w:t> next to <w:instrText> breaks PAGE field
                     // rendering). Reject so the caller sees `unsupported`.
-                    if (isSpecialRun)
+                    //
+                    // BUG #335: a run holding a drawing / VML picture / embedded
+                    // object also has no <w:t>; without this guard the update
+                    // below (which only writes when a <w:t> already exists)
+                    // reported success while writing nothing. Reject instead.
+                    if (isSpecialRun || RunCarriesNonText(run))
                     {
                         unsupported.Add(key);
                         break;
@@ -1526,20 +1531,31 @@ public partial class WordHandler
                     }
                     break;
                 case "text":
-                    // Set text on paragraph: update first run or create one.
+                    // Set text on paragraph: update first TEXT run or create one.
                     // CONSISTENCY(text-breaks): route through AppendTextWithBreaks
                     // so \n/\t in value become <w:br/>/<w:tab/>, matching Add behavior.
-                    var existingRuns = para.Elements<Run>().ToList();
-                    if (existingRuns.Count > 0)
+                    //
+                    // BUG #334: only text-bearing runs are replaced. A run that
+                    // carries a drawing / VML picture / mc:AlternateContent shape /
+                    // embedded object / field is preserved verbatim — wiping or
+                    // removing it silently destroyed every graphic anchored in the
+                    // paragraph (floating textboxes, floating + inline pictures).
+                    // Text-only paragraphs behave exactly as before (all runs are
+                    // text runs). Run-level `set /body/p[N]/r[M] --prop text=` was
+                    // already non-destructive and is unchanged.
+                    var runsForTextSet = para.Elements<Run>().ToList();
+                    var textRuns = runsForTextSet.Where(r => !RunCarriesNonText(r)).ToList();
+                    if (textRuns.Count > 0)
                     {
-                        // Preserve RunProperties from first run, drop all prior text/break/tab children.
-                        var keepRun = existingRuns[0];
+                        // Preserve RunProperties from the first text run, drop its
+                        // prior text/break/tab children, keep every non-text run.
+                        var keepRun = textRuns[0];
                         var keepRProps = keepRun.RunProperties;
                         keepRun.RemoveAllChildren();
                         if (keepRProps != null)
                             keepRun.AppendChild(keepRProps);
                         AppendTextWithBreaks(keepRun, value);
-                        for (int i = 1; i < existingRuns.Count; i++) existingRuns[i].Remove();
+                        for (int i = 1; i < textRuns.Count; i++) textRuns[i].Remove();
                     }
                     else
                     {

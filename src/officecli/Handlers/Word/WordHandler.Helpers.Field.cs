@@ -350,7 +350,16 @@ public partial class WordHandler
         if (mainPart.WordprocessingCommentsPart?.Comments != null)
             allParagraphs = allParagraphs.Concat(mainPart.WordprocessingCommentsPart.Comments.Descendants<Paragraph>());
 
-        var paragraphs = allParagraphs.ToList();
+        // #336: a floating textbox is written twice — once under mc:Choice
+        // (wps:txbx) and once under mc:Fallback (v:textbox) — and Word gives the
+        // mirrored paragraphs the SAME w14:paraId on purpose (same logical
+        // paragraph). Those are not real duplicates; skip the mc:Fallback copies
+        // so the dedup pass never renumbers a Word-authored Choice/Fallback pair
+        // on an unrelated edit. The mc:Choice copy stays in the collision set, so
+        // genuine paraId collisions elsewhere are still detected.
+        var paragraphs = allParagraphs
+            .Where(p => !p.Ancestors<AlternateContentFallback>().Any())
+            .ToList();
 
         // Collect existing IDs, detect duplicates, and track max for deterministic increment
         var paraIdSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

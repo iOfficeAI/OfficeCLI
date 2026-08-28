@@ -387,6 +387,28 @@ public partial class WordHandler
         return true;
     }
 
+    // #342: comment id -> (author, text). Built lazily from the comments part
+    // so the HTML preview can surface a marker + the comment content that were
+    // previously invisible (commentRangeStart/End + commentReference produced no
+    // output at all).
+    private Dictionary<string, (string Author, string Text)>? _htmlCommentMap;
+    private Dictionary<string, (string Author, string Text)> HtmlCommentMap()
+    {
+        if (_htmlCommentMap != null) return _htmlCommentMap;
+        _htmlCommentMap = new();
+        var comments = _doc.MainDocumentPart?.WordprocessingCommentsPart?.Comments;
+        if (comments != null)
+            foreach (var c in comments.Elements<Comment>())
+            {
+                var id = c.Id?.Value;
+                if (string.IsNullOrEmpty(id)) continue;
+                var author = c.Author?.Value ?? "";
+                var text = string.Concat(c.Descendants<Text>().Select(t => t.Text));
+                _htmlCommentMap[id] = (author, text);
+            }
+        return _htmlCommentMap;
+    }
+
     private void RenderParagraphContentHtml(StringBuilder sb, Paragraph para)
     {
         OnHtmlParagraphBegin(para);
@@ -425,11 +447,23 @@ public partial class WordHandler
         // keep a stack: each entry is the PAGE/NUMPAGES kind (0=other) and
         // whether we've passed the separator into the result region.
         var fieldStack = new System.Collections.Generic.Stack<(int kind, bool inResult)>();
+        // #342: balance-count of open comment-highlight spans in this paragraph.
+        int openCommentSpans = 0;
 
         foreach (var child in para.ChildElements)
         {
             if (child is Run run)
             {
+                // #342: a run carrying <w:commentReference> is the balloon anchor
+                // (no visible text). Emit a marker badge with the comment author +
+                // text so the preview shows the comment instead of nothing.
+                if (run.GetFirstChild<CommentReference>()?.Id?.Value is { } crefId)
+                {
+                    var (cAuthor, cText) = HtmlCommentMap().TryGetValue(crefId, out var cm) ? cm : ("", "");
+                    var tip = string.IsNullOrEmpty(cAuthor) ? cText : $"{cAuthor}: {cText}";
+                    sb.Append($"<sup class=\"w-comment-ref\" title=\"{HtmlEncodeAttr(tip)}\">💬</sup>");
+                    continue;
+                }
                 var runFldChar = run.GetFirstChild<FieldChar>()?.FieldCharType?.Value;
                 if (runFldChar == FieldCharValues.Begin
                     && run.GetFirstChild<FieldChar>()!.GetFirstChild<FormFieldData>()?.GetFirstChild<CheckBox>() != null)
@@ -623,6 +657,16 @@ public partial class WordHandler
                 if (!string.IsNullOrEmpty(delText))
                     sb.Append($"<span class=\"track-del\" style=\"text-decoration:line-through;color:#C62828\"{authorAttr}>{HtmlEncode(delText)}</span>");
             }
+            else if (child.LocalName == "commentRangeStart")
+            {
+                // #342: highlight the commented text range.
+                sb.Append("<span class=\"w-comment-range\">");
+                openCommentSpans++;
+            }
+            else if (child.LocalName == "commentRangeEnd")
+            {
+                if (openCommentSpans > 0) { sb.Append("</span>"); openCommentSpans--; }
+            }
             else if (child is Hyperlink hyperlink)
             {
                 RenderHyperlinkHtml(sb, hyperlink, para);
@@ -713,6 +757,9 @@ public partial class WordHandler
                 RenderWrapperContent(child);
             }
         }
+        // #342: close any comment highlight still open (a range whose end is in a
+        // later paragraph) so the emitted HTML stays balanced.
+        while (openCommentSpans-- > 0) sb.Append("</span>");
 
         OnHtmlParagraphEnd(sb);
     }

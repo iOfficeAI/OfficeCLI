@@ -116,6 +116,19 @@ public partial class WordHandler
         ParseHelpers.IsTruthy(value);
 
     /// <summary>
+    /// BUG #334: true when a run carries non-text content — a drawing
+    /// (<c>w:drawing</c>), a VML picture (<c>w:pict</c>), an
+    /// <c>mc:AlternateContent</c> shape wrapper, an embedded object
+    /// (<c>w:object</c>), or a field (<c>w:fldChar</c> / <c>w:instrText</c>).
+    /// Paragraph-level <c>set --prop text=</c> must preserve such runs instead
+    /// of wiping them, or it silently deletes every graphic in the paragraph.
+    /// </summary>
+    private static bool RunCarriesNonText(Run run) =>
+        run.ChildElements.Any(c =>
+            c is Drawing or Picture or EmbeddedObject or FieldChar or FieldCode
+            || c is AlternateContent);
+
+    /// <summary>
     /// BUG-R7-07: a value the user explicitly typed as "false"/"0"/"off" — not
     /// just any non-truthy input (null/empty count as "no override"). Used by
     /// AddParagraph's no-text fallback to decide whether to emit

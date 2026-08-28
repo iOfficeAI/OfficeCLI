@@ -3303,6 +3303,9 @@ public partial class WordHandler
         th, td {{ border: none; padding: 0 5.4pt; text-align: inherit; vertical-align: top; break-inside: auto; overflow-wrap: anywhere; }}
         tr {{ break-inside: auto; }}
         th {{ font-weight: 600; }}
+        /* #342: comments — highlight the commented range + a hover-able marker. */
+        .w-comment-range {{ background: #FFF3CD; border-bottom: 1px dotted #E0A800; }}
+        .w-comment-ref {{ font-size: 0.7em; color: #B8860B; cursor: help; margin: 0 1px; user-select: none; }}
         @media print {{ body {{ background: white; padding: 0; }}
             .page {{ box-shadow: none; margin: 0; max-width: none; transform: none !important; }}
             hr.page-break {{ page-break-after: always; border: none; margin: 0; }} }}";
