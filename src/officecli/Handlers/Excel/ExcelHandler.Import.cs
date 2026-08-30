@@ -60,6 +60,8 @@ public partial class ExcelHandler
                 $"Import exceeds Excel's column limit: data would reach column {endColIdx} " +
                 $"(maximum {ExcelMaxCol} / XFD). Reduce the CSV width or change the start cell.");
 
+        Modified = true;
+
         // BUG-R11-import-dup-row BUG-11: import previously always appended a
         // brand-new <row r="N">, producing duplicate row entries when the
         // target rows already existed (Excel auto-repaired by keeping the
