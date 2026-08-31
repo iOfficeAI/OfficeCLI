@@ -42,6 +42,7 @@
     </EmbeddedResource>
     <EmbeddedResource Include="Resources/chartex-colors.xml" />
     <EmbeddedResource Include="Resources/chartex-style.xml" />
+    <EmbeddedResource Include="Deck/catalog.json" LogicalName="OfficeCli.Deck.catalog.json" />
     <EmbeddedResource Include="Handlers/Pptx/EffectTemplates/*.xml">
       <LogicalName>OfficeCli.Handlers.Pptx.EffectTemplates.%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>

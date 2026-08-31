@@ -1,0 +1,84 @@
+{
+  "version": "1.0.0",
+  "themes": [
+    {
+      "id": "business-light",
+      "label": "Business Light",
+      "tokens": { "background": "F7F8FA", "surface": "FFFFFF", "text": "172033", "mutedText": "667085", "accent": "246BFD", "fontFamily": "Aptos" }
+    },
+    {
+      "id": "technology-dark",
+      "label": "Technology Dark",
+      "tokens": { "background": "0B1020", "surface": "182033", "text": "F4F7FF", "mutedText": "A8B3CF", "accent": "55D6BE", "fontFamily": "Aptos" }
+    },
+    {
+      "id": "editorial-report",
+      "label": "Editorial Report",
+      "tokens": { "background": "F4EFE7", "surface": "FFFDFC", "text": "28231F", "mutedText": "71675E", "accent": "B5492D", "fontFamily": "Georgia" }
+    }
+  ],
+  "layouts": [
+    { "id": "cover", "role": "cover", "label": "Cover", "slots": [
+      { "id": "title", "x": 0.08, "y": 0.18, "width": 0.72, "height": 0.25, "accepts": ["text"], "required": true },
+      { "id": "subtitle", "x": 0.08, "y": 0.48, "width": 0.58, "height": 0.16, "accepts": ["text", "list"] },
+      { "id": "visual", "x": 0.70, "y": 0.10, "width": 0.25, "height": 0.75, "accepts": ["image", "shape"] }
+    ], "controls": [] },
+    { "id": "agenda", "role": "breakdown", "label": "Agenda", "slots": [
+      { "id": "title", "x": 0.07, "y": 0.08, "width": 0.86, "height": 0.12, "accepts": ["text"], "required": true },
+      { "id": "content", "x": 0.10, "y": 0.25, "width": 0.80, "height": 0.62, "accepts": ["list", "timeline", "text"], "required": true }
+    ], "controls": [] },
+    { "id": "section", "role": "transition", "label": "Section", "slots": [
+      { "id": "title", "x": 0.12, "y": 0.28, "width": 0.76, "height": 0.22, "accepts": ["text"], "required": true },
+      { "id": "summary", "x": 0.20, "y": 0.55, "width": 0.60, "height": 0.14, "accepts": ["text", "quote"] }
+    ], "controls": [] },
+    { "id": "statement", "role": "statement", "label": "Statement", "slots": [
+      { "id": "statement", "x": 0.10, "y": 0.22, "width": 0.80, "height": 0.34, "accepts": ["text", "quote"], "required": true },
+      { "id": "support", "x": 0.18, "y": 0.62, "width": 0.64, "height": 0.16, "accepts": ["text", "list"] }
+    ], "controls": [] },
+    { "id": "metrics", "role": "metrics", "label": "Metrics", "slots": [
+      { "id": "title", "x": 0.06, "y": 0.06, "width": 0.88, "height": 0.12, "accepts": ["text"] },
+      { "id": "metric1", "x": 0.06, "y": 0.26, "width": 0.27, "height": 0.42, "accepts": ["metric"], "required": true },
+      { "id": "metric2", "x": 0.365, "y": 0.26, "width": 0.27, "height": 0.42, "accepts": ["metric"] },
+      { "id": "metric3", "x": 0.67, "y": 0.26, "width": 0.27, "height": 0.42, "accepts": ["metric"] }
+    ], "controls": [] },
+    { "id": "comparison", "role": "comparison", "label": "Comparison", "slots": [
+      { "id": "title", "x": 0.06, "y": 0.06, "width": 0.88, "height": 0.12, "accepts": ["text"] },
+      { "id": "left", "x": 0.06, "y": 0.23, "width": 0.41, "height": 0.65, "accepts": ["text", "list", "metric", "image"], "required": true },
+      { "id": "right", "x": 0.53, "y": 0.23, "width": 0.41, "height": 0.65, "accepts": ["text", "list", "metric", "image"], "required": true }
+    ], "controls": [
+      { "id": "balance", "type": "range", "label": "Column balance", "defaultValue": 50, "min": 35, "max": 65, "step": 5 }
+    ] },
+    { "id": "timeline", "role": "process", "label": "Timeline", "slots": [
+      { "id": "title", "x": 0.06, "y": 0.06, "width": 0.88, "height": 0.12, "accepts": ["text"] },
+      { "id": "timeline", "x": 0.07, "y": 0.28, "width": 0.86, "height": 0.50, "accepts": ["timeline", "list"], "required": true }
+    ], "controls": [] },
+    { "id": "chart", "role": "trend", "label": "Chart", "slots": [
+      { "id": "title", "x": 0.06, "y": 0.05, "width": 0.88, "height": 0.12, "accepts": ["text"] },
+      { "id": "chart", "x": 0.06, "y": 0.22, "width": 0.66, "height": 0.68, "accepts": ["chart"], "required": true },
+      { "id": "insight", "x": 0.75, "y": 0.22, "width": 0.19, "height": 0.68, "accepts": ["text", "metric", "list"] }
+    ], "controls": [
+      { "id": "showInsight", "type": "toggle", "label": "Show insight panel", "defaultValue": true }
+    ] },
+    { "id": "image-text", "role": "image", "label": "Image and Text", "slots": [
+      { "id": "visual", "x": 0.04, "y": 0.06, "width": 0.50, "height": 0.88, "accepts": ["image"], "required": true },
+      { "id": "title", "x": 0.59, "y": 0.15, "width": 0.35, "height": 0.18, "accepts": ["text"], "required": true },
+      { "id": "content", "x": 0.59, "y": 0.39, "width": 0.35, "height": 0.42, "accepts": ["text", "list", "quote"] }
+    ], "controls": [
+      { "id": "mediaSide", "type": "select", "label": "Media side", "defaultValue": "left", "options": ["left", "right"] }
+    ] },
+    { "id": "cards", "role": "breakdown", "label": "Cards", "slots": [
+      { "id": "title", "x": 0.06, "y": 0.05, "width": 0.88, "height": 0.12, "accepts": ["text"] },
+      { "id": "card1", "x": 0.06, "y": 0.24, "width": 0.27, "height": 0.58, "accepts": ["text", "list", "metric", "shape"], "required": true },
+      { "id": "card2", "x": 0.365, "y": 0.24, "width": 0.27, "height": 0.58, "accepts": ["text", "list", "metric", "shape"] },
+      { "id": "card3", "x": 0.67, "y": 0.24, "width": 0.27, "height": 0.58, "accepts": ["text", "list", "metric", "shape"] }
+    ], "controls": [] },
+    { "id": "matrix", "role": "comparison", "label": "Table or Matrix", "slots": [
+      { "id": "title", "x": 0.06, "y": 0.05, "width": 0.88, "height": 0.12, "accepts": ["text"] },
+      { "id": "matrix", "x": 0.06, "y": 0.21, "width": 0.88, "height": 0.69, "accepts": ["table", "text", "list"], "required": true }
+    ], "controls": [] },
+    { "id": "closing", "role": "closing", "label": "Closing", "slots": [
+      { "id": "title", "x": 0.12, "y": 0.22, "width": 0.76, "height": 0.22, "accepts": ["text"], "required": true },
+      { "id": "actions", "x": 0.18, "y": 0.52, "width": 0.64, "height": 0.25, "accepts": ["text", "list", "quote"] }
+    ], "controls": [] }
+  ]
+}

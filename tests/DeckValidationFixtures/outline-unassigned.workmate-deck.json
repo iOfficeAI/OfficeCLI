@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "stage": "outline",
+  "metadata": { "title": "Outline", "language": "en-US", "aspectRatio": "16:9" },
+  "theme": { "id": "business-light" },
+  "slides": [
+    {
+      "id": "slide-1",
+      "role": "statement",
+      "layoutId": "statement",
+      "blocks": [
+        { "id": "statement", "type": "text", "slot": "statement", "text": "An outline idea" },
+        { "id": "support", "type": "text", "text": "Supporting evidence" }
+      ]
+    }
+  ],
+  "assets": []
+}

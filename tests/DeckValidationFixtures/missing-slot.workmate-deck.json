@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "stage": "ready",
+  "metadata": { "title": "Missing slot", "language": "en-US", "aspectRatio": "16:9" },
+  "theme": { "id": "business-light" },
+  "slides": [
+    {
+      "id": "slide-1",
+      "role": "statement",
+      "layoutId": "statement",
+      "blocks": [{ "id": "title", "type": "text", "text": "Unassigned content" }]
+    }
+  ],
+  "assets": []
+}

@@ -1,0 +1,324 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "stage": "ready",
+  "metadata": {
+    "title": "technology-dark layout catalog",
+    "language": "en-US",
+    "aspectRatio": "16:9"
+  },
+  "theme": {
+    "id": "technology-dark"
+  },
+  "slides": [
+    {
+      "id": "cover",
+      "role": "cover",
+      "layoutId": "cover",
+      "title": "Reliable presentations",
+      "notes": "Introduce the goal.",
+      "blocks": [
+        {
+          "id": "cover-title",
+          "type": "text",
+          "slot": "title",
+          "text": "Reliable presentations"
+        },
+        {
+          "id": "cover-subtitle",
+          "type": "text",
+          "slot": "subtitle",
+          "text": "A semantic WorkMate deck"
+        },
+        {
+          "id": "cover-visual",
+          "type": "shape",
+          "slot": "visual",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "id": "agenda",
+      "role": "breakdown",
+      "layoutId": "agenda",
+      "title": "Agenda",
+      "notes": "Set expectations.",
+      "blocks": [
+        {
+          "id": "agenda-title",
+          "type": "text",
+          "slot": "title",
+          "text": "Agenda"
+        },
+        {
+          "id": "agenda-list",
+          "type": "list",
+          "slot": "content",
+          "items": [
+            "Context",
+            "Evidence",
+            "Action"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "section",
+      "role": "transition",
+      "layoutId": "section",
+      "title": "Evidence",
+      "notes": "Transition to evidence.",
+      "blocks": [
+        {
+          "id": "section-title",
+          "type": "text",
+          "slot": "title",
+          "text": "Evidence"
+        }
+      ]
+    },
+    {
+      "id": "statement",
+      "role": "statement",
+      "layoutId": "statement",
+      "title": "Core idea",
+      "notes": "Emphasize the conclusion.",
+      "blocks": [
+        {
+          "id": "statement-main",
+          "type": "quote",
+          "slot": "statement",
+          "text": "Semantic structure makes editing reliable."
+        }
+      ]
+    },
+    {
+      "id": "metrics",
+      "role": "metrics",
+      "layoutId": "metrics",
+      "title": "Metrics",
+      "notes": "Explain the key metric.",
+      "blocks": [
+        {
+          "id": "metrics-title",
+          "type": "text",
+          "slot": "title",
+          "text": "Metrics"
+        },
+        {
+          "id": "metric-1",
+          "type": "metric",
+          "slot": "metric1",
+          "value": "36",
+          "label": "tested combinations"
+        }
+      ]
+    },
+    {
+      "id": "comparison",
+      "role": "comparison",
+      "layoutId": "comparison",
+      "controls": { "balance": 60 },
+      "title": "Comparison",
+      "notes": "Compare the approaches.",
+      "blocks": [
+        {
+          "id": "compare-title",
+          "type": "text",
+          "slot": "title",
+          "text": "Comparison"
+        },
+        {
+          "id": "compare-left",
+          "type": "list",
+          "slot": "left",
+          "items": [
+            "Compact spec",
+            "Shared layouts"
+          ]
+        },
+        {
+          "id": "compare-right",
+          "type": "list",
+          "slot": "right",
+          "items": [
+            "Editable output",
+            "Fast preview"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "timeline",
+      "role": "process",
+      "layoutId": "timeline",
+      "title": "Workflow",
+      "notes": "Walk through the sequence.",
+      "blocks": [
+        {
+          "id": "timeline-title",
+          "type": "text",
+          "slot": "title",
+          "text": "Workflow"
+        },
+        {
+          "id": "timeline-main",
+          "type": "timeline",
+          "slot": "timeline",
+          "items": [
+            "Outline",
+            "Confirm",
+            "Build",
+            "Export"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chart",
+      "role": "trend",
+      "layoutId": "chart",
+      "controls": { "showInsight": false },
+      "title": "Trend",
+      "notes": "Describe the trend.",
+      "blocks": [
+        {
+          "id": "chart-title",
+          "type": "text",
+          "slot": "title",
+          "text": "Adoption trend"
+        },
+        {
+          "id": "chart-main",
+          "type": "chart",
+          "slot": "chart",
+          "text": "Monthly adoption",
+          "data": {
+            "chartType": "line",
+            "categories": [
+              "Jan",
+              "Feb",
+              "Mar"
+            ],
+            "series": [
+              {
+                "name": "Teams",
+                "values": [
+                  12,
+                  19,
+                  31
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "image-text",
+      "role": "image",
+      "layoutId": "image-text",
+      "controls": { "mediaSide": "right" },
+      "title": "Visual story",
+      "notes": "Connect the visual to the message.",
+      "blocks": [
+        {
+          "id": "image-main",
+          "type": "image",
+          "slot": "visual",
+          "assetId": "sample-visual",
+          "text": "Abstract WorkMate visual"
+        },
+        {
+          "id": "image-title",
+          "type": "text",
+          "slot": "title",
+          "text": "Visual story"
+        }
+      ]
+    },
+    {
+      "id": "cards",
+      "role": "breakdown",
+      "layoutId": "cards",
+      "title": "Capabilities",
+      "notes": "Summarize the capabilities.",
+      "blocks": [
+        {
+          "id": "cards-title",
+          "type": "text",
+          "slot": "title",
+          "text": "Capabilities"
+        },
+        {
+          "id": "card-1",
+          "type": "metric",
+          "slot": "card1",
+          "value": "12",
+          "label": "layouts"
+        }
+      ]
+    },
+    {
+      "id": "matrix",
+      "role": "comparison",
+      "layoutId": "matrix",
+      "title": "Decision matrix",
+      "notes": "Explain the matrix.",
+      "blocks": [
+        {
+          "id": "matrix-title",
+          "type": "text",
+          "slot": "title",
+          "text": "Decision matrix"
+        },
+        {
+          "id": "matrix-main",
+          "type": "table",
+          "slot": "matrix",
+          "data": {
+            "rows": [
+              [
+                "Option",
+                "Reliable"
+              ],
+              [
+                "Native",
+                "Yes"
+              ],
+              [
+                "Raw shapes",
+                "No"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "closing",
+      "role": "closing",
+      "layoutId": "closing",
+      "title": "Next step",
+      "notes": "Close with the requested action.",
+      "blocks": [
+        {
+          "id": "closing-title",
+          "type": "text",
+          "slot": "title",
+          "text": "Build with confidence"
+        }
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "id": "sample-visual",
+      "path": "visual.svg",
+      "type": "image",
+      "status": "ready",
+      "alt": "WorkMate semantic presentation visual"
+    }
+  ]
+}

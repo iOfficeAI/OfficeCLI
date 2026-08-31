@@ -1,0 +1,56 @@
+name: Native Deck Regression
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/native-deck.yml'
+      - 'src/officecli/CommandBuilder.cs'
+      - 'src/officecli/CommandBuilder.Deck.cs'
+      - 'src/officecli/Deck/**'
+      - 'src/officecli/officecli.csproj'
+      - 'tests/DeckFixtures/**'
+      - 'tests/DeckValidationFixtures/**'
+  push:
+    paths:
+      - '.github/workflows/native-deck.yml'
+      - 'src/officecli/CommandBuilder.cs'
+      - 'src/officecli/CommandBuilder.Deck.cs'
+      - 'src/officecli/Deck/**'
+      - 'src/officecli/officecli.csproj'
+      - 'tests/DeckFixtures/**'
+      - 'tests/DeckValidationFixtures/**'
+
+permissions:
+  contents: read
+
+jobs:
+  deck-fixtures:
+    env:
+      OFFICECLI_DECK_DEBUG: '1'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build OfficeCLI
+        run: dotnet build src/officecli/officecli.csproj -c Release
+      - name: Validate and build 36 theme/layout combinations
+        shell: pwsh
+        run: ./tests/DeckFixtures/Verify-DeckFixtures.ps1
+      - name: Verify invalid slot diagnostics
+        shell: pwsh
+        run: ./tests/DeckValidationFixtures/Verify-DeckValidationFailures.ps1
+      - name: Enforce 10-slide compile budget
+        shell: pwsh
+        run: ./tests/DeckFixtures/Measure-DeckPerformance.ps1
+      - name: Upload deck performance result
+        uses: actions/upload-artifact@v4
+        with:
+          name: deck-performance-${{ matrix.os }}
+          path: TestResults/deck-performance.json

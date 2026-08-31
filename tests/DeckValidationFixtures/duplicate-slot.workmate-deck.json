@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "stage": "ready",
+  "metadata": { "title": "Duplicate slot", "language": "en-US", "aspectRatio": "16:9" },
+  "theme": { "id": "business-light" },
+  "slides": [
+    {
+      "id": "slide-1",
+      "role": "statement",
+      "layoutId": "statement",
+      "blocks": [
+        { "id": "statement", "type": "text", "slot": "statement", "text": "First" },
+        { "id": "second-statement", "type": "text", "slot": "statement", "text": "Second" },
+        { "id": "support", "type": "text", "slot": "support", "text": "Support" }
+      ]
+    }
+  ],
+  "assets": []
+}
