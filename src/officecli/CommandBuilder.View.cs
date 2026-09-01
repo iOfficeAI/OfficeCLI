@@ -24,6 +24,7 @@ static partial class CommandBuilder
         var browserOpt = new Option<bool>("--browser") { Description = "Open output in browser (html / svg modes)" };
         var outOpt = new Option<string?>("--out", "-o") { Description = "Output file path (html, screenshot, pdf modes; defaults to stdout for html, a temp file for screenshot)" };
         var clipOpt = new Option<string?>("--range") { Description = "Restrict output to a region. Screenshot mode: an xlsx cell range ('Sheet1!A1:C3' or '/Sheet1/A1:C3') or any element data-path ('/slide[1]/shape[@id=N]', '/body/table[1]'); the PNG is cropped to the target's bounding box. Text mode (xlsx only): a cell range or single cell — emits just those rows/cells, saving context on large sheets. Not the character-offset `range=` prop of `set` (that one formats a text span like 3:7)." };
+        var rangeModeOpt = new Option<string>("--range-mode") { Description = "Screenshot range behavior: element (tight crop, default) or pages (complete containing page(s))", DefaultValueFactory = _ => "element" };
         var screenshotWidthOpt = new Option<int>("--screenshot-width") { Description = "Screenshot viewport width (default 1600)", DefaultValueFactory = _ => 1600 };
         var screenshotHeightOpt = new Option<int>("--screenshot-height") { Description = "Screenshot viewport height (default 1200)", DefaultValueFactory = _ => 1200 };
         var gridOpt = new Option<string?>("--grid")
@@ -47,6 +48,7 @@ static partial class CommandBuilder
         viewCommand.Add(browserOpt);
         viewCommand.Add(outOpt);
         viewCommand.Add(clipOpt);
+        viewCommand.Add(rangeModeOpt);
         viewCommand.Add(screenshotWidthOpt);
         viewCommand.Add(screenshotHeightOpt);
         viewCommand.Add(gridOpt);
@@ -68,6 +70,13 @@ static partial class CommandBuilder
             var browser = result.GetValue(browserOpt);
             var outArg = result.GetValue(outOpt);
             var clipArg = result.GetValue(clipOpt);
+            var rangeMode = (result.GetValue(rangeModeOpt) ?? "element").ToLowerInvariant();
+            if (rangeMode is not ("element" or "pages"))
+                throw new CliException($"Invalid --range-mode value: {rangeMode}. Valid: element, pages")
+                { Code = "invalid_value", ValidValues = ["element", "pages"] };
+            if (rangeMode == "pages" && string.IsNullOrEmpty(clipArg))
+                throw new CliException("--range-mode pages requires --range <element-path>.")
+                { Code = "missing_argument" };
             var screenshotWidth = result.GetValue(screenshotWidthOpt);
             var screenshotHeight = result.GetValue(screenshotHeightOpt);
             // --grid has three states: absent → off (0), present with no value
@@ -128,6 +137,7 @@ static partial class CommandBuilder
                 if (browser) req.Args["browser"] = "true";
                 if (outArg != null) req.Args["out"] = outArg;
                 if (clipArg != null) req.Args["range"] = clipArg;
+                if (rangeMode != "element") req.Args["range-mode"] = rangeMode;
                 req.Args["screenshot-width"] = screenshotWidth.ToString();
                 req.Args["screenshot-height"] = screenshotHeight.ToString();
                 if (gridCols != 0) req.Args["grid"] = gridCols.ToString(); // -1 = auto
@@ -455,7 +465,8 @@ static partial class CommandBuilder
                     File.WriteAllText(tmpHtml, html!);
                     var r = clipArg != null
                         ? OfficeCli.Core.HtmlScreenshot.CaptureClipped(tmpHtml, pngPath,
-                            OfficeCli.Core.HtmlScreenshot.ResolveClipDataPaths(clipArg))
+                            OfficeCli.Core.HtmlScreenshot.ResolveClipDataPaths(clipArg),
+                            containingPages: rangeMode == "pages")
                         : OfficeCli.Core.HtmlScreenshot.Capture(tmpHtml, pngPath, screenshotWidth, screenshotHeight);
                     try { File.Delete(tmpHtml); } catch { /* ignore */ }
                     if (!r.Ok && r.Error == "clip_target_not_found")

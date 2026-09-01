@@ -1562,6 +1562,11 @@ public class ResidentServer : IDisposable
             // --range clips a data-path region out of the HTML preview — mirrors
             // CommandBuilder.View.cs: native/direct-PNG backends are bypassed.
             var rangeArg = req.GetArgOrNull("range");
+            var rangeMode = (req.GetArgOrNull("range-mode") ?? "element").ToLowerInvariant();
+            if (rangeMode is not ("element" or "pages"))
+                throw new InvalidOperationException($"Invalid range-mode value: {rangeMode}. Valid: element, pages");
+            if (rangeMode == "pages" && string.IsNullOrEmpty(rangeArg))
+                throw new InvalidOperationException("range-mode=pages requires a range element path.");
             if (rangeArg != null) renderMode = "html";
             var sw = req.GetIntArg("screenshot-width") ?? 1600;
             var sh = req.GetIntArg("screenshot-height") ?? 1200;
@@ -1742,7 +1747,8 @@ public class ResidentServer : IDisposable
                 File.WriteAllText(tmpHtml, html!);
                 var rs = rangeArg != null
                     ? OfficeCli.Core.HtmlScreenshot.CaptureClipped(tmpHtml, pngPath,
-                        OfficeCli.Core.HtmlScreenshot.ResolveClipDataPaths(rangeArg))
+                        OfficeCli.Core.HtmlScreenshot.ResolveClipDataPaths(rangeArg),
+                        containingPages: rangeMode == "pages")
                     : OfficeCli.Core.HtmlScreenshot.Capture(tmpHtml, pngPath, sw, sh);
                 try { File.Delete(tmpHtml); } catch { /* ignore */ }
                 if (!rs.Ok)
