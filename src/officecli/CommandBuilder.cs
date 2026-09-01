@@ -1419,6 +1419,11 @@ static partial class CommandBuilder
                                 System.Text.Json.JsonSerializer.Serialize(slimWriter, r.Item, BatchJsonContext.Default.BatchItem);
                             }
                         }
+                        if (r.Warnings is { Count: > 0 })
+                        {
+                            slimWriter.WritePropertyName("warnings");
+                            System.Text.Json.JsonSerializer.Serialize(slimWriter, r.Warnings, OfficeCli.Core.AppJsonContext.Default.ListCliWarning);
+                        }
                         slimWriter.WriteEndObject();
                     }
                     slimWriter.WriteEndArray();
@@ -1452,6 +1457,9 @@ static partial class CommandBuilder
                 {
                     @out.WriteLine($"{prefix}ERROR: {r.Error}");
                 }
+                if (r.Warnings is { Count: > 0 })
+                    foreach (var warning in r.Warnings)
+                        @out.WriteLine($"  WARNING: {warning.Message}");
             }
 
             var succeeded = results.Count(r => r.Success);

@@ -225,6 +225,8 @@ public class BatchResult
     public string? Code { get; set; }
     /// <summary>The original batch item, included when the command fails so the agent can inspect/retry.</summary>
     public BatchItem? Item { get; set; }
+    /// <summary>Advisory diagnostics produced while executing this item.</summary>
+    internal List<OfficeCli.Core.CliWarning>? Warnings { get; set; }
 }
 
 /// <summary>
@@ -244,6 +246,8 @@ internal class BatchResultConverter : JsonConverter<BatchResult>
         if (root.TryGetProperty("error", out var err)) result.Error = err.GetString();
         if (root.TryGetProperty("code", out var cod)) result.Code = cod.GetString();
         if (root.TryGetProperty("item", out var itm)) result.Item = JsonSerializer.Deserialize(itm.GetRawText(), BatchJsonContext.Default.BatchItem);
+        if (root.TryGetProperty("warnings", out var wrn))
+            result.Warnings = JsonSerializer.Deserialize(wrn.GetRawText(), OfficeCli.Core.AppJsonContext.Default.ListCliWarning);
         return result;
     }
 
@@ -276,6 +280,11 @@ internal class BatchResultConverter : JsonConverter<BatchResult>
                 writer.WritePropertyName("item");
                 JsonSerializer.Serialize(writer, value.Item, BatchJsonContext.Default.BatchItem);
             }
+        }
+        if (value.Warnings is { Count: > 0 })
+        {
+            writer.WritePropertyName("warnings");
+            JsonSerializer.Serialize(writer, value.Warnings, OfficeCli.Core.AppJsonContext.Default.ListCliWarning);
         }
         writer.WriteEndObject();
     }
