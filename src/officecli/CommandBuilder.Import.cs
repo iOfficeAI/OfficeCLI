@@ -113,6 +113,10 @@ static partial class CommandBuilder
             ResidentClient.SendClose(file.FullName);
             using var handler = new OfficeCli.Handlers.ExcelHandler(file.FullName, editable: true);
             var msg = handler.Import(parentPath, csvContent, delimiter, header, startCell);
+            // Import works against ExcelHandler's crash-atomic in-memory package.
+            // Flush before reporting success so write-back failures are surfaced
+            // as command errors instead of being swallowed by best-effort Dispose.
+            handler.Save();
             if (json)
                 Console.WriteLine(OutputFormatter.WrapEnvelopeText(msg));
             else

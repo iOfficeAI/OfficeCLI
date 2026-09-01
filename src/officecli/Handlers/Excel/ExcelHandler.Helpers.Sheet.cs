@@ -197,6 +197,12 @@ public partial class ExcelHandler
     /// </summary>
     private void SaveWorksheet(WorksheetPart part)
     {
+        // A dirty worksheet is itself proof that the editable package was
+        // modified.  Keep this invariant here instead of relying on every
+        // caller to set Modified separately: Import writes rows directly and
+        // used to enqueue the part without setting Modified, so Dispose()
+        // treated the session as read-only and discarded the in-memory copy.
+        Modified = true;
         _dirtyWorksheets.Add(part);
     }
 
