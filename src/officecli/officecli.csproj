@@ -1,8 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <!-- The Android target is opt-in behind IncludeAndroidTarget: it needs
+         the Android SDK/workload, which most desktop-CLI consumers (this
+         project's own release CI included) don't have installed. Building,
+         running, or publishing this project with no extra property behaves
+         exactly as it did before this target existed - single net10.0
+         target, no Android SDK required. -->
+    <TargetFrameworks Condition="'$(IncludeAndroidTarget)' == 'true'">net10.0;net10.0-android</TargetFrameworks>
+    <TargetFramework Condition="'$(IncludeAndroidTarget)' != 'true'">net10.0</TargetFramework>
+    <OutputType Condition="'$(TargetFramework)' == 'net10.0'">Exe</OutputType>
+    <OutputType Condition="'$(TargetFramework)' == 'net10.0-android'">Library</OutputType>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24</SupportedOSPlatformVersion>
     <RootNamespace>OfficeCli</RootNamespace>
     <AssemblyName>officecli</AssemblyName>
     <Version>1.0.146</Version>
@@ -10,9 +19,9 @@
     <Company>OfficeCLI</Company>
     <Copyright>Copyright © 2026 OfficeCLI (https://OfficeCLI.AI)</Copyright>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
-    <PublishSingleFile>true</PublishSingleFile>
-    <SelfContained>true</SelfContained>
-    <PublishTrimmed>true</PublishTrimmed>
+    <PublishSingleFile Condition="'$(TargetFramework)' == 'net10.0'">true</PublishSingleFile>
+    <SelfContained Condition="'$(TargetFramework)' == 'net10.0'">true</SelfContained>
+    <PublishTrimmed Condition="'$(TargetFramework)' == 'net10.0'">true</PublishTrimmed>
     <CETCompat>false</CETCompat>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -21,6 +30,12 @@
   <ItemGroup>
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.4.1" />
     <PackageReference Include="System.CommandLine" Version="3.0.0-preview.2.26159.112" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-android'">
+    <!-- Android hosts the document engine in-process; the desktop CLI entry
+         point is neither needed nor supported in a library target. -->
+    <Compile Remove="Program.cs" />
   </ItemGroup>
 
   <ItemGroup>
