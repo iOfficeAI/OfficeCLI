@@ -1890,7 +1890,7 @@ internal partial class FormulaEvaluator
     {
         if (args.Count < 3) return null;
         double rate = TvmNum(args, 0, 0), nper = TvmNum(args, 1, 0), pv = TvmNum(args, 2, 0),
-               fv = TvmNum(args, 3, 0), type = TvmNum(args, 4, 0);
+               fv = TvmNum(args, 3, 0), type = TvmNum(args, 4, 0) != 0 ? 1 : 0;
         if (rate == 0) return FR(-(pv + fv) / nper);
         double pow = Math.Pow(1 + rate, nper);
         return FR(-(pv * pow + fv) * rate / ((1 + rate * type) * (pow - 1)));
@@ -1900,7 +1900,7 @@ internal partial class FormulaEvaluator
     {
         if (args.Count < 3) return null;
         double rate = TvmNum(args, 0, 0), nper = TvmNum(args, 1, 0), pmt = TvmNum(args, 2, 0),
-               pv = TvmNum(args, 3, 0), type = TvmNum(args, 4, 0);
+               pv = TvmNum(args, 3, 0), type = TvmNum(args, 4, 0) != 0 ? 1 : 0;
         if (rate == 0) return FR(-(pv + pmt * nper));
         double pow = Math.Pow(1 + rate, nper);
         return FR(-(pv * pow + pmt * (1 + rate * type) * (pow - 1) / rate));
@@ -1910,7 +1910,7 @@ internal partial class FormulaEvaluator
     {
         if (args.Count < 3) return null;
         double rate = TvmNum(args, 0, 0), nper = TvmNum(args, 1, 0), pmt = TvmNum(args, 2, 0),
-               fv = TvmNum(args, 3, 0), type = TvmNum(args, 4, 0);
+               fv = TvmNum(args, 3, 0), type = TvmNum(args, 4, 0) != 0 ? 1 : 0;
         if (rate == 0) return FR(-(fv + pmt * nper));
         double pow = Math.Pow(1 + rate, nper);
         return FR(-(fv + pmt * (1 + rate * type) * (pow - 1) / rate) / pow);
@@ -1920,7 +1920,7 @@ internal partial class FormulaEvaluator
     {
         if (args.Count < 3) return null;
         double rate = TvmNum(args, 0, 0), pmt = TvmNum(args, 1, 0), pv = TvmNum(args, 2, 0),
-               fv = TvmNum(args, 3, 0), type = TvmNum(args, 4, 0);
+               fv = TvmNum(args, 3, 0), type = TvmNum(args, 4, 0) != 0 ? 1 : 0;
         if (rate == 0) return pmt != 0 ? FR(-(pv + fv) / pmt) : null;
         double k = pmt * (1 + rate * type) / rate;
         return FR(Math.Log((k - fv) / (k + pv)) / Math.Log(1 + rate));
@@ -1959,7 +1959,7 @@ internal partial class FormulaEvaluator
         // as nper).
         var pmtArgs = new List<object> { args[0], args[2], args[3] };
         if (args.Count > 4) pmtArgs.Add(args[4]);
-        if (args.Count > 5) pmtArgs.Add(args[5]);
+        // Annuity-due support for PPMT/IPMT is out of scope; do not half-apply it through PMT.
         var pmt = EvalPmt(pmtArgs)?.AsNumber() ?? 0;
         var ipmt = EvalIpmt(args)?.AsNumber() ?? 0;
         return FR(pmt - ipmt);
