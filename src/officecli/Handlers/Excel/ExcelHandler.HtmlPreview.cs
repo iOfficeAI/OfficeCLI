@@ -2973,9 +2973,10 @@ public partial class ExcelHandler
         var value = cell.CellValue?.Text;
         if (value == null || !int.TryParse(value, out int idx)) return null;
 
-        var sst = _doc.WorkbookPart?.GetPartsOfType<SharedStringTablePart>().FirstOrDefault();
-        var item = sst?.SharedStringTable?.Elements<SharedStringItem>().ElementAtOrDefault(idx);
-        if (item == null) return null;
+        var items = GetSharedStringItemCache();
+        if (idx < 0 || idx >= items.Count) return null;
+        var item = items[idx];
+
 
         var runs = item.Elements<Run>().ToList();
         // Only worth wrapping when at least one run carries explicit run-properties;

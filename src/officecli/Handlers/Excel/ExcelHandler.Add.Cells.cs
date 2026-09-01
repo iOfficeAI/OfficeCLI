@@ -1245,6 +1245,7 @@ public partial class ExcelHandler
                     new Text(runExistingText) { Space = SpaceProcessingModeValues.Preserve }));
             runCell.RemoveAllChildren<InlineString>();
             runSst.AppendChild(runSsi);
+            InvalidateSharedStringCache();
             var newSstIdx = runSst.Elements<SharedStringItem>().Count() - 1;
             runCell.CellValue = new CellValue(newSstIdx.ToString());
             runCell.DataType = new EnumValue<CellValues>(CellValues.SharedString);
@@ -1563,6 +1564,7 @@ public partial class ExcelHandler
         }
 
         sst.AppendChild(ssi);
+        InvalidateSharedStringCache();
         sst.Count = (uint)sst.Elements<SharedStringItem>().Count();
         sst.UniqueCount = sst.Count;
 
@@ -1621,6 +1623,7 @@ public partial class ExcelHandler
         ssi.AppendChild(rPh);
 
         sst.AppendChild(ssi);
+        InvalidateSharedStringCache();
         sst.Count = (uint)sst.Elements<SharedStringItem>().Count();
         sst.UniqueCount = sst.Count;
 

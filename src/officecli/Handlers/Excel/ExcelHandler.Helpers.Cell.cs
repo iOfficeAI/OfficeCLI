@@ -38,6 +38,48 @@ public partial class ExcelHandler
             $"Unknown totals-row function '{tok}'. Valid: sum, average, count, countNums, max, min, stdDev, var, none, custom.")
     };
 
+    private List<SharedStringItem>? _sharedStringItemCache;
+    private List<string>? _sharedStringCache;
+
+    private List<SharedStringItem> GetSharedStringItemCache()
+    {
+        if (_sharedStringItemCache != null) return _sharedStringItemCache;
+        var sst = _doc.WorkbookPart?.GetPartsOfType<SharedStringTablePart>().FirstOrDefault();
+        if (sst?.SharedStringTable == null) return _sharedStringItemCache = new List<SharedStringItem>();
+
+        var list = new List<SharedStringItem>();
+        foreach (var item in sst.SharedStringTable.Elements<SharedStringItem>())
+        {
+            list.Add(item);
+        }
+        return _sharedStringItemCache = list;
+    }
+
+    private List<string> GetSharedStringCache()
+    {
+        if (_sharedStringCache != null) return _sharedStringCache;
+        var items = GetSharedStringItemCache();
+        var list = new List<string>(items.Count);
+        foreach (var item in items)
+        {
+            list.Add(item.InnerText ?? "");
+        }
+        return _sharedStringCache = list;
+    }
+
+    /// <summary>
+    /// Must be called whenever a new SharedStringItem is appended to or removed
+    /// from the SharedStringTable so that the next GetCellDisplayValue call
+    /// rebuilds the cache from the updated table.
+    /// </summary>
+    private void InvalidateSharedStringCache()
+    {
+        _sharedStringCache = null;
+        _sharedStringItemCache = null;
+    }
+
+
+
     private string GetCellDisplayValue(Cell cell, Core.FormulaEvaluator? evaluator = null)
     {
         if (cell.DataType?.Value == CellValues.InlineString)
@@ -49,12 +91,13 @@ public partial class ExcelHandler
 
         if (cell.DataType?.Value == CellValues.SharedString)
         {
-            var sst = _doc.WorkbookPart?.GetPartsOfType<SharedStringTablePart>().FirstOrDefault();
-            if (sst?.SharedStringTable != null && int.TryParse(value, out int idx))
+            if (int.TryParse(value, out int idx))
             {
-                var item = sst.SharedStringTable.Elements<SharedStringItem>().ElementAtOrDefault(idx);
-                return item?.InnerText ?? value;
+                var cache = GetSharedStringCache();
+                if (idx >= 0 && idx < cache.Count)
+                    return cache[idx];
             }
+            return value;
         }
 
         // Boolean cells store 0/1 in <v> per the OOXML spec, but Excel displays

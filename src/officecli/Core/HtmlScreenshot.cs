@@ -411,7 +411,7 @@ internal static class HtmlScreenshot
 
     private static string? FindChrome()
     {
-        string[] names = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser",
+        string[] names = ["chrome-headless-shell", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser",
                           "chrome", "microsoft-edge", "microsoft-edge-stable", "msedge"];
         var pathHit = WhichFirst(names);
         if (pathHit != null) return pathHit;
@@ -437,12 +437,32 @@ internal static class HtmlScreenshot
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
+            string localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? "";
+            string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+            // Search ms-playwright / puppeteer installation directories for chrome-headless-shell.exe
+            foreach (var baseDir in new[] { localAppData, userProfile })
+            {
+                if (string.IsNullOrEmpty(baseDir)) continue;
+                var pwDir = Path.Combine(baseDir, "ms-playwright");
+                if (Directory.Exists(pwDir))
+                {
+                    try
+                    {
+                        foreach (var exe in Directory.GetFiles(pwDir, "chrome-headless-shell.exe", SearchOption.AllDirectories))
+                            abs.Add(exe);
+                    }
+                    catch { }
+                }
+            }
+
             string[] roots = [
                 Environment.GetEnvironmentVariable("PROGRAMFILES") ?? @"C:\Program Files",
                 Environment.GetEnvironmentVariable("PROGRAMFILES(X86)") ?? @"C:\Program Files (x86)",
-                Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? "",
+                localAppData,
             ];
             string[] suffixes = [
+                @"Google\Chrome\Application\chrome-headless-shell.exe",
                 @"Google\Chrome\Application\chrome.exe",
                 @"Chromium\Application\chrome.exe",
                 @"Microsoft\Edge\Application\msedge.exe",
