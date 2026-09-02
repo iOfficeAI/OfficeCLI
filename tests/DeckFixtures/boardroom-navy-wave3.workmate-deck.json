@@ -1,0 +1,293 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "stage": "ready",
+  "metadata": {
+    "title": "CSBU WorkMate Catalog Wave3 Smoke",
+    "language": "zh-CN",
+    "aspectRatio": "16:9",
+    "goal": "Validate catalog 1.3.0 toward 80+ layouts",
+    "audience": "QA"
+  },
+  "theme": {
+    "id": "boardroom-navy",
+    "mode": "dark"
+  },
+  "slides": [
+    {
+      "id": "s-cover",
+      "role": "cover",
+      "layoutId": "cover-minimal",
+      "title": "Cover",
+      "blocks": [
+        {
+          "id": "b1",
+          "type": "text",
+          "slot": "title",
+          "text": "Catalog Wave 3"
+        },
+        {
+          "id": "b2",
+          "type": "text",
+          "slot": "subtitle",
+          "text": "12 themes / 83 layouts"
+        }
+      ],
+      "notes": "Speaker notes for Cover"
+    },
+    {
+      "id": "s-kpi",
+      "role": "metrics",
+      "layoutId": "metrics-strip",
+      "title": "Metrics Strip",
+      "controls": {
+        "moduleCount": 4
+      },
+      "blocks": [
+        {
+          "id": "t1",
+          "type": "text",
+          "slot": "title",
+          "text": "KPIs"
+        },
+        {
+          "id": "k1",
+          "type": "metric",
+          "slot": "metric1",
+          "value": "83",
+          "label": "Layouts"
+        },
+        {
+          "id": "k2",
+          "type": "metric",
+          "slot": "metric2",
+          "value": "12",
+          "label": "Themes"
+        },
+        {
+          "id": "k3",
+          "type": "metric",
+          "slot": "metric3",
+          "value": "27",
+          "label": "New"
+        },
+        {
+          "id": "k4",
+          "type": "metric",
+          "slot": "metric4",
+          "value": "1.3.0",
+          "label": "Catalog"
+        }
+      ],
+      "notes": "Speaker notes for Metrics"
+    },
+    {
+      "id": "s-cmp",
+      "role": "comparison",
+      "layoutId": "vs-scorecard",
+      "title": "VS Scorecard",
+      "controls": {
+        "balance": 50
+      },
+      "blocks": [
+        {
+          "id": "t2",
+          "type": "text",
+          "slot": "title",
+          "text": "Before / After"
+        },
+        {
+          "id": "c1",
+          "type": "list",
+          "slot": "left",
+          "items": [
+            "56 layouts",
+            "Wave 2 packing"
+          ]
+        },
+        {
+          "id": "c2",
+          "type": "list",
+          "slot": "right",
+          "items": [
+            "83 layouts",
+            "Wave 3 packing"
+          ]
+        }
+      ],
+      "notes": "Speaker notes for Comparison"
+    },
+    {
+      "id": "s-proc",
+      "role": "process",
+      "layoutId": "roadmap-milestones",
+      "title": "Roadmap",
+      "controls": {
+        "moduleCount": 4
+      },
+      "blocks": [
+        {
+          "id": "t3",
+          "type": "text",
+          "slot": "title",
+          "text": "Milestones"
+        },
+        {
+          "id": "p1",
+          "type": "text",
+          "slot": "step1",
+          "text": "Outline"
+        },
+        {
+          "id": "p2",
+          "type": "text",
+          "slot": "step2",
+          "text": "Confirm"
+        },
+        {
+          "id": "p3",
+          "type": "text",
+          "slot": "step3",
+          "text": "Fill media"
+        },
+        {
+          "id": "p4",
+          "type": "text",
+          "slot": "step4",
+          "text": "Export"
+        }
+      ],
+      "notes": "Speaker notes for Roadmap"
+    },
+    {
+      "id": "s-close",
+      "role": "closing",
+      "layoutId": "closing-cta",
+      "title": "Next",
+      "blocks": [
+        {
+          "id": "t4",
+          "type": "text",
+          "slot": "title",
+          "text": "Ship the catalog"
+        },
+        {
+          "id": "b3",
+          "type": "text",
+          "slot": "body",
+          "text": "Validate and build PPTX from DeckSpec."
+        },
+        {
+          "id": "b4",
+          "type": "text",
+          "slot": "cta",
+          "text": "Export"
+        }
+      ],
+      "notes": "Speaker notes for Closing"
+    },
+    {
+      "id": "s-chart",
+      "role": "trend",
+      "layoutId": "chart-insight-right",
+      "title": "Chart",
+      "controls": {
+        "chartType": "bar",
+        "showInsight": true
+      },
+      "blocks": [
+        {
+          "id": "ct",
+          "type": "text",
+          "slot": "title",
+          "text": "Trend"
+        },
+        {
+          "id": "ch",
+          "type": "chart",
+          "slot": "chart",
+          "data": {
+            "chartType": "bar",
+            "categories": [
+              "Q1",
+              "Q2",
+              "Q3",
+              "Q4"
+            ],
+            "series": [
+              {
+                "name": "Layouts",
+                "values": [
+                  26,
+                  56,
+                  70,
+                  83
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "ins",
+          "type": "list",
+          "slot": "insight",
+          "items": [
+            "Wave 3 crossed 80",
+            "Packing reused"
+          ]
+        }
+      ],
+      "notes": "Speaker notes for Chart"
+    },
+    {
+      "id": "s-table",
+      "role": "trend",
+      "layoutId": "table-callouts",
+      "title": "Table",
+      "controls": {
+        "showInsight": true
+      },
+      "blocks": [
+        {
+          "id": "tt",
+          "type": "text",
+          "slot": "title",
+          "text": "Catalog"
+        },
+        {
+          "id": "tb",
+          "type": "table",
+          "slot": "table",
+          "data": {
+            "headers": [
+              "Wave",
+              "Layouts"
+            ],
+            "rows": [
+              [
+                "1",
+                "26"
+              ],
+              [
+                "2",
+                "56"
+              ],
+              [
+                "3",
+                "83"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "ti",
+          "type": "text",
+          "slot": "insight",
+          "text": "Keep native DeckSpec path."
+        }
+      ],
+      "notes": "Speaker notes for Table"
+    }
+  ],
+  "assets": []
+}

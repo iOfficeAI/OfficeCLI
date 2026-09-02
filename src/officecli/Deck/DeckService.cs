@@ -257,7 +257,8 @@ public static class DeckService
 
     private static DeckSlot AdjustSlot(string layoutId, DeckSlot slot, DeckSlide slide)
     {
-        if ((layoutId is "image-text" or "two-column" or "cover-split" or "quote-split")
+        if ((layoutId is "image-text" or "two-column" or "cover-split" or "quote-split"
+                or "cover-banner" or "image-left-bullets")
             && ControlString(slide, "mediaSide", "left") == "right")
             return slot with { X = 1 - slot.X - slot.Width };
 
@@ -272,8 +273,9 @@ public static class DeckService
             return slot with { X = 0.06, Width = 0.88 };
 
         if ((layoutId is "comparison" or "two-column" or "toc" or "before-after" or "pros-cons"
-                or "mitigation-plan" or "bullets-two" or "metrics-highlight" or "chart-compare")
-            && (slot.Id is "left" or "right" or "kpi" or "support"))
+                or "mitigation-plan" or "bullets-two" or "metrics-highlight" or "chart-compare"
+                or "toc-two-column" or "vs-scorecard" or "statement-split" or "image-left-bullets")
+            && (slot.Id is "left" or "right" or "kpi" or "support" or "body"))
         {
             var balance = Math.Clamp(ControlDouble(slide, "balance", 50), 35, 65) / 100;
             const double start = 0.06;
@@ -287,8 +289,9 @@ public static class DeckService
                 : slot with { X = start + leftWidth + gap, Width = rightWidth };
         }
 
-        if ((layoutId is "comparison-table" or "risk" or "risk-heatmap" or "data-table")
-            && (slot.Id is "left" or "summary" or "insight" or "table" or "matrix"))
+        if ((layoutId is "comparison-table" or "risk" or "risk-heatmap" or "data-table"
+                or "risk-matrix-simple" or "table-callouts" or "chart-insight-right")
+            && (slot.Id is "left" or "summary" or "insight" or "table" or "matrix" or "chart"))
         {
             var balance = Math.Clamp(ControlDouble(slide, "balance", 35), 25, 50) / 100;
             const double start = 0.06;
@@ -302,7 +305,7 @@ public static class DeckService
             return slot with { X = start + leftWidth + gap, Width = rightWidth };
         }
 
-        if (layoutId == "swot"
+        if ((layoutId is "swot" or "swot-compact")
             && (slot.Id is "strengths" or "weaknesses" or "opportunities" or "threats"))
         {
             var balance = Math.Clamp(ControlDouble(slide, "balance", 50), 40, 60) / 100;
@@ -326,13 +329,18 @@ public static class DeckService
         var moduleIds = layoutId switch
         {
             "metrics" or "kpi-trio" => new[] { "metric1", "metric2", "metric3" },
-            "metrics-row-4" => new[] { "metric1", "metric2", "metric3", "metric4" },
+            "metrics-row-4" or "metrics-strip" => new[] { "metric1", "metric2", "metric3", "metric4" },
             "cards" or "agenda-cards" => new[] { "card1", "card2", "card3" },
+            "cards-four" => new[] { "card1", "card2", "card3", "card4" },
             "three-column" or "comparison-three" => new[] { "col1", "col2", "col3" },
-            "process-steps" or "process-horizontal" or "cycle-4" => new[] { "step1", "step2", "step3", "step4" },
-            "team" => new[] { "member1", "member2", "member3", "member4" },
-            "funnel" => new[] { "stage1", "stage2", "stage3", "stage4" },
+            "option-cards-4" => new[] { "col1", "col2", "col3", "col4" },
+            "process-steps" or "process-horizontal" or "cycle-4" or "agenda-timeline" or "roadmap-milestones"
+                => new[] { "step1", "step2", "step3", "step4" },
+            "process-vertical" => new[] { "step1", "step2", "step3", "step4" },
+            "team" or "team-row" => new[] { "member1", "member2", "member3", "member4" },
+            "funnel" or "funnel-wide" => new[] { "stage1", "stage2", "stage3", "stage4" },
             "gallery-two" => new[] { "visual1", "visual2" },
+            "gallery-three" => new[] { "visual1", "visual2", "visual3" },
             _ => Array.Empty<string>(),
         };
         if (moduleIds.Length == 0) return slot;
@@ -343,7 +351,8 @@ public static class DeckService
         if (index >= count)
             return slot with { Width = 0, Height = 0 };
         // Keep authored geometry for non-row packs (funnel stages, 2x2 cycle, gallery).
-        if (layoutId is "funnel" or "cycle-4" or "gallery-two")
+        if (layoutId is "funnel" or "funnel-wide" or "cycle-4" or "gallery-two" or "gallery-three"
+                or "process-vertical" or "cards-four" or "option-cards-4")
             return slot;
 
         const double start = 0.06;
