@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "themes": [
     {
       "id": "business-light",
@@ -70,6 +70,78 @@
         "text": "F9FAFB",
         "mutedText": "9CA3AF",
         "accent": "D4A017",
+        "fontFamily": "Georgia"
+      }
+    },
+    {
+      "id": "consulting-clean",
+      "label": "Consulting Clean",
+      "tokens": {
+        "background": "F8FAFC",
+        "surface": "FFFFFF",
+        "text": "0F172A",
+        "mutedText": "64748B",
+        "accent": "0F766E",
+        "fontFamily": "Aptos"
+      }
+    },
+    {
+      "id": "finance-trust",
+      "label": "Finance Trust",
+      "tokens": {
+        "background": "F1F5F9",
+        "surface": "FFFFFF",
+        "text": "0B1F3A",
+        "mutedText": "5B6B7C",
+        "accent": "1D4ED8",
+        "fontFamily": "Georgia"
+      }
+    },
+    {
+      "id": "product-pastel",
+      "label": "Product Pastel",
+      "tokens": {
+        "background": "FFF7FB",
+        "surface": "FFFFFF",
+        "text": "3B0764",
+        "mutedText": "7C6F8A",
+        "accent": "DB2777",
+        "fontFamily": "Aptos"
+      }
+    },
+    {
+      "id": "education-warm",
+      "label": "Education Warm",
+      "tokens": {
+        "background": "FFFBEB",
+        "surface": "FFFFFF",
+        "text": "422006",
+        "mutedText": "92400E",
+        "accent": "EA580C",
+        "fontFamily": "Georgia"
+      }
+    },
+    {
+      "id": "ops-slate",
+      "label": "Ops Slate",
+      "tokens": {
+        "background": "0F172A",
+        "surface": "1E293B",
+        "text": "F8FAFC",
+        "mutedText": "94A3B8",
+        "accent": "38BDF8",
+        "fontFamily": "Aptos"
+      }
+    },
+    {
+      "id": "boardroom-navy",
+      "label": "Boardroom Navy",
+      "tokens": {
+        "background": "0B1220",
+        "surface": "152238",
+        "text": "F8FAFC",
+        "mutedText": "94A3B8",
+        "accent": "C4A35A",
         "fontFamily": "Georgia"
       }
     }
@@ -951,7 +1023,9 @@
             "line",
             "area",
             "pie",
-            "doughnut"
+            "doughnut",
+            "scatter",
+            "radar"
           ]
         }
       ]
@@ -1539,6 +1613,1688 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cover-centered",
+      "role": "cover",
+      "label": "Cover Centered",
+      "slots": [
+        {
+          "id": "eyebrow",
+          "x": 0.18,
+          "y": 0.22,
+          "width": 0.64,
+          "height": 0.08,
+          "accepts": [
+            "text"
+          ]
+        },
+        {
+          "id": "title",
+          "x": 0.14,
+          "y": 0.32,
+          "width": 0.72,
+          "height": 0.22,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "subtitle",
+          "x": 0.2,
+          "y": 0.56,
+          "width": 0.6,
+          "height": 0.14,
+          "accepts": [
+            "text",
+            "list"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "hero",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cover-split",
+      "role": "cover",
+      "label": "Cover Split",
+      "slots": [
+        {
+          "id": "visual",
+          "x": 0.0,
+          "y": 0.0,
+          "width": 0.42,
+          "height": 1.0,
+          "accepts": [
+            "image",
+            "shape"
+          ]
+        },
+        {
+          "id": "title",
+          "x": 0.48,
+          "y": 0.28,
+          "width": 0.46,
+          "height": 0.24,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "subtitle",
+          "x": 0.48,
+          "y": 0.56,
+          "width": 0.42,
+          "height": 0.18,
+          "accepts": [
+            "text",
+            "list"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "mediaSide",
+          "type": "select",
+          "label": "Media side",
+          "defaultValue": "left",
+          "options": [
+            "left",
+            "right"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "toc-numbered",
+      "role": "breakdown",
+      "label": "Numbered Contents",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "content",
+          "x": 0.1,
+          "y": 0.24,
+          "width": 0.8,
+          "height": 0.64,
+          "accepts": [
+            "list",
+            "text"
+          ],
+          "required": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Sections shown",
+          "defaultValue": 6,
+          "min": 3,
+          "max": 10
+        }
+      ]
+    },
+    {
+      "id": "agenda-cards",
+      "role": "breakdown",
+      "label": "Agenda Cards",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "card1",
+          "x": 0.06,
+          "y": 0.26,
+          "width": 0.28,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ]
+        },
+        {
+          "id": "card2",
+          "x": 0.36,
+          "y": 0.26,
+          "width": 0.28,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ]
+        },
+        {
+          "id": "card3",
+          "x": 0.66,
+          "y": 0.26,
+          "width": 0.28,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Agenda cards",
+          "defaultValue": 3,
+          "min": 2,
+          "max": 3
+        }
+      ]
+    },
+    {
+      "id": "metrics-row-4",
+      "role": "metrics",
+      "label": "Metrics Row Four",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ]
+        },
+        {
+          "id": "metric1",
+          "x": 0.04,
+          "y": 0.28,
+          "width": 0.22,
+          "height": 0.5,
+          "accepts": [
+            "metric",
+            "text"
+          ]
+        },
+        {
+          "id": "metric2",
+          "x": 0.28,
+          "y": 0.28,
+          "width": 0.22,
+          "height": 0.5,
+          "accepts": [
+            "metric",
+            "text"
+          ]
+        },
+        {
+          "id": "metric3",
+          "x": 0.52,
+          "y": 0.28,
+          "width": 0.22,
+          "height": 0.5,
+          "accepts": [
+            "metric",
+            "text"
+          ]
+        },
+        {
+          "id": "metric4",
+          "x": 0.76,
+          "y": 0.28,
+          "width": 0.2,
+          "height": 0.5,
+          "accepts": [
+            "metric",
+            "text"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Metric modules",
+          "defaultValue": 4,
+          "min": 2,
+          "max": 4
+        }
+      ]
+    },
+    {
+      "id": "kpi-trio",
+      "role": "metrics",
+      "label": "KPI Trio",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "metric1",
+          "x": 0.06,
+          "y": 0.28,
+          "width": 0.28,
+          "height": 0.55,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "metric2",
+          "x": 0.36,
+          "y": 0.28,
+          "width": 0.28,
+          "height": 0.55,
+          "accepts": [
+            "metric",
+            "text"
+          ]
+        },
+        {
+          "id": "metric3",
+          "x": 0.66,
+          "y": 0.28,
+          "width": 0.28,
+          "height": 0.55,
+          "accepts": [
+            "metric",
+            "text"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "KPI modules",
+          "defaultValue": 3,
+          "min": 2,
+          "max": 3
+        },
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "metrics-highlight",
+      "role": "metrics",
+      "label": "Metrics Highlight",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ]
+        },
+        {
+          "id": "kpi",
+          "x": 0.08,
+          "y": 0.24,
+          "width": 0.4,
+          "height": 0.58,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "support",
+          "x": 0.52,
+          "y": 0.24,
+          "width": 0.4,
+          "height": 0.58,
+          "accepts": [
+            "list",
+            "text",
+            "metric"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "hero",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 45,
+          "min": 35,
+          "max": 60
+        }
+      ]
+    },
+    {
+      "id": "comparison-three",
+      "role": "comparison",
+      "label": "Three-way Comparison",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "col1",
+          "x": 0.05,
+          "y": 0.24,
+          "width": 0.28,
+          "height": 0.64,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ]
+        },
+        {
+          "id": "col2",
+          "x": 0.36,
+          "y": 0.24,
+          "width": 0.28,
+          "height": 0.64,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ]
+        },
+        {
+          "id": "col3",
+          "x": 0.67,
+          "y": 0.24,
+          "width": 0.28,
+          "height": 0.64,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Options shown",
+          "defaultValue": 3,
+          "min": 2,
+          "max": 3
+        }
+      ]
+    },
+    {
+      "id": "before-after",
+      "role": "comparison",
+      "label": "Before After",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "left",
+          "x": 0.06,
+          "y": 0.24,
+          "width": 0.4,
+          "height": 0.64,
+          "accepts": [
+            "text",
+            "list",
+            "image"
+          ]
+        },
+        {
+          "id": "right",
+          "x": 0.54,
+          "y": 0.24,
+          "width": 0.4,
+          "height": 0.64,
+          "accepts": [
+            "text",
+            "list",
+            "image"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 50,
+          "min": 35,
+          "max": 65
+        }
+      ]
+    },
+    {
+      "id": "pros-cons",
+      "role": "comparison",
+      "label": "Pros and Cons",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "left",
+          "x": 0.06,
+          "y": 0.24,
+          "width": 0.42,
+          "height": 0.64,
+          "accepts": [
+            "list",
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "right",
+          "x": 0.52,
+          "y": 0.24,
+          "width": 0.42,
+          "height": 0.64,
+          "accepts": [
+            "list",
+            "text"
+          ],
+          "required": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 50,
+          "min": 35,
+          "max": 65
+        }
+      ]
+    },
+    {
+      "id": "feature-matrix",
+      "role": "comparison",
+      "label": "Feature Matrix",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "table",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.88,
+          "height": 0.68,
+          "accepts": [
+            "table"
+          ],
+          "required": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "subtle",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "process-horizontal",
+      "role": "process",
+      "label": "Process Horizontal",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "step1",
+          "x": 0.04,
+          "y": 0.3,
+          "width": 0.22,
+          "height": 0.5,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ]
+        },
+        {
+          "id": "step2",
+          "x": 0.28,
+          "y": 0.3,
+          "width": 0.22,
+          "height": 0.5,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ]
+        },
+        {
+          "id": "step3",
+          "x": 0.52,
+          "y": 0.3,
+          "width": 0.22,
+          "height": 0.5,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ]
+        },
+        {
+          "id": "step4",
+          "x": 0.76,
+          "y": 0.3,
+          "width": 0.2,
+          "height": 0.5,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Process steps",
+          "defaultValue": 4,
+          "min": 2,
+          "max": 4
+        }
+      ]
+    },
+    {
+      "id": "roadmap",
+      "role": "process",
+      "label": "Roadmap",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "timeline",
+          "x": 0.06,
+          "y": 0.28,
+          "width": 0.88,
+          "height": 0.56,
+          "accepts": [
+            "timeline",
+            "list"
+          ],
+          "required": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Milestones",
+          "defaultValue": 5,
+          "min": 3,
+          "max": 8
+        }
+      ]
+    },
+    {
+      "id": "cycle-4",
+      "role": "process",
+      "label": "Four-step Cycle",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "step1",
+          "x": 0.12,
+          "y": 0.22,
+          "width": 0.34,
+          "height": 0.28,
+          "accepts": [
+            "text",
+            "list"
+          ]
+        },
+        {
+          "id": "step2",
+          "x": 0.54,
+          "y": 0.22,
+          "width": 0.34,
+          "height": 0.28,
+          "accepts": [
+            "text",
+            "list"
+          ]
+        },
+        {
+          "id": "step3",
+          "x": 0.54,
+          "y": 0.56,
+          "width": 0.34,
+          "height": 0.28,
+          "accepts": [
+            "text",
+            "list"
+          ]
+        },
+        {
+          "id": "step4",
+          "x": 0.12,
+          "y": 0.56,
+          "width": 0.34,
+          "height": 0.28,
+          "accepts": [
+            "text",
+            "list"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Cycle stages",
+          "defaultValue": 4,
+          "min": 3,
+          "max": 4
+        }
+      ]
+    },
+    {
+      "id": "risk-heatmap",
+      "role": "comparison",
+      "label": "Risk Heatmap",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "summary",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.28,
+          "height": 0.66,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ]
+        },
+        {
+          "id": "matrix",
+          "x": 0.38,
+          "y": 0.22,
+          "width": 0.56,
+          "height": 0.66,
+          "accepts": [
+            "table",
+            "list"
+          ],
+          "required": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 35,
+          "min": 28,
+          "max": 48
+        },
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mitigation-plan",
+      "role": "comparison",
+      "label": "Mitigation Plan",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "left",
+          "x": 0.06,
+          "y": 0.24,
+          "width": 0.42,
+          "height": 0.64,
+          "accepts": [
+            "list",
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "right",
+          "x": 0.52,
+          "y": 0.24,
+          "width": 0.42,
+          "height": 0.64,
+          "accepts": [
+            "list",
+            "text",
+            "table"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 50,
+          "min": 35,
+          "max": 65
+        }
+      ]
+    },
+    {
+      "id": "closing-summary",
+      "role": "closing",
+      "label": "Closing Summary",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "content",
+          "x": 0.1,
+          "y": 0.26,
+          "width": 0.8,
+          "height": 0.4,
+          "accepts": [
+            "list",
+            "text"
+          ]
+        },
+        {
+          "id": "actions",
+          "x": 0.1,
+          "y": 0.7,
+          "width": 0.8,
+          "height": 0.18,
+          "accepts": [
+            "list",
+            "text"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "thank-you",
+      "role": "closing",
+      "label": "Thank You",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.14,
+          "y": 0.34,
+          "width": 0.72,
+          "height": 0.22,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "subtitle",
+          "x": 0.2,
+          "y": 0.58,
+          "width": 0.6,
+          "height": 0.14,
+          "accepts": [
+            "text"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "hero",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "next-steps",
+      "role": "closing",
+      "label": "Next Steps",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "actions",
+          "x": 0.1,
+          "y": 0.28,
+          "width": 0.8,
+          "height": 0.52,
+          "accepts": [
+            "list",
+            "text"
+          ],
+          "required": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Action items",
+          "defaultValue": 4,
+          "min": 2,
+          "max": 8
+        },
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "image-caption",
+      "role": "image",
+      "label": "Image Caption",
+      "slots": [
+        {
+          "id": "visual",
+          "x": 0.08,
+          "y": 0.08,
+          "width": 0.84,
+          "height": 0.62,
+          "accepts": [
+            "image"
+          ],
+          "required": true
+        },
+        {
+          "id": "title",
+          "x": 0.1,
+          "y": 0.74,
+          "width": 0.8,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ]
+        },
+        {
+          "id": "content",
+          "x": 0.1,
+          "y": 0.84,
+          "width": 0.8,
+          "height": 0.1,
+          "accepts": [
+            "text",
+            "list"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "subtle",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hero-image",
+      "role": "image",
+      "label": "Hero Image",
+      "slots": [
+        {
+          "id": "visual",
+          "x": 0.0,
+          "y": 0.0,
+          "width": 1.0,
+          "height": 0.72,
+          "accepts": [
+            "image",
+            "shape"
+          ],
+          "required": true
+        },
+        {
+          "id": "title",
+          "x": 0.08,
+          "y": 0.76,
+          "width": 0.84,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "content",
+          "x": 0.08,
+          "y": 0.88,
+          "width": 0.84,
+          "height": 0.08,
+          "accepts": [
+            "text"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gallery-two",
+      "role": "image",
+      "label": "Two-up Gallery",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ]
+        },
+        {
+          "id": "visual1",
+          "x": 0.05,
+          "y": 0.22,
+          "width": 0.43,
+          "height": 0.66,
+          "accepts": [
+            "image"
+          ],
+          "required": true
+        },
+        {
+          "id": "visual2",
+          "x": 0.52,
+          "y": 0.22,
+          "width": 0.43,
+          "height": 0.66,
+          "accepts": [
+            "image"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Images shown",
+          "defaultValue": 2,
+          "min": 1,
+          "max": 2
+        }
+      ]
+    },
+    {
+      "id": "table-focus",
+      "role": "breakdown",
+      "label": "Table Focus",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "table",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.88,
+          "height": 0.66,
+          "accepts": [
+            "table"
+          ],
+          "required": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "subtle",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "data-table",
+      "role": "comparison",
+      "label": "Data Table",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "insight",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.24,
+          "height": 0.66,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ]
+        },
+        {
+          "id": "table",
+          "x": 0.34,
+          "y": 0.22,
+          "width": 0.6,
+          "height": 0.66,
+          "accepts": [
+            "table"
+          ],
+          "required": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 30,
+          "min": 25,
+          "max": 45
+        },
+        {
+          "id": "showInsight",
+          "type": "toggle",
+          "label": "Show insight panel",
+          "defaultValue": true
+        }
+      ]
+    },
+    {
+      "id": "chart-full",
+      "role": "trend",
+      "label": "Full-bleed Chart",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ]
+        },
+        {
+          "id": "chart",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.88,
+          "height": 0.7,
+          "accepts": [
+            "chart"
+          ],
+          "required": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "chartType",
+          "type": "select",
+          "label": "Chart type",
+          "defaultValue": "line",
+          "options": [
+            "column",
+            "bar",
+            "line",
+            "area",
+            "pie",
+            "doughnut",
+            "scatter",
+            "radar"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chart-radar",
+      "role": "trend",
+      "label": "Radar Chart",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "chart",
+          "x": 0.08,
+          "y": 0.2,
+          "width": 0.54,
+          "height": 0.68,
+          "accepts": [
+            "chart"
+          ],
+          "required": true
+        },
+        {
+          "id": "insight",
+          "x": 0.66,
+          "y": 0.2,
+          "width": 0.28,
+          "height": 0.68,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "showInsight",
+          "type": "toggle",
+          "label": "Show insight panel",
+          "defaultValue": true
+        },
+        {
+          "id": "chartType",
+          "type": "select",
+          "label": "Chart type",
+          "defaultValue": "radar",
+          "options": [
+            "radar",
+            "column",
+            "bar",
+            "line",
+            "area"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chart-compare",
+      "role": "trend",
+      "label": "Chart Compare",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "chart",
+          "x": 0.05,
+          "y": 0.22,
+          "width": 0.55,
+          "height": 0.66,
+          "accepts": [
+            "chart"
+          ],
+          "required": true
+        },
+        {
+          "id": "right",
+          "x": 0.64,
+          "y": 0.22,
+          "width": 0.3,
+          "height": 0.66,
+          "accepts": [
+            "list",
+            "text",
+            "metric"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "chartType",
+          "type": "select",
+          "label": "Chart type",
+          "defaultValue": "column",
+          "options": [
+            "column",
+            "bar",
+            "line",
+            "area",
+            "pie",
+            "doughnut",
+            "scatter",
+            "radar"
+          ]
+        },
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 60,
+          "min": 45,
+          "max": 70
+        }
+      ]
+    },
+    {
+      "id": "bullets-two",
+      "role": "breakdown",
+      "label": "Two-column Bullets",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.06,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "left",
+          "x": 0.06,
+          "y": 0.24,
+          "width": 0.42,
+          "height": 0.64,
+          "accepts": [
+            "list",
+            "text"
+          ]
+        },
+        {
+          "id": "right",
+          "x": 0.52,
+          "y": 0.24,
+          "width": 0.42,
+          "height": 0.64,
+          "accepts": [
+            "list",
+            "text"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 50,
+          "min": 35,
+          "max": 65
+        },
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Bullet density",
+          "defaultValue": 5,
+          "min": 3,
+          "max": 10
+        }
+      ]
+    },
+    {
+      "id": "section-banner",
+      "role": "transition",
+      "label": "Section Banner",
+      "slots": [
+        {
+          "id": "eyebrow",
+          "x": 0.08,
+          "y": 0.3,
+          "width": 0.5,
+          "height": 0.08,
+          "accepts": [
+            "text"
+          ]
+        },
+        {
+          "id": "title",
+          "x": 0.08,
+          "y": 0.4,
+          "width": 0.7,
+          "height": 0.22,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "summary",
+          "x": 0.08,
+          "y": 0.66,
+          "width": 0.6,
+          "height": 0.14,
+          "accepts": [
+            "text"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "hero",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "quote-split",
+      "role": "statement",
+      "label": "Quote Split",
+      "slots": [
+        {
+          "id": "quote",
+          "x": 0.08,
+          "y": 0.22,
+          "width": 0.54,
+          "height": 0.5,
+          "accepts": [
+            "quote",
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "attribution",
+          "x": 0.08,
+          "y": 0.76,
+          "width": 0.54,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ]
+        },
+        {
+          "id": "visual",
+          "x": 0.66,
+          "y": 0.18,
+          "width": 0.28,
+          "height": 0.64,
+          "accepts": [
+            "image",
+            "shape"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "mediaSide",
+          "type": "select",
+          "label": "Media side",
+          "defaultValue": "right",
+          "options": [
+            "left",
+            "right"
           ]
         }
       ]
