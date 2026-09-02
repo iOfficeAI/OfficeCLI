@@ -243,22 +243,29 @@ public static class DeckService
                 occupied.Add(slot.Id);
             }
             slot = AdjustSlot(layout.Id, slot, slide);
+            if (slot.Width <= 0 || slot.Height <= 0)
+                continue;
             var text = BlockText(block);
             string? assetPath = null;
             if (block.AssetId != null && assets.TryGetValue(block.AssetId, out var asset) && asset.Status == "ready")
                 assetPath = ResolveAssetPath(specPath, asset.Path);
-            elements.Add(new DeckPreviewElement(block.Id, block.Type, slot.Id, slot.X, slot.Y, slot.Width, slot.Height, text, assetPath, block.Data));
+            var data = OverlayChartTypeControl(slide, block);
+            elements.Add(new DeckPreviewElement(block.Id, block.Type, slot.Id, slot.X, slot.Y, slot.Width, slot.Height, text, assetPath, data));
         }
         return elements;
     }
 
     private static DeckSlot AdjustSlot(string layoutId, DeckSlot slot, DeckSlide slide)
     {
-        if (layoutId == "image-text" && ControlString(slide, "mediaSide", "left") == "right")
+        if ((layoutId is "image-text" or "two-column")
+            && ControlString(slide, "mediaSide", "left") == "right")
             return slot with { X = 1 - slot.X - slot.Width };
+
         if (layoutId == "chart" && slot.Id == "chart" && !ControlBool(slide, "showInsight", true))
             return slot with { Width = 0.88 };
-        if (layoutId == "comparison" && slot.Id is "left" or "right")
+
+        if ((layoutId is "comparison" or "two-column" or "toc")
+            && (slot.Id is "left" or "right"))
         {
             var balance = Math.Clamp(ControlDouble(slide, "balance", 50), 35, 65) / 100;
             const double start = 0.06;
@@ -271,7 +278,107 @@ public static class DeckService
                 ? slot with { X = start, Width = leftWidth }
                 : slot with { X = start + leftWidth + gap, Width = rightWidth };
         }
-        return slot;
+
+        if ((layoutId is "comparison-table" or "risk")
+            && (slot.Id is "left" or "summary" or "table" or "matrix"))
+        {
+            var balance = Math.Clamp(ControlDouble(slide, "balance", 35), 30, 50) / 100;
+            const double start = 0.06;
+            const double total = 0.88;
+            const double gap = 0.04;
+            var usable = total - gap;
+            var leftWidth = usable * balance;
+            var rightWidth = usable - leftWidth;
+            if (slot.Id is "left" or "summary")
+                return slot with { X = start, Width = leftWidth };
+            return slot with { X = start + leftWidth + gap, Width = rightWidth };
+        }
+
+        if (layoutId == "swot"
+            && (slot.Id is "strengths" or "weaknesses" or "opportunities" or "threats"))
+        {
+            var balance = Math.Clamp(ControlDouble(slide, "balance", 50), 40, 60) / 100;
+            const double start = 0.06;
+            const double total = 0.88;
+            const double gap = 0.04;
+            var usable = total - gap;
+            var leftWidth = usable * balance;
+            var rightWidth = usable - leftWidth;
+            var isLeft = slot.Id is "strengths" or "opportunities";
+            return isLeft
+                ? slot with { X = start, Width = leftWidth }
+                : slot with { X = start + leftWidth + gap, Width = rightWidth };
+        }
+
+        return PackModuleSlots(layoutId, slot, slide);
+    }
+
+    private static DeckSlot PackModuleSlots(string layoutId, DeckSlot slot, DeckSlide slide)
+    {
+        var moduleIds = layoutId switch
+        {
+            "metrics" => new[] { "metric1", "metric2", "metric3" },
+            "cards" => new[] { "card1", "card2", "card3" },
+            "three-column" => new[] { "col1", "col2", "col3" },
+            "process-steps" => new[] { "step1", "step2", "step3", "step4" },
+            "team" => new[] { "member1", "member2", "member3", "member4" },
+            "funnel" => new[] { "stage1", "stage2", "stage3", "stage4" },
+            _ => Array.Empty<string>(),
+        };
+        if (moduleIds.Length == 0) return slot;
+        var index = Array.IndexOf(moduleIds, slot.Id);
+        if (index < 0) return slot;
+
+        var count = (int)Math.Clamp(ControlDouble(slide, "moduleCount", moduleIds.Length), 1, moduleIds.Length);
+        if (index >= count)
+            return slot with { Width = 0, Height = 0 };
+        if (layoutId == "funnel")
+            return slot;
+
+        const double start = 0.06;
+        const double total = 0.88;
+        const double gap = 0.03;
+        var usable = total - gap * Math.Max(0, count - 1);
+        var width = usable / count;
+        return slot with { X = start + index * (width + gap), Width = width };
+    }
+
+
+    private static JsonElement? OverlayChartTypeControl(DeckSlide slide, DeckBlock block)
+    {
+        if (block.Type != "chart" || !block.Data.HasValue || block.Data.Value.ValueKind != JsonValueKind.Object)
+            return block.Data;
+        if (!slide.Controls.TryGetValue("chartType", out var chartType)
+            || chartType.ValueKind != JsonValueKind.String)
+            return block.Data;
+
+        using var document = JsonDocument.Parse(block.Data.Value.GetRawText());
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            var replaced = false;
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (property.NameEquals("chartType"))
+                {
+                    writer.WritePropertyName("chartType");
+                    chartType.WriteTo(writer);
+                    replaced = true;
+                }
+                else
+                {
+                    property.WriteTo(writer);
+                }
+            }
+            if (!replaced)
+            {
+                writer.WritePropertyName("chartType");
+                chartType.WriteTo(writer);
+            }
+            writer.WriteEndObject();
+        }
+        return JsonDocument.Parse(stream.ToArray()).RootElement.Clone();
     }
 
     private static string ControlString(DeckSlide slide, string id, string fallback) =>

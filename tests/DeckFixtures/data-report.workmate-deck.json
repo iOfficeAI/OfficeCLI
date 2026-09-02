@@ -3,12 +3,12 @@
   "revision": 1,
   "stage": "ready",
   "metadata": {
-    "title": "business-light layout catalog",
+    "title": "data-report layout catalog",
     "language": "en-US",
     "aspectRatio": "16:9"
   },
   "theme": {
-    "id": "business-light"
+    "id": "data-report"
   },
   "slides": [
     {
