@@ -32,7 +32,8 @@
           "slot": "subtitle",
           "text": "12 themes / 56 layouts"
         }
-      ]
+      ],
+      "notes": "Speaker notes for Cover"
     },
     {
       "id": "s-kpi",
@@ -67,7 +68,8 @@
           "slot": "metric3",
           "text": "56"
         }
-      ]
+      ],
+      "notes": "Speaker notes for KPI"
     },
     {
       "id": "s-cmp",
@@ -98,7 +100,8 @@
             "Need more layouts"
           ]
         }
-      ]
+      ],
+      "notes": "Speaker notes for Pros Cons"
     },
     {
       "id": "s-proc",
@@ -133,7 +136,8 @@
           "slot": "step3",
           "text": "Export"
         }
-      ]
+      ],
+      "notes": "Speaker notes for Process"
     },
     {
       "id": "s-chart",
@@ -181,6 +185,43 @@
           "type": "text",
           "slot": "insight",
           "text": "Balanced"
+        }
+      ],
+      "notes": "Speaker notes for Radar"
+    },
+    {
+      "id": "s-table",
+      "role": "comparison",
+      "layoutId": "feature-matrix",
+      "title": "Matrix",
+      "notes": "Feature matrix notes",
+      "blocks": [
+        {
+          "id": "tt",
+          "type": "text",
+          "slot": "title",
+          "text": "Matrix"
+        },
+        {
+          "id": "tb",
+          "type": "table",
+          "slot": "table",
+          "data": {
+            "headers": [
+              "Item",
+              "Status"
+            ],
+            "rows": [
+              [
+                "Wave1",
+                "done"
+              ],
+              [
+                "Wave2",
+                "next"
+              ]
+            ]
+          }
         }
       ]
     }
