@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "stage": "ready",
+  "metadata": {
+    "title": "CSBU WorkMate Catalog Wave2 Smoke",
+    "language": "zh-CN",
+    "aspectRatio": "16:9",
+    "goal": "Validate catalog 1.2.0",
+    "audience": "QA"
+  },
+  "theme": {
+    "id": "consulting-clean",
+    "mode": "light"
+  },
+  "slides": [
+    {
+      "id": "s-cover",
+      "role": "cover",
+      "layoutId": "cover-centered",
+      "title": "Cover",
+      "blocks": [
+        {
+          "id": "b1",
+          "type": "text",
+          "slot": "title",
+          "text": "Catalog Wave 2"
+        },
+        {
+          "id": "b2",
+          "type": "text",
+          "slot": "subtitle",
+          "text": "12 themes / 56 layouts"
+        }
+      ]
+    },
+    {
+      "id": "s-kpi",
+      "role": "metrics",
+      "layoutId": "kpi-trio",
+      "title": "KPI",
+      "controls": {
+        "moduleCount": 3
+      },
+      "blocks": [
+        {
+          "id": "t1",
+          "type": "text",
+          "slot": "title",
+          "text": "KPI"
+        },
+        {
+          "id": "k1",
+          "type": "metric",
+          "slot": "metric1",
+          "text": "96%"
+        },
+        {
+          "id": "k2",
+          "type": "metric",
+          "slot": "metric2",
+          "text": "12"
+        },
+        {
+          "id": "k3",
+          "type": "metric",
+          "slot": "metric3",
+          "text": "56"
+        }
+      ]
+    },
+    {
+      "id": "s-cmp",
+      "role": "comparison",
+      "layoutId": "pros-cons",
+      "title": "Pros Cons",
+      "blocks": [
+        {
+          "id": "t2",
+          "type": "text",
+          "slot": "title",
+          "text": "Pros Cons"
+        },
+        {
+          "id": "c1",
+          "type": "list",
+          "slot": "left",
+          "items": [
+            "Native PPTX",
+            "DeckSpec"
+          ]
+        },
+        {
+          "id": "c2",
+          "type": "list",
+          "slot": "right",
+          "items": [
+            "Need more layouts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "s-proc",
+      "role": "process",
+      "layoutId": "process-horizontal",
+      "title": "Process",
+      "controls": {
+        "moduleCount": 3
+      },
+      "blocks": [
+        {
+          "id": "t3",
+          "type": "text",
+          "slot": "title",
+          "text": "Process"
+        },
+        {
+          "id": "p1",
+          "type": "text",
+          "slot": "step1",
+          "text": "Outline"
+        },
+        {
+          "id": "p2",
+          "type": "text",
+          "slot": "step2",
+          "text": "Confirm"
+        },
+        {
+          "id": "p3",
+          "type": "text",
+          "slot": "step3",
+          "text": "Export"
+        }
+      ]
+    },
+    {
+      "id": "s-chart",
+      "role": "trend",
+      "layoutId": "chart-radar",
+      "title": "Radar",
+      "controls": {
+        "chartType": "radar",
+        "showInsight": true
+      },
+      "blocks": [
+        {
+          "id": "t4",
+          "type": "text",
+          "slot": "title",
+          "text": "Radar"
+        },
+        {
+          "id": "ch",
+          "type": "chart",
+          "slot": "chart",
+          "data": {
+            "chartType": "radar",
+            "categories": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ],
+            "series": [
+              {
+                "name": "Score",
+                "values": [
+                  4,
+                  3,
+                  5,
+                  4
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "ins",
+          "type": "text",
+          "slot": "insight",
+          "text": "Balanced"
+        }
+      ]
+    }
+  ],
+  "assets": []
+}
