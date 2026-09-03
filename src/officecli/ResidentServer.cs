@@ -26,6 +26,11 @@ public class ResidentServer : IDisposable
     // after a successful _handler.Save(). The idle-autosave watchdog uses it
     // to skip flushing when nothing changed since the last save.
     private volatile bool _dirty;
+    // Narrower than _dirty: true only while user mutations are not durable.
+    // An interrupted xlsx formula sweep can keep _dirty=true for a later
+    // housekeeping pass even though the user's edits are already on disk.
+    private bool _unflushedMutations;
+    private bool _recoveryMarkerArmed;
     // Stderr captured during DocumentHandlerFactory.Open (i.e. while the
     // constructor was building _handler). At that point there's no
     // per-command Console.SetError scope, so warnings written by plugin
@@ -229,6 +234,13 @@ public class ResidentServer : IDisposable
         finally { Console.SetError(origErr); }
         var captured = startupErrSink.ToString().TrimEnd('\r', '\n');
         if (captured.Length > 0) _startupStderr = captured;
+        if (ResidentRecoveryMarker.TryConsume(_filePath))
+        {
+            var warning = ResidentRecoveryMarker.WarningMessage(_filePath);
+            _startupStderr = string.IsNullOrEmpty(_startupStderr)
+                ? warning
+                : $"{_startupStderr}{Environment.NewLine}{warning}";
+        }
     }
 
     public static string GetPipeName(string filePath)
@@ -501,6 +513,9 @@ public class ResidentServer : IDisposable
             }
             sw.Stop();
             RecordSaveDuration(sw.Elapsed);
+            // The user's edits are durable after any successful Save, even if
+            // a yielded formula-cache sweep keeps _dirty set for housekeeping.
+            MarkMutationsFlushed();
             // A sweep interrupted by a command leaves formula caches partially
             // refreshed on disk. Keeping _dirty=true makes the next idle window
             // save again — that re-runs the sweep (the handler's Modified gate
@@ -798,8 +813,13 @@ public class ResidentServer : IDisposable
                     _handler.Save();
                     sw.Stop();
                     _dirty = false;
+                    MarkMutationsFlushed();
                     RecordSaveDuration(sw.Elapsed);
                 }
+                // Arm before building/writing the response: every mutation the
+                // client can observe as successful therefore has a durable
+                // warning marker during the deferred-flush window.
+                SyncRecoveryMarker();
             }
             finally
             {
@@ -901,6 +921,9 @@ public class ResidentServer : IDisposable
         }
         catch (Exception ex)
         {
+            // A mutating command can fail after changing the in-memory DOM.
+            // Keep the advisory marker conservative on that path as well.
+            SyncRecoveryMarker();
             // CONSISTENCY(error-wrap): mirror CommandBuilder.WriteError —
             // surface a friendlier message when an OOXML part is externally
             // corrupted, instead of the raw "Data at the root level is
@@ -1072,6 +1095,40 @@ public class ResidentServer : IDisposable
         // next save/close/idle-autosave. Set here (the shared mutation prelude)
         // so single commands and batch alike are tracked.
         _dirty = true;
+        _unflushedMutations = true;
+    }
+
+    private void SyncRecoveryMarker()
+    {
+        if (!_unflushedMutations)
+        {
+            if (_recoveryMarkerArmed)
+                ResidentRecoveryMarker.Clear(_filePath);
+            _recoveryMarkerArmed = false;
+            return;
+        }
+        if (_recoveryMarkerArmed) return;
+
+        if (ResidentRecoveryMarker.TryMark(_filePath, out var error))
+        {
+            _recoveryMarkerArmed = true;
+            return;
+        }
+
+        Console.Error.WriteLine(
+            $"WARNING: could not arm the resident crash-recovery notice ({error}). " +
+            "Use OFFICECLI_RESIDENT_FLUSH=each if this process may be terminated externally.");
+    }
+
+    private void MarkMutationsFlushed()
+    {
+        _unflushedMutations = false;
+        // Always retry deletion. A previous process may have consumed the
+        // marker but failed to remove it (for example because of a transient
+        // filesystem error); a later successful save must not leave that
+        // stale warning behind.
+        ResidentRecoveryMarker.Clear(_filePath);
+        _recoveryMarkerArmed = false;
     }
 
     private void ExecuteCommand(ResidentRequest request)
@@ -1267,6 +1324,7 @@ public class ResidentServer : IDisposable
             _handler.Save();
             swBarrier.Stop();
             _dirty = false;
+            MarkMutationsFlushed();
             RecordSaveDuration(swBarrier.Elapsed);
         }
         if (hasMutating) PromoteToEditable();
@@ -1339,6 +1397,7 @@ public class ResidentServer : IDisposable
                 wh2.AdoptPendingWholeParts(preBatchWholeParts);
             }
             _dirty = false;
+            MarkMutationsFlushed();
             rolledBack = true;
         }
 
@@ -2577,6 +2636,7 @@ public class ResidentServer : IDisposable
         _handler.Save();
         sw.Stop();
         _dirty = false;
+        MarkMutationsFlushed();
         RecordSaveDuration(sw.Elapsed);
         Console.WriteLine($"Saved {Path.GetFileName(_filePath)}");
     }
@@ -2776,6 +2836,8 @@ public class ResidentServer : IDisposable
             disposeFailed = true;
             LogStderr($"Warning: handler dispose error: {ex.Message}");
         }
+        if (!disposeFailed)
+            MarkMutationsFlushed();
 
         // BUG-BT-R26-2 / BUG-R43: detect data loss. The original probe used
         // File.Exists(_filePath) post-Dispose — but on macOS, renaming the
