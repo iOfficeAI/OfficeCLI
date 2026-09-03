@@ -468,8 +468,27 @@ public static class DeckService
         var (start, total, gap) = DensityPackMetrics(slide);
         var packCount = Math.Max(1, visibleIds.Length);
         var usable = total - gap * Math.Max(0, packCount - 1);
-        var width = usable / packCount;
-        return slot with { X = start + visibleIndex * (width + gap), Width = width };
+        var widths = new double[packCount];
+        var focus = (int)Math.Round(ControlDouble(slide, "focusIndex", -1));
+        if (focus >= 0 && focus < packCount && packCount > 1)
+        {
+            // Emphasize one module (~25% weight); siblings share the remainder evenly.
+            const double boost = 1.25;
+            const double sibling = 1.0;
+            var weightSum = boost + sibling * (packCount - 1);
+            for (var i = 0; i < packCount; i++)
+                widths[i] = usable * ((i == focus ? boost : sibling) / weightSum);
+        }
+        else
+        {
+            var width = usable / packCount;
+            for (var i = 0; i < packCount; i++)
+                widths[i] = width;
+        }
+        double x = start;
+        for (var i = 0; i < visibleIndex; i++)
+            x += widths[i] + gap;
+        return slot with { X = x, Width = widths[visibleIndex] };
     }
 
     private static (double Start, double Total, double Gap) DensityPackMetrics(DeckSlide slide)
@@ -566,6 +585,8 @@ public static class DeckService
             return ControlBool(slide, "showCallout", true);
         if (slotId == "footer")
             return ControlBool(slide, "showFooter", true);
+        if (slotId is "kicker" or "eyebrow")
+            return ControlBool(slide, "showKicker", true);
         return true;
     }
 

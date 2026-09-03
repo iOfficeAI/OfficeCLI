@@ -10,7 +10,7 @@ $themeIds = @($catalog.themes | ForEach-Object id)
 foreach ($id in @('csbu-workmate', 'csbu-workmate-night')) {
     if ($themeIds -notcontains $id) { throw "Expected brand theme $id in catalog; got $($themeIds -join ', ')" }
 }
-if ($catalog.version -ne '1.5.1') { throw "Expected catalog 1.5.1; got $($catalog.version)" }
+if ($catalog.version -ne '1.5.2') { throw "Expected catalog 1.5.1; got $($catalog.version)" }
 $layoutIds = @($catalog.layouts | ForEach-Object id)
 if ($layoutIds -notcontains 'heatmap-table') { throw 'Expected heatmap-table layout' }
 Write-Output ("catalog ok: themes={0} layouts={1} version={2}" -f $catalog.themes.Count, $catalog.layouts.Count, $catalog.version)

@@ -1,5 +1,5 @@
 {
-  "version": "1.5.1",
+  "version": "1.5.2",
   "themes": [
     {
       "id": "csbu-workmate",
@@ -451,6 +451,12 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "showKicker",
+          "type": "toggle",
+          "label": "Show kicker / eyebrow",
+          "defaultValue": true
         }
       ]
     },
@@ -609,6 +615,15 @@
             "comfortable",
             "spacious"
           ]
+        },
+        {
+          "id": "focusIndex",
+          "type": "range",
+          "label": "Focus module index",
+          "defaultValue": -1,
+          "min": -1,
+          "max": 2,
+          "step": 1
         }
       ]
     },
@@ -908,6 +923,15 @@
           "defaultValue": 4,
           "min": 2,
           "max": 8,
+          "step": 1
+        },
+        {
+          "id": "focusIndex",
+          "type": "range",
+          "label": "Focus module index",
+          "defaultValue": -1,
+          "min": -1,
+          "max": 2,
           "step": 1
         }
       ]
@@ -1322,6 +1346,15 @@
             "comfortable",
             "spacious"
           ]
+        },
+        {
+          "id": "focusIndex",
+          "type": "range",
+          "label": "Focus module index",
+          "defaultValue": -1,
+          "min": -1,
+          "max": 2,
+          "step": 1
         }
       ]
     },
@@ -1889,6 +1922,12 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "showKicker",
+          "type": "toggle",
+          "label": "Show kicker / eyebrow",
+          "defaultValue": true
         }
       ]
     },
@@ -1899,10 +1938,10 @@
       "slots": [
         {
           "id": "visual",
-          "x": 0.0,
-          "y": 0.0,
+          "x": 0,
+          "y": 0,
           "width": 0.42,
-          "height": 1.0,
+          "height": 1,
           "accepts": [
             "image",
             "shape"
@@ -2178,6 +2217,15 @@
             "comfortable",
             "spacious"
           ]
+        },
+        {
+          "id": "focusIndex",
+          "type": "range",
+          "label": "Focus module index",
+          "defaultValue": -1,
+          "min": -1,
+          "max": 3,
+          "step": 1
         }
       ]
     },
@@ -2265,6 +2313,15 @@
             "comfortable",
             "spacious"
           ]
+        },
+        {
+          "id": "focusIndex",
+          "type": "range",
+          "label": "Focus module index",
+          "defaultValue": -1,
+          "min": -1,
+          "max": 2,
+          "step": 1
         }
       ]
     },
@@ -3155,9 +3212,9 @@
       "slots": [
         {
           "id": "visual",
-          "x": 0.0,
-          "y": 0.0,
-          "width": 1.0,
+          "x": 0,
+          "y": 0,
+          "width": 1,
           "height": 0.72,
           "accepts": [
             "image",
@@ -3813,6 +3870,12 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "showKicker",
+          "type": "toggle",
+          "label": "Show kicker / eyebrow",
+          "defaultValue": true
         }
       ]
     },
@@ -4062,6 +4125,12 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "showKicker",
+          "type": "toggle",
+          "label": "Show kicker / eyebrow",
+          "defaultValue": true
         }
       ],
       "alternativeLayoutIds": [
@@ -6233,6 +6302,15 @@
             "comfortable",
             "spacious"
           ]
+        },
+        {
+          "id": "focusIndex",
+          "type": "range",
+          "label": "Focus module index",
+          "defaultValue": -1,
+          "min": -1,
+          "max": 2,
+          "step": 1
         }
       ],
       "alternativeLayoutIds": [
@@ -12681,6 +12759,12 @@
             "comfortable",
             "spacious"
           ]
+        },
+        {
+          "id": "showKicker",
+          "type": "toggle",
+          "label": "Show kicker / eyebrow",
+          "defaultValue": true
         }
       ]
     },
@@ -12852,6 +12936,12 @@
             "comfortable",
             "spacious"
           ]
+        },
+        {
+          "id": "showKicker",
+          "type": "toggle",
+          "label": "Show kicker / eyebrow",
+          "defaultValue": true
         }
       ]
     },
@@ -13496,6 +13586,12 @@
             "comfortable",
             "spacious"
           ]
+        },
+        {
+          "id": "showKicker",
+          "type": "toggle",
+          "label": "Show kicker / eyebrow",
+          "defaultValue": true
         }
       ]
     },
@@ -13904,6 +14000,15 @@
             "comfortable",
             "spacious"
           ]
+        },
+        {
+          "id": "focusIndex",
+          "type": "range",
+          "label": "Focus module index",
+          "defaultValue": -1,
+          "min": -1,
+          "max": 2,
+          "step": 1
         }
       ]
     },
@@ -14273,6 +14378,15 @@
             "comfortable",
             "spacious"
           ]
+        },
+        {
+          "id": "focusIndex",
+          "type": "range",
+          "label": "Focus module index",
+          "defaultValue": -1,
+          "min": -1,
+          "max": 3,
+          "step": 1
         }
       ]
     },

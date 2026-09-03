@@ -162,6 +162,55 @@ static partial class CommandBuilder
         }));
         deck.Add(themeRemap);
 
+        var scaffold = new Command("scaffold", "Outline a long WorkMate deck (section transitions + role mix) from goal/audience/page count");
+        var goalOption = new Option<string?>("--goal") { Description = "Deck goal / one-line intent" };
+        var audienceOption = new Option<string?>("--audience") { Description = "Primary audience" };
+        var pagesOption = new Option<int>("--pages") { Description = "Target slide count (4-60)", DefaultValueFactory = _ => 12 };
+        pagesOption.Aliases.Add("--page-count");
+        var titleOption = new Option<string?>("--title") { Description = "Deck title (defaults from goal)" };
+        var languageOption = new Option<string>("--language") { Description = "BCP-47 language tag", DefaultValueFactory = _ => "en-US" };
+        languageOption.Aliases.Add("--lang");
+        var scaffoldThemeOption = new Option<string>("--theme") { Description = "Catalog theme.id", DefaultValueFactory = _ => "csbu-workmate" };
+        var seedOption = new Option<string?>("--seed") { Description = "Reproducibility seed (default: hash of goal|audience|pages)" };
+        var scaffoldOutputOption = new Option<FileInfo>("--output") { Description = "Output *.workmate-deck.json path", Required = true };
+        scaffoldOutputOption.Aliases.Add("-o");
+        var writeSpecOption = new Option<bool>("--write") { Description = "Write the outline DeckSpec to --output (default true)", DefaultValueFactory = _ => true };
+        scaffold.Add(goalOption);
+        scaffold.Add(audienceOption);
+        scaffold.Add(pagesOption);
+        scaffold.Add(titleOption);
+        scaffold.Add(languageOption);
+        scaffold.Add(scaffoldThemeOption);
+        scaffold.Add(seedOption);
+        scaffold.Add(scaffoldOutputOption);
+        scaffold.Add(writeSpecOption);
+        scaffold.Add(rootJsonOption);
+        scaffold.SetAction(result => RunDeck(() =>
+        {
+            var request = new DeckScaffoldRequest(
+                Goal: result.GetValue(goalOption),
+                Audience: result.GetValue(audienceOption),
+                Pages: result.GetValue(pagesOption),
+                Title: result.GetValue(titleOption),
+                Language: result.GetValue(languageOption),
+                ThemeId: result.GetValue(scaffoldThemeOption),
+                Seed: result.GetValue(seedOption));
+            var built = DeckScaffold.Scaffold(request);
+            var output = result.GetValue(scaffoldOutputOption)!;
+            if (result.GetValue(writeSpecOption))
+                DeckScaffold.SaveSpec(built.Spec, output.FullName);
+            var payload = new DeckScaffoldCliResult(
+                Written: result.GetValue(writeSpecOption),
+                SpecPath: output.FullName,
+                SlideCount: built.Spec.Slides.Count,
+                Stage: built.Spec.Stage,
+                Report: built.Report);
+            Console.WriteLine(JsonSerializer.Serialize(payload, DeckJsonContext.Default.DeckScaffoldCliResult));
+            return 0;
+        }));
+        deck.Add(scaffold);
+
+
         return deck;
 
     }

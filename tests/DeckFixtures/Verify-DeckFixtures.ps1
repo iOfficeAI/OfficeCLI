@@ -57,3 +57,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Verify-DeckLayoutQuery failed.' }
 # --- theme-remap (P2 brand themes) ---
 & "$PSScriptRoot/Verify-DeckThemeRemap.ps1"
 if ($LASTEXITCODE -ne 0) { throw 'Verify-DeckThemeRemap failed.' }
+
+# --- deck scaffold (P2 long-deck) ---
+& "$PSScriptRoot/Verify-DeckScaffold.ps1"
+if ($LASTEXITCODE -ne 0) { throw 'Verify-DeckScaffold failed.' }
+
