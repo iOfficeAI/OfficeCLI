@@ -12,7 +12,7 @@ public static class DeckValidator
     private static readonly HashSet<string> BlockTypes =
         ["text", "list", "metric", "image", "chart", "table", "timeline", "quote", "shape"];
     private static readonly HashSet<string> ChartTypes =
-        ["column", "bar", "line", "area", "pie", "doughnut", "scatter", "radar"];
+        ["column", "bar", "line", "area", "pie", "doughnut", "scatter", "radar", "waterfall", "funnel"];
 
     public static DeckValidationResult Validate(DeckSpec spec, DeckCatalog? catalog = null)
     {

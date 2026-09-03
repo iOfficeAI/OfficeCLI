@@ -1,0 +1,441 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "stage": "ready",
+  "metadata": {
+    "title": "CSBU WorkMate Catalog Wave4 Smoke",
+    "language": "zh-CN",
+    "aspectRatio": "16:9",
+    "goal": "Validate catalog 1.4.0 P1 Match wave toward 140+ layouts",
+    "audience": "QA"
+  },
+  "theme": {
+    "id": "consulting-clean",
+    "mode": "light"
+  },
+  "slides": [
+    {
+      "id": "s-cover",
+      "role": "cover",
+      "layoutId": "cover-kpi-strip",
+      "title": "Cover",
+      "controls": {
+        "moduleCount": 3,
+        "emphasis": "hero"
+      },
+      "blocks": [
+        {
+          "id": "t0",
+          "type": "text",
+          "slot": "title",
+          "text": "Catalog Wave 4"
+        },
+        {
+          "id": "t1",
+          "type": "text",
+          "slot": "subtitle",
+          "text": "12 themes / 158 layouts / 19 roles"
+        },
+        {
+          "id": "m1",
+          "type": "metric",
+          "slot": "metric1",
+          "value": "158",
+          "label": "Layouts"
+        },
+        {
+          "id": "m2",
+          "type": "metric",
+          "slot": "metric2",
+          "value": "19",
+          "label": "Roles"
+        },
+        {
+          "id": "m3",
+          "type": "metric",
+          "slot": "metric3",
+          "value": "1.4.0",
+          "label": "Catalog"
+        }
+      ],
+      "notes": "Wave4 cover"
+    },
+    {
+      "id": "s-pest",
+      "role": "comparison",
+      "layoutId": "pest",
+      "title": "PEST",
+      "controls": {
+        "balance": 50
+      },
+      "blocks": [
+        {
+          "id": "pt",
+          "type": "text",
+          "slot": "title",
+          "text": "PEST"
+        },
+        {
+          "id": "pp",
+          "type": "list",
+          "slot": "political",
+          "items": [
+            "Policy stability",
+            "Trade rules"
+          ]
+        },
+        {
+          "id": "pe",
+          "type": "list",
+          "slot": "economic",
+          "items": [
+            "Growth",
+            "FX risk"
+          ]
+        },
+        {
+          "id": "ps",
+          "type": "list",
+          "slot": "social",
+          "items": [
+            "Talent",
+            "Trust"
+          ]
+        },
+        {
+          "id": "pte",
+          "type": "list",
+          "slot": "technological",
+          "items": [
+            "AI adoption",
+            "Security"
+          ]
+        }
+      ],
+      "notes": "Analysis pack PEST"
+    },
+    {
+      "id": "s-forces",
+      "role": "comparison",
+      "layoutId": "five-forces",
+      "title": "Five Forces",
+      "controls": {
+        "moduleCount": 5
+      },
+      "blocks": [
+        {
+          "id": "ft",
+          "type": "text",
+          "slot": "title",
+          "text": "Five Forces"
+        },
+        {
+          "id": "fr",
+          "type": "text",
+          "slot": "rivalry",
+          "text": "Intense rivalry among peers"
+        },
+        {
+          "id": "fe",
+          "type": "text",
+          "slot": "entrants",
+          "text": "Moderate entrants"
+        },
+        {
+          "id": "fs",
+          "type": "text",
+          "slot": "substitutes",
+          "text": "Digital substitutes rising"
+        },
+        {
+          "id": "fsup",
+          "type": "text",
+          "slot": "suppliers",
+          "text": "Supplier power medium"
+        },
+        {
+          "id": "fb",
+          "type": "text",
+          "slot": "buyers",
+          "text": "Buyer power high"
+        }
+      ],
+      "notes": "Five forces"
+    },
+    {
+      "id": "s-risks",
+      "role": "risks",
+      "layoutId": "risks-top3",
+      "title": "Top Risks",
+      "controls": {
+        "moduleCount": 3
+      },
+      "blocks": [
+        {
+          "id": "rt",
+          "type": "text",
+          "slot": "title",
+          "text": "Top Risks"
+        },
+        {
+          "id": "r1",
+          "type": "text",
+          "slot": "card1",
+          "text": "Delivery slip — mitigate with buffer"
+        },
+        {
+          "id": "r2",
+          "type": "text",
+          "slot": "card2",
+          "text": "Vendor lock-in — dual source"
+        },
+        {
+          "id": "r3",
+          "type": "text",
+          "slot": "card3",
+          "text": "Adoption risk — enablement plan"
+        }
+      ],
+      "notes": "New risks role"
+    },
+    {
+      "id": "s-wf",
+      "role": "trend",
+      "layoutId": "chart-waterfall",
+      "title": "Waterfall",
+      "controls": {
+        "showInsight": true,
+        "chartType": "waterfall"
+      },
+      "blocks": [
+        {
+          "id": "wt",
+          "type": "text",
+          "slot": "title",
+          "text": "Bridge to Target"
+        },
+        {
+          "id": "wc",
+          "type": "chart",
+          "slot": "chart",
+          "text": "Revenue bridge",
+          "data": {
+            "chartType": "waterfall",
+            "categories": [
+              "Start",
+              "Upsell",
+              "Churn",
+              "New",
+              "End"
+            ],
+            "series": [
+              {
+                "name": "Change",
+                "values": [
+                  100,
+                  20,
+                  -8,
+                  15,
+                  127
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "wi",
+          "type": "text",
+          "slot": "insight",
+          "text": "Net +27 vs plan"
+        }
+      ],
+      "notes": "Waterfall chart"
+    },
+    {
+      "id": "s-funnel",
+      "role": "trend",
+      "layoutId": "chart-funnel",
+      "title": "Funnel Chart",
+      "controls": {
+        "showInsight": true,
+        "chartType": "funnel"
+      },
+      "blocks": [
+        {
+          "id": "flt",
+          "type": "text",
+          "slot": "title",
+          "text": "Conversion Funnel"
+        },
+        {
+          "id": "flc",
+          "type": "chart",
+          "slot": "chart",
+          "text": "Funnel",
+          "data": {
+            "chartType": "funnel",
+            "categories": [
+              "Visit",
+              "Signup",
+              "Trial",
+              "Paid"
+            ],
+            "series": [
+              {
+                "name": "Users",
+                "values": [
+                  1000,
+                  400,
+                  120,
+                  48
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "fli",
+          "type": "list",
+          "slot": "insight",
+          "items": [
+            "Visit→Paid 4.8%",
+            "Trial bottleneck"
+          ]
+        }
+      ],
+      "notes": "Funnel chart"
+    },
+    {
+      "id": "s-raci",
+      "role": "comparison",
+      "layoutId": "raci",
+      "title": "RACI",
+      "blocks": [
+        {
+          "id": "rat",
+          "type": "text",
+          "slot": "title",
+          "text": "RACI"
+        },
+        {
+          "id": "ratb",
+          "type": "table",
+          "slot": "table",
+          "data": {
+            "rows": [
+              [
+                "Task",
+                "PM",
+                "Eng",
+                "Design"
+              ],
+              [
+                "Scope",
+                "A",
+                "C",
+                "C"
+              ],
+              [
+                "Build",
+                "C",
+                "R",
+                "C"
+              ],
+              [
+                "Ship",
+                "A",
+                "R",
+                "I"
+              ]
+            ]
+          }
+        }
+      ],
+      "notes": "RACI table"
+    },
+    {
+      "id": "s-dd",
+      "role": "process",
+      "layoutId": "double-diamond",
+      "title": "Double Diamond",
+      "controls": {
+        "moduleCount": 4
+      },
+      "blocks": [
+        {
+          "id": "dt",
+          "type": "text",
+          "slot": "title",
+          "text": "Double Diamond"
+        },
+        {
+          "id": "d1",
+          "type": "text",
+          "slot": "step1",
+          "text": "Discover"
+        },
+        {
+          "id": "d2",
+          "type": "text",
+          "slot": "step2",
+          "text": "Define"
+        },
+        {
+          "id": "d3",
+          "type": "text",
+          "slot": "step3",
+          "text": "Develop"
+        },
+        {
+          "id": "d4",
+          "type": "text",
+          "slot": "step4",
+          "text": "Deliver"
+        }
+      ],
+      "notes": "Double diamond"
+    },
+    {
+      "id": "s-close",
+      "role": "closing",
+      "layoutId": "closing-roadmap",
+      "title": "Next",
+      "controls": {
+        "moduleCount": 4
+      },
+      "blocks": [
+        {
+          "id": "ct",
+          "type": "text",
+          "slot": "title",
+          "text": "Next Milestones"
+        },
+        {
+          "id": "c1",
+          "type": "text",
+          "slot": "step1",
+          "text": "Pin OfficeCLI 1.0.158"
+        },
+        {
+          "id": "c2",
+          "type": "text",
+          "slot": "step2",
+          "text": "Mirror packing in Studio"
+        },
+        {
+          "id": "c3",
+          "type": "text",
+          "slot": "step3",
+          "text": "Skill layout-query hint"
+        },
+        {
+          "id": "c4",
+          "type": "text",
+          "slot": "step4",
+          "text": "P1 follow-up to polish"
+        }
+      ],
+      "notes": "Closing roadmap"
+    }
+  ]
+}

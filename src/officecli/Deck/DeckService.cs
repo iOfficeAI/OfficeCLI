@@ -258,17 +258,19 @@ public static class DeckService
     private static DeckSlot AdjustSlot(string layoutId, DeckSlot slot, DeckSlide slide)
     {
         if ((layoutId is "image-text" or "two-column" or "cover-split" or "quote-split"
-                or "cover-banner" or "image-left-bullets")
+                or "cover-banner" or "image-left-bullets" or "cover-dark-band"
+                or "image-quote" or "image-stats")
             && ControlString(slide, "mediaSide", "left") == "right")
             return slot with { X = 1 - slot.X - slot.Width };
 
         if (!IsSlotVisible(slide, "insight"))
         {
-            if ((layoutId is "chart" or "chart-radar" or "chart-insight-right") && slot.Id == "chart")
+            if ((layoutId is "chart" or "chart-radar" or "chart-insight-right"
+                    or "chart-waterfall" or "chart-funnel" or "distribution-pie-focus") && slot.Id == "chart")
                 return slot with { X = 0.06, Width = 0.88 };
             if ((layoutId is "data-table" or "table-callouts") && slot.Id == "table")
                 return slot with { X = 0.06, Width = 0.88 };
-            if (layoutId == "risk-matrix-simple" && slot.Id == "matrix")
+            if ((layoutId is "risk-matrix-simple" or "risks-matrix" or "decision-matrix") && slot.Id == "matrix")
                 return slot with { X = 0.06, Width = 0.88 };
         }
 
@@ -277,7 +279,11 @@ public static class DeckService
 
         if ((layoutId is "comparison" or "two-column" or "toc" or "before-after" or "pros-cons"
                 or "mitigation-plan" or "bullets-two" or "metrics-highlight" or "chart-compare"
-                or "toc-two-column" or "vs-scorecard" or "statement-split" or "image-left-bullets")
+                or "toc-two-column" or "vs-scorecard" or "statement-split" or "image-left-bullets"
+                or "feature-vs" or "cost-benefit" or "kpi-vs-target" or "side-by-side-kpis"
+                or "closing-split-cta" or "risks-mitigation-grid" or "result-before-after"
+                or "case-study" or "case-challenge-solution" or "relationship-pairs"
+                or "chart-dual-panel")
             && (slot.Id is "left" or "right" or "kpi" or "support" or "body"))
         {
             var balance = Math.Clamp(ControlDouble(slide, "balance", 50), 35, 65) / 100;
@@ -293,11 +299,16 @@ public static class DeckService
         }
 
         if ((layoutId is "comparison-table" or "risk" or "risk-heatmap" or "data-table"
-                or "risk-matrix-simple" or "table-callouts" or "chart-insight-right")
-            && (slot.Id is "left" or "summary" or "insight" or "table" or "matrix" or "chart"))
+                or "risk-matrix-simple" or "table-callouts" or "chart-insight-right"
+                or "decision-matrix" or "risks-matrix" or "risks-heatmap-lite"
+                or "context-brief" or "observation-quote-data" or "distribution-pie-focus"
+                or "chart-waterfall" or "chart-funnel")
+            && (slot.Id is "left" or "summary" or "insight" or "table" or "matrix" or "chart" or "body"))
         {
             // Insight toggle already collapsed/expanded above for table/matrix/chart companions.
-            if ((layoutId is "data-table" or "risk-matrix-simple" or "table-callouts" or "chart-insight-right")
+            if ((layoutId is "data-table" or "risk-matrix-simple" or "table-callouts" or "chart-insight-right"
+                    or "decision-matrix" or "risks-matrix" or "distribution-pie-focus"
+                    or "chart-waterfall" or "chart-funnel")
                 && !IsSlotVisible(slide, "insight")
                 && (slot.Id is "table" or "matrix" or "chart"))
                 return slot with { X = 0.06, Width = 0.88 };
@@ -330,6 +341,22 @@ public static class DeckService
                 : slot with { X = start + leftWidth + gap, Width = rightWidth };
         }
 
+        if (layoutId == "pest"
+            && (slot.Id is "political" or "economic" or "social" or "technological"))
+        {
+            var balance = Math.Clamp(ControlDouble(slide, "balance", 50), 40, 60) / 100;
+            const double start = 0.06;
+            const double total = 0.88;
+            const double gap = 0.04;
+            var usable = total - gap;
+            var leftWidth = usable * balance;
+            var rightWidth = usable - leftWidth;
+            var isLeft = slot.Id is "political" or "social";
+            return isLeft
+                ? slot with { X = start, Width = leftWidth }
+                : slot with { X = start + leftWidth + gap, Width = rightWidth };
+        }
+
         return PackModuleSlots(layoutId, slot, slide);
     }
 
@@ -337,19 +364,30 @@ public static class DeckService
     {
         var moduleIds = layoutId switch
         {
-            "metrics" or "kpi-trio" => new[] { "metric1", "metric2", "metric3" },
-            "metrics-row-4" or "metrics-strip" => new[] { "metric1", "metric2", "metric3", "metric4" },
-            "cards" or "agenda-cards" => new[] { "card1", "card2", "card3" },
-            "cards-four" => new[] { "card1", "card2", "card3", "card4" },
-            "three-column" or "comparison-three" => new[] { "col1", "col2", "col3" },
-            "option-cards-4" => new[] { "col1", "col2", "col3", "col4" },
+            "metrics" or "kpi-trio" or "cover-kpi-strip" or "metrics-callout" or "kpi-radar-sidecar"
+                or "chart-with-kpis" or "image-stats" or "context-facts" or "case-metrics"
+                or "result-metrics" => new[] { "metric1", "metric2", "metric3" },
+            "metrics-duo" or "quote-metrics" or "result-summary" => new[] { "metric1", "metric2" },
+            "metrics-row-4" or "metrics-strip" or "kpi-sparkline-row" => new[] { "metric1", "metric2", "metric3", "metric4" },
+            "cards" or "agenda-cards" or "toc-cards" or "risks-top3" or "observation-callouts"
+                or "actions-priority" or "relationship-map-lite" => new[] { "card1", "card2", "card3" },
+            "cards-four" or "team-org-lite" => new[] { "card1", "card2", "card3", "card4" },
+            "three-column" or "comparison-three" or "breakdown-pillars" or "option-score"
+                or "process-swimlane-lite" or "team-roles" or "distribution-segments"
+                or "stakeholder-grid" => new[] { "col1", "col2", "col3" },
+            "option-cards-4" or "comparison-four" => new[] { "col1", "col2", "col3", "col4" },
             "process-steps" or "process-horizontal" or "cycle-4" or "agenda-timeline" or "roadmap-milestones"
-                => new[] { "step1", "step2", "step3", "step4" },
+                or "toc-timeline" or "journey-steps" or "closing-roadmap" or "context-timeline"
+                or "double-diamond" => new[] { "step1", "step2", "step3", "step4" },
             "process-vertical" => new[] { "step1", "step2", "step3", "step4" },
-            "team" or "team-row" => new[] { "member1", "member2", "member3", "member4" },
-            "funnel" or "funnel-wide" => new[] { "stage1", "stage2", "stage3", "stage4" },
+            "process-5" => new[] { "step1", "step2", "step3", "step4", "step5" },
+            "team" or "team-row" or "team-grid" => new[] { "member1", "member2", "member3", "member4" },
+            "closing-contacts" => new[] { "member1", "member2", "member3" },
+            "funnel" or "funnel-wide" or "pipeline-stages" => new[] { "stage1", "stage2", "stage3", "stage4" },
             "gallery-two" => new[] { "visual1", "visual2" },
-            "gallery-three" => new[] { "visual1", "visual2", "visual3" },
+            "gallery-three" or "image-three-up" => new[] { "visual1", "visual2", "visual3" },
+            "image-mosaic-4" => new[] { "visual1", "visual2", "visual3", "visual4" },
+            "five-forces" => new[] { "rivalry", "entrants", "substitutes", "suppliers", "buyers" },
             _ => Array.Empty<string>(),
         };
         if (moduleIds.Length == 0) return slot;
@@ -363,7 +401,11 @@ public static class DeckService
             return slot with { Width = 0, Height = 0 };
         // Keep authored geometry for non-row packs (funnel stages, 2x2 cycle, gallery).
         if (layoutId is "funnel" or "funnel-wide" or "cycle-4" or "gallery-two" or "gallery-three"
-                or "process-vertical" or "cards-four" or "option-cards-4")
+                or "process-vertical" or "cards-four" or "option-cards-4" or "comparison-four"
+                or "pipeline-stages" or "image-mosaic-4" or "team-org-lite" or "five-forces"
+                or "kpi-radar-sidecar" or "image-stats" or "case-metrics" or "process-5"
+                or "chart-with-kpis" or "metrics-callout" or "context-facts" or "relationship-map-lite"
+                or "quote-metrics" or "result-summary")
             return slot;
 
         const double start = 0.06;
