@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
+  "version": "1.5.0",
   "themes": [
     {
       "id": "business-light",
@@ -197,6 +197,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -239,6 +250,17 @@
           "min": 3,
           "max": 8,
           "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -300,6 +322,17 @@
           "min": 35,
           "max": 65,
           "step": 5
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -541,6 +574,17 @@
           "min": 1,
           "max": 3,
           "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -650,6 +694,17 @@
           "min": 35,
           "max": 65,
           "step": 5
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -702,6 +757,17 @@
           "min": 30,
           "max": 50,
           "step": 5
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -767,6 +833,17 @@
           "options": [
             "left",
             "right"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ]
@@ -893,6 +970,17 @@
           "min": 2,
           "max": 4,
           "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -974,6 +1062,17 @@
           "min": 2,
           "max": 4,
           "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -1041,6 +1140,18 @@
             "waterfall",
             "funnel"
           ]
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
         }
       ]
     },
@@ -1093,6 +1204,17 @@
           "options": [
             "left",
             "right"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ]
@@ -1165,6 +1287,17 @@
           "min": 1,
           "max": 3,
           "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -1429,6 +1562,17 @@
           "min": 2,
           "max": 4,
           "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -1470,6 +1614,17 @@
           "min": 2,
           "max": 10,
           "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -1541,6 +1696,26 @@
           "min": 2,
           "max": 3,
           "step": 1
+        },
+        {
+          "id": "columns",
+          "type": "range",
+          "label": "Columns",
+          "defaultValue": 3,
+          "min": 2,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -1753,6 +1928,17 @@
             "left",
             "right"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -1793,6 +1979,17 @@
           "defaultValue": 6,
           "min": 3,
           "max": 10
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -1860,6 +2057,17 @@
           "defaultValue": 3,
           "min": 2,
           "max": 3
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -1935,6 +2143,17 @@
           "defaultValue": 4,
           "min": 2,
           "max": 4
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -2010,6 +2229,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ]
@@ -2140,6 +2370,26 @@
           "defaultValue": 3,
           "min": 2,
           "max": 3
+        },
+        {
+          "id": "columns",
+          "type": "range",
+          "label": "Columns",
+          "defaultValue": 3,
+          "min": 2,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -2192,6 +2442,17 @@
           "defaultValue": 50,
           "min": 35,
           "max": 65
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -2244,6 +2505,17 @@
           "defaultValue": 50,
           "min": 35,
           "max": 65
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -2366,6 +2638,17 @@
           "defaultValue": 4,
           "min": 2,
           "max": 4
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -2482,6 +2765,17 @@
           "defaultValue": 4,
           "min": 3,
           "max": 4
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -2597,6 +2891,17 @@
           "defaultValue": 50,
           "min": 35,
           "max": 65
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -2649,6 +2954,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ]
@@ -2794,6 +3110,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -2847,6 +3174,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -2897,6 +3235,17 @@
           "defaultValue": 2,
           "min": 1,
           "max": 2
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -3045,6 +3394,18 @@
             "waterfall",
             "funnel"
           ]
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
         }
       ]
     },
@@ -3110,6 +3471,18 @@
             "waterfall",
             "funnel"
           ]
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
         }
       ]
     },
@@ -3179,6 +3552,29 @@
           "defaultValue": 60,
           "min": 45,
           "max": 70
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -3237,6 +3633,17 @@
           "defaultValue": 5,
           "min": 3,
           "max": 10
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -3351,6 +3758,17 @@
             "left",
             "right"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ]
     },
@@ -3458,6 +3876,17 @@
           "options": [
             "left",
             "right"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -3570,6 +3999,17 @@
           "defaultValue": 50,
           "min": 35,
           "max": 65
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -3651,6 +4091,17 @@
           "defaultValue": 4,
           "min": 2,
           "max": 4
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -3871,6 +4322,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -3938,6 +4400,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -4021,6 +4494,17 @@
           "defaultValue": 4,
           "min": 2,
           "max": 4
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -4081,6 +4565,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -4138,6 +4633,17 @@
           "defaultValue": 50,
           "min": 35,
           "max": 65
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -4223,6 +4729,26 @@
           "defaultValue": 4,
           "min": 2,
           "max": 4
+        },
+        {
+          "id": "columns",
+          "type": "range",
+          "label": "Columns",
+          "defaultValue": 4,
+          "min": 2,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -4304,6 +4830,17 @@
           "defaultValue": 4,
           "min": 2,
           "max": 4
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -4389,6 +4926,17 @@
           "defaultValue": 4,
           "min": 2,
           "max": 4
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -4470,6 +5018,17 @@
           "defaultValue": 4,
           "min": 2,
           "max": 4
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -4694,6 +5253,17 @@
           "defaultValue": 4,
           "min": 2,
           "max": 4
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -4775,6 +5345,17 @@
           "defaultValue": 4,
           "min": 2,
           "max": 4
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -4839,6 +5420,17 @@
           "defaultValue": 50,
           "min": 35,
           "max": 65
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -4905,6 +5497,17 @@
           "defaultValue": 3,
           "min": 2,
           "max": 3
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -4960,6 +5563,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -5039,6 +5653,18 @@
           "defaultValue": 35,
           "min": 25,
           "max": 50
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
         }
       ],
       "alternativeLayoutIds": [
@@ -5158,6 +5784,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -5204,6 +5841,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -5274,6 +5922,17 @@
             "left",
             "right"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -5342,6 +6001,17 @@
           "min": 35,
           "max": 60,
           "step": 5
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -5434,6 +6104,17 @@
           "min": 2,
           "max": 3,
           "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -5519,6 +6200,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -5602,6 +6294,17 @@
           "min": 2,
           "max": 4,
           "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -5649,6 +6352,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -5735,6 +6449,26 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "columns",
+          "type": "range",
+          "label": "Columns",
+          "defaultValue": 3,
+          "min": 2,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -5805,6 +6539,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -5976,6 +6721,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -6057,6 +6813,17 @@
           "min": 35,
           "max": 65,
           "step": 5
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -6169,6 +6936,29 @@
             "waterfall",
             "funnel"
           ]
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -6262,6 +7052,29 @@
             "column",
             "bar",
             "line"
+          ]
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -6361,6 +7174,26 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "columns",
+          "type": "range",
+          "label": "Columns",
+          "defaultValue": 4,
+          "min": 2,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -6432,6 +7265,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -6502,6 +7346,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -6660,6 +7515,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -6748,6 +7614,26 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "columns",
+          "type": "range",
+          "label": "Columns",
+          "defaultValue": 3,
+          "min": 2,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -6829,6 +7715,17 @@
           "min": 30,
           "max": 50,
           "step": 5
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -6929,6 +7826,17 @@
           "min": 3,
           "max": 5,
           "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -7027,6 +7935,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -7114,6 +8033,17 @@
           "min": 2,
           "max": 4,
           "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -7199,6 +8129,26 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "columns",
+          "type": "range",
+          "label": "Columns",
+          "defaultValue": 3,
+          "min": 2,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -7265,6 +8215,18 @@
             "bar",
             "line"
           ]
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
         }
       ],
       "alternativeLayoutIds": [
@@ -7331,6 +8293,18 @@
             "column",
             "waterfall"
           ]
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
         }
       ],
       "alternativeLayoutIds": [
@@ -7430,6 +8404,29 @@
             "waterfall",
             "funnel"
           ]
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -7505,6 +8502,17 @@
             "radar",
             "waterfall",
             "funnel"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -7589,6 +8597,17 @@
           "min": 2,
           "max": 4,
           "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -7658,6 +8677,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -7741,6 +8771,17 @@
           "min": 2,
           "max": 3,
           "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -7815,6 +8856,17 @@
           "min": 2,
           "max": 3,
           "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -7863,6 +8915,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -7948,6 +9011,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -8043,6 +9117,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -8112,6 +9197,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -8160,6 +9256,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -8305,6 +9412,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -8460,6 +9578,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -8584,6 +9713,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -8667,6 +9807,17 @@
           "min": 2,
           "max": 4,
           "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -8761,6 +9912,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -8846,6 +10008,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -8922,6 +10095,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -8970,6 +10154,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -9017,6 +10212,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -9151,6 +10357,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -9241,6 +10458,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -9311,6 +10539,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -9393,6 +10632,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -9481,6 +10731,17 @@
           "min": 2,
           "max": 4,
           "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -9575,6 +10836,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -9660,6 +10932,26 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "columns",
+          "type": "range",
+          "label": "Columns",
+          "defaultValue": 3,
+          "min": 2,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -9731,6 +11023,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -9799,6 +11102,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -9904,6 +11218,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -9971,6 +11296,18 @@
             "bar",
             "column"
           ]
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
         }
       ],
       "alternativeLayoutIds": [
@@ -10019,6 +11356,18 @@
             "pie",
             "doughnut"
           ]
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
         }
       ],
       "alternativeLayoutIds": [
@@ -10103,6 +11452,26 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "columns",
+          "type": "range",
+          "label": "Columns",
+          "defaultValue": 3,
+          "min": 2,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -10198,6 +11567,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -10283,6 +11663,26 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "columns",
+          "type": "range",
+          "label": "Columns",
+          "defaultValue": 3,
+          "min": 2,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -10353,6 +11753,17 @@
             "subtle",
             "bold",
             "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
           ]
         }
       ],
@@ -10821,6 +12232,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -10963,6 +12385,17 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
@@ -11033,12 +12466,5657 @@
             "bold",
             "hero"
           ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
         }
       ],
       "alternativeLayoutIds": [
         "quote-focus",
         "quote-split",
         "statement-split"
+      ]
+    },
+    {
+      "id": "cover-kicker-hero",
+      "role": "cover",
+      "label": "Cover Kicker Hero",
+      "slots": [
+        {
+          "id": "kicker",
+          "x": 0.1,
+          "y": 0.18,
+          "width": 0.5,
+          "height": 0.07,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "title",
+          "x": 0.1,
+          "y": 0.28,
+          "width": 0.7,
+          "height": 0.22,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "subtitle",
+          "x": 0.1,
+          "y": 0.52,
+          "width": 0.55,
+          "height": 0.14,
+          "accepts": [
+            "text",
+            "list"
+          ]
+        },
+        {
+          "id": "footer",
+          "x": 0.1,
+          "y": 0.86,
+          "width": 0.8,
+          "height": 0.08,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cover-dual-metric",
+      "role": "cover",
+      "label": "Cover Dual Metric",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.08,
+          "y": 0.2,
+          "width": 0.55,
+          "height": 0.22,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "subtitle",
+          "x": 0.08,
+          "y": 0.46,
+          "width": 0.5,
+          "height": 0.14,
+          "accepts": [
+            "text"
+          ]
+        },
+        {
+          "id": "metric1",
+          "x": 0.64,
+          "y": 0.22,
+          "width": 0.28,
+          "height": 0.24,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "metric2",
+          "x": 0.64,
+          "y": 0.52,
+          "width": 0.28,
+          "height": 0.24,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "KPI modules",
+          "defaultValue": 2,
+          "min": 1,
+          "max": 2,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cover-photo-stack",
+      "role": "cover",
+      "label": "Cover Photo Stack",
+      "slots": [
+        {
+          "id": "visual",
+          "x": 0.55,
+          "y": 0.12,
+          "width": 0.38,
+          "height": 0.76,
+          "accepts": [
+            "image",
+            "shape"
+          ],
+          "required": true
+        },
+        {
+          "id": "kicker",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.42,
+          "height": 0.07,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.32,
+          "width": 0.45,
+          "height": 0.22,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "subtitle",
+          "x": 0.06,
+          "y": 0.58,
+          "width": 0.42,
+          "height": 0.16,
+          "accepts": [
+            "text"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "mediaSide",
+          "type": "select",
+          "label": "Media side",
+          "defaultValue": "left",
+          "options": [
+            "left",
+            "right"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cover-footer-bar",
+      "role": "cover",
+      "label": "Cover Footer Bar",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.1,
+          "y": 0.28,
+          "width": 0.8,
+          "height": 0.22,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "subtitle",
+          "x": 0.15,
+          "y": 0.54,
+          "width": 0.7,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ]
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.84,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        }
+      ]
+    },
+    {
+      "id": "breakdown-numbered-cards",
+      "role": "breakdown",
+      "label": "Numbered Cards",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "card1",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.1975,
+          "height": 0.62,
+          "accepts": [
+            "text",
+            "list",
+            "metric",
+            "shape"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "card2",
+          "x": 0.2875,
+          "y": 0.22,
+          "width": 0.1975,
+          "height": 0.62,
+          "accepts": [
+            "text",
+            "list",
+            "metric",
+            "shape"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "card3",
+          "x": 0.515,
+          "y": 0.22,
+          "width": 0.1975,
+          "height": 0.62,
+          "accepts": [
+            "text",
+            "list",
+            "metric",
+            "shape"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "card4",
+          "x": 0.7424999999999999,
+          "y": 0.22,
+          "width": 0.1975,
+          "height": 0.62,
+          "accepts": [
+            "text",
+            "list",
+            "metric",
+            "shape"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Card modules",
+          "defaultValue": 4,
+          "min": 1,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        },
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "breakdown-icon-row",
+      "role": "breakdown",
+      "label": "Icon Row",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "card1",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list",
+            "shape"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "card2",
+          "x": 0.36333333333333334,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list",
+            "shape"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "card3",
+          "x": 0.6666666666666667,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list",
+            "shape"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.86,
+          "width": 0.88,
+          "height": 0.08,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Modules",
+          "defaultValue": 3,
+          "min": 1,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        }
+      ]
+    },
+    {
+      "id": "breakdown-key-points",
+      "role": "breakdown",
+      "label": "Key Points",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "body",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.88,
+          "height": 0.6,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "required": true
+        },
+        {
+          "id": "callout",
+          "x": 0.06,
+          "y": 0.82,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text",
+            "metric"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        },
+        {
+          "id": "showCallout",
+          "type": "toggle",
+          "label": "Show callout",
+          "defaultValue": true
+        }
+      ]
+    },
+    {
+      "id": "breakdown-quad",
+      "role": "breakdown",
+      "label": "Quad Grid",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "card1",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.42,
+          "height": 0.32,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "card2",
+          "x": 0.52,
+          "y": 0.2,
+          "width": 0.42,
+          "height": 0.32,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "card3",
+          "x": 0.06,
+          "y": 0.56,
+          "width": 0.42,
+          "height": 0.32,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "card4",
+          "x": 0.52,
+          "y": 0.56,
+          "width": 0.42,
+          "height": 0.32,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Quads",
+          "defaultValue": 4,
+          "min": 1,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        },
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bullets-callout",
+      "role": "breakdown",
+      "label": "Bullets with Callout",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "content",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.58,
+          "height": 0.62,
+          "accepts": [
+            "list",
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "callout",
+          "x": 0.68,
+          "y": 0.2,
+          "width": 0.26,
+          "height": 0.62,
+          "accepts": [
+            "text",
+            "metric",
+            "list"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "showCallout",
+          "type": "toggle",
+          "label": "Show callout",
+          "defaultValue": true
+        },
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 35,
+          "min": 25,
+          "max": 50,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agenda-dense",
+      "role": "breakdown",
+      "label": "Agenda Dense",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "body",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.88,
+          "height": 0.6,
+          "accepts": [
+            "list",
+            "timeline",
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.86,
+          "width": 0.88,
+          "height": 0.08,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Agenda items",
+          "defaultValue": 8,
+          "min": 3,
+          "max": 8,
+          "step": 1
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "section-kicker",
+      "role": "transition",
+      "label": "Section Kicker",
+      "slots": [
+        {
+          "id": "kicker",
+          "x": 0.12,
+          "y": 0.32,
+          "width": 0.4,
+          "height": 0.08,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "title",
+          "x": 0.12,
+          "y": 0.42,
+          "width": 0.76,
+          "height": 0.2,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "subtitle",
+          "x": 0.12,
+          "y": 0.64,
+          "width": 0.6,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chapter-progress",
+      "role": "transition",
+      "label": "Chapter Progress",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.1,
+          "y": 0.28,
+          "width": 0.8,
+          "height": 0.18,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "step1",
+          "x": 0.06,
+          "y": 0.56,
+          "width": 0.1975,
+          "height": 0.22,
+          "accepts": [
+            "text",
+            "metric"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "step2",
+          "x": 0.2875,
+          "y": 0.56,
+          "width": 0.1975,
+          "height": 0.22,
+          "accepts": [
+            "text",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "step3",
+          "x": 0.515,
+          "y": 0.56,
+          "width": 0.1975,
+          "height": 0.22,
+          "accepts": [
+            "text",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "step4",
+          "x": 0.7424999999999999,
+          "y": 0.56,
+          "width": 0.1975,
+          "height": 0.22,
+          "accepts": [
+            "text",
+            "metric"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Steps",
+          "defaultValue": 4,
+          "min": 1,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "statement-callout",
+      "role": "statement",
+      "label": "Statement Callout",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "body",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.88,
+          "height": 0.48,
+          "accepts": [
+            "text",
+            "quote"
+          ],
+          "required": true
+        },
+        {
+          "id": "callout",
+          "x": 0.1,
+          "y": 0.76,
+          "width": 0.8,
+          "height": 0.14,
+          "accepts": [
+            "text",
+            "metric"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "showCallout",
+          "type": "toggle",
+          "label": "Show callout",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "statement-footer-note",
+      "role": "statement",
+      "label": "Statement Footer Note",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "body",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.88,
+          "height": 0.52,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "required": true
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.82,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "quote-footer",
+      "role": "statement",
+      "label": "Quote with Footer",
+      "slots": [
+        {
+          "id": "body",
+          "x": 0.12,
+          "y": 0.22,
+          "width": 0.76,
+          "height": 0.42,
+          "accepts": [
+            "quote",
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "title",
+          "x": 0.12,
+          "y": 0.68,
+          "width": 0.76,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ]
+        },
+        {
+          "id": "footer",
+          "x": 0.12,
+          "y": 0.82,
+          "width": 0.76,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "metrics-with-footer",
+      "role": "metrics",
+      "label": "Metrics with Footer",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "metric1",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.2733333333333334,
+          "height": 0.48,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "metric2",
+          "x": 0.36333333333333334,
+          "y": 0.2,
+          "width": 0.2733333333333334,
+          "height": 0.48,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "metric3",
+          "x": 0.6666666666666667,
+          "y": 0.2,
+          "width": 0.2733333333333334,
+          "height": 0.48,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.78,
+          "width": 0.88,
+          "height": 0.14,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "KPI modules",
+          "defaultValue": 3,
+          "min": 1,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "metrics-callout-side",
+      "role": "metrics",
+      "label": "Metrics Callout Side",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "metric1",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.425,
+          "height": 0.55,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "metric2",
+          "x": 0.5149999999999999,
+          "y": 0.22,
+          "width": 0.425,
+          "height": 0.55,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "callout",
+          "x": 0.7,
+          "y": 0.22,
+          "width": 0.24,
+          "height": 0.55,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "KPI modules",
+          "defaultValue": 2,
+          "min": 1,
+          "max": 2,
+          "step": 1
+        },
+        {
+          "id": "showCallout",
+          "type": "toggle",
+          "label": "Show callout",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "metrics-grid-compact",
+      "role": "metrics",
+      "label": "Metrics Grid Compact",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.09,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "metric1",
+          "x": 0.06,
+          "y": 0.18,
+          "width": 0.28,
+          "height": 0.28,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "metric2",
+          "x": 0.36,
+          "y": 0.18,
+          "width": 0.28,
+          "height": 0.28,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "metric3",
+          "x": 0.66,
+          "y": 0.18,
+          "width": 0.28,
+          "height": 0.28,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "metric4",
+          "x": 0.06,
+          "y": 0.52,
+          "width": 0.28,
+          "height": 0.28,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "metric5",
+          "x": 0.36,
+          "y": 0.52,
+          "width": 0.28,
+          "height": 0.28,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "metric6",
+          "x": 0.66,
+          "y": 0.52,
+          "width": 0.28,
+          "height": 0.28,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "KPI modules",
+          "defaultValue": 6,
+          "min": 3,
+          "max": 6,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kpi-focus-band",
+      "role": "metrics",
+      "label": "KPI Focus Band",
+      "slots": [
+        {
+          "id": "metric1",
+          "x": 0.08,
+          "y": 0.18,
+          "width": 0.84,
+          "height": 0.28,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "body",
+          "x": 0.08,
+          "y": 0.52,
+          "width": 0.84,
+          "height": 0.28,
+          "accepts": [
+            "text",
+            "list"
+          ]
+        },
+        {
+          "id": "footer",
+          "x": 0.08,
+          "y": 0.86,
+          "width": 0.84,
+          "height": 0.08,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "comparison-columns-4",
+      "role": "comparison",
+      "label": "Four Column Compare",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "col1",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.1975,
+          "height": 0.66,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "col2",
+          "x": 0.2875,
+          "y": 0.2,
+          "width": 0.1975,
+          "height": 0.66,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "col3",
+          "x": 0.515,
+          "y": 0.2,
+          "width": 0.1975,
+          "height": 0.66,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "col4",
+          "x": 0.7424999999999999,
+          "y": 0.2,
+          "width": 0.1975,
+          "height": 0.66,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "columns",
+          "type": "range",
+          "label": "Columns",
+          "defaultValue": 4,
+          "min": 2,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Columns",
+          "defaultValue": 4,
+          "min": 1,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "comparison-score-table",
+      "role": "comparison",
+      "label": "Score Table",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "table",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.58,
+          "height": 0.65,
+          "accepts": [
+            "table"
+          ],
+          "required": true
+        },
+        {
+          "id": "callout",
+          "x": 0.68,
+          "y": 0.2,
+          "width": 0.26,
+          "height": 0.65,
+          "accepts": [
+            "list",
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "showCallout",
+          "type": "toggle",
+          "label": "Show callout",
+          "defaultValue": true
+        },
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 35,
+          "min": 25,
+          "max": 50,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "comparison-criteria",
+      "role": "comparison",
+      "label": "Criteria Split",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "left",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.41,
+          "height": 0.66,
+          "accepts": [
+            "list",
+            "text",
+            "table"
+          ],
+          "required": true
+        },
+        {
+          "id": "right",
+          "x": 0.53,
+          "y": 0.22,
+          "width": 0.41,
+          "height": 0.66,
+          "accepts": [
+            "list",
+            "text",
+            "table"
+          ]
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.9,
+          "width": 0.88,
+          "height": 0.06,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 50,
+          "min": 35,
+          "max": 65,
+          "step": 1
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tradeoff-matrix-lite",
+      "role": "comparison",
+      "label": "Tradeoff Matrix Lite",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "matrix",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.88,
+          "height": 0.55,
+          "accepts": [
+            "table",
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "callout",
+          "x": 0.06,
+          "y": 0.8,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "showCallout",
+          "type": "toggle",
+          "label": "Show callout",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "process-6",
+      "role": "process",
+      "label": "Process Six Steps",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "step1",
+          "x": 0.06,
+          "y": 0.24,
+          "width": 0.12166666666666666,
+          "height": 0.5,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "step2",
+          "x": 0.21166666666666667,
+          "y": 0.24,
+          "width": 0.12166666666666666,
+          "height": 0.5,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "step3",
+          "x": 0.36333333333333334,
+          "y": 0.24,
+          "width": 0.12166666666666666,
+          "height": 0.5,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "step4",
+          "x": 0.515,
+          "y": 0.24,
+          "width": 0.12166666666666666,
+          "height": 0.5,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "step5",
+          "x": 0.6666666666666667,
+          "y": 0.24,
+          "width": 0.12166666666666666,
+          "height": 0.5,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "step6",
+          "x": 0.8183333333333334,
+          "y": 0.24,
+          "width": 0.12166666666666666,
+          "height": 0.5,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Steps",
+          "defaultValue": 6,
+          "min": 3,
+          "max": 6,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "process-lanes-2",
+      "role": "process",
+      "label": "Two Swimlanes",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "col1",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.42,
+          "height": 0.62,
+          "accepts": [
+            "list",
+            "text",
+            "timeline"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "col2",
+          "x": 0.52,
+          "y": 0.2,
+          "width": 0.42,
+          "height": 0.62,
+          "accepts": [
+            "list",
+            "text",
+            "timeline"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.88,
+          "width": 0.88,
+          "height": 0.08,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "columns",
+          "type": "range",
+          "label": "Columns",
+          "defaultValue": 2,
+          "min": 2,
+          "max": 2,
+          "step": 1
+        },
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Lanes",
+          "defaultValue": 2,
+          "min": 1,
+          "max": 2,
+          "step": 1
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "process-checkpoint",
+      "role": "process",
+      "label": "Process Checkpoint",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "step1",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.1975,
+          "height": 0.42,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "step2",
+          "x": 0.2875,
+          "y": 0.2,
+          "width": 0.1975,
+          "height": 0.42,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "step3",
+          "x": 0.515,
+          "y": 0.2,
+          "width": 0.1975,
+          "height": 0.42,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "step4",
+          "x": 0.7424999999999999,
+          "y": 0.2,
+          "width": 0.1975,
+          "height": 0.42,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "callout",
+          "x": 0.06,
+          "y": 0.7,
+          "width": 0.88,
+          "height": 0.2,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Steps",
+          "defaultValue": 4,
+          "min": 1,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "showCallout",
+          "type": "toggle",
+          "label": "Show callout",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "process-vertical-5",
+      "role": "process",
+      "label": "Vertical Five Steps",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.09,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "step1",
+          "x": 0.1,
+          "y": 0.16,
+          "width": 0.8,
+          "height": 0.12,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "step2",
+          "x": 0.1,
+          "y": 0.3,
+          "width": 0.8,
+          "height": 0.12,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "step3",
+          "x": 0.1,
+          "y": 0.44,
+          "width": 0.8,
+          "height": 0.12,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "step4",
+          "x": 0.1,
+          "y": 0.58,
+          "width": 0.8,
+          "height": 0.12,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "step5",
+          "x": 0.1,
+          "y": 0.72,
+          "width": 0.8,
+          "height": 0.12,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Steps",
+          "defaultValue": 5,
+          "min": 3,
+          "max": 5,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chart-legend-focus",
+      "role": "trend",
+      "label": "Chart Legend Focus",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "chart",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.88,
+          "height": 0.62,
+          "accepts": [
+            "chart"
+          ],
+          "required": true
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.86,
+          "width": 0.88,
+          "height": 0.08,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "chartType",
+          "type": "select",
+          "label": "Chart type",
+          "defaultValue": "column",
+          "options": [
+            "column",
+            "bar",
+            "line",
+            "area",
+            "pie",
+            "doughnut",
+            "scatter",
+            "radar",
+            "waterfall",
+            "funnel"
+          ]
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        }
+      ]
+    },
+    {
+      "id": "chart-callout-bottom",
+      "role": "trend",
+      "label": "Chart Callout Bottom",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "chart",
+          "x": 0.06,
+          "y": 0.18,
+          "width": 0.88,
+          "height": 0.52,
+          "accepts": [
+            "chart"
+          ],
+          "required": true
+        },
+        {
+          "id": "callout",
+          "x": 0.06,
+          "y": 0.74,
+          "width": 0.88,
+          "height": 0.18,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "chartType",
+          "type": "select",
+          "label": "Chart type",
+          "defaultValue": "column",
+          "options": [
+            "column",
+            "bar",
+            "line",
+            "area",
+            "pie",
+            "doughnut",
+            "scatter",
+            "radar",
+            "waterfall",
+            "funnel"
+          ]
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
+        },
+        {
+          "id": "showCallout",
+          "type": "toggle",
+          "label": "Show callout",
+          "defaultValue": true
+        }
+      ]
+    },
+    {
+      "id": "trend-dual-charts",
+      "role": "trend",
+      "label": "Dual Charts",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "left",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.42,
+          "height": 0.66,
+          "accepts": [
+            "chart"
+          ],
+          "required": true
+        },
+        {
+          "id": "right",
+          "x": 0.52,
+          "y": 0.2,
+          "width": 0.42,
+          "height": 0.66,
+          "accepts": [
+            "chart",
+            "text",
+            "list"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 50,
+          "min": 35,
+          "max": 65,
+          "step": 1
+        },
+        {
+          "id": "chartType",
+          "type": "select",
+          "label": "Chart type",
+          "defaultValue": "column",
+          "options": [
+            "column",
+            "bar",
+            "line",
+            "area",
+            "pie",
+            "doughnut",
+            "scatter",
+            "radar",
+            "waterfall",
+            "funnel"
+          ]
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "table-footer-notes",
+      "role": "trend",
+      "label": "Table Footer Notes",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "table",
+          "x": 0.06,
+          "y": 0.18,
+          "width": 0.88,
+          "height": 0.58,
+          "accepts": [
+            "table"
+          ],
+          "required": true
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.8,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "image-caption-footer",
+      "role": "image",
+      "label": "Image Caption Footer",
+      "slots": [
+        {
+          "id": "visual",
+          "x": 0.1,
+          "y": 0.08,
+          "width": 0.8,
+          "height": 0.62,
+          "accepts": [
+            "image"
+          ],
+          "required": true
+        },
+        {
+          "id": "title",
+          "x": 0.1,
+          "y": 0.74,
+          "width": 0.8,
+          "height": 0.08,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "footer",
+          "x": 0.1,
+          "y": 0.86,
+          "width": 0.8,
+          "height": 0.08,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "image-callout-overlay",
+      "role": "image",
+      "label": "Image Callout Overlay",
+      "slots": [
+        {
+          "id": "visual",
+          "x": 0.06,
+          "y": 0.08,
+          "width": 0.58,
+          "height": 0.8,
+          "accepts": [
+            "image"
+          ],
+          "required": true
+        },
+        {
+          "id": "callout",
+          "x": 0.68,
+          "y": 0.2,
+          "width": 0.26,
+          "height": 0.55,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "title",
+          "x": 0.68,
+          "y": 0.08,
+          "width": 0.26,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "showCallout",
+          "type": "toggle",
+          "label": "Show callout",
+          "defaultValue": true
+        },
+        {
+          "id": "mediaSide",
+          "type": "select",
+          "label": "Media side",
+          "defaultValue": "left",
+          "options": [
+            "left",
+            "right"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gallery-caption-row",
+      "role": "image",
+      "label": "Gallery Caption Row",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.09,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "visual1",
+          "x": 0.06,
+          "y": 0.18,
+          "width": 0.2733333333333334,
+          "height": 0.55,
+          "accepts": [
+            "image",
+            "shape"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "visual2",
+          "x": 0.36333333333333334,
+          "y": 0.18,
+          "width": 0.2733333333333334,
+          "height": 0.55,
+          "accepts": [
+            "image",
+            "shape"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "visual3",
+          "x": 0.6666666666666667,
+          "y": 0.18,
+          "width": 0.2733333333333334,
+          "height": 0.55,
+          "accepts": [
+            "image",
+            "shape"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.8,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Images",
+          "defaultValue": 3,
+          "min": 1,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "image-split-caption",
+      "role": "image",
+      "label": "Image Split Caption",
+      "slots": [
+        {
+          "id": "visual",
+          "x": 0.06,
+          "y": 0.1,
+          "width": 0.5,
+          "height": 0.7,
+          "accepts": [
+            "image"
+          ],
+          "required": true
+        },
+        {
+          "id": "title",
+          "x": 0.6,
+          "y": 0.18,
+          "width": 0.34,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "body",
+          "x": 0.6,
+          "y": 0.34,
+          "width": 0.34,
+          "height": 0.36,
+          "accepts": [
+            "text",
+            "list"
+          ]
+        },
+        {
+          "id": "footer",
+          "x": 0.6,
+          "y": 0.76,
+          "width": 0.34,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "mediaSide",
+          "type": "select",
+          "label": "Media side",
+          "defaultValue": "left",
+          "options": [
+            "left",
+            "right"
+          ]
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "closing-next-footer",
+      "role": "closing",
+      "label": "Closing Next Footer",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "body",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.88,
+          "height": 0.5,
+          "accepts": [
+            "list",
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.78,
+          "width": 0.88,
+          "height": 0.14,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "closing-cta-metrics",
+      "role": "closing",
+      "label": "Closing CTA Metrics",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "metric1",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.35,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "metric2",
+          "x": 0.36333333333333334,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.35,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "metric3",
+          "x": 0.6666666666666667,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.35,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "callout",
+          "x": 0.1,
+          "y": 0.66,
+          "width": 0.8,
+          "height": 0.2,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "KPI modules",
+          "defaultValue": 3,
+          "min": 1,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "showCallout",
+          "type": "toggle",
+          "label": "Show callout",
+          "defaultValue": true
+        },
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ask-split-footer",
+      "role": "closing",
+      "label": "Ask Split Footer",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "left",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.41,
+          "height": 0.52,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "required": true
+        },
+        {
+          "id": "right",
+          "x": 0.53,
+          "y": 0.2,
+          "width": 0.41,
+          "height": 0.52,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ]
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.8,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 50,
+          "min": 35,
+          "max": 65,
+          "step": 1
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "closing-contacts-footer",
+      "role": "closing",
+      "label": "Contacts with Footer",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "member1",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "metric"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "member2",
+          "x": 0.36333333333333334,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "member3",
+          "x": 0.6666666666666667,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.86,
+          "width": 0.88,
+          "height": 0.08,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Contacts",
+          "defaultValue": 3,
+          "min": 1,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "risks-priority-cards",
+      "role": "risks",
+      "label": "Risk Priority Cards",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "card1",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "card2",
+          "x": 0.36333333333333334,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "card3",
+          "x": 0.6666666666666667,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.88,
+          "width": 0.88,
+          "height": 0.08,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Risk cards",
+          "defaultValue": 3,
+          "min": 1,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "risks-owner-table",
+      "role": "risks",
+      "label": "Risk Owner Table",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "table",
+          "x": 0.06,
+          "y": 0.18,
+          "width": 0.88,
+          "height": 0.55,
+          "accepts": [
+            "table"
+          ],
+          "required": true
+        },
+        {
+          "id": "callout",
+          "x": 0.06,
+          "y": 0.78,
+          "width": 0.88,
+          "height": 0.14,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "showCallout",
+          "type": "toggle",
+          "label": "Show callout",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "risks-two-track",
+      "role": "risks",
+      "label": "Risks Two Track",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "left",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.41,
+          "height": 0.66,
+          "accepts": [
+            "list",
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "right",
+          "x": 0.53,
+          "y": 0.22,
+          "width": 0.41,
+          "height": 0.66,
+          "accepts": [
+            "list",
+            "text"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 50,
+          "min": 35,
+          "max": 65,
+          "step": 1
+        },
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "context-bullets-footer",
+      "role": "context",
+      "label": "Context Bullets Footer",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "body",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.88,
+          "height": 0.52,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "required": true
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.82,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "context-split-callout",
+      "role": "context",
+      "label": "Context Split Callout",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "left",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.41,
+          "height": 0.5,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "required": true
+        },
+        {
+          "id": "right",
+          "x": 0.53,
+          "y": 0.22,
+          "width": 0.41,
+          "height": 0.5,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ]
+        },
+        {
+          "id": "callout",
+          "x": 0.06,
+          "y": 0.78,
+          "width": 0.88,
+          "height": 0.14,
+          "accepts": [
+            "text",
+            "metric"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 50,
+          "min": 35,
+          "max": 65,
+          "step": 1
+        },
+        {
+          "id": "showCallout",
+          "type": "toggle",
+          "label": "Show callout",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "context-metrics-strip",
+      "role": "context",
+      "label": "Context Metrics Strip",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "metric1",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.1975,
+          "height": 0.28,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "metric2",
+          "x": 0.2875,
+          "y": 0.2,
+          "width": 0.1975,
+          "height": 0.28,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "metric3",
+          "x": 0.515,
+          "y": 0.2,
+          "width": 0.1975,
+          "height": 0.28,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "metric4",
+          "x": 0.7424999999999999,
+          "y": 0.2,
+          "width": 0.1975,
+          "height": 0.28,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "body",
+          "x": 0.06,
+          "y": 0.56,
+          "width": 0.88,
+          "height": 0.32,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "required": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "KPI modules",
+          "defaultValue": 4,
+          "min": 1,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        },
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "observation-grid",
+      "role": "observation",
+      "label": "Observation Grid",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "card1",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.42,
+          "height": 0.32,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "card2",
+          "x": 0.52,
+          "y": 0.2,
+          "width": 0.42,
+          "height": 0.32,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "card3",
+          "x": 0.06,
+          "y": 0.56,
+          "width": 0.42,
+          "height": 0.32,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "card4",
+          "x": 0.52,
+          "y": 0.56,
+          "width": 0.42,
+          "height": 0.32,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Findings",
+          "defaultValue": 4,
+          "min": 1,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "observation-insight-stack",
+      "role": "observation",
+      "label": "Observation Insight Stack",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "body",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.88,
+          "height": 0.4,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "required": true
+        },
+        {
+          "id": "insight",
+          "x": 0.06,
+          "y": 0.66,
+          "width": 0.88,
+          "height": 0.24,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "showInsight",
+          "type": "toggle",
+          "label": "Show insight panel",
+          "defaultValue": true
+        },
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "observation-chart-note",
+      "role": "observation",
+      "label": "Observation Chart Note",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "chart",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.58,
+          "height": 0.6,
+          "accepts": [
+            "chart"
+          ],
+          "required": true
+        },
+        {
+          "id": "callout",
+          "x": 0.68,
+          "y": 0.2,
+          "width": 0.26,
+          "height": 0.6,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "chartType",
+          "type": "select",
+          "label": "Chart type",
+          "defaultValue": "column",
+          "options": [
+            "column",
+            "bar",
+            "line",
+            "area",
+            "pie",
+            "doughnut",
+            "scatter",
+            "radar",
+            "waterfall",
+            "funnel"
+          ]
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
+        },
+        {
+          "id": "showCallout",
+          "type": "toggle",
+          "label": "Show callout",
+          "defaultValue": true
+        }
+      ]
+    },
+    {
+      "id": "actions-numbered",
+      "role": "actions",
+      "label": "Actions Numbered",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "body",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.88,
+          "height": 0.6,
+          "accepts": [
+            "list",
+            "timeline",
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.86,
+          "width": 0.88,
+          "height": 0.08,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "actions-two-column",
+      "role": "actions",
+      "label": "Actions Two Column",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "left",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.41,
+          "height": 0.66,
+          "accepts": [
+            "list",
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "right",
+          "x": 0.53,
+          "y": 0.22,
+          "width": 0.41,
+          "height": 0.66,
+          "accepts": [
+            "list",
+            "text"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 50,
+          "min": 35,
+          "max": 65,
+          "step": 1
+        },
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "actions-raci-lite",
+      "role": "actions",
+      "label": "Actions RACI Lite",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "table",
+          "x": 0.06,
+          "y": 0.18,
+          "width": 0.88,
+          "height": 0.55,
+          "accepts": [
+            "table"
+          ],
+          "required": true
+        },
+        {
+          "id": "callout",
+          "x": 0.06,
+          "y": 0.78,
+          "width": 0.88,
+          "height": 0.14,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "showCallout",
+          "type": "toggle",
+          "label": "Show callout",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "result-hero-metric",
+      "role": "result",
+      "label": "Result Hero Metric",
+      "slots": [
+        {
+          "id": "metric1",
+          "x": 0.1,
+          "y": 0.18,
+          "width": 0.8,
+          "height": 0.28,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "body",
+          "x": 0.1,
+          "y": 0.52,
+          "width": 0.8,
+          "height": 0.24,
+          "accepts": [
+            "text",
+            "list"
+          ]
+        },
+        {
+          "id": "footer",
+          "x": 0.1,
+          "y": 0.82,
+          "width": 0.8,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "result-three-up",
+      "role": "result",
+      "label": "Result Three Up",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "card1",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "metric",
+            "list"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "card2",
+          "x": 0.36333333333333334,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "metric",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "card3",
+          "x": 0.6666666666666667,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "metric",
+            "list"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Result cards",
+          "defaultValue": 3,
+          "min": 1,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        },
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "result-chart-proof",
+      "role": "result",
+      "label": "Result Chart Proof",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "chart",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.58,
+          "height": 0.62,
+          "accepts": [
+            "chart"
+          ],
+          "required": true
+        },
+        {
+          "id": "insight",
+          "x": 0.68,
+          "y": 0.2,
+          "width": 0.26,
+          "height": 0.62,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "chartType",
+          "type": "select",
+          "label": "Chart type",
+          "defaultValue": "column",
+          "options": [
+            "column",
+            "bar",
+            "line",
+            "area",
+            "pie",
+            "doughnut",
+            "scatter",
+            "radar",
+            "waterfall",
+            "funnel"
+          ]
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
+        },
+        {
+          "id": "showInsight",
+          "type": "toggle",
+          "label": "Show insight panel",
+          "defaultValue": true
+        }
+      ]
+    },
+    {
+      "id": "team-cards-5",
+      "role": "team",
+      "label": "Team Cards Five",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "member1",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.152,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "metric",
+            "image"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "member2",
+          "x": 0.242,
+          "y": 0.22,
+          "width": 0.152,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "metric",
+            "image"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "member3",
+          "x": 0.424,
+          "y": 0.22,
+          "width": 0.152,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "metric",
+            "image"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "member4",
+          "x": 0.6060000000000001,
+          "y": 0.22,
+          "width": 0.152,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "metric",
+            "image"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "member5",
+          "x": 0.788,
+          "y": 0.22,
+          "width": 0.152,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "metric",
+            "image"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Members",
+          "defaultValue": 5,
+          "min": 2,
+          "max": 5,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "team-lead-grid",
+      "role": "team",
+      "label": "Team Lead Grid",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "member1",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.42,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "image",
+            "metric"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "member2",
+          "x": 0.52,
+          "y": 0.2,
+          "width": 0.2,
+          "height": 0.28,
+          "accepts": [
+            "text",
+            "image"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "member3",
+          "x": 0.74,
+          "y": 0.2,
+          "width": 0.2,
+          "height": 0.28,
+          "accepts": [
+            "text",
+            "image"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "member4",
+          "x": 0.52,
+          "y": 0.52,
+          "width": 0.2,
+          "height": 0.28,
+          "accepts": [
+            "text",
+            "image"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "member5",
+          "x": 0.74,
+          "y": 0.52,
+          "width": 0.2,
+          "height": 0.28,
+          "accepts": [
+            "text",
+            "image"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Members",
+          "defaultValue": 5,
+          "min": 2,
+          "max": 5,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "team-roles-footer",
+      "role": "team",
+      "label": "Team Roles Footer",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "col1",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "col2",
+          "x": 0.36333333333333334,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "col3",
+          "x": 0.6666666666666667,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.88,
+          "width": 0.88,
+          "height": 0.08,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "columns",
+          "type": "range",
+          "label": "Columns",
+          "defaultValue": 3,
+          "min": 2,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Roles",
+          "defaultValue": 3,
+          "min": 1,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "case-timeline",
+      "role": "case",
+      "label": "Case Timeline",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "step1",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.1975,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "step2",
+          "x": 0.2875,
+          "y": 0.22,
+          "width": 0.1975,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "step3",
+          "x": 0.515,
+          "y": 0.22,
+          "width": 0.1975,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "step4",
+          "x": 0.7424999999999999,
+          "y": 0.22,
+          "width": 0.1975,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Milestones",
+          "defaultValue": 4,
+          "min": 1,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "case-quote-result",
+      "role": "case",
+      "label": "Case Quote Result",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "body",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.55,
+          "height": 0.55,
+          "accepts": [
+            "quote",
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "metric1",
+          "x": 0.66,
+          "y": 0.2,
+          "width": 0.28,
+          "height": 0.25,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "metric2",
+          "x": 0.66,
+          "y": 0.5,
+          "width": 0.28,
+          "height": 0.25,
+          "accepts": [
+            "metric",
+            "text"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.82,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "KPI modules",
+          "defaultValue": 2,
+          "min": 1,
+          "max": 2,
+          "step": 1
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 35,
+          "min": 25,
+          "max": 50,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "case-three-phase",
+      "role": "case",
+      "label": "Case Three Phase",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "col1",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "col2",
+          "x": 0.36333333333333334,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "col3",
+          "x": 0.6666666666666667,
+          "y": 0.22,
+          "width": 0.2733333333333334,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "callout",
+          "x": 0.06,
+          "y": 0.86,
+          "width": 0.88,
+          "height": 0.08,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "columns",
+          "type": "range",
+          "label": "Columns",
+          "defaultValue": 3,
+          "min": 2,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Phases",
+          "defaultValue": 3,
+          "min": 1,
+          "max": 3,
+          "step": 1
+        },
+        {
+          "id": "showCallout",
+          "type": "toggle",
+          "label": "Show callout",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "distribution-donut-legend",
+      "role": "distribution",
+      "label": "Donut with Legend Focus",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "chart",
+          "x": 0.06,
+          "y": 0.2,
+          "width": 0.5,
+          "height": 0.65,
+          "accepts": [
+            "chart"
+          ],
+          "required": true
+        },
+        {
+          "id": "body",
+          "x": 0.6,
+          "y": 0.2,
+          "width": 0.34,
+          "height": 0.65,
+          "accepts": [
+            "list",
+            "text"
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "chartType",
+          "type": "select",
+          "label": "Chart type",
+          "defaultValue": "column",
+          "options": [
+            "column",
+            "bar",
+            "line",
+            "area",
+            "pie",
+            "doughnut",
+            "scatter",
+            "radar",
+            "waterfall",
+            "funnel"
+          ]
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
+        },
+        {
+          "id": "balance",
+          "type": "range",
+          "label": "Column balance",
+          "defaultValue": 35,
+          "min": 25,
+          "max": 50,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "distribution-stacked-bars",
+      "role": "distribution",
+      "label": "Stacked Bars",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "chart",
+          "x": 0.06,
+          "y": 0.18,
+          "width": 0.88,
+          "height": 0.55,
+          "accepts": [
+            "chart"
+          ],
+          "required": true
+        },
+        {
+          "id": "callout",
+          "x": 0.06,
+          "y": 0.78,
+          "width": 0.88,
+          "height": 0.14,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "chartType",
+          "type": "select",
+          "label": "Chart type",
+          "defaultValue": "column",
+          "options": [
+            "column",
+            "bar",
+            "line",
+            "area",
+            "pie",
+            "doughnut",
+            "scatter",
+            "radar",
+            "waterfall",
+            "funnel"
+          ]
+        },
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show chart legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showAxisLabels",
+          "type": "toggle",
+          "label": "Show axis labels",
+          "defaultValue": true
+        },
+        {
+          "id": "showCallout",
+          "type": "toggle",
+          "label": "Show callout",
+          "defaultValue": true
+        }
+      ]
+    },
+    {
+      "id": "distribution-four-seg",
+      "role": "distribution",
+      "label": "Four Segments",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "col1",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.1975,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "metric",
+            "list"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "col2",
+          "x": 0.2875,
+          "y": 0.22,
+          "width": 0.1975,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "metric",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "col3",
+          "x": 0.515,
+          "y": 0.22,
+          "width": 0.1975,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "metric",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "col4",
+          "x": 0.7424999999999999,
+          "y": 0.22,
+          "width": 0.1975,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "metric",
+            "list"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "columns",
+          "type": "range",
+          "label": "Columns",
+          "defaultValue": 4,
+          "min": 2,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Segments",
+          "defaultValue": 4,
+          "min": 1,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "relationship-hub",
+      "role": "relationship",
+      "label": "Relationship Hub",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "card1",
+          "x": 0.36,
+          "y": 0.22,
+          "width": 0.28,
+          "height": 0.22,
+          "accepts": [
+            "text",
+            "metric"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "card2",
+          "x": 0.06,
+          "y": 0.5,
+          "width": 0.26,
+          "height": 0.3,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "card3",
+          "x": 0.37,
+          "y": 0.5,
+          "width": 0.26,
+          "height": 0.3,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "card4",
+          "x": 0.68,
+          "y": 0.5,
+          "width": 0.26,
+          "height": 0.3,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Nodes",
+          "defaultValue": 4,
+          "min": 1,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        },
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "relationship-matrix",
+      "role": "relationship",
+      "label": "Relationship Matrix",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "table",
+          "x": 0.06,
+          "y": 0.18,
+          "width": 0.88,
+          "height": 0.55,
+          "accepts": [
+            "table"
+          ],
+          "required": true
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.8,
+          "width": 0.88,
+          "height": 0.12,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": true
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stakeholder-map-4",
+      "role": "relationship",
+      "label": "Stakeholder Map Four",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "col1",
+          "x": 0.06,
+          "y": 0.22,
+          "width": 0.1975,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "required": true,
+          "toggleable": true
+        },
+        {
+          "id": "col2",
+          "x": 0.2875,
+          "y": 0.22,
+          "width": 0.1975,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "col3",
+          "x": 0.515,
+          "y": 0.22,
+          "width": 0.1975,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "col4",
+          "x": 0.7424999999999999,
+          "y": 0.22,
+          "width": 0.1975,
+          "height": 0.58,
+          "accepts": [
+            "text",
+            "list",
+            "metric"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "columns",
+          "type": "range",
+          "label": "Columns",
+          "defaultValue": 4,
+          "min": 2,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "moduleCount",
+          "type": "range",
+          "label": "Stakeholders",
+          "defaultValue": 4,
+          "min": 1,
+          "max": 4,
+          "step": 1
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Content density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        }
       ]
     }
   ]
