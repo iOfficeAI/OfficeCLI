@@ -1,0 +1,386 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "stage": "ready",
+  "metadata": {
+    "title": "CSBU WorkMate Catalog Wave5 P2 Smoke",
+    "language": "zh-CN",
+    "aspectRatio": "16:9",
+    "goal": "Validate catalog 1.5.0 P2 Surpass wave toward 220+ layouts + semantic controls",
+    "audience": "QA"
+  },
+  "theme": {
+    "id": "consulting-clean",
+    "mode": "light"
+  },
+  "slides": [
+    {
+      "id": "s-cover",
+      "role": "cover",
+      "layoutId": "cover-kicker-hero",
+      "title": "Cover",
+      "controls": {
+        "emphasis": "hero",
+        "showFooter": true,
+        "density": "comfortable"
+      },
+      "blocks": [
+        {
+          "id": "k0",
+          "type": "text",
+          "slot": "kicker",
+          "text": "P2 Surpass"
+        },
+        {
+          "id": "t0",
+          "type": "text",
+          "slot": "title",
+          "text": "Catalog Wave 5"
+        },
+        {
+          "id": "t1",
+          "type": "text",
+          "slot": "subtitle",
+          "text": "12 themes / 224 layouts / denser controls"
+        },
+        {
+          "id": "f0",
+          "type": "text",
+          "slot": "footer",
+          "text": "CSBU WorkMate · OfficeCLI 1.0.160"
+        }
+      ],
+      "notes": "Wave5 cover with footer control"
+    },
+    {
+      "id": "s-context",
+      "role": "context",
+      "layoutId": "context-metrics-strip",
+      "title": "Context",
+      "controls": {
+        "moduleCount": 4,
+        "density": "compact"
+      },
+      "blocks": [
+        {
+          "id": "ct",
+          "type": "text",
+          "slot": "title",
+          "text": "Context strip"
+        },
+        {
+          "id": "m1",
+          "type": "metric",
+          "slot": "metric1",
+          "value": "224",
+          "label": "Layouts"
+        },
+        {
+          "id": "m2",
+          "type": "metric",
+          "slot": "metric2",
+          "value": "12",
+          "label": "Control keys"
+        },
+        {
+          "id": "m3",
+          "type": "metric",
+          "slot": "metric3",
+          "value": "6",
+          "label": "Thin roles"
+        },
+        {
+          "id": "m4",
+          "type": "metric",
+          "slot": "metric4",
+          "value": "1.5.0",
+          "label": "Catalog"
+        },
+        {
+          "id": "cb",
+          "type": "list",
+          "slot": "body",
+          "items": [
+            "Deepen thin roles to 6 each",
+            "Real packing for density/columns/legend/axis/callout/footer"
+          ]
+        }
+      ],
+      "notes": "Thin-role depth"
+    },
+    {
+      "id": "s-cols",
+      "role": "comparison",
+      "layoutId": "comparison-columns-4",
+      "title": "Columns",
+      "controls": {
+        "columns": 3,
+        "moduleCount": 3,
+        "density": "spacious"
+      },
+      "blocks": [
+        {
+          "id": "tt",
+          "type": "text",
+          "slot": "title",
+          "text": "Columns control"
+        },
+        {
+          "id": "c1",
+          "type": "list",
+          "slot": "col1",
+          "items": [
+            "A",
+            "Pack left"
+          ]
+        },
+        {
+          "id": "c2",
+          "type": "list",
+          "slot": "col2",
+          "items": [
+            "B",
+            "Center"
+          ]
+        },
+        {
+          "id": "c3",
+          "type": "list",
+          "slot": "col3",
+          "items": [
+            "C",
+            "Right"
+          ]
+        },
+        {
+          "id": "c4",
+          "type": "list",
+          "slot": "col4",
+          "items": [
+            "Hidden by columns=3"
+          ]
+        }
+      ],
+      "notes": "columns packs 3 of 4"
+    },
+    {
+      "id": "s-chart",
+      "role": "trend",
+      "layoutId": "chart-legend-focus",
+      "title": "Chart controls",
+      "controls": {
+        "chartType": "column",
+        "showLegend": true,
+        "showAxisLabels": true,
+        "showFooter": true
+      },
+      "blocks": [
+        {
+          "id": "cht",
+          "type": "text",
+          "slot": "title",
+          "text": "Legend + axis"
+        },
+        {
+          "id": "ch",
+          "type": "chart",
+          "slot": "chart",
+          "data": {
+            "chartType": "column",
+            "categories": [
+              "Q1",
+              "Q2",
+              "Q3",
+              "Q4"
+            ],
+            "series": [
+              {
+                "name": "Revenue",
+                "values": [
+                  12,
+                  15,
+                  18,
+                  21
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "cf",
+          "type": "text",
+          "slot": "footer",
+          "text": "showLegend/showAxisLabels overlay into OOXML chart props"
+        }
+      ],
+      "notes": "chart semantic keys"
+    },
+    {
+      "id": "s-callout",
+      "role": "breakdown",
+      "layoutId": "bullets-callout",
+      "title": "Callout",
+      "controls": {
+        "showCallout": true,
+        "balance": 40,
+        "density": "comfortable"
+      },
+      "blocks": [
+        {
+          "id": "bt",
+          "type": "text",
+          "slot": "title",
+          "text": "Callout panel"
+        },
+        {
+          "id": "bc",
+          "type": "list",
+          "slot": "content",
+          "items": [
+            "Point one",
+            "Point two",
+            "Point three"
+          ]
+        },
+        {
+          "id": "bo",
+          "type": "text",
+          "slot": "callout",
+          "text": "Key takeaway"
+        }
+      ],
+      "notes": "showCallout"
+    },
+    {
+      "id": "s-table",
+      "role": "actions",
+      "layoutId": "actions-raci-lite",
+      "title": "Table",
+      "controls": {
+        "showCallout": true,
+        "density": "compact"
+      },
+      "blocks": [
+        {
+          "id": "at",
+          "type": "text",
+          "slot": "title",
+          "text": "Actions RACI"
+        },
+        {
+          "id": "atable",
+          "type": "table",
+          "slot": "table",
+          "data": {
+            "rows": [
+              [
+                "Task",
+                "R",
+                "A"
+              ],
+              [
+                "Ship wave5",
+                "Eng",
+                "PM"
+              ],
+              [
+                "Studio mirror",
+                "UI",
+                "PM"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "ac",
+          "type": "list",
+          "slot": "callout",
+          "items": [
+            "R = responsible",
+            "A = accountable"
+          ]
+        }
+      ],
+      "notes": "editable table + callout"
+    },
+    {
+      "id": "s-team",
+      "role": "team",
+      "layoutId": "team-cards-5",
+      "title": "Team",
+      "controls": {
+        "moduleCount": 4,
+        "density": "comfortable"
+      },
+      "blocks": [
+        {
+          "id": "tm",
+          "type": "text",
+          "slot": "title",
+          "text": "Team depth"
+        },
+        {
+          "id": "u1",
+          "type": "text",
+          "slot": "member1",
+          "text": "Alex · Lead"
+        },
+        {
+          "id": "u2",
+          "type": "text",
+          "slot": "member2",
+          "text": "Blair · Design"
+        },
+        {
+          "id": "u3",
+          "type": "text",
+          "slot": "member3",
+          "text": "Casey · Eng"
+        },
+        {
+          "id": "u4",
+          "type": "text",
+          "slot": "member4",
+          "text": "Drew · QA"
+        }
+      ],
+      "notes": "thin role team"
+    },
+    {
+      "id": "s-close",
+      "role": "closing",
+      "layoutId": "closing-next-footer",
+      "title": "Next",
+      "controls": {
+        "showFooter": true,
+        "emphasis": "bold"
+      },
+      "blocks": [
+        {
+          "id": "nt",
+          "type": "text",
+          "slot": "title",
+          "text": "Next P2 slice"
+        },
+        {
+          "id": "nb",
+          "type": "list",
+          "slot": "body",
+          "items": [
+            "Theme remap report",
+            "CSBU brand theme pack",
+            "heatmap-table"
+          ]
+        },
+        {
+          "id": "nf",
+          "type": "text",
+          "slot": "footer",
+          "text": "Deferred this session if capacity tight"
+        }
+      ],
+      "notes": "closing footer"
+    }
+  ],
+  "assets": []
+}

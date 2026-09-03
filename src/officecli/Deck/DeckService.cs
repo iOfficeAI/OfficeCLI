@@ -249,7 +249,7 @@ public static class DeckService
             string? assetPath = null;
             if (block.AssetId != null && assets.TryGetValue(block.AssetId, out var asset) && asset.Status == "ready")
                 assetPath = ResolveAssetPath(specPath, asset.Path);
-            var data = OverlayChartTypeControl(slide, block);
+            var data = OverlayChartControls(slide, block);
             elements.Add(new DeckPreviewElement(block.Id, block.Type, slot.Id, slot.X, slot.Y, slot.Width, slot.Height, text, assetPath, data));
         }
         return elements;
@@ -259,14 +259,16 @@ public static class DeckService
     {
         if ((layoutId is "image-text" or "two-column" or "cover-split" or "quote-split"
                 or "cover-banner" or "image-left-bullets" or "cover-dark-band"
-                or "image-quote" or "image-stats")
+                or "image-quote" or "image-stats" or "cover-photo-stack"
+                or "image-callout-overlay" or "image-split-caption")
             && ControlString(slide, "mediaSide", "left") == "right")
             return slot with { X = 1 - slot.X - slot.Width };
 
         if (!IsSlotVisible(slide, "insight"))
         {
             if ((layoutId is "chart" or "chart-radar" or "chart-insight-right"
-                    or "chart-waterfall" or "chart-funnel" or "distribution-pie-focus") && slot.Id == "chart")
+                    or "chart-waterfall" or "chart-funnel" or "distribution-pie-focus"
+                    or "result-chart-proof") && slot.Id == "chart")
                 return slot with { X = 0.06, Width = 0.88 };
             if ((layoutId is "data-table" or "table-callouts") && slot.Id == "table")
                 return slot with { X = 0.06, Width = 0.88 };
@@ -274,7 +276,34 @@ public static class DeckService
                 return slot with { X = 0.06, Width = 0.88 };
         }
 
+        if (!IsSlotVisible(slide, "callout"))
+        {
+            if ((layoutId is "bullets-callout" or "comparison-score-table" or "observation-chart-note"
+                    or "metrics-callout-side" or "image-callout-overlay")
+                && (slot.Id is "content" or "table" or "chart" or "metric1" or "metric2" or "visual"))
+            {
+                if (slot.Id is "content" or "table" or "chart" or "visual")
+                    return slot with { X = 0.06, Width = 0.88 };
+            }
+            if ((layoutId is "chart-callout-bottom" or "process-checkpoint" or "breakdown-key-points"
+                    or "tradeoff-matrix-lite" or "risks-owner-table" or "actions-raci-lite"
+                    or "distribution-stacked-bars" or "statement-callout" or "closing-cta-metrics"
+                    or "case-three-phase" or "context-split-callout")
+                && (slot.Id is "chart" or "table" or "matrix" or "body" or "content"
+                    or "step1" or "step2" or "step3" or "step4" or "left" or "right"
+                    or "col1" or "col2" or "col3" or "metric1" or "metric2" or "metric3"))
+            {
+                // keep authored geometry; callout just collapses via visibility below
+            }
+        }
+
         if (slot.Id == "insight" && !IsSlotVisible(slide, "insight"))
+            return slot with { Width = 0, Height = 0 };
+        if (slot.Id == "callout" && !IsSlotVisible(slide, "callout"))
+            return slot with { Width = 0, Height = 0 };
+        if (slot.Id == "footer" && !IsSlotVisible(slide, "footer"))
+            return slot with { Width = 0, Height = 0 };
+        if (slot.Id == "kicker" && !IsSlotVisible(slide, "kicker"))
             return slot with { Width = 0, Height = 0 };
 
         if ((layoutId is "comparison" or "two-column" or "toc" or "before-after" or "pros-cons"
@@ -283,8 +312,10 @@ public static class DeckService
                 or "feature-vs" or "cost-benefit" or "kpi-vs-target" or "side-by-side-kpis"
                 or "closing-split-cta" or "risks-mitigation-grid" or "result-before-after"
                 or "case-study" or "case-challenge-solution" or "relationship-pairs"
-                or "chart-dual-panel")
-            && (slot.Id is "left" or "right" or "kpi" or "support" or "body"))
+                or "chart-dual-panel" or "comparison-criteria" or "ask-split-footer"
+                or "risks-two-track" or "context-split-callout" or "actions-two-column"
+                or "trend-dual-charts" or "process-lanes-2" or "bullets-callout")
+            && (slot.Id is "left" or "right" or "kpi" or "support" or "body" or "content" or "callout"))
         {
             var balance = Math.Clamp(ControlDouble(slide, "balance", 50), 35, 65) / 100;
             const double start = 0.06;
@@ -293,7 +324,7 @@ public static class DeckService
             var usable = total - gap;
             var leftWidth = usable * balance;
             var rightWidth = usable - leftWidth;
-            return slot.Id is "left" or "kpi"
+            return slot.Id is "left" or "kpi" or "content"
                 ? slot with { X = start, Width = leftWidth }
                 : slot with { X = start + leftWidth + gap, Width = rightWidth };
         }
@@ -366,26 +397,43 @@ public static class DeckService
         {
             "metrics" or "kpi-trio" or "cover-kpi-strip" or "metrics-callout" or "kpi-radar-sidecar"
                 or "chart-with-kpis" or "image-stats" or "context-facts" or "case-metrics"
-                or "result-metrics" => new[] { "metric1", "metric2", "metric3" },
-            "metrics-duo" or "quote-metrics" or "result-summary" => new[] { "metric1", "metric2" },
-            "metrics-row-4" or "metrics-strip" or "kpi-sparkline-row" => new[] { "metric1", "metric2", "metric3", "metric4" },
+                or "result-metrics" or "metrics-with-footer" or "closing-cta-metrics"
+                => new[] { "metric1", "metric2", "metric3" },
+            "metrics-duo" or "quote-metrics" or "result-summary" or "cover-dual-metric"
+                or "metrics-callout-side" or "case-quote-result"
+                => new[] { "metric1", "metric2" },
+            "metrics-row-4" or "metrics-strip" or "kpi-sparkline-row" or "context-metrics-strip"
+                => new[] { "metric1", "metric2", "metric3", "metric4" },
+            "metrics-grid-compact" => new[] { "metric1", "metric2", "metric3", "metric4", "metric5", "metric6" },
             "cards" or "agenda-cards" or "toc-cards" or "risks-top3" or "observation-callouts"
-                or "actions-priority" or "relationship-map-lite" => new[] { "card1", "card2", "card3" },
-            "cards-four" or "team-org-lite" => new[] { "card1", "card2", "card3", "card4" },
+                or "actions-priority" or "relationship-map-lite" or "breakdown-icon-row"
+                or "risks-priority-cards" or "result-three-up"
+                => new[] { "card1", "card2", "card3" },
+            "cards-four" or "team-org-lite" or "breakdown-numbered-cards" or "breakdown-quad"
+                or "observation-grid" or "relationship-hub"
+                => new[] { "card1", "card2", "card3", "card4" },
             "three-column" or "comparison-three" or "breakdown-pillars" or "option-score"
                 or "process-swimlane-lite" or "team-roles" or "distribution-segments"
-                or "stakeholder-grid" => new[] { "col1", "col2", "col3" },
-            "option-cards-4" or "comparison-four" => new[] { "col1", "col2", "col3", "col4" },
+                or "stakeholder-grid" or "team-roles-footer" or "case-three-phase"
+                or "process-lanes-2"
+                => new[] { "col1", "col2", "col3" },
+            "option-cards-4" or "comparison-four" or "comparison-columns-4"
+                or "distribution-four-seg" or "stakeholder-map-4"
+                => new[] { "col1", "col2", "col3", "col4" },
             "process-steps" or "process-horizontal" or "cycle-4" or "agenda-timeline" or "roadmap-milestones"
                 or "toc-timeline" or "journey-steps" or "closing-roadmap" or "context-timeline"
-                or "double-diamond" => new[] { "step1", "step2", "step3", "step4" },
+                or "double-diamond" or "process-checkpoint" or "case-timeline" or "chapter-progress"
+                => new[] { "step1", "step2", "step3", "step4" },
             "process-vertical" => new[] { "step1", "step2", "step3", "step4" },
-            "process-5" => new[] { "step1", "step2", "step3", "step4", "step5" },
+            "process-5" or "process-vertical-5" => new[] { "step1", "step2", "step3", "step4", "step5" },
+            "process-6" => new[] { "step1", "step2", "step3", "step4", "step5", "step6" },
             "team" or "team-row" or "team-grid" => new[] { "member1", "member2", "member3", "member4" },
-            "closing-contacts" => new[] { "member1", "member2", "member3" },
+            "team-cards-5" or "team-lead-grid" => new[] { "member1", "member2", "member3", "member4", "member5" },
+            "closing-contacts" or "closing-contacts-footer" => new[] { "member1", "member2", "member3" },
             "funnel" or "funnel-wide" or "pipeline-stages" => new[] { "stage1", "stage2", "stage3", "stage4" },
             "gallery-two" => new[] { "visual1", "visual2" },
-            "gallery-three" or "image-three-up" => new[] { "visual1", "visual2", "visual3" },
+            "gallery-three" or "image-three-up" or "gallery-caption-row"
+                => new[] { "visual1", "visual2", "visual3" },
             "image-mosaic-4" => new[] { "visual1", "visual2", "visual3", "visual4" },
             "five-forces" => new[] { "rivalry", "entrants", "substitutes", "suppliers", "buyers" },
             _ => Array.Empty<string>(),
@@ -394,7 +442,13 @@ public static class DeckService
         var index = Array.IndexOf(moduleIds, slot.Id);
         if (index < 0) return slot;
 
-        var count = (int)Math.Clamp(ControlDouble(slide, "moduleCount", moduleIds.Length), 1, moduleIds.Length);
+        // Prefer columns control for col* packs when present; else moduleCount.
+        var defaultCount = moduleIds.Length;
+        var countControl = moduleIds[0].StartsWith("col", StringComparison.Ordinal)
+            && slide.Controls.ContainsKey("columns")
+            ? "columns"
+            : "moduleCount";
+        var count = (int)Math.Clamp(ControlDouble(slide, countControl, defaultCount), 1, moduleIds.Length);
         var visibleIds = moduleIds.Take(count).Where(id => IsSlotVisible(slide, id)).ToArray();
         var visibleIndex = Array.IndexOf(visibleIds, slot.Id);
         if (visibleIndex < 0)
@@ -405,25 +459,40 @@ public static class DeckService
                 or "pipeline-stages" or "image-mosaic-4" or "team-org-lite" or "five-forces"
                 or "kpi-radar-sidecar" or "image-stats" or "case-metrics" or "process-5"
                 or "chart-with-kpis" or "metrics-callout" or "context-facts" or "relationship-map-lite"
-                or "quote-metrics" or "result-summary")
+                or "quote-metrics" or "result-summary" or "breakdown-quad" or "observation-grid"
+                or "relationship-hub" or "team-lead-grid" or "metrics-grid-compact"
+                or "process-vertical-5" or "cover-dual-metric" or "case-quote-result"
+                or "metrics-callout-side")
             return slot;
 
-        const double start = 0.06;
-        const double total = 0.88;
-        const double gap = 0.03;
+        var (start, total, gap) = DensityPackMetrics(slide);
         var packCount = Math.Max(1, visibleIds.Length);
         var usable = total - gap * Math.Max(0, packCount - 1);
         var width = usable / packCount;
         return slot with { X = start + visibleIndex * (width + gap), Width = width };
     }
 
+    private static (double Start, double Total, double Gap) DensityPackMetrics(DeckSlide slide)
+    {
+        return ControlString(slide, "density", "comfortable") switch
+        {
+            "compact" => (0.04, 0.92, 0.02),
+            "spacious" => (0.08, 0.84, 0.05),
+            _ => (0.06, 0.88, 0.03),
+        };
+    }
 
-    private static JsonElement? OverlayChartTypeControl(DeckSlide slide, DeckBlock block)
+
+    private static JsonElement? OverlayChartControls(DeckSlide slide, DeckBlock block)
     {
         if (block.Type != "chart" || !block.Data.HasValue || block.Data.Value.ValueKind != JsonValueKind.Object)
             return block.Data;
-        if (!slide.Controls.TryGetValue("chartType", out var chartType)
-            || chartType.ValueKind != JsonValueKind.String)
+
+        var hasChartType = slide.Controls.TryGetValue("chartType", out var chartType)
+            && chartType.ValueKind == JsonValueKind.String;
+        var hasLegend = slide.Controls.ContainsKey("showLegend");
+        var hasAxis = slide.Controls.ContainsKey("showAxisLabels");
+        if (!hasChartType && !hasLegend && !hasAxis)
             return block.Data;
 
         using var document = JsonDocument.Parse(block.Data.Value.GetRawText());
@@ -431,24 +500,48 @@ public static class DeckService
         using (var writer = new Utf8JsonWriter(stream))
         {
             writer.WriteStartObject();
-            var replaced = false;
+            var replacedType = false;
+            var replacedLegend = false;
+            var replacedAxis = false;
             foreach (var property in document.RootElement.EnumerateObject())
             {
-                if (property.NameEquals("chartType"))
+                if (hasChartType && property.NameEquals("chartType"))
                 {
                     writer.WritePropertyName("chartType");
                     chartType.WriteTo(writer);
-                    replaced = true;
+                    replacedType = true;
+                }
+                else if (hasLegend && property.NameEquals("legend"))
+                {
+                    writer.WritePropertyName("legend");
+                    writer.WriteStringValue(ControlBool(slide, "showLegend", true) ? "right" : "none");
+                    replacedLegend = true;
+                }
+                else if (hasAxis && property.NameEquals("axisVisible"))
+                {
+                    writer.WritePropertyName("axisVisible");
+                    writer.WriteBooleanValue(ControlBool(slide, "showAxisLabels", true));
+                    replacedAxis = true;
                 }
                 else
                 {
                     property.WriteTo(writer);
                 }
             }
-            if (!replaced)
+            if (hasChartType && !replacedType)
             {
                 writer.WritePropertyName("chartType");
                 chartType.WriteTo(writer);
+            }
+            if (hasLegend && !replacedLegend)
+            {
+                writer.WritePropertyName("legend");
+                writer.WriteStringValue(ControlBool(slide, "showLegend", true) ? "right" : "none");
+            }
+            if (hasAxis && !replacedAxis)
+            {
+                writer.WritePropertyName("axisVisible");
+                writer.WriteBooleanValue(ControlBool(slide, "showAxisLabels", true));
             }
             writer.WriteEndObject();
         }
@@ -469,6 +562,10 @@ public static class DeckService
             return value.GetBoolean();
         if (slotId == "insight")
             return ControlBool(slide, "showInsight", true);
+        if (slotId == "callout")
+            return ControlBool(slide, "showCallout", true);
+        if (slotId == "footer")
+            return ControlBool(slide, "showFooter", true);
         return true;
     }
 
@@ -589,6 +686,12 @@ public static class DeckService
         props["categories"] = string.Join(',', categories.Select(SanitizeChartToken));
         props["data"] = string.Join(';', series);
         if (!string.IsNullOrWhiteSpace(element.Text)) props["title"] = element.Text;
+        if (data.TryGetProperty("legend", out var legendProp))
+            props["legend"] = JsonText(legendProp);
+        if (data.TryGetProperty("axisVisible", out var axisProp))
+            props["axisVisible"] = axisProp.ValueKind is JsonValueKind.True or JsonValueKind.False
+                ? (axisProp.GetBoolean() ? "true" : "false")
+                : JsonText(axisProp);
         var path = handler.Add(slidePath, "chart", null, props);
         DebugDeck($"added chart '{element.Id}' at {path}");
     }
