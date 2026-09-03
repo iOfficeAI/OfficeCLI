@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "stage": "ready",
+  "metadata": {
+    "title": "Bad visibility",
+    "language": "en-US",
+    "aspectRatio": "16:9"
+  },
+  "theme": {
+    "id": "business-light"
+  },
+  "slides": [
+    {
+      "id": "cover",
+      "role": "cover",
+      "layoutId": "cover",
+      "blocks": [
+        {
+          "id": "t",
+          "type": "text",
+          "slot": "title",
+          "text": "Hi"
+        }
+      ],
+      "controls": {
+        "slot.title.visible": false
+      }
+    }
+  ],
+  "assets": []
+}

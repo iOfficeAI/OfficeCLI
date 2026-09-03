@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "stage": "ready",
+  "metadata": {
+    "title": "Slot visibility smoke",
+    "goal": "Verify generic slot.visible packing",
+    "audience": "QA",
+    "language": "en-US",
+    "aspectRatio": "16:9",
+    "author": "CSBU WorkMate"
+  },
+  "theme": {
+    "id": "business-light"
+  },
+  "slides": [
+    {
+      "id": "cover",
+      "role": "cover",
+      "layoutId": "cover",
+      "title": "Visibility",
+      "notes": "Smoke for slot.visible",
+      "blocks": [
+        {
+          "id": "t",
+          "type": "text",
+          "slot": "title",
+          "text": "Slot visibility"
+        },
+        {
+          "id": "s",
+          "type": "text",
+          "slot": "subtitle",
+          "text": "Generic per-slot toggles"
+        },
+        {
+          "id": "v",
+          "type": "shape",
+          "slot": "visual",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "id": "chart-hidden-insight",
+      "role": "trend",
+      "layoutId": "chart",
+      "controls": {
+        "slot.insight.visible": false,
+        "chartType": "line"
+      },
+      "title": "Chart without insight",
+      "notes": "Insight hidden via slot.insight.visible",
+      "blocks": [
+        {
+          "id": "chart-title",
+          "type": "text",
+          "slot": "title",
+          "text": "Adoption trend"
+        },
+        {
+          "id": "chart-main",
+          "type": "chart",
+          "slot": "chart",
+          "text": "Monthly adoption",
+          "data": {
+            "chartType": "line",
+            "categories": [
+              "Jan",
+              "Feb",
+              "Mar"
+            ],
+            "series": [
+              {
+                "name": "Teams",
+                "values": [
+                  12,
+                  19,
+                  31
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "insight",
+          "type": "text",
+          "slot": "insight",
+          "text": "Hidden insight panel"
+        }
+      ]
+    },
+    {
+      "id": "metrics-hide-middle",
+      "role": "metrics",
+      "layoutId": "metrics",
+      "title": "Metrics with middle hidden",
+      "notes": "metric2 hidden via slot.metric2.visible",
+      "blocks": [
+        {
+          "id": "metrics-title",
+          "type": "text",
+          "slot": "title",
+          "text": "Metrics"
+        },
+        {
+          "id": "metric-1",
+          "type": "metric",
+          "slot": "metric1",
+          "value": "156",
+          "label": "theme x layout combos"
+        },
+        {
+          "id": "metric2",
+          "type": "metric",
+          "slot": "metric2",
+          "value": "17",
+          "label": "KPI 2"
+        },
+        {
+          "id": "metric3",
+          "type": "metric",
+          "slot": "metric3",
+          "value": "9",
+          "label": "KPI 3"
+        }
+      ],
+      "controls": {
+        "moduleCount": 3,
+        "slot.metric2.visible": false
+      }
+    },
+    {
+      "id": "table-keep",
+      "role": "comparison",
+      "layoutId": "matrix",
+      "title": "Decision matrix",
+      "notes": "Editable table retained",
+      "blocks": [
+        {
+          "id": "matrix-title",
+          "type": "text",
+          "slot": "title",
+          "text": "Decision matrix"
+        },
+        {
+          "id": "matrix-main",
+          "type": "table",
+          "slot": "matrix",
+          "data": {
+            "rows": [
+              [
+                "Option",
+                "Reliable"
+              ],
+              [
+                "Native",
+                "Yes"
+              ],
+              [
+                "Raw shapes",
+                "No"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "close",
+      "role": "closing",
+      "layoutId": "closing",
+      "title": "Thanks",
+      "notes": "Done",
+      "blocks": [
+        {
+          "id": "thanks",
+          "type": "text",
+          "slot": "title",
+          "text": "Thanks"
+        }
+      ]
+    }
+  ],
+  "assets": []
+}

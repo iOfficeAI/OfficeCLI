@@ -3,7 +3,8 @@ $ErrorActionPreference = 'Stop'
 $project = Join-Path $PSScriptRoot '..\..\src\officecli\officecli.csproj'
 $cases = @(
     @{ File = 'missing-slot.workmate-deck.json'; Code = 'block_slot_required' },
-    @{ File = 'duplicate-slot.workmate-deck.json'; Code = 'duplicate_slot_assignment' }
+    @{ File = 'duplicate-slot.workmate-deck.json'; Code = 'duplicate_slot_assignment' },
+    @{ File = 'unknown-slot-visibility.workmate-deck.json'; Code = 'unknown_layout_control' }
 )
 
 foreach ($case in $cases) {
