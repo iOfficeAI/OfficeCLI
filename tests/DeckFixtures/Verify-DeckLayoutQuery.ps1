@@ -2,14 +2,16 @@ $ErrorActionPreference = 'Stop'
 
 $project = Join-Path $PSScriptRoot '..\..\src\officecli\officecli.csproj'
 
-function Invoke-LayoutQuery([string[]]$Args) {
-    $json = & dotnet run --project $project -c Release --no-build -- deck layout-query @Args --json
-    if ($LASTEXITCODE -ne 0) { throw "layout-query failed: $($Args -join ' ')`n$json" }
+function Invoke-LayoutQuery {
+    param([Parameter(Mandatory = $true)][string[]]$QueryArgs)
+    $json = & dotnet run --project $project -c Release --no-build -- deck layout-query @QueryArgs --json
+    if ($LASTEXITCODE -ne 0) { throw "layout-query failed: $($QueryArgs -join ' ')`n$json" }
     return ($json | ConvertFrom-Json)
 }
 
-$metrics = Invoke-LayoutQuery @('--role', 'metrics', '--item-count', '4', '--limit', '5')
+$metrics = Invoke-LayoutQuery -QueryArgs @('--role', 'metrics', '--item-count', '4', '--limit', '5')
 if ($metrics.resultCount -lt 1) { throw 'Expected metrics results' }
+if ($metrics.query.role -ne 'metrics') { throw "Expected query.role=metrics; got $($metrics.query.role)" }
 if ($metrics.results[0].role -ne 'metrics') { throw "Top hit role was $($metrics.results[0].role)" }
 $topIds = @($metrics.results | ForEach-Object layoutId)
 if ($topIds -notcontains 'metrics-row-4' -and $topIds -notcontains 'metrics-strip' -and $topIds -notcontains 'kpi-sparkline-row') {
@@ -17,17 +19,17 @@ if ($topIds -notcontains 'metrics-row-4' -and $topIds -notcontains 'metrics-stri
 }
 Write-Output ("metrics top: {0} score={1} capacity={2}" -f $metrics.results[0].layoutId, $metrics.results[0].score, $metrics.results[0].capacity)
 
-$chart = Invoke-LayoutQuery @('--role', 'trend', '--has-chart', 'true', '--item-count', '2', '--limit', '5')
+$chart = Invoke-LayoutQuery -QueryArgs @('--role', 'trend', '--has-chart', 'true', '--item-count', '2', '--limit', '5')
 $chartAccepts = @($chart.results[0].accepts)
 if ($chartAccepts -notcontains 'chart') { throw "Top trend hit should accept chart; got $($chart.results[0].layoutId)" }
 Write-Output ("trend/chart top: {0}" -f $chart.results[0].layoutId)
 
-$media = Invoke-LayoutQuery @('--role', 'image', '--needs-media', 'true', '--item-count', '3', '--limit', '5')
+$media = Invoke-LayoutQuery -QueryArgs @('--role', 'image', '--needs-media', 'true', '--item-count', '3', '--limit', '5')
 $mediaAccepts = @($media.results[0].accepts)
 if ($mediaAccepts -notcontains 'image') { throw "Top image hit should accept image; got $($media.results[0].layoutId)" }
 Write-Output ("image/media top: {0}" -f $media.results[0].layoutId)
 
-$query = Invoke-LayoutQuery @('--query', 'waterfall', '--limit', '3')
+$query = Invoke-LayoutQuery -QueryArgs @('--query', 'waterfall', '--limit', '3')
 $ids = @($query.results | ForEach-Object layoutId)
 if ($ids -notcontains 'chart-waterfall') { throw "Expected chart-waterfall in query=waterfall results; got $($ids -join ', ')" }
 Write-Output ("query waterfall: {0}" -f ($ids -join ', '))
