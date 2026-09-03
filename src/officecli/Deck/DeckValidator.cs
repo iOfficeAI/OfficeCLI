@@ -127,6 +127,8 @@ public static class DeckValidator
             {
                 foreach (var required in layout.Slots.Where(slot => slot.Required))
                 {
+                    if (!DeckService.IsSlotVisible(slide, required.Id))
+                        continue;
                     if (!slide.Blocks.Any(block => block.Slot == required.Id))
                         diagnostics.Add(Error("required_slot_empty", $"Required slot '{required.Id}' is empty.", $"{slidePath}/blocks", slide.Id,
                             suggestion: $"Add a compatible block with slot '{required.Id}'."));
@@ -229,8 +231,25 @@ public static class DeckValidator
         List<DeckDiagnostic> diagnostics)
     {
         var definitions = layout.Controls.ToDictionary(control => control.Id, StringComparer.Ordinal);
+        var toggleableSlots = layout.Slots.Where(slot => slot.Toggleable)
+            .Select(slot => slot.Id)
+            .ToHashSet(StringComparer.Ordinal);
         foreach (var (id, value) in slide.Controls)
         {
+            if (TryParseSlotVisibilityControl(id, out var slotId))
+            {
+                if (!toggleableSlots.Contains(slotId))
+                {
+                    diagnostics.Add(Error("unknown_layout_control",
+                        $"Layout '{layout.Id}' has no toggleable slot '{slotId}' for control '{id}'.",
+                        $"{slidePath}/controls/{id}", slide.Id));
+                    continue;
+                }
+                if (value.ValueKind is not (System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False))
+                    diagnostics.Add(Error("invalid_layout_control", $"Control '{id}' has an invalid value.",
+                        $"{slidePath}/controls/{id}", slide.Id));
+                continue;
+            }
             if (!definitions.TryGetValue(id, out var control))
             {
                 diagnostics.Add(Error("unknown_layout_control", $"Layout '{layout.Id}' has no control '{id}'.",
@@ -251,6 +270,19 @@ public static class DeckValidator
                 diagnostics.Add(Error("invalid_layout_control", $"Control '{id}' has an invalid value.",
                     $"{slidePath}/controls/{id}", slide.Id));
         }
+    }
+
+    internal static bool TryParseSlotVisibilityControl(string controlId, out string slotId)
+    {
+        const string prefix = "slot.";
+        const string suffix = ".visible";
+        slotId = "";
+        if (controlId.Length <= prefix.Length + suffix.Length
+            || !controlId.StartsWith(prefix, StringComparison.Ordinal)
+            || !controlId.EndsWith(suffix, StringComparison.Ordinal))
+            return false;
+        slotId = controlId[prefix.Length..^suffix.Length];
+        return slotId.Length > 0 && !slotId.Contains('.', StringComparison.Ordinal);
     }
 
     private static string LayoutSuggestion(DeckLayout layout) => layout.AlternativeLayoutIds is { Count: > 0 }

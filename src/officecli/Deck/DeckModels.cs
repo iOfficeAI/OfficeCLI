@@ -100,6 +100,7 @@ public sealed record DeckSlot(
     double Height,
     IReadOnlyList<string> Accepts,
     bool Required = false,
+    bool Toggleable = false,
     int? MaxLength = null,
     int? MaxItems = null);
 

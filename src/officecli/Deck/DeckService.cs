@@ -225,7 +225,7 @@ public static class DeckService
         var elements = new List<DeckPreviewElement>();
         foreach (var block in slide.Blocks)
         {
-            if (layout.Id == "chart" && block.Slot == "insight" && !ControlBool(slide, "showInsight", true))
+            if (block.Slot != null && !IsSlotVisible(slide, block.Slot))
                 continue;
             DeckSlot slot;
             if (block.Slot != null && slots.TryGetValue(block.Slot, out var explicitSlot))
@@ -262,15 +262,18 @@ public static class DeckService
             && ControlString(slide, "mediaSide", "left") == "right")
             return slot with { X = 1 - slot.X - slot.Width };
 
-        if ((layoutId is "chart" or "chart-radar")
-            && slot.Id == "chart"
-            && !ControlBool(slide, "showInsight", true))
-            return slot with { Width = 0.88 };
+        if (!IsSlotVisible(slide, "insight"))
+        {
+            if ((layoutId is "chart" or "chart-radar" or "chart-insight-right") && slot.Id == "chart")
+                return slot with { X = 0.06, Width = 0.88 };
+            if ((layoutId is "data-table" or "table-callouts") && slot.Id == "table")
+                return slot with { X = 0.06, Width = 0.88 };
+            if (layoutId == "risk-matrix-simple" && slot.Id == "matrix")
+                return slot with { X = 0.06, Width = 0.88 };
+        }
 
-        if (layoutId == "data-table"
-            && slot.Id == "table"
-            && !ControlBool(slide, "showInsight", true))
-            return slot with { X = 0.06, Width = 0.88 };
+        if (slot.Id == "insight" && !IsSlotVisible(slide, "insight"))
+            return slot with { Width = 0, Height = 0 };
 
         if ((layoutId is "comparison" or "two-column" or "toc" or "before-after" or "pros-cons"
                 or "mitigation-plan" or "bullets-two" or "metrics-highlight" or "chart-compare"
@@ -293,6 +296,12 @@ public static class DeckService
                 or "risk-matrix-simple" or "table-callouts" or "chart-insight-right")
             && (slot.Id is "left" or "summary" or "insight" or "table" or "matrix" or "chart"))
         {
+            // Insight toggle already collapsed/expanded above for table/matrix/chart companions.
+            if ((layoutId is "data-table" or "risk-matrix-simple" or "table-callouts" or "chart-insight-right")
+                && !IsSlotVisible(slide, "insight")
+                && (slot.Id is "table" or "matrix" or "chart"))
+                return slot with { X = 0.06, Width = 0.88 };
+
             var balance = Math.Clamp(ControlDouble(slide, "balance", 35), 25, 50) / 100;
             const double start = 0.06;
             const double total = 0.88;
@@ -348,7 +357,9 @@ public static class DeckService
         if (index < 0) return slot;
 
         var count = (int)Math.Clamp(ControlDouble(slide, "moduleCount", moduleIds.Length), 1, moduleIds.Length);
-        if (index >= count)
+        var visibleIds = moduleIds.Take(count).Where(id => IsSlotVisible(slide, id)).ToArray();
+        var visibleIndex = Array.IndexOf(visibleIds, slot.Id);
+        if (visibleIndex < 0)
             return slot with { Width = 0, Height = 0 };
         // Keep authored geometry for non-row packs (funnel stages, 2x2 cycle, gallery).
         if (layoutId is "funnel" or "funnel-wide" or "cycle-4" or "gallery-two" or "gallery-three"
@@ -358,9 +369,10 @@ public static class DeckService
         const double start = 0.06;
         const double total = 0.88;
         const double gap = 0.03;
-        var usable = total - gap * Math.Max(0, count - 1);
-        var width = usable / count;
-        return slot with { X = start + index * (width + gap), Width = width };
+        var packCount = Math.Max(1, visibleIds.Length);
+        var usable = total - gap * Math.Max(0, packCount - 1);
+        var width = usable / packCount;
+        return slot with { X = start + visibleIndex * (width + gap), Width = width };
     }
 
 
@@ -399,6 +411,23 @@ public static class DeckService
             writer.WriteEndObject();
         }
         return JsonDocument.Parse(stream.ToArray()).RootElement.Clone();
+    }
+
+    internal static string SlotVisibilityControlId(string slotId) => $"slot.{slotId}.visible";
+
+    /// <summary>
+    /// Generic per-slot visibility from slide.controls["slot.&lt;id&gt;.visible"].
+    /// Falls back to legacy showInsight for the insight slot.
+    /// </summary>
+    internal static bool IsSlotVisible(DeckSlide slide, string slotId)
+    {
+        var key = SlotVisibilityControlId(slotId);
+        if (slide.Controls.TryGetValue(key, out var value)
+            && value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            return value.GetBoolean();
+        if (slotId == "insight")
+            return ControlBool(slide, "showInsight", true);
+        return true;
     }
 
     private static string ControlString(DeckSlide slide, string id, string fallback) =>
