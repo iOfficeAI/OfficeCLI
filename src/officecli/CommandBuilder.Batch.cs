@@ -172,6 +172,13 @@ static partial class CommandBuilder
             var bestEffort = result.GetValue(batchBestEffortOpt);
 
             string jsonText;
+            if (inlineCommands != null && inputFile != null)
+                throw new ArgumentException(
+                    "batch: --commands and --input are mutually exclusive. Pick one source.");
+            // '--input -' explicitly opts INTO stdin — don't emit the
+            // "stdin will be ignored" warning in that case, since stdin
+            // is exactly what will be read.
+            var inputIsStdinAlias = inputFile != null && inputFile.Name == "-";
             // BUG-R7-09 (F-6): previously --commands/--input/stdin were
             // silently prioritized in that order — passing two of them at
             // once dropped the lower-priority source with no warning, so
@@ -179,28 +186,35 @@ static partial class CommandBuilder
             // command that already had --commands set. Reject the
             // combination loudly. (Detect stdin via Console.IsInputRedirected
             // to avoid spurious failures from interactive terminals.)
+            //
+            // Only probe stdin when all of these are true: an explicit
+            // non-stdin source will make us ignore stdin, the warning has not
+            // been disabled, and stdin is redirected. This is a correctness
+            // boundary for MCP: its stdin is the JSON-RPC transport.
+            // OFFICECLI_BATCH_ALLOW_STDIN_REDIRECT is enabled by McpServer, so
+            // MCP calls with --commands/--input must never touch stdin here.
             // IsInputRedirected alone is true for every non-interactive
             // invocation (cron, CI, `< /dev/null`, systemd), so the warning
             // below fired on effectively all scripted batch runs with only
             // one source supplied. Refine: a seekable stdin (regular file or
             // /dev/null redirect) with zero length carries no second payload
-            // — skip the warning. Pipes (CanSeek=false) still warn: someone
-            // is actively piping data that will be ignored.
-            // #340/#339: the warning below only needs to know whether a SECOND
-            // payload is sitting on stdin while --commands/--input is also given.
-            // The old refinement peeked a byte off stdin — but under `officecli
-            // mcp` stdin IS the JSON-RPC channel, and that consuming read (on an
-            // abandoned thread) swallowed the next request frame, so the client
-            // hung with no response. Determine it WITHOUT consuming: only a
-            // seekable stdin can be sized without reading. This makes the warning
-            // best-effort — most hosts expose redirected stdin as a non-seekable
-            // stream (Console.OpenStandardInput().CanSeek == false for pipes AND,
-            // on several platforms, for `< file` too), and those are deliberately
+            // — skip the warning.
+            // #340/#339: when the warning path does probe, determine whether a
+            // SECOND payload is sitting on stdin WITHOUT consuming — only a
+            // seekable stdin can be sized without reading. An earlier Peek-based
+            // probe swallowed JSON-RPC frames under `officecli mcp`. Most hosts
+            // expose redirected stdin as a non-seekable stream
+            // (Console.OpenStandardInput().CanSeek == false for pipes AND, on
+            // several platforms, for `< file` too), and those are deliberately
             // left unconfirmed rather than consumed. Never swallowing a frame
             // matters more than the warning. The actual stdin payload path below
             // still reads stdin in full when batch has no explicit source.
+            var hasExplicitNonStdinSource = inlineCommands != null
+                || (inputFile != null && !inputIsStdinAlias);
+            var shouldWarnAboutIgnoredStdin = hasExplicitNonStdinSource
+                && Environment.GetEnvironmentVariable("OFFICECLI_BATCH_ALLOW_STDIN_REDIRECT") == null;
             bool stdinHasInput = false;
-            if (Console.IsInputRedirected)
+            if (shouldWarnAboutIgnoredStdin && Console.IsInputRedirected)
             {
                 try
                 {
@@ -209,15 +223,7 @@ static partial class CommandBuilder
                 }
                 catch { /* treat as no confirmed payload */ }
             }
-            if (inlineCommands != null && inputFile != null)
-                throw new ArgumentException(
-                    "batch: --commands and --input are mutually exclusive. Pick one source.");
-            // '--input -' explicitly opts INTO stdin — don't emit the
-            // "stdin will be ignored" warning in that case, since stdin
-            // is exactly what will be read.
-            var inputIsStdinAlias = inputFile != null && inputFile.Name == "-";
-            if ((inlineCommands != null || (inputFile != null && !inputIsStdinAlias)) && stdinHasInput
-                && Environment.GetEnvironmentVariable("OFFICECLI_BATCH_ALLOW_STDIN_REDIRECT") == null)
+            if (stdinHasInput)
             {
                 Console.Error.WriteLine(
                     "Warning: batch is reading from --commands/--input but stdin is also redirected; "
