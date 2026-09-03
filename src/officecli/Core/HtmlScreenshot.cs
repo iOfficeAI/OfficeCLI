@@ -32,6 +32,7 @@ internal static class HtmlScreenshot
         var url = new Uri(Path.GetFullPath(htmlPath)).AbsoluteUri + "#screenshot";
         var bin = FindChrome();
         if (bin == null) return null;
+        using var profile = CreatePrivateChromeProfile();
         var args = new List<string>
         {
             "--headless=new",
@@ -40,6 +41,7 @@ internal static class HtmlScreenshot
             "--virtual-time-budget=15000",
             "--timeout=20000",  // wall-clock backstop: a stalled resource is not rescued by virtual time (issue #181)
         };
+        AddChromeIsolationArguments(args, profile);
         if (extraArgs != null) args.AddRange(extraArgs);
         args.Add("--dump-dom");
         args.Add(url);
@@ -84,7 +86,8 @@ internal static class HtmlScreenshot
         var outDir = Path.GetDirectoryName(outPath);
         if (!string.IsNullOrEmpty(outDir)) Directory.CreateDirectory(outDir);
         var url = new Uri(Path.GetFullPath(htmlPath)).AbsoluteUri + "#screenshot";
-        var args = new[]
+        using var profile = CreatePrivateChromeProfile();
+        var args = new List<string>
         {
             "--headless=new",
             "--disable-gpu",
@@ -98,6 +101,7 @@ internal static class HtmlScreenshot
             $"--screenshot={outPath}",
             url,
         };
+        AddChromeIsolationArguments(args, profile);
         var (ok, _) = RunBinary(bin, args);
         return ok && File.Exists(outPath) && new FileInfo(outPath).Length > 0;
     }
@@ -385,7 +389,8 @@ internal static class HtmlScreenshot
     {
         var bin = FindChrome();
         if (bin == null) return (false, null);
-        var args = new[]
+        using var profile = CreatePrivateChromeProfile();
+        var args = new List<string>
         {
             "--headless=new",
             "--disable-gpu",
@@ -406,7 +411,41 @@ internal static class HtmlScreenshot
             $"--screenshot={outPath}",
             url,
         };
+        AddChromeIsolationArguments(args, profile);
         return RunBinary(bin, args);
+    }
+
+    /// <summary>
+    /// Gives every direct Chromium render an empty, disposable profile. This
+    /// prevents a headless renderer from contending with the user's browser
+    /// profile; on macOS the mock keychain also prevents Chrome Safe Storage
+    /// from opening or creating items in the user's login keychain.
+    /// </summary>
+    private sealed class PrivateChromeProfile : IDisposable
+    {
+        public string Path { get; }
+
+        public PrivateChromeProfile()
+        {
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+                $"officecli-chrome-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(Path);
+        }
+
+        public void Dispose()
+        {
+            try { Directory.Delete(Path, recursive: true); }
+            catch { /* temporary profile cleanup is best effort */ }
+        }
+    }
+
+    private static PrivateChromeProfile CreatePrivateChromeProfile() => new();
+
+    private static void AddChromeIsolationArguments(List<string> args, PrivateChromeProfile profile)
+    {
+        args.Add($"--user-data-dir={profile.Path}");
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            args.Add("--use-mock-keychain");
     }
 
     private static string? FindChrome()
@@ -542,6 +581,7 @@ internal static class HtmlScreenshot
         if (bin == null) return (false, null);
         outPath = Path.GetFullPath(outPath);
         var url = new Uri(Path.GetFullPath(htmlPath)).AbsoluteUri + "#screenshot";
+        using var profile = CreatePrivateChromeProfile();
         try
         {
             var psi = new ProcessStartInfo
@@ -555,7 +595,7 @@ internal static class HtmlScreenshot
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
-            foreach (var a in new[]
+            var args = new List<string>
             {
                 "--headless=new",
                 "--disable-gpu",
@@ -569,7 +609,9 @@ internal static class HtmlScreenshot
                 "--timeout=20000",
                 $"--screenshot={outPath}",
                 url,
-            }) psi.ArgumentList.Add(a);
+            };
+            AddChromeIsolationArguments(args, profile);
+            foreach (var a in args) psi.ArgumentList.Add(a);
             using var p = Process.Start(psi);
             if (p == null) return (false, null);
             var outTask = p.StandardOutput.ReadToEndAsync();
@@ -584,7 +626,7 @@ internal static class HtmlScreenshot
         catch { return (false, null); }
     }
 
-    private static (bool, string?) RunBinary(string bin, string[] args)
+    private static (bool, string?) RunBinary(string bin, IEnumerable<string> args)
     {
         try
         {
