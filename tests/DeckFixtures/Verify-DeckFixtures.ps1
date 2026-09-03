@@ -49,3 +49,7 @@ Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.workmate-deck.json' | ForEac
         $archive.Dispose()
     }
 }
+
+# --- layout-query (P1.5) ---
+& "$PSScriptRoot/Verify-DeckLayoutQuery.ps1"
+if ($LASTEXITCODE -ne 0) { throw 'Verify-DeckLayoutQuery failed.' }

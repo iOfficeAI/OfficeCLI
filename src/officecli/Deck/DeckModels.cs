@@ -45,6 +45,8 @@ public sealed record DeckSlide
     public bool Hidden { get; init; }
     public List<DeckBlock> Blocks { get; init; } = [];
     public Dictionary<string, JsonElement> Controls { get; init; } = [];
+    /// <summary>Optional preferred same-slide layout IDs (P1.6). Export uses LayoutId only.</summary>
+    public List<string>? Candidates { get; init; }
 }
 
 public sealed record DeckBlock
@@ -152,6 +154,32 @@ public sealed record DeckPreviewElement(
     string? AssetPath = null,
     JsonElement? Data = null);
 
+public sealed record DeckLayoutQueryRequest(
+    string? Role = null,
+    int? ItemCount = null,
+    bool? HasChart = null,
+    bool? NeedsMedia = null,
+    bool? HasTable = null,
+    string? Query = null,
+    int Limit = 8);
+
+public sealed record DeckLayoutQueryHit(
+    string LayoutId,
+    string Role,
+    string Label,
+    double Score,
+    int Capacity,
+    IReadOnlyList<string> Accepts,
+    IReadOnlyList<string> Reasons,
+    IReadOnlyList<string> AlternativeLayoutIds);
+
+public sealed record DeckLayoutQueryResult(
+    DeckLayoutQueryRequest Query,
+    string CatalogVersion,
+    string CatalogHash,
+    int ResultCount,
+    IReadOnlyList<DeckLayoutQueryHit> Results);
+
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     PropertyNameCaseInsensitive = true,
@@ -163,4 +191,7 @@ public sealed record DeckPreviewElement(
 [JsonSerializable(typeof(DeckValidationResult))]
 [JsonSerializable(typeof(DeckBuildResult))]
 [JsonSerializable(typeof(DeckPreviewScene))]
+[JsonSerializable(typeof(DeckLayoutQueryRequest))]
+[JsonSerializable(typeof(DeckLayoutQueryHit))]
+[JsonSerializable(typeof(DeckLayoutQueryResult))]
 internal partial class DeckJsonContext : JsonSerializerContext;
