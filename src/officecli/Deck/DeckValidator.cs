@@ -72,6 +72,32 @@ public static class DeckValidator
                     slide.Id));
             if (!layoutById.TryGetValue(slide.LayoutId, out var layout))
                 diagnostics.Add(Error("unknown_layout", $"Unknown layout '{slide.LayoutId}'.", $"{slidePath}/layoutId", slide.Id));
+            if (slide.Candidates is { Count: > 0 })
+            {
+                for (var candidateIndex = 0; candidateIndex < slide.Candidates.Count; candidateIndex++)
+                {
+                    var candidateId = slide.Candidates[candidateIndex];
+                    var candidatePath = $"{slidePath}/candidates/{candidateIndex}";
+                    if (string.IsNullOrWhiteSpace(candidateId))
+                    {
+                        diagnostics.Add(Error("invalid_layout_candidate", "candidates entries must be non-empty layout ids.", candidatePath, slide.Id));
+                        continue;
+                    }
+                    if (!layoutById.TryGetValue(candidateId, out var candidateLayout))
+                    {
+                        diagnostics.Add(Error("unknown_layout_candidate", $"Unknown layout candidate '{candidateId}'.", candidatePath, slide.Id,
+                            suggestion: "Use an id from officecli deck catalog / layout-query."));
+                        continue;
+                    }
+                    if (!string.IsNullOrWhiteSpace(slide.Role)
+                        && !string.Equals(candidateLayout.Role, slide.Role, StringComparison.OrdinalIgnoreCase))
+                    {
+                        diagnostics.Add(Warn("layout_candidate_role_mismatch",
+                            $"Candidate '{candidateId}' has role '{candidateLayout.Role}' but slide role is '{slide.Role}'.",
+                            candidatePath, slide.Id));
+                    }
+                }
+            }
             if (slide.Blocks.Count > MaxBlocksPerSlide)
                 diagnostics.Add(Error("block_limit", $"A slide can contain at most {MaxBlocksPerSlide} blocks.", $"{slidePath}/blocks", slide.Id));
             if (layout != null)
@@ -298,4 +324,8 @@ public static class DeckValidator
     private static DeckDiagnostic Error(string code, string message, string? path = null, string? slideId = null,
         string? blockId = null, string? suggestion = null) =>
         new("error", code, message, path, slideId, blockId, suggestion);
+
+    private static DeckDiagnostic Warn(string code, string message, string? path = null, string? slideId = null,
+        string? blockId = null, string? suggestion = null) =>
+        new("warning", code, message, path, slideId, blockId, suggestion);
 }

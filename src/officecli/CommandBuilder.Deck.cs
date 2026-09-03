@@ -22,6 +22,41 @@ static partial class CommandBuilder
         }));
         deck.Add(catalog);
 
+        var layoutQuery = new Command("layout-query", "Rank catalog layouts for a slide by role and content capacity hints");
+        var roleOption = new Option<string?>("--role") { Description = "Semantic role filter (cover, metrics, trend, …)" };
+        var itemCountOption = new Option<int?>("--item-count") { Description = "Approximate module/item/KPI count the slide needs" };
+        itemCountOption.Aliases.Add("--module-count");
+        var hasChartOption = new Option<bool?>("--has-chart") { Description = "Whether the slide needs a chart-capable slot (true/false)" };
+        var needsMediaOption = new Option<bool?>("--needs-media") { Description = "Whether the slide needs an image/media slot (true/false)" };
+        needsMediaOption.Aliases.Add("--has-image");
+        var hasTableOption = new Option<bool?>("--has-table") { Description = "Whether the slide needs a table-capable slot (true/false)" };
+        var queryOption = new Option<string?>("--query") { Description = "Optional free-text hint matched against layout id/label/role" };
+        var limitOption = new Option<int>("--limit") { Description = "Max ranked results (1-50)", DefaultValueFactory = _ => 8 };
+        layoutQuery.Add(roleOption);
+        layoutQuery.Add(itemCountOption);
+        layoutQuery.Add(hasChartOption);
+        layoutQuery.Add(needsMediaOption);
+        layoutQuery.Add(hasTableOption);
+        layoutQuery.Add(queryOption);
+        layoutQuery.Add(limitOption);
+        layoutQuery.Add(rootJsonOption);
+        layoutQuery.SetAction(result => RunDeck(() =>
+        {
+            var request = new DeckLayoutQueryRequest(
+                Role: result.GetValue(roleOption),
+                ItemCount: result.GetValue(itemCountOption),
+                HasChart: result.GetValue(hasChartOption),
+                NeedsMedia: result.GetValue(needsMediaOption),
+                HasTable: result.GetValue(hasTableOption),
+                Query: result.GetValue(queryOption),
+                Limit: result.GetValue(limitOption));
+            var response = DeckLayoutQuery.Query(request);
+            Console.WriteLine(JsonSerializer.Serialize(response, DeckJsonContext.Default.DeckLayoutQueryResult));
+            return 0;
+        }));
+        deck.Add(layoutQuery);
+
+
         var specArg = new Argument<FileInfo>("spec") { Description = "Path to a *.workmate-deck.json file" };
         var validate = new Command("validate", "Validate a WorkMate DeckSpec without changing files");
         validate.Add(specArg);
