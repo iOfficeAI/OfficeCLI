@@ -113,7 +113,57 @@ static partial class CommandBuilder
         }));
         deck.Add(render);
 
+
+        var remapSpecArg = new Argument<FileInfo>("spec") { Description = "Path to a *.workmate-deck.json file" };
+        var toThemeOption = new Option<string>("--to") { Description = "Target catalog theme.id", Required = true };
+        toThemeOption.Aliases.Add("--theme");
+        var applyOption = new Option<bool>("--apply") { Description = "Write theme.id (+ optional report) back to the spec", DefaultValueFactory = _ => false };
+        var writeReportOption = new Option<bool>("--write-report") { Description = "Embed report under extensions.themeRemap when applying", DefaultValueFactory = _ => true };
+        var setModeOption = new Option<bool>("--set-mode") { Description = "Set theme.mode from target token luminance", DefaultValueFactory = _ => true };
+        var remapLimitOption = new Option<int>("--limit") { Description = "Max same-role alternatives per slide (1-20)", DefaultValueFactory = _ => 5 };
+        var outputSpecOption = new Option<FileInfo?>("--output") { Description = "Optional output path when applying (default: in-place)" };
+        outputSpecOption.Aliases.Add("-o");
+        var themeRemap = new Command("theme-remap", "Change theme.id, report layouts that may need remap, suggest same-role alternatives via layout-query");
+        themeRemap.Add(remapSpecArg);
+        themeRemap.Add(toThemeOption);
+        themeRemap.Add(applyOption);
+        themeRemap.Add(writeReportOption);
+        themeRemap.Add(setModeOption);
+        themeRemap.Add(remapLimitOption);
+        themeRemap.Add(outputSpecOption);
+        themeRemap.Add(rootJsonOption);
+        themeRemap.SetAction(result => RunDeck(() =>
+        {
+            var specFile = result.GetValue(remapSpecArg)!;
+            var spec = DeckService.LoadSpec(specFile.FullName);
+            var apply = result.GetValue(applyOption);
+            var output = result.GetValue(outputSpecOption);
+            var remap = DeckThemeRemap.Remap(
+                spec,
+                result.GetValue(toThemeOption)!,
+                new DeckThemeRemapOptions(
+                    Apply: apply,
+                    WriteReport: result.GetValue(writeReportOption),
+                    SetMode: result.GetValue(setModeOption),
+                    Limit: result.GetValue(remapLimitOption),
+                    SpecPath: specFile.FullName));
+            if (apply)
+            {
+                var targetPath = output?.FullName ?? specFile.FullName;
+                DeckThemeRemap.SaveSpec(remap.Spec!, targetPath);
+                remap = remap with { SpecPath = targetPath, Spec = null };
+            }
+            else
+            {
+                remap = remap with { Spec = null };
+            }
+            Console.WriteLine(JsonSerializer.Serialize(remap, DeckJsonContext.Default.DeckThemeRemapResult));
+            return 0;
+        }));
+        deck.Add(themeRemap);
+
         return deck;
+
     }
 
     private static int RunDeck(Func<int> action) => SafeRun(() =>

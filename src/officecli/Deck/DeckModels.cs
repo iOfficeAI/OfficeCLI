@@ -194,4 +194,7 @@ public sealed record DeckLayoutQueryResult(
 [JsonSerializable(typeof(DeckLayoutQueryRequest))]
 [JsonSerializable(typeof(DeckLayoutQueryHit))]
 [JsonSerializable(typeof(DeckLayoutQueryResult))]
+[JsonSerializable(typeof(DeckThemeRemapReport))]
+[JsonSerializable(typeof(DeckThemeRemapResult))]
+[JsonSerializable(typeof(DeckThemeRemapSlide))]
 internal partial class DeckJsonContext : JsonSerializerContext;

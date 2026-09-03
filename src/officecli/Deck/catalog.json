@@ -1,6 +1,30 @@
 {
-  "version": "1.5.0",
+  "version": "1.5.1",
   "themes": [
+    {
+      "id": "csbu-workmate",
+      "label": "CSBU WorkMate",
+      "tokens": {
+        "background": "F7F8FA",
+        "surface": "FFFFFF",
+        "text": "1D2129",
+        "mutedText": "454D5F",
+        "accent": "7583B2",
+        "fontFamily": "Aptos"
+      }
+    },
+    {
+      "id": "csbu-workmate-night",
+      "label": "CSBU WorkMate Night",
+      "tokens": {
+        "background": "0E0E0E",
+        "surface": "1A1A1A",
+        "text": "F2F3F5",
+        "mutedText": "CED3DA",
+        "accent": "4D9FFF",
+        "fontFamily": "Aptos"
+      }
+    },
     {
       "id": "business-light",
       "label": "Business Light",
@@ -3347,6 +3371,100 @@
           "label": "Show insight panel",
           "defaultValue": true
         }
+      ]
+    },
+    {
+      "id": "heatmap-table",
+      "role": "comparison",
+      "label": "Heatmap Table",
+      "slots": [
+        {
+          "id": "title",
+          "x": 0.06,
+          "y": 0.05,
+          "width": 0.88,
+          "height": 0.1,
+          "accepts": [
+            "text"
+          ],
+          "required": true
+        },
+        {
+          "id": "legend",
+          "x": 0.06,
+          "y": 0.18,
+          "width": 0.88,
+          "height": 0.08,
+          "accepts": [
+            "text",
+            "list"
+          ],
+          "toggleable": true
+        },
+        {
+          "id": "matrix",
+          "x": 0.06,
+          "y": 0.28,
+          "width": 0.88,
+          "height": 0.58,
+          "accepts": [
+            "table"
+          ],
+          "required": true
+        },
+        {
+          "id": "footer",
+          "x": 0.06,
+          "y": 0.9,
+          "width": 0.88,
+          "height": 0.06,
+          "accepts": [
+            "text"
+          ],
+          "toggleable": true
+        }
+      ],
+      "controls": [
+        {
+          "id": "showLegend",
+          "type": "toggle",
+          "label": "Show legend",
+          "defaultValue": true
+        },
+        {
+          "id": "showFooter",
+          "type": "toggle",
+          "label": "Show footer",
+          "defaultValue": false
+        },
+        {
+          "id": "density",
+          "type": "select",
+          "label": "Density",
+          "defaultValue": "comfortable",
+          "options": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        },
+        {
+          "id": "emphasis",
+          "type": "select",
+          "label": "Emphasis",
+          "defaultValue": "bold",
+          "options": [
+            "subtle",
+            "bold",
+            "hero"
+          ]
+        }
+      ],
+      "alternativeLayoutIds": [
+        "data-table",
+        "risk-heatmap",
+        "risks-heatmap-lite",
+        "comparison-table"
       ]
     },
     {

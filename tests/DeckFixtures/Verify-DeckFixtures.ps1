@@ -53,3 +53,7 @@ Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.workmate-deck.json' | ForEac
 # --- layout-query (P1.5) ---
 & "$PSScriptRoot/Verify-DeckLayoutQuery.ps1"
 if ($LASTEXITCODE -ne 0) { throw 'Verify-DeckLayoutQuery failed.' }
+
+# --- theme-remap (P2 brand themes) ---
+& "$PSScriptRoot/Verify-DeckThemeRemap.ps1"
+if ($LASTEXITCODE -ne 0) { throw 'Verify-DeckThemeRemap failed.' }
