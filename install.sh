@@ -236,7 +236,7 @@ rm -f "/tmp/$BINARY_NAME"
 SKILL_MARKER="$INSTALL_DIR/.officecli-skills-installed"
 if [ ! -f "$SKILL_MARKER" ]; then
     SKILL_TARGETS=""
-    for tool_dir in "$HOME/.claude:Claude Code" "$HOME/.copilot:GitHub Copilot" "$HOME/.agents:Codex CLI" "$HOME/.cursor:Cursor" "$HOME/.windsurf:Windsurf" "$HOME/.minimax:MiniMax CLI" "$HOME/.openclaw:OpenClaw" "$HOME/.nanobot/workspace:NanoBot" "$HOME/.zeroclaw/workspace:ZeroClaw" "$HOME/.hermes:Hermes Agent"; do
+    for tool_dir in "$HOME/.claude:Claude Code" "$HOME/.copilot:GitHub Copilot" "$HOME/.agents:Codex CLI" "$HOME/.cursor:Cursor" "$HOME/.windsurf:Windsurf" "$HOME/.minimax:MiniMax CLI" "$HOME/.openclaw:OpenClaw" "$HOME/.nanobot/workspace:NanoBot" "$HOME/.zeroclaw/workspace:ZeroClaw" "$HOME/.hermes:Hermes Agent" "$HOME/.kilo:KiloCode" "$HOME/.kilocode:KiloCode (legacy)"; do
         dir="${tool_dir%%:*}"
         name="${tool_dir##*:}"
         if [ -d "$dir" ]; then
