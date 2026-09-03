@@ -77,14 +77,47 @@ static partial class CommandBuilder
                     continue;
                 }
             }
+            // Batch dispatches straight to the shared handler methods, bypassing
+            // the standalone add/set wrappers that normally drain warnings into
+            // their output envelope. Capture a fresh warning scope per item so
+            // diagnostics retain the step that produced them.
+            OfficeCli.Core.WarningContext.Begin();
             try
             {
                 var output = ExecuteBatchItem(handler, item, json);
-                results.Add(new BatchResult { Index = bi, Success = true, Output = output });
+                var warnings = OfficeCli.Core.WarningContext.End();
+                if (handler is OfficeCli.Handlers.WordHandler word)
+                {
+                    // Word advisories live on the handler rather than in
+                    // WarningContext; standalone add/set merge these explicitly.
+                    var advisory = string.Equals(item.Command, "add", StringComparison.OrdinalIgnoreCase)
+                        ? word.LastAddWarnings
+                        : string.Equals(item.Command, "set", StringComparison.OrdinalIgnoreCase)
+                            ? word.LastSetWarnings
+                            : null;
+                    if (advisory is { Count: > 0 })
+                    {
+                        warnings ??= new List<OfficeCli.Core.CliWarning>();
+                        warnings.AddRange(advisory.Select(message => new OfficeCli.Core.CliWarning
+                        {
+                            Message = message,
+                            Code = "advisory",
+                        }));
+                    }
+                }
+                results.Add(new BatchResult { Index = bi, Success = true, Output = output, Warnings = warnings });
             }
             catch (Exception ex)
             {
-                results.Add(new BatchResult { Index = bi, Success = false, Item = item, Error = ex.Message, Code = OfficeCli.Core.OutputFormatter.InferErrorCode(ex) });
+                results.Add(new BatchResult
+                {
+                    Index = bi,
+                    Success = false,
+                    Item = item,
+                    Error = ex.Message,
+                    Code = OfficeCli.Core.OutputFormatter.InferErrorCode(ex),
+                    Warnings = OfficeCli.Core.WarningContext.End(),
+                });
                 if (stopOnError) break;
             }
             // BUG-BT2: per-item unrecognized-LaTeX diagnostics. The handler

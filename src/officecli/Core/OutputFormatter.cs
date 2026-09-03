@@ -74,7 +74,7 @@ internal class CliWarning
 }
 
 /// <summary>
-/// Thread-static context for capturing warnings during command execution in JSON mode.
+/// Thread-static context for capturing warnings during command execution.
 /// </summary>
 internal static class WarningContext
 {
