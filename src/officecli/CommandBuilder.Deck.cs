@@ -211,6 +211,36 @@ static partial class CommandBuilder
         deck.Add(scaffold);
 
 
+        var exportPdfSpecArg = new Argument<FileInfo>("spec") { Description = "Path to a *.workmate-deck.json file" };
+        var pdfOutputOption = new Option<FileInfo?>("--output") { Description = "Output .pdf path (default: sibling of spec with .pdf extension)" };
+        pdfOutputOption.Aliases.Add("-o");
+        var exportExpectedRevisionOption = new Option<long?>("--expected-revision") { Description = "Reject stale DeckSpec builds" };
+        var pptxKeepOption = new Option<FileInfo?>("--pptx") { Description = "Also write/keep the intermediate PPTX at this path (default: temp, deleted after export)" };
+        var exportPdf = new Command("export-pdf", "Build DeckSpec → PPTX then export PDF via exporter plugin (same as `view <pptx> pdf`; not HTML/Chrome)");
+        exportPdf.Add(exportPdfSpecArg);
+        exportPdf.Add(pdfOutputOption);
+        exportPdf.Add(exportExpectedRevisionOption);
+        exportPdf.Add(pptxKeepOption);
+        exportPdf.Add(rootJsonOption);
+        exportPdf.SetAction(result => RunDeck(() =>
+        {
+            var specFile = result.GetValue(exportPdfSpecArg)!;
+            var spec = DeckService.LoadSpec(specFile.FullName);
+            var pdfOut = result.GetValue(pdfOutputOption);
+            var pdfPath = pdfOut?.FullName ?? DeckService.DefaultPdfPath(specFile.FullName);
+            var pptxKeep = result.GetValue(pptxKeepOption);
+            var exported = DeckService.ExportPdf(
+                spec,
+                specFile.FullName,
+                pdfPath,
+                result.GetValue(exportExpectedRevisionOption),
+                pptxKeep?.FullName);
+            Console.WriteLine(JsonSerializer.Serialize(exported, DeckJsonContext.Default.DeckExportPdfResult));
+            return 0;
+        }));
+        deck.Add(exportPdf);
+
+
         return deck;
 
     }

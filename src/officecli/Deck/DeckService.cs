@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Text.Json;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Validation;
+using OfficeCli.Core.Plugins;
 using OfficeCli.Handlers;
 
 namespace OfficeCli.Deck;
@@ -129,6 +130,73 @@ public static class DeckService
             try { if (File.Exists(temp)) File.Delete(temp); } catch { }
             throw;
         }
+    }
+
+
+    /// <summary>
+    /// Compile DeckSpec → PPTX via <see cref="Build"/>, then convert to PDF via
+    /// <see cref="ExporterInvoker"/> (same path as <c>officecli view &lt;pptx&gt; pdf</c>).
+    /// Does not use HTML/Chrome/Dashi export.
+    /// </summary>
+    /// <param name="pptxOutputPath">
+    /// When set, keep the intermediate PPTX at this path. When null, build to a
+    /// temp file and delete it after the exporter finishes (success or failure).
+    /// </param>
+    public static DeckExportPdfResult ExportPdf(
+        DeckSpec spec,
+        string specPath,
+        string pdfOutputPath,
+        long? expectedRevision = null,
+        string? pptxOutputPath = null)
+    {
+        var pdfTarget = Path.GetFullPath(pdfOutputPath);
+        var pdfDir = Path.GetDirectoryName(pdfTarget);
+        if (!string.IsNullOrEmpty(pdfDir))
+            Directory.CreateDirectory(pdfDir);
+
+        var keepPptx = !string.IsNullOrWhiteSpace(pptxOutputPath);
+        var pptxTarget = keepPptx
+            ? Path.GetFullPath(pptxOutputPath!)
+            : Path.Combine(Path.GetTempPath(), $"officecli-deck-export-{Guid.NewGuid():N}.pptx");
+
+        try
+        {
+            Build(spec, specPath, pptxTarget, expectedRevision);
+            var export = ExporterInvoker.Run(pptxTarget, ".pdf", pdfTarget);
+            return new DeckExportPdfResult(
+                Success: true,
+                Output: pdfTarget,
+                Revision: spec.Revision,
+                Pptx: keepPptx ? pptxTarget : null,
+                Plugin: export.Plugin.Manifest.Name);
+        }
+        finally
+        {
+            if (!keepPptx)
+            {
+                try { if (File.Exists(pptxTarget)) File.Delete(pptxTarget); } catch { /* best-effort */ }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Default PDF path for <c>deck export-pdf</c>: sibling of the spec with
+    /// <c>.workmate-deck.json</c> (or any extension) replaced by <c>.pdf</c>.
+    /// </summary>
+    public static string DefaultPdfPath(string specPath)
+    {
+        var full = Path.GetFullPath(specPath);
+        var dir = Path.GetDirectoryName(full) ?? Directory.GetCurrentDirectory();
+        var name = Path.GetFileName(full);
+        const string deckSuffix = ".workmate-deck.json";
+        string stem;
+        if (name.EndsWith(deckSuffix, StringComparison.OrdinalIgnoreCase))
+            stem = name[..^deckSuffix.Length];
+        else
+            stem = Path.GetFileNameWithoutExtension(name);
+        if (string.IsNullOrEmpty(stem))
+            stem = "deck";
+        return Path.Combine(dir, stem + ".pdf");
     }
 
     private static void EnsureExpectedRevision(long actualRevision, long? expectedRevision)
