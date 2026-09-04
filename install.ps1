@@ -7,6 +7,27 @@ $arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { 
 $asset = if ($arch -eq "ARM64") { "officecli-win-arm64.exe" } else { "officecli-win-x64.exe" }
 $binary = "officecli.exe"
 
+# Expand TEMP when Windows hands it to us in 8.3 short form. Profiles whose
+# name contains a space (e.g. "C:\Users\Win 1") surface as C:\Users\WIN1~1\...,
+# and the filesystem provider cannot resolve that "~" segment -- so every
+# Remove-Item cleanup below fails with "An object at the specified path
+# C:\Users\WIN1~1 does not exist" and leaks the binary + SHA256SUMS into TEMP.
+# -LiteralPath does NOT help; the short path itself has to be expanded. No-op
+# when TEMP is already long.
+if ($env:TEMP -match '~') {
+    try {
+        Add-Type -MemberDefinition @"
+[DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+public static extern uint GetLongPathName(string lpszShortPath, System.Text.StringBuilder lpszLongPath, uint cchBuffer);
+"@ -Name PathHelper -Namespace OfficeCli -ErrorAction Stop
+        $sb = New-Object System.Text.StringBuilder 32767
+        if ([OfficeCli.PathHelper]::GetLongPathName($env:TEMP, $sb, 32767) -gt 0) {
+            $env:TEMP = $sb.ToString()
+            $env:TMP = $env:TEMP
+        }
+    } catch { }
+}
+
 # Mirror primary, github fallback. The mirror is exercised first so issues
 # surface there fast; github is the safety net when CF or the mirror is
 # unreachable.
@@ -17,13 +38,13 @@ $githubRawBase = "https://raw.githubusercontent.com/$repo/main"
 function Fetch-WithFallback {
     param([string]$Primary, [string]$Fallback, [string]$OutFile)
     try {
-        Invoke-WebRequest -Uri $Primary -OutFile $OutFile -TimeoutSec 30 -ErrorAction Stop
+        Invoke-WebRequest -Uri $Primary -OutFile $OutFile -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
         Write-Host "  (via mirror)"
         return $true
     } catch {
         Write-Host "  mirror unreachable, falling back to github..."
         try {
-            Invoke-WebRequest -Uri $Fallback -OutFile $OutFile -TimeoutSec 300 -ErrorAction Stop
+            Invoke-WebRequest -Uri $Fallback -OutFile $OutFile -UseBasicParsing -TimeoutSec 300 -ErrorAction Stop
             return $true
         } catch {
             return $false
@@ -40,7 +61,14 @@ function Fetch-WithFallback {
 function Resolve-Version {
     foreach ($base in @("$mirrorBase/releases/latest", "https://github.com/$repo/releases/latest")) {
         try {
-            $resp = Invoke-WebRequest -Uri $base -MaximumRedirection 5 -TimeoutSec 30 -ErrorAction Stop
+            # -UseBasicParsing is required, not cosmetic: without it PS 5.1 hands
+            # the response to the IE engine for DOM parsing, which needs IE
+            # first-run setup and can prompt. That throws here, Resolve-Version
+            # returns $null, and the download silently degrades to the mutable
+            # /releases/latest/download/ path this function exists to avoid --
+            # the exact stale-binary-with-matching-stale-checksum case described
+            # above. The -OutFile calls dodge it because -OutFile skips parsing.
+            $resp = Invoke-WebRequest -Uri $base -UseBasicParsing -MaximumRedirection 5 -TimeoutSec 30 -ErrorAction Stop
             $finalUrl = $resp.BaseResponse.ResponseUri.AbsoluteUri
             if ($finalUrl -match '/releases/tag/(v[0-9]+\.[0-9]+\.[0-9]+)') {
                 return $matches[1]
