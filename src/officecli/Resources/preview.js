@@ -24,6 +24,7 @@
         // and multi-slide views only ever shrink to fit.
         const fill = headless && slides.length === 1;
         slides.forEach(slide => {
+            const notes = slide.closest('.slide-container')?.querySelector('.slide-notes');
             const designW = slide.offsetWidth;
             if (availW > 0 && (fill || designW > availW)) {
                 const s = availW / designW;
@@ -32,10 +33,12 @@
                 const designH = slide.offsetHeight;
                 slide.parentElement.style.height = (designH * s) + 'px';
                 slide.parentElement.style.width = (designW * s) + 'px';
+                if (notes) notes.style.width = (designW * s) + 'px';
             } else {
                 slide.style.transform = '';
                 slide.parentElement.style.height = '';
                 slide.parentElement.style.width = '';
+                if (notes) notes.style.width = '';
             }
         });
     }
