@@ -1,5 +1,5 @@
 {
-  "version": "1.5.2",
+  "version": "1.5.3",
   "themes": [
     {
       "id": "csbu-workmate",
@@ -23,6 +23,54 @@
         "mutedText": "CED3DA",
         "accent": "4D9FFF",
         "fontFamily": "Aptos"
+      }
+    },
+    {
+      "id": "industry-finance",
+      "label": "Industry Finance",
+      "tokens": {
+        "background": "F4F7F5",
+        "surface": "FFFFFF",
+        "text": "0A1F14",
+        "mutedText": "5C6B62",
+        "accent": "0B6E4F",
+        "fontFamily": "Georgia"
+      }
+    },
+    {
+      "id": "industry-consulting",
+      "label": "Industry Consulting",
+      "tokens": {
+        "background": "F6F5F3",
+        "surface": "FFFCF9",
+        "text": "1C1917",
+        "mutedText": "78716C",
+        "accent": "C2410C",
+        "fontFamily": "Aptos"
+      }
+    },
+    {
+      "id": "industry-tech",
+      "label": "Industry Tech",
+      "tokens": {
+        "background": "070B14",
+        "surface": "121826",
+        "text": "E8EEF9",
+        "mutedText": "8B9BB4",
+        "accent": "6366F1",
+        "fontFamily": "Aptos"
+      }
+    },
+    {
+      "id": "industry-education",
+      "label": "Industry Education",
+      "tokens": {
+        "background": "F0F7FF",
+        "surface": "FFFFFF",
+        "text": "0C2D48",
+        "mutedText": "4A6FA5",
+        "accent": "0284C7",
+        "fontFamily": "Georgia"
       }
     },
     {

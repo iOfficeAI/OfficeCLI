@@ -5,7 +5,7 @@ $project = Join-Path $PSScriptRoot '..\..\src\officecli\officecli.csproj'
 $catalogJson = & dotnet run --project $project -c Release --no-build -- deck catalog --json
 if ($LASTEXITCODE -ne 0) { throw "catalog failed`n$catalogJson" }
 $catalog = $catalogJson | ConvertFrom-Json
-if ($catalog.version -ne '1.5.2') { throw "Expected catalog 1.5.2; got $($catalog.version)" }
+if ($catalog.version -ne '1.5.3') { throw "Expected catalog 1.5.3; got $($catalog.version)" }
 $controlIds = @{}
 foreach ($layout in @($catalog.layouts)) {
     foreach ($ctl in @($layout.controls)) { if ($ctl.id) { $controlIds[$ctl.id] = $true } }
