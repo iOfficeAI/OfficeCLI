@@ -129,6 +129,14 @@ public sealed record DeckValidationResult(bool Valid, IReadOnlyList<DeckDiagnost
 
 public sealed record DeckBuildResult(bool Success, string Output, long Revision);
 
+/// <summary>Result of <c>deck export-pdf</c>: PPTX build then exporter-plugin PDF conversion.</summary>
+public sealed record DeckExportPdfResult(
+    bool Success,
+    string Output,
+    long Revision,
+    string? Pptx = null,
+    string? Plugin = null);
+
 public sealed record DeckPreviewScene(
     long Revision,
     string ThemeId,
@@ -190,6 +198,7 @@ public sealed record DeckLayoutQueryResult(
 [JsonSerializable(typeof(DeckCatalog))]
 [JsonSerializable(typeof(DeckValidationResult))]
 [JsonSerializable(typeof(DeckBuildResult))]
+[JsonSerializable(typeof(DeckExportPdfResult))]
 [JsonSerializable(typeof(DeckPreviewScene))]
 [JsonSerializable(typeof(DeckLayoutQueryRequest))]
 [JsonSerializable(typeof(DeckLayoutQueryHit))]

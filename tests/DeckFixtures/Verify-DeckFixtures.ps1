@@ -62,3 +62,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Verify-DeckThemeRemap failed.' }
 & "$PSScriptRoot/Verify-DeckScaffold.ps1"
 if ($LASTEXITCODE -ne 0) { throw 'Verify-DeckScaffold failed.' }
 
+
+# --- deck export-pdf (P3 thin wrap → ExporterInvoker) ---
+& "$PSScriptRoot/Verify-DeckExportPdf.ps1"
+if ($LASTEXITCODE -ne 0) { throw 'Verify-DeckExportPdf failed.' }
