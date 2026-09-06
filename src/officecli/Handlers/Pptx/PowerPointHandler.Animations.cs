@@ -967,12 +967,15 @@ public partial class PowerPointHandler
         {
             // Auto: first animation on slide → click, subsequent → after previous (sequential)
             // Exception: morph slides default to after (morph already shows shapes, click would be invisible)
+            // FIX: entrance defaults to AfterPrevious to match PowerPoint UI auto-play; clickEffect
+            // + outerDelay="indefinite" wrapper blocks SlideShow mouse-wheel-up navigation.
             var hasExistingAnimations = slide.GetFirstChild<Timing>()
                 ?.Descendants<CommonTimeNode>()
                 .Any(ctn => ctn.PresetId != null) ?? false;
             var hasMorphTransition = slide.ChildElements.Any(c =>
                 c.LocalName == "AlternateContent" && c.InnerXml.Contains("morph"));
-            trigger = (hasExistingAnimations || hasMorphTransition)
+            var isEntrance = presetClass == TimeNodePresetClassValues.Entrance;
+            trigger = (hasExistingAnimations || hasMorphTransition || isEntrance)
                 ? AnimTrigger.AfterPrevious : AnimTrigger.OnClick;
         }
         var nodeType = trigger switch

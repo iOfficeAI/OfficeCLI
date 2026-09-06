@@ -1762,7 +1762,11 @@ public partial class PowerPointHandler
                 // animValue parser would silently default these to 400 with a
                 // stderr-only warning.
                 ValidateAnimationDuration(duration);
-                var trigger = properties.GetValueOrDefault("trigger", "onclick");
+                // FIX: entrance defaults to afterprevious (auto-play) to match PowerPoint UI;
+                // "onclick" produced clickEffect + outerDelay="indefinite" which blocks
+                // SlideShow mouse-wheel-up navigation. Exit/emphasis keep onclick default.
+                var defaultTrigger = (cls == "entrance" || cls == "in") ? "afterprevious" : "onclick";
+                var trigger = properties.GetValueOrDefault("trigger", defaultTrigger);
 
                 // Validate delay symmetrically with duration. The composite
                 // animValue split('-') silently drops the minus sign on a
