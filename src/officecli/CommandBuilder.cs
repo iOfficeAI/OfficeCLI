@@ -1366,7 +1366,7 @@ static partial class CommandBuilder
         return true;
     }
 
-    internal static void PrintBatchResults(List<BatchResult> results, bool json, int totalCount = 0, TextWriter? output = null, bool atomicRolledBack = false)
+    internal static void PrintBatchResults(List<BatchResult> results, bool json, int totalCount = 0, TextWriter? output = null, bool atomicRolledBack = false, bool bestEffort = false)
     {
         var @out = output ?? Console.Out;
         if (totalCount == 0) totalCount = results.Count;
@@ -1383,6 +1383,7 @@ static partial class CommandBuilder
                 writer.WriteStartObject();
                 writer.WritePropertyName("results");
                 System.Text.Json.JsonSerializer.Serialize(writer, results, BatchJsonContext.Default.ListBatchResult);
+                WriteBatchFailures(writer, results);
                 writer.WriteStartObject("summary");
                 writer.WriteNumber("total", totalCount);
                 writer.WriteNumber("executed", results.Count);
@@ -1393,6 +1394,11 @@ static partial class CommandBuilder
                 // discarded the batch — parsers keying on the existing
                 // summary fields are unaffected.
                 if (atomicRolledBack) writer.WriteBoolean("atomicRolledBack", true);
+                // Additive: how many successes survive on disk under
+                // --best-effort / --stop-on-error (items the caller can keep
+                // and resume from). Absent in default atomic mode, where a
+                // rollback means nothing was retained.
+                if (bestEffort) writer.WriteNumber("partialRetained", succeeded);
                 writer.WriteEndObject();
                 writer.WriteEndObject();
             }
@@ -1440,6 +1446,7 @@ static partial class CommandBuilder
                         slimWriter.WriteEndObject();
                     }
                     slimWriter.WriteEndArray();
+                    WriteBatchFailures(slimWriter, results);
                     slimWriter.WriteStartObject("summary");
                     slimWriter.WriteNumber("total", totalCount);
                     slimWriter.WriteNumber("executed", results.Count);
@@ -1447,6 +1454,7 @@ static partial class CommandBuilder
                     slimWriter.WriteNumber("failed", failed);
                     slimWriter.WriteNumber("skipped", skipped);
                     if (atomicRolledBack) slimWriter.WriteBoolean("atomicRolledBack", true);
+                    if (bestEffort) slimWriter.WriteNumber("partialRetained", succeeded);
                     slimWriter.WriteEndObject();
                     slimWriter.WriteEndObject();
                 }
@@ -1481,7 +1489,45 @@ static partial class CommandBuilder
             // is a machine-consumed contract — extend by SUFFIX only.
             var atomicNote = atomicRolledBack ? " (atomic: no changes were applied)" : "";
             @out.WriteLine($"\nBatch complete: {succeeded} succeeded, {failed} failed, {results.Count} total{atomicNote}");
+            if (failed > 0)
+            {
+                // Machine-greppable single-line digest; --json failures[] is
+                // the structured form of the same projection.
+                var digest = string.Join("; ", results.Where(r => !r.Success).Take(10)
+                    .Select(r =>
+                    {
+                        var path = r.Item?.Path ?? r.Item?.Parent;
+                        return $"index {r.Index}: {r.Code ?? "error"}{(path != null ? $" at {path}" : "")}";
+                    }));
+                if (failed > 10) digest += $"; … ({failed - 10} more — use --json failures[])";
+                @out.WriteLine($"Failures: {failed} ({digest})");
+            }
         }
+    }
+
+    /// <summary>
+    /// Project failed items into a compact failures[] block — additive
+    /// envelope field, written only when something failed, so consumers read
+    /// one array instead of filtering results[] by success.
+    /// </summary>
+    private static void WriteBatchFailures(System.Text.Json.Utf8JsonWriter writer, List<BatchResult> results)
+    {
+        if (!results.Any(r => !r.Success)) return;
+        writer.WritePropertyName("failures");
+        writer.WriteStartArray();
+        foreach (var r in results)
+        {
+            if (r.Success) continue;
+            writer.WriteStartObject();
+            writer.WriteNumber("index", r.Index);
+            if (r.Code != null) writer.WriteString("code", r.Code);
+            if (r.Error != null) writer.WriteString("error", r.Error);
+            var path = r.Item?.Path ?? r.Item?.Parent;
+            if (path != null) writer.WriteString("path", path);
+            if (r.Suggestion != null) writer.WriteString("suggestion", r.Suggestion);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
     }
 
     private static string FormatValidationErrors(List<ValidationError> errors)
