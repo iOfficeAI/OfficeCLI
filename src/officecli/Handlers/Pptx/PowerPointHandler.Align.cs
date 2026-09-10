@@ -4,6 +4,7 @@
 using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Presentation;
+using OfficeCli.Core;
 using Drawing = DocumentFormat.OpenXml.Drawing;
 
 namespace OfficeCli.Handlers;
@@ -212,4 +213,47 @@ public partial class PowerPointHandler
 
     private static Drawing.Transform2D? GetTransform2D(Shape shape) =>
         shape.ShapeProperties?.Transform2D;
+
+    /// <summary>
+    /// First-class geometric layout entry for the `layout` verb (CLI / batch /
+    /// MCP / resident share this core): align and/or distribute the shapes on
+    /// one slide in a single call. Thin wrapper over AlignShapes /
+    /// DistributeShapes — the same engine the slide-level `set --prop
+    /// align=/distribute=` path uses — with slide-path validation and a
+    /// caller-readable summary. Throws ArgumentException on a non-slide path,
+    /// missing operation, or invalid value (valid lists in the engine errors).
+    /// </summary>
+    public string LayoutSlide(string slidePath, string? align, string? distribute, string? targets)
+    {
+        var m = Regex.Match(slidePath, @"^/slide\[(\d+)\]$");
+        if (!m.Success)
+            throw new ArgumentException(
+                $"'layout' path must be a slide path (/slide[N]). Got: '{slidePath}'. " +
+                "Example: layout deck.pptx /slide[2] --align bottom");
+        var idx = int.Parse(m.Groups[1].Value);
+        var parts = GetSlideParts().ToList();
+        if (idx < 1 || idx > parts.Count)
+            throw new ArgumentException($"Slide {idx} not found (total: {parts.Count})");
+        if (string.IsNullOrWhiteSpace(align) && string.IsNullOrWhiteSpace(distribute))
+            throw new ArgumentException(
+                "'layout' requires --align and/or --distribute. " +
+                "Example: layout deck.pptx /slide[2] --align bottom --distribute horizontal");
+        var slidePart = parts[PathIndex.ToArrayIndex(idx)];
+        var msgs = new List<string>();
+        if (!string.IsNullOrWhiteSpace(align))
+        {
+            var n = ResolveAlignTargets(slidePart, targets).Count;
+            AlignShapes(slidePart, align, targets);
+            msgs.Add($"aligned {n} shape(s) {align}");
+        }
+        if (!string.IsNullOrWhiteSpace(distribute))
+        {
+            var n = ResolveAlignTargets(slidePart, targets).Count;
+            DistributeShapes(slidePart, distribute, targets);
+            msgs.Add(n >= 3
+                ? $"distributed {n} shape(s) {distribute}"
+                : "distribute skipped: need at least 3 shapes with geometry");
+        }
+        return string.Join("; ", msgs) + $" on /slide[{idx}]";
+    }
 }

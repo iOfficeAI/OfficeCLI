@@ -1128,6 +1128,11 @@ public class ResidentServer : IDisposable
                 ExecuteMove(request);
                 NotifyWatchSlideChanged(request.GetArg("path"));
                 break;
+            case "layout":
+                PromoteToEditable();
+                ExecuteLayout(request);
+                NotifyWatchSlideChanged(request.GetArg("path"));
+                break;
             case "swap":
                 PromoteToEditable();
                 ExecuteSwap(request);
@@ -2407,6 +2412,19 @@ public class ResidentServer : IDisposable
         var props = req.GetProps();
         var resultPath = _handler.Move(path, to, BuildInsertPosition(req), props.Count > 0 ? props : null);
         Console.WriteLine($"Moved to {resultPath}");
+    }
+
+    private void ExecuteLayout(ResidentRequest req)
+    {
+        var path = req.GetArg("path", "/");
+        if (_handler is not OfficeCli.Handlers.PowerPointHandler pptHandler)
+            throw new InvalidOperationException("'layout' is only supported for .pptx files.");
+        var message = pptHandler.LayoutSlide(
+            path,
+            req.GetArgOrNull("align"),
+            req.GetArgOrNull("distribute"),
+            req.GetArgOrNull("targets"));
+        Console.WriteLine(message);
     }
 
     private void ExecuteRefresh(ResidentRequest req)
