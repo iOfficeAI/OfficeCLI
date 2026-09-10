@@ -897,19 +897,29 @@ public partial class PowerPointHandler
         if (value.StartsWith("linear;", StringComparison.OrdinalIgnoreCase))
             value = value[7..].Replace(';', '-');
 
+        // BUG-P2 (silent single-stop degradation): the documented multi-stop
+        // form uses dashes ("FF0000@0-0000FF@100"), but a very common
+        // CSS-like spelling spells the stops with commas instead
+        // ("FF0000@0,0000FF@100"). The code below only splits on '-', so a
+        // comma-spelling collapsed to ONE segment → duplicated into a solid
+        // single colour with no error or warning — exactly the "accepted but
+        // renders as something else" class of footgun. Normalize commas to
+        // dashes up front (colours/angles contain no commas) so both spellings
+        // produce the intended multi-stop gradient.
+        var colorSpec = value.Replace(',', '-');
+
         // Check for radial/path prefix
         string? gradientType = null;
-        string colorSpec = value;
 
         if (value.StartsWith("radial:", StringComparison.OrdinalIgnoreCase))
         {
             gradientType = "radial";
-            colorSpec = value[7..];
+            colorSpec = value[7..].Replace(',', '-');
         }
         else if (value.StartsWith("path:", StringComparison.OrdinalIgnoreCase))
         {
             gradientType = "path";
-            colorSpec = value[5..];
+            colorSpec = value[5..].Replace(',', '-');
         }
 
         var parts = colorSpec.Split('-');
