@@ -279,7 +279,24 @@ public partial class ExcelHandler
             var xmlSegments = GenericXmlQuery.ParsePathSegments(cellRef);
             var target = GenericXmlQuery.NavigateByPath(GetSheet(worksheet), xmlSegments);
             if (target == null)
+            {
+                // Common selector misspellings: "column A" / "col/A" /
+                // "row 5" / "row/5" are the space and slash forms of the
+                // bracket selectors col[A] / row[5] — point at the exact
+                // form instead of a bare not_found (Issue #351 family).
+                var selMatch = Regex.Match(cellRef,
+                    @"^(?:column|col)[\s/]+([A-Za-z]{1,3})$|^(?:row)[\s/]+(\d{1,7})$",
+                    RegexOptions.IgnoreCase);
+                if (selMatch.Success)
+                {
+                    var hint = selMatch.Groups[1].Success
+                        ? $"col[{selMatch.Groups[1].Value.ToUpperInvariant()}]"
+                        : $"row[{selMatch.Groups[2].Value}]";
+                    throw new ArgumentException(
+                        $"Element not found: {cellRef}. Did you mean '{hint}'? Columns and rows use the bracket form (col[A], row[1]) on the target sheet.");
+                }
                 throw new ArgumentException($"Element not found: {cellRef}");
+            }
             var unsup = new List<string>();
             foreach (var (key, value) in properties)
             {
