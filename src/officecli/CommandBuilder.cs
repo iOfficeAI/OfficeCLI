@@ -779,6 +779,20 @@ static partial class CommandBuilder
             var rawKey = u.Contains(' ') ? u[..u.IndexOf(' ')] : u;
             if (props.TryGetValue(rawKey, out var val))
             {
+                // Separator normalization first (border_all → border.all,
+                // font-color → font.color): an exact normalized match is
+                // distance-0 semantics and beats a fuzzy distance-1 guess.
+                // Rides the same auto-correct channel as the distance-1
+                // fix below — the handler's own prop whitelist validates
+                // the normalized key, so a normalized miss just falls
+                // through to the unsupported path.
+                var normalized = NormalizePropertyKey(rawKey);
+                if (!string.Equals(normalized, rawKey, StringComparison.Ordinal)
+                    && handler.Set(path, new Dictionary<string, string> { [normalized] = val }).Count == 0)
+                {
+                    autoCorrected.Add((rawKey, normalized, val));
+                    continue;
+                }
                 var (suggestion, dist, isUnique) = SuggestPropertyWithDistance(rawKey, scope);
                 if (suggestion != null && dist == 1 && isUnique
                     && handler.Set(path, new Dictionary<string, string> { [suggestion] = val }).Count == 0)
@@ -1744,6 +1758,15 @@ static partial class CommandBuilder
         var (best, _, _) = SuggestPropertyWithDistance(input);
         return best;
     }
+
+    /// <summary>
+    /// snake_case / kebab-case → dotted form (border_all → border.all,
+    /// font-color → font.color). Only separators between word characters
+    /// become dots — a trailing "border_" typo stays "border_" so the
+    /// fuzzy suggester still sees the original shape.
+    /// </summary>
+    internal static string NormalizePropertyKey(string key) =>
+        System.Text.RegularExpressions.Regex.Replace(key.Trim(), @"(?<=[A-Za-z0-9])[_-](?=[A-Za-z0-9])", ".");
 
     /// <summary>
     /// Scoped variant: filters the suggestion pool against a target document
