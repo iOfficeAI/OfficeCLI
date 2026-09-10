@@ -56,6 +56,21 @@ public static class IssueSubtypes
     /// skipped to keep false positives near zero. Format bucket, Warning.</summary>
     public const string LowContrast = "low_contrast";
 
+    /// <summary>pptx-only: text fill (textFill/textgradient) uses an advanced
+    /// feature (path gradient, multiple stops, blip/image fill) that the HTML/
+    /// SVG preview cannot render accurately — the preview will show a solid
+    /// single color as an approximation. The OOXML document itself carries the
+    /// full gradient/image fill so PowerPoint will render it correctly; the
+    /// warning only flags that the CLI preview will not match what PowerPoint
+    /// shows. Format bucket, Warning.</summary>
+    public const string TextFillRendererApproximated = "text_fill_renderer_approximated";
+
+    /// <summary>pptx-only: text warp (textWarp) is only marked by a class in the
+    /// HTML preview; the preview cannot warp individual glyphs like PowerPoint
+    /// does, so the visual approximation will not match what PowerPoint shows.
+    /// Format bucket, Info.</summary>
+    public const string TextWarpRendererApproximated = "text_warp_renderer_approximated";
+
     /// <summary>Broad IssueType bucket names — the canonical surface shown
     /// in error messages and help. Single-letter aliases (<see cref="BucketAliases"/>)
     /// are accepted by Validate but kept out of the user-facing list so the
@@ -79,6 +94,7 @@ public static class IssueSubtypes
         FormulaNotEvaluated, FormulaCacheStale, FormulaRefMissingSheet, FormulaEvalError,
         FieldNotEvaluated, FieldCacheStale,
         SlideFieldNotEvaluated, NotesUnresolvedRid, LowContrast,
+        TextFillRendererApproximated, TextWarpRendererApproximated,
         ChartSeriesRefMissingSheet, ChartCacheStale,
         DefinedNameBroken, DefinedNameTargetMissing,
         BrokenPartRef, NumericOverflow, GeneralPrecisionLoss,
