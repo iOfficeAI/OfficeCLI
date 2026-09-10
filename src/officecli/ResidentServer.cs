@@ -1365,7 +1365,7 @@ public class ResidentServer : IDisposable
         // envelope.success / exit code in lockstep with the non-resident
         // path.
         _lastBatchHadFailure = anyFailed;
-        CommandBuilder.PrintBatchResults(results, json, items.Count, atomicRolledBack: rolledBack);
+        CommandBuilder.PrintBatchResults(results, json, items.Count, atomicRolledBack: rolledBack, bestEffort: bestEffort);
         // BUG-BT2: emit the collected unrecognized-LaTeX markers so the
         // dispatcher maps them to exit 2 and the envelope warning code, exactly
         // as the single-shot resident add/set path (EmitUnrecognizedLatex) does.
