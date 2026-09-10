@@ -256,7 +256,7 @@ OfficeCLI is self-contained. The capabilities below ship inside the binary — *
 
 #### Rendering engine — high-fidelity, built-in
 
-OfficeCLI's keystone: a from-scratch, high-fidelity HTML rendering engine that lets an AI agent *see* the rendered document instead of guessing from the DOM. It covers shapes, charts (trendlines, error bars, waterfall, candlestick, sparklines), equations (OMML → LaTeX, rendered with KaTeX), 3D `.glb` models via Three.js, morph transitions, slide zoom, and shape effects. Per-page PNG screenshots are produced by piping the rendered HTML through a headless browser. Three modes:
+OfficeCLI's keystone: a from-scratch, high-fidelity HTML rendering engine that lets an AI agent *see* the rendered document instead of guessing from the DOM. It covers shapes, charts (trendlines, error bars, waterfall, candlestick, sparklines), equations (OMML → LaTeX, rendered with KaTeX), 3D `.glb` models via Three.js, morph transitions, slide zoom, and shape effects. Per-page PNG screenshots are produced by piping the rendered HTML through a headless browser. `diagram --prop render=image` renders with the real mermaid.js in that same browser, caching mermaid.min.js locally on first use (mirror → CDN); set `OFFICECLI_MERMAID_JS=/path/to/mermaid.min.js` to point it at a local copy instead and skip the network entirely (offline / sandboxed hosts). Three modes:
 
 - **`view html`** — standalone HTML file, assets inlined. Open in any browser.
 - **`view screenshot`** — per-page PNG, ready for multimodal agents to read.
