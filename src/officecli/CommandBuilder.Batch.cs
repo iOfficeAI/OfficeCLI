@@ -23,7 +23,8 @@ static partial class CommandBuilder
         + "\"path\" (set/remove/get target), \"selector\" (query filter; \"path\" is accepted as an alias), \"type\" (element type for add), "
         + "\"props\" (a key->value map of --prop values), \"to\"/\"after\"/\"before\" (move), "
         + "\"path2\" (swap's second path).\n\n"
-        + "Pass the array via --commands, or as the same JSON on stdin / --input <file>. Example:\n"
+        + "Pass the array via --commands, as the same JSON on stdin / --input <file>, or as a text script via --from <file> "
+        + "(one CLI-style command per line: set/add/remove/move/swap; '#' comments; trailing '\\' continues a line). Example:\n"
         + "[\n"
         + "  {\"command\":\"add\",\"parent\":\"/slide[1]\",\"type\":\"shape\",\"props\":{\"text\":\"Hi\",\"x\":\"1cm\",\"y\":\"2cm\"}},\n"
         + "  {\"command\":\"set\",\"path\":\"/slide[1]/shape[1]\",\"props\":{\"bold\":\"true\"}},\n"
@@ -165,6 +166,7 @@ static partial class CommandBuilder
         var batchFileArg = new Argument<FileInfo>("file") { Description = "Office document path" };
         var batchInputOpt = new Option<FileInfo?>("--input") { Description = "JSON file containing batch commands. If omitted, reads from stdin" };
         var batchCommandsOpt = new Option<string?>("--commands") { Description = "Inline JSON array of batch commands (alternative to --input or stdin)" };
+        var batchFromOpt = new Option<FileInfo?>("--from") { Description = "Text script file, one CLI-style command per line (verbs: set/add/remove/move/swap; '#' comments; trailing '\\' continues a line). Alternative to --input/--commands" };
         // BUG-R4-BT2: default flipped to continue-on-error. A 700-command
         // dump replay losing 80% of the document on the first failing item
         // (e.g. one unsupported prop) is a far worse default than reporting
@@ -186,6 +188,7 @@ static partial class CommandBuilder
         batchCommand.Add(batchFileArg);
         batchCommand.Add(batchInputOpt);
         batchCommand.Add(batchCommandsOpt);
+        batchCommand.Add(batchFromOpt);
         batchCommand.Add(batchForceOpt);
         batchCommand.Add(batchStopOpt);
         batchCommand.Add(batchBestEffortOpt);
@@ -196,6 +199,7 @@ static partial class CommandBuilder
             var file = result.GetValue(batchFileArg)!;
             var inputFile = result.GetValue(batchInputOpt);
             var inlineCommands = result.GetValue(batchCommandsOpt);
+            var fromFile = result.GetValue(batchFromOpt);
             // Default: continue on error. --stop-on-error flips it to strict.
             // --force still acts as the docx-protection bypass (matches set
             // --force semantics) but no longer doubles as the continue-on-
@@ -242,14 +246,15 @@ static partial class CommandBuilder
                 }
                 catch { /* treat as no confirmed payload */ }
             }
-            if (inlineCommands != null && inputFile != null)
+            var batchSourceCount = (inlineCommands != null ? 1 : 0) + (inputFile != null ? 1 : 0) + (fromFile != null ? 1 : 0);
+            if (batchSourceCount > 1)
                 throw new ArgumentException(
-                    "batch: --commands and --input are mutually exclusive. Pick one source.");
+                    "batch: --commands, --input, and --from are mutually exclusive. Pick one source.");
             // '--input -' explicitly opts INTO stdin — don't emit the
             // "stdin will be ignored" warning in that case, since stdin
             // is exactly what will be read.
             var inputIsStdinAlias = inputFile != null && inputFile.Name == "-";
-            if ((inlineCommands != null || (inputFile != null && !inputIsStdinAlias)) && stdinHasInput
+            if ((inlineCommands != null || inputFile != null || fromFile != null) && !(inputIsStdinAlias && inlineCommands == null && fromFile == null) && stdinHasInput
                 && Environment.GetEnvironmentVariable("OFFICECLI_BATCH_ALLOW_STDIN_REDIRECT") == null)
             {
                 Console.Error.WriteLine(
@@ -257,7 +262,25 @@ static partial class CommandBuilder
                     + "stdin will be ignored. Pass only one source to silence this warning, or set "
                     + "OFFICECLI_BATCH_ALLOW_STDIN_REDIRECT=1.");
             }
-            if (inlineCommands != null)
+            if (fromFile != null)
+            {
+                if (!fromFile.Exists)
+                {
+                    throw new FileNotFoundException($"Script file not found: {fromFile.FullName}");
+                }
+                // Text channel: parse CLI-style lines into batch items, then
+                // re-serialize into the exact JSON text path --commands/--input
+                // use, so validation, atomicity, and reporting cannot drift
+                // between the two source formats. Parse errors reject the
+                // whole script before any item runs (batch_parse_error).
+                // Same source-gen serializer the dump->batch pipeline uses
+                // (trim-safe; the reflection Serialize overload adds an
+                // IL2026 trimming warning).
+                jsonText = System.Text.Json.JsonSerializer.Serialize(
+                    OfficeCli.Core.BatchScriptParser.ParseFile(fromFile.FullName),
+                    BatchJsonContext.Default.ListBatchItem);
+            }
+            else if (inlineCommands != null)
             {
                 jsonText = inlineCommands;
             }
