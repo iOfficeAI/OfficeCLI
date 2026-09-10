@@ -181,6 +181,7 @@ static partial class CommandBuilder
         rootCommand.Add(BuildRemoveCommand(jsonOption));
         rootCommand.Add(BuildMoveCommand(jsonOption));
         rootCommand.Add(BuildSwapCommand(jsonOption));
+        rootCommand.Add(BuildLayoutCommand(jsonOption));
         rootCommand.Add(BuildRefreshCommand(jsonOption));
         rootCommand.Add(BuildRawCommand(jsonOption));
         rootCommand.Add(BuildRawSetCommand(jsonOption));
@@ -1193,6 +1194,24 @@ static partial class CommandBuilder
                     _ => throw new InvalidOperationException("swap not supported for this document type")
                 };
                 return $"Swapped {p1} <-> {p2}";
+            }
+            case "layout":
+            {
+                // First-class geometric layout (the one-call replacement for
+                // get-coords → hand-compute → N×set). Batch form mirrors the
+                // standalone verb: path + align/distribute/targets ride props.
+                if (string.IsNullOrEmpty(item.Path))
+                    throw new ArgumentException("'layout' command requires 'path' field (a slide path). Example: {\"command\": \"layout\", \"path\": \"/slide[2]\", \"props\": {\"align\": \"bottom\"}}");
+                var layoutPath = item.Path;
+                OfficeCli.Core.MutationSelectorGuard.EnsureScoped(layoutPath, "layout");
+                if (handler is not OfficeCli.Handlers.PowerPointHandler layoutPpt)
+                    throw new CliException("'layout' is only supported for .pptx files.")
+                        { Code = "unsupported_type" };
+                return layoutPpt.LayoutSlide(
+                    layoutPath,
+                    props.GetValueOrDefault("align"),
+                    props.GetValueOrDefault("distribute"),
+                    props.GetValueOrDefault("targets"));
             }
             case "view":
             {

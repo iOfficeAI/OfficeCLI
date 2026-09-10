@@ -307,6 +307,22 @@ officecli add "$FILE" /slide[2] --type shape --prop name=Title --prop text="Key 
 
 Positioning is explicit — no layout engine, you own the grid math. `--prop preset=` picks geometry (`rect`, `roundRect`, `ellipse`, `triangle`, `arrow`, `star5`, ...); custom `M...Z` paths are not supported — pick a preset. **Name shapes at creation** (`--prop name=HeroTitle`) and address later with `"/slide[N]/shape[@name=HeroTitle]"` — names survive z-order / remove-then-add, whereas positional `/shape[3]` (and even `@id=`) shift. Re-`get --depth 1` after any structural change before using positional indexes.
 
+### Geometric align & distribute (one call — never hand-compute)
+
+Creation still needs grid math, but **fixing排版 never does**. The `layout` verb repositions shapes server-side in a single call — no get-coordinates → arithmetic → N×set loop:
+
+```bash
+# Bottom-align every auto-shape on slide 2, whatever their current y/height is:
+officecli layout "$FILE" /slide[2] --align bottom
+# Equal horizontal gaps across 3+ shapes (endpoints stay fixed):
+officecli layout "$FILE" /slide[2] --distribute horizontal
+# Both at once + only some shapes (stable @id paths preferred):
+officecli layout "$FILE" /slide[2] --align bottom --distribute horizontal \
+  --targets "shape[@id=100000],shape[@id=100001]"
+```
+
+Rules: (1) `layout` takes a SLIDE path (`/slide[N]`); shape paths are rejected. Do NOT invent `align`/`distribute` as verbs and do NOT set geometric `align=` on a shape path — that is TEXT alignment (left|center|right|justify), a different operation. (2) `--align` values: `left|center|right|top|middle|bottom` (relative to the targeted shapes' bounding box) or `slide-left|slide-center|...` (relative to the slide). (3) `--distribute horizontal|vertical` needs ≥3 shapes. (4) `--targets` accepts `shape[N]`, bare `N`, or `shape[@id=N]`; omit = all auto-shapes/textboxes. (5) LIMIT: pictures/charts/tables/connectors are NOT matched — only `p:sp` shapes; place those by hand. (6) Equivalent legacy form (same engine): `set "$FILE" /slide[2] --prop align=bottom` — prefer `layout`. (7) Always verify with `get --depth 1` (x/y readback; values may come back as `Ncm` or `Nemu`) or `view screenshot` after. (8) Delivery PDF: `view "$FILE" pdf -o out.pdf` — headless-Chrome fallback, no exporter plugin needed. Works mid-session (it releases a warm resident itself); `close` first is still good hygiene before handing off.
+
 ### Text inside shapes (paragraphs, runs, styling)
 
 A shape has paragraphs (`paragraph[K]`) and runs (`run[K]`). For one-line text, `--prop text=` on the shape is enough; a `\n` in the text makes a paragraph break, `\t` a tab (see Shell & Execution Discipline; double `\\n` for a literal). `add --type paragraph` takes the same style props as a shape (text, align, bold, italic, size, color, font). For mixed styling *within* a line, append a styled run:
