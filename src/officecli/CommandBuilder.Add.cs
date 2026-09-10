@@ -40,6 +40,7 @@ static partial class CommandBuilder
         var addAfterOpt = new Option<string?>("--after") { Description = "Insert after the element at this path (e.g. p[@paraId=1A2B3C4D])" };
         var addBeforeOpt = new Option<string?>("--before") { Description = "Insert before the element at this path" };
         var addPropsOpt = new Option<string[]>("--prop") { Description = "Property to set (key=value, e.g. --prop src=image.png --prop width=6in)", AllowMultipleArgumentsPerToken = true };
+        var addPropsBatchOpt = CreatePropsBatchOption();
         var forceOption = new Option<bool>("--force") { Description = "Force write even if document is protected" };
 
         var addCommand = new Command("add", "Add a new element to the document") { TreatUnmatchedTokensAsErrors = false };
@@ -51,6 +52,7 @@ static partial class CommandBuilder
         addCommand.Add(addAfterOpt);
         addCommand.Add(addBeforeOpt);
         addCommand.Add(addPropsOpt);
+        addCommand.Add(addPropsBatchOpt);
         addCommand.Add(jsonOption);
         addCommand.Add(forceOption);
 
@@ -66,7 +68,7 @@ static partial class CommandBuilder
             var index = result.GetValue(addIndexOpt);
             var after = MsysPathHint.Restore(result.GetValue(addAfterOpt));
             var before = MsysPathHint.Restore(result.GetValue(addBeforeOpt));
-            var props = result.GetValue(addPropsOpt);
+            var props = MergePropFlags(result.GetValue(addPropsOpt), result.GetValue(addPropsBatchOpt));
             var force = result.GetValue(forceOption);
 
             // Validate mutual exclusivity of --index, --after, --before
@@ -347,12 +349,14 @@ static partial class CommandBuilder
             Description = "Modifier property (key=value). Phase 4: --prop trackChange.author=<name> on a Word Run or Paragraph path records a w:del revision instead of physically deleting.",
             AllowMultipleArgumentsPerToken = true,
         };
+        var removePropsBatchOpt = CreatePropsBatchOption();
 
         var removeCommand = new Command("remove", "Remove an element from the document");
         removeCommand.Add(removeFileArg);
         removeCommand.Add(removePathArg);
         removeCommand.Add(shiftOption);
         removeCommand.Add(removePropsOpt);
+        removeCommand.Add(removePropsBatchOpt);
         removeCommand.Add(jsonOption);
 
         removeCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
@@ -360,7 +364,7 @@ static partial class CommandBuilder
             var file = result.GetValue(removeFileArg)!;
             var path = MsysPathHint.Restore(result.GetValue(removePathArg)!)!;
             var shift = result.GetValue(shiftOption);
-            var props = result.GetValue(removePropsOpt);
+            var props = MergePropFlags(result.GetValue(removePropsOpt), result.GetValue(removePropsBatchOpt));
             var parsedProps = (props != null && props.Length > 0) ? ParsePropsArray(props) : null;
 
             // Agent-safety: reject a bare unscoped selector (`run`, `shape[...]`) —
@@ -419,6 +423,7 @@ static partial class CommandBuilder
         // run-level move-tracking branch in WordHandler. Other handlers
         // (xlsx/pptx) accept the option for parity but ignore the values.
         var movePropsOpt = new Option<string[]>("--prop") { Description = "Property to set on the move (e.g. --prop trackChange.author=Alice for tracked moves)", AllowMultipleArgumentsPerToken = true };
+        var movePropsBatchOpt = CreatePropsBatchOption();
 
         var moveCommand = new Command("move", "Move an element to a new position or parent");
         moveCommand.Add(moveFileArg);
@@ -428,6 +433,7 @@ static partial class CommandBuilder
         moveCommand.Add(moveAfterOpt);
         moveCommand.Add(moveBeforeOpt);
         moveCommand.Add(movePropsOpt);
+        moveCommand.Add(movePropsBatchOpt);
         moveCommand.Add(jsonOption);
 
         moveCommand.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
@@ -438,7 +444,7 @@ static partial class CommandBuilder
             var index = result.GetValue(moveIndexOpt);
             var after = MsysPathHint.Restore(result.GetValue(moveAfterOpt));
             var before = MsysPathHint.Restore(result.GetValue(moveBeforeOpt));
-            var props = result.GetValue(movePropsOpt);
+            var props = MergePropFlags(result.GetValue(movePropsOpt), result.GetValue(movePropsBatchOpt));
 
             // Validate mutual exclusivity of --index, --after, --before
             var posCount = (index.HasValue ? 1 : 0) + (after != null ? 1 : 0) + (before != null ? 1 : 0);

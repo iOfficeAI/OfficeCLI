@@ -1585,17 +1585,104 @@ static partial class CommandBuilder
             // because `--props` (with trailing s) is not a known option, so the
             // JSON value goes into UnmatchedTokens too. Catch the typo so the
             // existing warning machinery emits a clear hint instead of letting
-            // the agent ship a shape with no text.
+            // the agent ship a shape with no text. (`--props` is a registered
+            // option on set/add/remove/move/mark, so this branch only fires on
+            // commands without it and on the `-props` / `--prop=` spellings.)
             if (token is "--props" or "-props" or "--prop=" && i + 1 < tokens.Count)
             {
                 var nextToken = tokens[i + 1];
                 if (!nextToken.StartsWith("--"))
                 {
-                    result.Add($"--prop {nextToken}");
+                    // No "--prop " prefix here — every consumer re-adds it when
+                    // building the suggestion, and RejectUnknownOptionTokens
+                    // derives claimed keys by splitting on '='.
+                    result.Add(nextToken);
                     i++;
                     continue;
                 }
             }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Shared registration for the `--props` batch form accepted by the
+    /// mutating verbs (set/add/remove/move/mark). Kept next to
+    /// <see cref="MergePropFlags"/> so the flag, its merge rule and its
+    /// error text stay one concern.
+    /// </summary>
+    internal static System.CommandLine.Option<string[]> CreatePropsBatchOption() =>
+        new("--props")
+        {
+            Description = "Comma-separated properties (k=v,k2=v2), equivalent to repeating --prop. A value containing a comma: wrap it in single quotes (k='a,b').",
+            AllowMultipleArgumentsPerToken = true
+        };
+
+    /// <summary>
+    /// Merge `--prop k=v` entries with `--props` comma-batch entries into one
+    /// k=v array. Each --props value is split on commas that are not inside
+    /// single quotes; one pair of surrounding quotes is stripped from a
+    /// segment ('a,b' → a,b), mirroring the shell convention documented for
+    /// --prop. --prop values are never split, so comma-bearing values
+    /// (--prop data="S1:1,2,3") keep working unchanged.
+    /// </summary>
+    internal static string[] MergePropFlags(string[]? prop, string[]? propsBatch)
+    {
+        if (propsBatch == null || propsBatch.Length == 0)
+            return prop ?? Array.Empty<string>();
+        var merged = new List<string>(prop ?? Array.Empty<string>());
+        foreach (var batch in propsBatch)
+            merged.AddRange(SplitPropsBatch(batch));
+        return merged.ToArray();
+    }
+
+    /// <summary>
+    /// Split one --props value into k=v segments on top-level commas.
+    /// A segment without '=' (or an empty segment from a stray comma) is a
+    /// hard error — the batch is rejected up front, never partially applied.
+    /// </summary>
+    private static List<string> SplitPropsBatch(string batch)
+    {
+        var pieces = new List<string>();
+        var current = new System.Text.StringBuilder();
+        bool inQuote = false;
+        foreach (var ch in batch)
+        {
+            if (ch == '\'') { inQuote = !inQuote; current.Append(ch); }
+            else if (ch == ',' && !inQuote) { pieces.Add(current.ToString()); current.Clear(); }
+            else current.Append(ch);
+        }
+        if (inQuote)
+            throw new OfficeCli.Core.CliException($"Invalid --props '{batch}': unterminated single quote.")
+            {
+                Code = "invalid_argument",
+                Suggestion = "Quote only the value that contains a comma: --props \"text='a,b',bold=true\" — or pass repeated --prop k=v."
+            };
+        pieces.Add(current.ToString());
+        var result = new List<string>(pieces.Count);
+        foreach (var rawPiece in pieces)
+        {
+            var piece = rawPiece.Trim();
+            if (piece.Length == 0)
+                throw new OfficeCli.Core.CliException($"Invalid --props '{batch}': empty property segment.")
+                {
+                    Code = "invalid_argument",
+                    Suggestion = "Remove stray commas, or pass repeated --prop k=v."
+                };
+            var eq = piece.IndexOf('=');
+            if (eq <= 0)
+                throw new OfficeCli.Core.CliException($"Invalid --props '{batch}': segment '{piece}' is not key=value.")
+                {
+                    Code = "invalid_argument",
+                    Suggestion = "Use --props \"k=v,k2=v2\" (each segment key=value), or pass repeated --prop k=v."
+                };
+            // Quote-stripping is value-side: value='a,b' → value=a,b (mirrors
+            // the documented --prop shell convention where '...' groups, never
+            // becomes content).
+            var value = piece[(eq + 1)..];
+            if (value.Length >= 2 && value.StartsWith('\'') && value.EndsWith('\''))
+                value = value[1..^1];
+            result.Add($"{piece[..eq]}={value}");
         }
         return result;
     }

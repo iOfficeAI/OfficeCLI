@@ -15,6 +15,7 @@ static partial class CommandBuilder
         var setFileArg = new Argument<FileInfo>("file") { Description = "Office document path (required even with open/close mode)" };
         var setPathArg = new Argument<string>("path") { Description = "DOM path to the element. The 'selected' pseudo-path is deprecated for mutations: use `get selected` to capture path(s) first, then `set <path>` (or a `batch` file for multi-select) so the target lives in the command line, not in transient watch-server state." };
         var propsOpt = new Option<string[]>("--prop") { Description = "Property to set (key=value)", AllowMultipleArgumentsPerToken = true };
+        var propsBatchOpt = CreatePropsBatchOption();
         // Selector: top-level alternative to --prop find=VALUE. r"..." prefix triggers regex (project-wide CONSISTENCY(find-regex)).
         var findOpt = new Option<string?>("--find") { Description = "Find this text/pattern (literal substring; `r\"...\"` prefix enables regex). Equivalent to --prop find=VALUE." };
         // Action paired with --find: replacement text. Top-level alternative to --prop replace=VALUE.
@@ -24,6 +25,7 @@ static partial class CommandBuilder
         setCommand.Add(setFileArg);
         setCommand.Add(setPathArg);
         setCommand.Add(propsOpt);
+        setCommand.Add(propsBatchOpt);
         setCommand.Add(findOpt);
         setCommand.Add(replaceOpt);
         setCommand.Add(jsonOption);
@@ -39,7 +41,7 @@ static partial class CommandBuilder
             if (json) OfficeCli.Core.WarningContext.Begin();
             var file = result.GetValue(setFileArg)!;
             var path = MsysPathHint.Restore(result.GetValue(setPathArg)!)!;
-            var props = result.GetValue(propsOpt);
+            var props = MergePropFlags(result.GetValue(propsOpt), result.GetValue(propsBatchOpt));
             var findFlag = result.GetValue(findOpt);
             var replaceFlag = result.GetValue(replaceOpt);
             var force = result.GetValue(forceOption);
