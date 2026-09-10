@@ -369,8 +369,23 @@ public partial class PowerPointHandler
                     DistributeShapes(slidePart2, value, targets);
                     break;
                 }
+                case "preset":
+                {
+                    // One-command style application: applies a curated, render-safe
+                    // prop bundle (fill / rounded geometry / soft shadow / text color,
+                    // font, size, bold) to every shape on the slide, or to the targets
+                    // listed in `targets=` (same @id / positional grammar as align).
+                    // Bundles are sourced verbatim from the MIT-licensed "nextslide"
+                    // open-source style presets (colors), mapped onto fonts that ship
+                    // with Office for broad compatibility. Only solid fills are used —
+                    // gradients can degrade to single-color under some PowerPoint
+                    // renderers, so presets avoid them (see textFill note).
+                    var presetTargets = properties.GetValueOrDefault("targets");
+                    ApplyStylePreset(slidePart2, value, presetTargets);
+                    break;
+                }
                 case "targets":
-                    break; // consumed by align/distribute
+                    break; // consumed by align/distribute/preset
                 case "hidden":
                 {
                     // <p:sld show="0"> — hides the slide from slideshow.
@@ -485,7 +500,7 @@ public partial class PowerPointHandler
                     if (!GenericXmlQuery.SetGenericAttribute(slide2, key, value))
                     {
                         if (unsupported.Count == 0)
-                            unsupported.Add($"{key} (valid slide props: background, background.mode, background.alpha, background.scale, layout, transition, name, align, distribute, targets, showFooter, showSlideNumber, showDate, showHeader, showMasterShapes)");
+                            unsupported.Add($"{key} (valid slide props: background, background.mode, background.alpha, background.scale, layout, transition, name, align, distribute, preset (minimal, corporate, pitch, bold, editorial, teal, playful), targets, showFooter, showSlideNumber, showDate, showHeader, showMasterShapes)");
                         else
                             unsupported.Add(key);
                     }
