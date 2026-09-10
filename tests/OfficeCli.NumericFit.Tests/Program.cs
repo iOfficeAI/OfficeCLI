@@ -16,6 +16,7 @@ var date1904Path = Path.Combine(Path.GetTempPath(), $"officecli-numeric-fit-1904
 var generalPath = Path.Combine(Path.GetTempPath(), $"officecli-general-precision-{Guid.NewGuid():N}.xlsx");
 var stylelessPath = Path.Combine(Path.GetTempPath(), $"officecli-general-styleless-{Guid.NewGuid():N}.xlsx");
 var chartDocxPath = Path.Combine(Path.GetTempPath(), $"officecli-tablechart-{Guid.NewGuid():N}.docx");
+var chartEdgeDocxPath = Path.Combine(Path.GetTempPath(), $"officecli-tablechart-edge-{Guid.NewGuid():N}.docx");
 try
 {
     CreateStandardFixture(standardPath);
@@ -35,6 +36,10 @@ try
     CreateBlankDocx(chartDocxPath);
     VerifyDocxTableToChart(chartDocxPath);
     Console.WriteLine("TABLE->CHART DOCX sourceTable sugar tests passed.");
+
+    CreateBlankDocx(chartEdgeDocxPath);
+    VerifyDocxTableToChartEdgeCases(chartEdgeDocxPath);
+    Console.WriteLine("TABLE->CHART DOCX sourceTable edge-case tests passed.");
 }
 finally
 {
@@ -43,6 +48,7 @@ finally
     if (File.Exists(generalPath)) File.Delete(generalPath);
     if (File.Exists(stylelessPath)) File.Delete(stylelessPath);
     if (File.Exists(chartDocxPath)) File.Delete(chartDocxPath);
+    if (File.Exists(chartEdgeDocxPath)) File.Delete(chartEdgeDocxPath);
 }
 
 static void VerifyStandardWorkbook(string path)
@@ -599,6 +605,7 @@ static void VerifyDocxTableToChart(string path)
 {
     // Create a table with a header row (Quarter) + one numeric column (Revenue),
     // then a chart whose categories/series come from the table via dataTable=.
+    string chartPath;
     using (var handler = new WordHandler(path, editable: true))
     {
         // Table `data=` parse grid: ',' per cell, ';' per row (DelimitedText
@@ -609,7 +616,7 @@ static void VerifyDocxTableToChart(string path)
             ["header"] = "true",
         });
         // Windowed: blank seed paragraph precedes the table, so /body/tbl[1] is it.
-        var chartPath = handler.Add("/body", "chart", null, new Dictionary<string, string>
+        chartPath = handler.Add("/body", "chart", null, new Dictionary<string, string>
         {
             ["sourceTable"] = "/body/tbl[1]",
             ["chartType"] = "column",
@@ -622,4 +629,82 @@ static void VerifyDocxTableToChart(string path)
     // real chart, not a silent no-op).
     Assert(doc.MainDocumentPart!.ChartParts.Any(),
         "dataTable chart should create a ChartPart in the package");
+
+    // Full grid must survive: the old `ri < rows[ri].Count` guard dropped every
+    // data row past the first (only Q1/100 reached the chart).
+    using (var handler = new WordHandler(path, editable: false))
+    {
+        var node = handler.Query("chart").First(n => n.Path == chartPath);
+        Assert(node.Format.TryGetValue("series1", out var s1) && s1?.ToString() == "Revenue:100,150,200,250",
+            "header table should chart all four quarters, got series1=" + (s1?.ToString() ?? "<none>"));
+        Assert(node.Format.TryGetValue("categories", out var cats) && cats?.ToString() == "Q1,Q2,Q3,Q4",
+            "header table categories should be Q1..Q4, got " + (cats?.ToString() ?? "<none>"));
+    }
+}
+
+static void VerifyDocxTableToChartEdgeCases(string path)
+{
+    using (var handler = new WordHandler(path, editable: true))
+    {
+        // 1. Ragged table: a short row must not throw IndexOutOfRangeException.
+        handler.Add("/body", "table", null, new Dictionary<string, string>
+        {
+            ["data"] = "Item,Sales;OnlyLabel;B,200",
+        });
+        var raggedChart = handler.Add("/body", "chart", null, new Dictionary<string, string>
+        {
+            ["sourceTable"] = "/body/tbl[1]",
+            ["chartType"] = "column",
+        });
+        Assert(raggedChart.StartsWith("/chart["), "ragged-table chart should resolve, got " + raggedChart);
+
+        // 2. Headerless label-first-column table: "Q1|100" rows are DATA, not a
+        // header — col 0 becomes categories, the numeric column the series.
+        handler.Add("/body", "table", null, new Dictionary<string, string>
+        {
+            ["data"] = "Q1,100;Q2,150;Q3,200",
+        });
+        var bareChart = handler.Add("/body", "chart", null, new Dictionary<string, string>
+        {
+            ["sourceTable"] = "/body/tbl[2]",
+            ["chartType"] = "column",
+        });
+        Assert(bareChart.StartsWith("/chart["), "headerless chart should resolve, got " + bareChart);
+
+        // 3. Stray non-numeric cell: the bad row drops whole (label included) so
+        // categories can never drift out of alignment with values.
+        handler.Add("/body", "table", null, new Dictionary<string, string>
+        {
+            ["data"] = "Item,Sales;A,10;B,N/A;C,30",
+        });
+        var gapChart = handler.Add("/body", "chart", null, new Dictionary<string, string>
+        {
+            ["sourceTable"] = "/body/tbl[3]",
+            ["chartType"] = "column",
+        });
+        Assert(gapChart.StartsWith("/chart["), "gap-table chart should resolve, got " + gapChart);
+
+        var charts = handler.Query("chart").ToDictionary(n => n.Path);
+        var ragged = charts[raggedChart];
+        Assert(ragged.Format.TryGetValue("series1", out var rs) && rs?.ToString() == "Sales:200",
+            "ragged table should chart only the complete row, got series1=" + (rs?.ToString() ?? "<none>"));
+        Assert(ragged.Format.TryGetValue("categories", out var rc) && rc?.ToString() == "B",
+            "ragged table categories should be just B, got " + (rc?.ToString() ?? "<none>"));
+
+        var bare = charts[bareChart];
+        Assert(bare.Format.TryGetValue("series1", out var bs) && bs?.ToString() == "Series 1:100,150,200",
+            "headerless table should keep all rows as data, got series1=" + (bs?.ToString() ?? "<none>"));
+        Assert(bare.Format.TryGetValue("categories", out var bc) && bc?.ToString() == "Q1,Q2,Q3",
+            "headerless col 0 should become categories, got " + (bc?.ToString() ?? "<none>"));
+
+        var gap = charts[gapChart];
+        Assert(gap.Format.TryGetValue("series1", out var gs) && gs?.ToString() == "Sales:10,30",
+            "N/A row should drop its values, got series1=" + (gs?.ToString() ?? "<none>"));
+        Assert(gap.Format.TryGetValue("categories", out var gc) && gc?.ToString() == "A,C",
+            "N/A row should drop its label too (alignment), got " + (gc?.ToString() ?? "<none>"));
+    }
+
+    using var doc = WordprocessingDocument.Open(path, false);
+    Assert(doc.MainDocumentPart!.ChartParts.Count() == 3,
+        "edge-case docx should contain three ChartParts");
 }
