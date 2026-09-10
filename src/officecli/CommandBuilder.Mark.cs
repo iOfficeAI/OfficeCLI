@@ -27,19 +27,21 @@ static partial class CommandBuilder
             Description = "Mark property: find=..., color=..., note=..., tofix=..., regex=true",
             AllowMultipleArgumentsPerToken = true,
         };
+        var propsBatchOpt = CreatePropsBatchOption();
 
         var cmd = new Command(name,
             "Attach an in-memory advisory mark to a document element via the watch process. Path must be in data-path format (e.g. /body/p[1]); 'selected' marks all selected elements.");
         cmd.Add(fileArg);
         cmd.Add(pathArg);
         cmd.Add(propsOpt);
+        cmd.Add(propsBatchOpt);
         cmd.Add(jsonOption);
 
         cmd.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(fileArg)!;
             var path = OfficeCli.Core.MsysPathHint.Restore(result.GetValue(pathArg)!)!;
-            var rawProps = result.GetValue(propsOpt) ?? Array.Empty<string>();
+            var rawProps = MergePropFlags(result.GetValue(propsOpt), result.GetValue(propsBatchOpt));
 
             var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             string? deprecatedExpectValue = null;
