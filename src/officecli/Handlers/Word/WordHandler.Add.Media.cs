@@ -34,9 +34,41 @@ public partial class WordHandler
         var categories = Core.ChartHelper.ParseCategories(properties);
         var seriesData = Core.ChartHelper.ParseSeriesData(properties);
 
+        // ROUND-2: `sourceTable=<path>` sugar — pull categories + series from an
+        // existing table instead of hand-writing `data=Series:x,y`. Only fills
+        // the gaps when the caller did NOT already supply explicit data; an
+        // explicit `data=`/`seriesN=` always wins (it is the curated source).
+        // NOTE: distinct from the chart's built-in `datatable` prop (a boolean
+        // that toggles drawing the source data table under the chart).
+        if (properties.TryGetValue("sourcetable", out var tblPath) && !string.IsNullOrWhiteSpace(tblPath)
+            && (seriesData.Count == 0 || categories == null || categories.Length == 0))
+        {
+            var table = ResolveTableForChart(tblPath, out var resolveErr);
+            if (table == null)
+            {
+                throw new ArgumentException(
+                    $"sourceTable='{tblPath}' did not resolve to a table.{resolveErr}");
+            }
+            var (tblCategories, tblSeries, tblWarnings) = ExtractChartDataFromTable(table);
+            if (seriesData.Count == 0 && tblSeries.Count > 0)
+                seriesData = tblSeries;
+            if (seriesData.Count == 0 && tblSeries.Count == 0)
+                throw new ArgumentException(
+                    $"sourceTable='{tblPath}' resolved to a table but no numeric values could be parsed. " +
+                    "Check the table has numeric data cells (see the sourceTable recipe in the docx-design skill).");
+            if ((categories == null || categories.Length == 0) && tblCategories != null)
+                categories = tblCategories;
+            foreach (var w in tblWarnings)
+                LastAddWarnings.Add(w);
+            // Consume the sourceTable key so downstream chart builders (which
+            // iterate props for deferred/unknown keys) never see it.
+            properties.Remove("sourceTable");
+            properties.Remove("sourcetable");
+        }
+
         if (seriesData.Count == 0)
             throw new ArgumentException("Chart requires data. Use: data=\"Series1:1,2,3;Series2:4,5,6\" " +
-                "or series1=\"Revenue:100,200,300\"");
+                "or series1=\"Revenue:100,200,300\" or sourceTable=/body/tbl[1]");
 
         // Dimensions (default: 15cm x 10cm)
         long chartCx = properties.TryGetValue("width", out var chartWStr) ? ParseEmu(chartWStr) : 5400000;

@@ -6,6 +6,7 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using OfficeCli.Core;
 using OfficeCli.Handlers;
+using W = DocumentFormat.OpenXml.Wordprocessing;
 
 const string NumericOverflowSubtype = "numeric_overflow";
 const string GeneralPrecisionSubtype = "general_precision_loss";
@@ -14,6 +15,7 @@ var standardPath = Path.Combine(Path.GetTempPath(), $"officecli-numeric-fit-{Gui
 var date1904Path = Path.Combine(Path.GetTempPath(), $"officecli-numeric-fit-1904-{Guid.NewGuid():N}.xlsx");
 var generalPath = Path.Combine(Path.GetTempPath(), $"officecli-general-precision-{Guid.NewGuid():N}.xlsx");
 var stylelessPath = Path.Combine(Path.GetTempPath(), $"officecli-general-styleless-{Guid.NewGuid():N}.xlsx");
+var chartDocxPath = Path.Combine(Path.GetTempPath(), $"officecli-tablechart-{Guid.NewGuid():N}.docx");
 try
 {
     CreateStandardFixture(standardPath);
@@ -29,6 +31,10 @@ try
     VerifyStylelessWorkbook(stylelessPath);
 
     Console.WriteLine("XLSX numeric-fit issue tests passed.");
+
+    CreateBlankDocx(chartDocxPath);
+    VerifyDocxTableToChart(chartDocxPath);
+    Console.WriteLine("TABLE->CHART DOCX sourceTable sugar tests passed.");
 }
 finally
 {
@@ -36,6 +42,7 @@ finally
     if (File.Exists(date1904Path)) File.Delete(date1904Path);
     if (File.Exists(generalPath)) File.Delete(generalPath);
     if (File.Exists(stylelessPath)) File.Delete(stylelessPath);
+    if (File.Exists(chartDocxPath)) File.Delete(chartDocxPath);
 }
 
 static void VerifyStandardWorkbook(string path)
@@ -578,4 +585,41 @@ static void VerifyStylelessWorkbook(string path)
             .Where(issue => issue.Subtype == GeneralPrecisionSubtype)
             .Select(issue => issue.Path),
         "styleless workbook is all-General");
+}
+
+static void CreateBlankDocx(string path)
+{
+    using var doc = WordprocessingDocument.Create(path, WordprocessingDocumentType.Document);
+    var mainPart = doc.AddMainDocumentPart();
+    mainPart.Document = new W.Document(new W.Body(new W.Paragraph()));
+    mainPart.Document.Save();
+}
+
+static void VerifyDocxTableToChart(string path)
+{
+    // Create a table with a header row (Quarter) + one numeric column (Revenue),
+    // then a chart whose categories/series come from the table via dataTable=.
+    using (var handler = new WordHandler(path, editable: true))
+    {
+        // Table `data=` parse grid: ',' per cell, ';' per row (DelimitedText
+        // falls back to `,`/`;` because the value is not a resolvable file src).
+        handler.Add("/body", "table", null, new Dictionary<string, string>
+        {
+            ["data"] = "Quarter,Revenue;Q1,100;Q2,150;Q3,200;Q4,250",
+            ["header"] = "true",
+        });
+        // Windowed: blank seed paragraph precedes the table, so /body/tbl[1] is it.
+        var chartPath = handler.Add("/body", "chart", null, new Dictionary<string, string>
+        {
+            ["sourceTable"] = "/body/tbl[1]",
+            ["chartType"] = "column",
+        });
+        Assert(chartPath.StartsWith("/chart["), "sourceTable chart should resolve to a /chart[N] path, got " + chartPath);
+    }
+
+    using var doc = WordprocessingDocument.Open(path, false);
+    // The chart part must be physically present (the dataTable sugar produced a
+    // real chart, not a silent no-op).
+    Assert(doc.MainDocumentPart!.ChartParts.Any(),
+        "dataTable chart should create a ChartPart in the package");
 }
