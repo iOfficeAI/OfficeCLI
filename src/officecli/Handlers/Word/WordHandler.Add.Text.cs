@@ -1289,6 +1289,14 @@ public partial class WordHandler
             // Keys consumed by ApplyRunFormatting / TypedAttributeFallback /
             // GenericXmlQuery below leak as false unsupported without this.
             properties.ContainsKey(key);
+            // One-command styled paragraph on Add (cards, kicker, band, quote).
+            // Applies the render-safe preset bundle then consumes the key so the
+            // typed-attr fallback below never flags it as unsupported.
+            if (key.Equals("preset", StringComparison.OrdinalIgnoreCase))
+            {
+                ApplyParagraphPreset(para, pProps, value);
+                continue;
+            }
             // BUG-DUMP9-02: paragraph-mark-only run formatting written under
             // the markRPr.* namespace. Mirrors SetElementParagraph; targets
             // ParagraphMarkRunProperties exclusively (does NOT propagate to
