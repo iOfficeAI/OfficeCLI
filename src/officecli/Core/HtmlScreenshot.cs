@@ -17,6 +17,20 @@ internal static class HtmlScreenshot
 
     public sealed record PaginationResult(int TotalPages, Dictionary<string, int> AnchorPageMap);
 
+    /// <summary>Path for a fresh, private headless-Chrome profile directory for one
+    /// launch. Keeps a headless run from touching — or blocking on a lock held by —
+    /// the caller's own default Chrome profile, and lets screenshotting work under
+    /// sandboxes that deny writes to the default profile directory. The directory
+    /// is created by Chrome itself on first use; callers delete it with
+    /// <see cref="CleanupChromeUserDataDir"/> once the launch that created it exits.</summary>
+    private static string NewChromeUserDataDir() =>
+        Path.Combine(Path.GetTempPath(), $"officecli-chrome-{Guid.NewGuid():N}");
+
+    private static void CleanupChromeUserDataDir(string dir)
+    {
+        try { Directory.Delete(dir, true); } catch { /* best effort */ }
+    }
+
     /// Run a chromium-family browser in dump-dom mode against the given HTML
     /// and parse the document title for "PAGES:N|MAP:anchor=p,anchor=p,...".
     /// The HTML must set the title from JS after layout settles.
@@ -32,11 +46,13 @@ internal static class HtmlScreenshot
         var url = new Uri(Path.GetFullPath(htmlPath)).AbsoluteUri + "#screenshot";
         var bin = FindChrome();
         if (bin == null) return null;
+        var userDataDir = NewChromeUserDataDir();
         var args = new List<string>
         {
             "--headless=new",
             "--disable-gpu",
             "--no-sandbox",
+            $"--user-data-dir={userDataDir}",
             "--virtual-time-budget=15000",
             "--timeout=20000",  // wall-clock backstop: a stalled resource is not rescued by virtual time (issue #181)
         };
@@ -64,6 +80,7 @@ internal static class HtmlScreenshot
             return stdout;
         }
         catch { return null; }
+        finally { CleanupChromeUserDataDir(userDataDir); }
     }
 
     /// <summary>True when a chrome-family browser (Chrome/Chromium/Edge) is available.</summary>
@@ -84,12 +101,14 @@ internal static class HtmlScreenshot
         var outDir = Path.GetDirectoryName(outPath);
         if (!string.IsNullOrEmpty(outDir)) Directory.CreateDirectory(outDir);
         var url = new Uri(Path.GetFullPath(htmlPath)).AbsoluteUri + "#screenshot";
+        var userDataDir = NewChromeUserDataDir();
         var args = new[]
         {
             "--headless=new",
             "--disable-gpu",
             "--no-sandbox",
             "--hide-scrollbars",
+            $"--user-data-dir={userDataDir}",
             $"--force-device-scale-factor={scale}",
             $"--window-size={w},{h}",
             "--virtual-time-budget=15000",
@@ -98,8 +117,12 @@ internal static class HtmlScreenshot
             $"--screenshot={outPath}",
             url,
         };
-        var (ok, _) = RunBinary(bin, args);
-        return ok && File.Exists(outPath) && new FileInfo(outPath).Length > 0;
+        try
+        {
+            var (ok, _) = RunBinary(bin, args);
+            return ok && File.Exists(outPath) && new FileInfo(outPath).Length > 0;
+        }
+        finally { CleanupChromeUserDataDir(userDataDir); }
     }
 
     public static PaginationResult? GetPaginationFromDom(string htmlPath, int timeoutMs = 60000)
@@ -385,12 +408,14 @@ internal static class HtmlScreenshot
     {
         var bin = FindChrome();
         if (bin == null) return (false, null);
+        var userDataDir = NewChromeUserDataDir();
         var args = new[]
         {
             "--headless=new",
             "--disable-gpu",
             "--no-sandbox",
             "--hide-scrollbars",
+            $"--user-data-dir={userDataDir}",
             $"--window-size={w},{h}",
             // Without these caps, new-headless --screenshot waits for the
             // page's external resources (CDN fonts / KaTeX css+js) to settle;
@@ -406,7 +431,8 @@ internal static class HtmlScreenshot
             $"--screenshot={outPath}",
             url,
         };
-        return RunBinary(bin, args);
+        try { return RunBinary(bin, args); }
+        finally { CleanupChromeUserDataDir(userDataDir); }
     }
 
     private static string? FindChrome()
@@ -542,6 +568,7 @@ internal static class HtmlScreenshot
         if (bin == null) return (false, null);
         outPath = Path.GetFullPath(outPath);
         var url = new Uri(Path.GetFullPath(htmlPath)).AbsoluteUri + "#screenshot";
+        var userDataDir = NewChromeUserDataDir();
         try
         {
             var psi = new ProcessStartInfo
@@ -563,6 +590,7 @@ internal static class HtmlScreenshot
                 "--hide-scrollbars",
                 "--enable-logging=stderr",
                 "--v=0",
+                $"--user-data-dir={userDataDir}",
                 $"--force-device-scale-factor={scale}",
                 $"--window-size={w},{h}",
                 "--virtual-time-budget=15000",
@@ -582,6 +610,7 @@ internal static class HtmlScreenshot
             return (p.ExitCode == 0, errTask.GetAwaiter().GetResult());
         }
         catch { return (false, null); }
+        finally { CleanupChromeUserDataDir(userDataDir); }
     }
 
     private static (bool, string?) RunBinary(string bin, string[] args)
