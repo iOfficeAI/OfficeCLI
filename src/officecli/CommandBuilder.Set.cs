@@ -14,7 +14,7 @@ static partial class CommandBuilder
         var forceOption = new Option<bool>("--force") { Description = "Force write even if document is protected" };
         var setFileArg = new Argument<FileInfo>("file") { Description = "Office document path (required even with open/close mode)" };
         var setPathArg = new Argument<string>("path") { Description = "DOM path to the element. The 'selected' pseudo-path is deprecated for mutations: use `get selected` to capture path(s) first, then `set <path>` (or a `batch` file for multi-select) so the target lives in the command line, not in transient watch-server state." };
-        var propsOpt = new Option<string[]>("--prop") { Description = "Property to set (key=value)", AllowMultipleArgumentsPerToken = true };
+        var propsOpt = new Option<string[]>("--prop") { Description = "Property to set (key=value). xlsx range paths accept stylepreset=table_header|table_banded|kpi_card|metric_positive|metric_negative|note_gray (free-range styling; ListObject tables use add --type table --prop style=…)", AllowMultipleArgumentsPerToken = true };
         // Selector: top-level alternative to --prop find=VALUE. r"..." prefix triggers regex (project-wide CONSISTENCY(find-regex)).
         var findOpt = new Option<string?>("--find") { Description = "Find this text/pattern (literal substring; `r\"...\"` prefix enables regex). Equivalent to --prop find=VALUE." };
         // Action paired with --find: replacement text. Top-level alternative to --prop replace=VALUE.
