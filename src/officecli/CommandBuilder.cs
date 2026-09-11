@@ -99,6 +99,8 @@ static partial class CommandBuilder
             }
             else
             {
+                if (ResidentRecoveryMarker.TryConsume(file.FullName))
+                    throw ResidentRecoveryMarker.CreateLossException(file.FullName);
                 // No resident is holding this file. In the non-resident model
                 // every mutation already eager-saved to disk, so there is
                 // nothing to flush or shut down — treat close as an idempotent
