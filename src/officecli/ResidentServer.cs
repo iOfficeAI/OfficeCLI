@@ -1964,6 +1964,32 @@ public class ResidentServer : IDisposable
                 node.Format["savedContentType"] = contentType!;
         }
 
+        // CONSISTENCY(get-trace): mirror CommandBuilder.GetQuery.cs — formula
+        // dependency trace attaches to the cell node (JSON: inside Format;
+        // text: indented tree after the node line). Validation and error
+        // codes live in ExcelHandler.AttachTrace so both modes agree.
+        var traceMode = req.GetArgOrNull("trace");
+        if (traceMode != null)
+        {
+            var traceDepth = req.GetIntArg("traceDepth") ?? OfficeCli.Core.FormulaTrace.DefaultDepth;
+            if (_handler is OfficeCli.Handlers.ExcelHandler excelHandler)
+            {
+                var traceOutput = excelHandler.AttachTrace(node, node.Path, traceMode, traceDepth,
+                    attachToFormat: format == OutputFormat.Json);
+                if (format != OutputFormat.Json)
+                {
+                    Console.WriteLine(OutputFormatter.FormatNode(node, format));
+                    Console.WriteLine(OfficeCli.Core.FormulaTrace.RenderTree(traceOutput,
+                        dependents: string.Equals(traceMode, "dependents", StringComparison.OrdinalIgnoreCase)));
+                    return;
+                }
+            }
+            else
+            {
+                throw new CliException("trace is only supported for xlsx documents.") { Code = "unsupported_type" };
+            }
+        }
+
         // Unified envelope contract: mirror direct-mode CommandBuilder.GetQuery.cs
         // — single-path get JSON returns {matches, results: [node]}, so agents
         // and scripts use one jq path across get / get selected / query. Text

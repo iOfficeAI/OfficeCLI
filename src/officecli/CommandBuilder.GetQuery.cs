@@ -16,12 +16,14 @@ static partial class CommandBuilder
         pathArg.DefaultValueFactory = _ => "/";
         var depthOpt = new Option<int>("--depth") { Description = "Depth of child nodes to include" };
         depthOpt.DefaultValueFactory = _ => 1;
+        var getPropOpt = new Option<string[]>("--prop") { Description = "Property to read (key=value). Supported on xlsx cells: trace=precedents|dependents, depth=N (trace hops, 1-16)", AllowMultipleArgumentsPerToken = true };
         var saveOpt = new Option<string?>("--save") { Description = "Extract the backing binary payload (picture/ole/media) to this file path" };
 
         var getCommand = new Command("get", "Get a document node by path");
         getCommand.Add(getFileArg);
         getCommand.Add(pathArg);
         getCommand.Add(depthOpt);
+        getCommand.Add(getPropOpt);
         getCommand.Add(saveOpt);
         getCommand.Add(jsonOption);
 
@@ -37,6 +39,7 @@ static partial class CommandBuilder
             if (depth > DocumentLimits.MaxRecursionDepth)
                 depth = DocumentLimits.MaxRecursionDepth;
             var savePath = result.GetValue(saveOpt);
+            var (traceMode, traceDepth) = ParseGetTraceProps(result.GetValue(getPropOpt));
 
             // Special pseudo-path "selected" — query the running watch process
             // for the currently-selected element paths and resolve them to nodes.
@@ -51,6 +54,11 @@ static partial class CommandBuilder
                 req.Json = json;
                 req.Args["path"] = path;
                 req.Args["depth"] = depth.ToString();
+                if (traceMode != null)
+                {
+                    req.Args["trace"] = traceMode;
+                    req.Args["traceDepth"] = traceDepth.ToString();
+                }
                 if (!string.IsNullOrEmpty(savePath)) req.Args["save"] = savePath;
             }, json) is {} rc) return rc;
 
@@ -70,6 +78,18 @@ static partial class CommandBuilder
                 else
                     Console.Error.WriteLine($"Error: {err}");
                 return 1;
+            }
+
+            // Formula dependency trace (xlsx cells): attach the trace payload
+            // to the cell node — a pure Format addition, the node itself is
+            // exactly what a plain get would return.
+            OfficeCli.Core.TraceOutput? traceOutput = null;
+            if (traceMode != null)
+            {
+                if (handler is ExcelHandler excelHandler)
+                    traceOutput = excelHandler.AttachTrace(node, node.Path, traceMode, traceDepth, attachToFormat: json);
+                else
+                    throw new OfficeCli.Core.CliException("trace is only supported for xlsx documents.") { Code = "unsupported_type" };
             }
 
             // --save <path>: extract the binary payload backing an OLE /
@@ -102,11 +122,65 @@ static partial class CommandBuilder
                 Console.WriteLine(OutputFormatter.WrapEnvelope(
                     OutputFormatter.FormatNodes(new List<DocumentNode> { node }, OutputFormat.Json)));
             else
+            {
                 Console.WriteLine(OutputFormatter.FormatNode(node, OutputFormat.Text));
+                if (traceOutput != null)
+                    Console.WriteLine(OfficeCli.Core.FormulaTrace.RenderTree(traceOutput, dependents: string.Equals(traceMode, "dependents", StringComparison.OrdinalIgnoreCase)));
+            }
             return 0;
         }, json); });
 
         return getCommand;
+    }
+
+    /// <summary>
+    /// Validate get's --prop set. Only the trace knobs are meaningful on a
+    /// read: trace=precedents|dependents and depth=N (trace hops). Unknown
+    /// keys hard-reject — a silently ignored prop is the bug class #383 was
+    /// about. depth without trace is rejected too (it would be a no-op).
+    /// </summary>
+    private static (string? Mode, int Depth) ParseGetTraceProps(string[]? props)
+    {
+        if (props == null || props.Length == 0) return (null, FormulaTrace.DefaultDepth);
+        var parsed = ParsePropsArray(props);
+        string? mode = null;
+        var depth = FormulaTrace.DefaultDepth;
+        foreach (var key in parsed.Keys)
+        {
+            if (key.Equals("trace", StringComparison.OrdinalIgnoreCase)) continue;
+            if (key.Equals("depth", StringComparison.OrdinalIgnoreCase)) continue;
+            throw new CliException($"Unknown get --prop '{key}'.")
+            {
+                Code = "invalid_argument",
+                Suggestion = "get supports trace=precedents|dependents and depth=N (trace hops)"
+            };
+        }
+        if (parsed.TryGetValue("trace", out var traceValue))
+        {
+            if (!traceValue.Equals("precedents", StringComparison.OrdinalIgnoreCase) &&
+                !traceValue.Equals("dependents", StringComparison.OrdinalIgnoreCase))
+                throw new CliException($"Unknown trace mode: '{traceValue}'.")
+                {
+                    Code = "invalid_argument",
+                    ValidValues = ["precedents", "dependents"],
+                    Suggestion = "trace=precedents walks what the cell depends on; trace=dependents walks who depends on it"
+                };
+            mode = traceValue.ToLowerInvariant();
+        }
+        if (parsed.TryGetValue("depth", out var depthValue))
+        {
+            if (!int.TryParse(depthValue, out var d) || d < 1 || d > FormulaTrace.MaxDepth)
+                throw new CliException($"trace depth must be an integer between 1 and {FormulaTrace.MaxDepth} (got '{depthValue}').")
+                {
+                    Code = "invalid_argument",
+                    Suggestion = "--prop depth=3 walks three hops of the dependency chain"
+                };
+            depth = d;
+        }
+        if (mode == null && parsed.ContainsKey("depth"))
+            throw new CliException("--prop depth is only meaningful together with --prop trace=precedents|dependents.")
+            { Code = "invalid_argument", Suggestion = "add --prop trace=precedents (or dependents)" };
+        return (mode, depth);
     }
 
     private static int GetSelectedAction(string filePath, int depth, bool json)

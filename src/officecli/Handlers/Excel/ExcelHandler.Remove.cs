@@ -372,6 +372,10 @@ public partial class ExcelHandler
             // does on recalc and is hard to get right.
             InvalidateFormulaCacheReferencingSheet(workbookPart, sheetName);
 
+            // Formula-trace reverse index: both the removed sheet's own formula
+            // cells and every ref pointing at it just changed meaning.
+            InvalidateDependentsIndex();
+
             // Fix ActiveTab to prevent workbook corruption when deleting the last tab
             var remainingCount = sheets!.Elements<Sheet>().Count();
             var bookViews = workbook.GetFirstChild<BookViews>();

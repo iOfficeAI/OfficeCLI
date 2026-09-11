@@ -19,6 +19,11 @@ public partial class ExcelHandler
     public List<string> Set(string path, Dictionary<string, string> properties)
     {
         Modified = true;
+        // A set can change any cell's formula (the usual trace-index mutation).
+        // The row-index cache invalidation sites don't cover the plain cell
+        // write path, so the trace reverse index drops here at the Set() entry
+        // — the one choke point every set mutation passes through.
+        InvalidateDependentsIndex();
         // Batch Set: route to the shared filter engine when the path is a bare
         // selector (no `/`) OR a `/`-scoped path that carries a content filter
         // (e.g. `/Sheet1/cell[value>5000 or value<300]`). The latter would
