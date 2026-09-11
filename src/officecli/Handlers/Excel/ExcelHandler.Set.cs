@@ -16,8 +16,27 @@ namespace OfficeCli.Handlers;
 
 public partial class ExcelHandler
 {
+    // Resolve sheet-scoped paths before either the handler or a resident marks
+    // the document dirty. A missing sheet must not turn a rejected set into a
+    // save. Keep selector and workbook-level dispatch in Set itself.
+    internal void ValidateSetSheet(string path)
+    {
+        if (!string.IsNullOrEmpty(path)
+            && (!path.StartsWith("/") || AttributeFilter.IsContentFilterPath(path)))
+            return;
+
+        path = ResolveSheetIndexInPath(NormalizeExcelPath(path));
+        if (path == "/" || Regex.IsMatch(path.TrimStart('/'), @"^namedrange\[(.+?)\]$", RegexOptions.IgnoreCase))
+            return;
+
+        var sheetName = path.TrimStart('/').Split('/', 2)[0];
+        if (FindWorksheet(sheetName) == null)
+            throw SheetNotFoundException(sheetName);
+    }
+
     public List<string> Set(string path, Dictionary<string, string> properties)
     {
+        ValidateSetSheet(path);
         Modified = true;
         // Batch Set: route to the shared filter engine when the path is a bare
         // selector (no `/`) OR a `/`-scoped path that carries a content filter
