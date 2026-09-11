@@ -113,6 +113,9 @@ internal static class WarningContext
 [JsonSerializable(typeof(List<DocumentIssue>))]
 [JsonSerializable(typeof(Dictionary<string, object?>))]
 [JsonSerializable(typeof(List<Dictionary<string, object?>>))]
+// Trace payloads (get --prop trace=…) hang off Format values: edges are a list
+// of {from, to[]} dicts, and the `to` arrays are string lists.
+[JsonSerializable(typeof(List<string>))]
 [JsonSerializable(typeof(bool))]
 [JsonSerializable(typeof(int))]
 [JsonSerializable(typeof(long))]

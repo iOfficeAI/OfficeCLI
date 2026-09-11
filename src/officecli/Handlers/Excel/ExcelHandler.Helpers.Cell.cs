@@ -494,6 +494,8 @@ public partial class ExcelHandler
     /// <summary>
     /// Invalidate the row index cache for a specific SheetData (or all sheets if null).
     /// Must be called whenever rows are structurally modified (removed, shifted).
+    /// The formula-trace reverse index rides the same hook: any mutation that
+    /// invalidates the row index can change which formulas reference what.
     /// </summary>
     private void InvalidateRowIndex(SheetData? sheetData = null)
     {
@@ -501,6 +503,7 @@ public partial class ExcelHandler
             _rowIndex?.Remove(sheetData);
         else
             _rowIndex = null;
+        InvalidateDependentsIndex();
     }
 
     private Cell FindOrCreateCell(SheetData sheetData, string cellRef)

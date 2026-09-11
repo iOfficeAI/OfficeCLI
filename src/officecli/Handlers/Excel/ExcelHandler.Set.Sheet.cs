@@ -271,6 +271,10 @@ public partial class ExcelHandler
                         }
 
                         workbook.Save();
+                        // The formula-trace reverse index is keyed by sheet
+                        // NAME (both the formula-cell side and the reference
+                        // side) — a rename rewrites exactly that key space.
+                        InvalidateDependentsIndex();
                     }
                     break;
                 }
