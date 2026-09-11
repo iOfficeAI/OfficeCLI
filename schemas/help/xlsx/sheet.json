@@ -266,6 +266,14 @@
       "add": false, "set": false, "get": true,
       "readback": "comma-separated column break indices",
       "enforcement": "report"
+    },
+    "autofit": {
+      "type": "bool",
+      "description": "auto-fit the whole sheet: columns first, then rows (row-height wrap estimates consume the final column widths).",
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop autofit=true"],
+      "readback": "none (write-only operation; per-column/row results read back on col/row get)",
+      "enforcement": "strict"
     }
   },
   "children": [

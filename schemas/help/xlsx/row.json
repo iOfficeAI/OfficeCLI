@@ -93,6 +93,14 @@
       "readback": "true when the row group is collapsed",
       "enforcement": "report"
     },
-    "customHeight": { "type":"bool", "add":false, "set":false, "get":true, "description":"true when the row carries an explicit height (Row @customHeight). Get-only flag.", "readback":"true when row has a custom height", "enforcement":"report" }
+    "customHeight": { "type":"bool", "add":false, "set":false, "get":true, "description":"true when the row carries an explicit height (Row @customHeight). Get-only flag.", "readback":"true when row has a custom height", "enforcement":"report" },
+    "autofit": {
+      "type": "bool",
+      "description": "auto-fit row height to wrapped cell content (heuristic estimate: wrapped line count x 15pt line pitch, clamped 15-409pt; CJK-aware width table). Write after column widths are final - the wrap estimate depends on them. Excel in-app autofit stays available for font-exact sizing.",
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop autofit=true"],
+      "readback": "resolves to height at Set time (pt-suffixed on row get)",
+      "enforcement": "strict"
+    }
   }
 }

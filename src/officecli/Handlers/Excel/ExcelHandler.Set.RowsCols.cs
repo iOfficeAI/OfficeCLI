@@ -235,6 +235,69 @@ public partial class ExcelHandler
         SaveWorksheet(worksheet);
     }
 
+    /// <summary>
+    /// Heuristic row height (no rendering engine): per cell, the wrapped line
+    /// count is ceil(display width / effective column width) summed over the
+    /// cell's explicit newline segments; the row height is max-lines × 15pt
+    /// line pitch (the 11pt Calibri default), clamped to Excel's 15–409pt
+    /// range. Run AFTER column autofit — the wrap estimate depends on the
+    /// final column widths. Excel's own autofit stays available in-app for
+    /// font-exact sizing.
+    /// </summary>
+    private double CalculateAutoFitHeight(WorksheetPart worksheet, int rowIdx)
+    {
+        const double LinePitchPt = 15.0;
+        const double DefaultColWidthChars = 8.43;
+
+        var ws = GetSheet(worksheet);
+        var sheetData = ws.GetFirstChild<SheetData>();
+        var row = sheetData?.Elements<Row>().FirstOrDefault(r => r.RowIndex?.Value == rowIdx);
+        if (row == null) return LinePitchPt;
+
+        double EffectiveWidth(int colIdx)
+        {
+            var cols = ws.GetFirstChild<Columns>();
+            var col = cols?.Elements<Column>()
+                .FirstOrDefault(c => c.Min?.Value <= colIdx && c.Max?.Value >= colIdx);
+            return col?.Width?.Value is double w && w > 0 ? w : DefaultColWidthChars;
+        }
+
+        var maxLines = 1;
+        foreach (var cell in row.Elements<Cell>())
+        {
+            var cellRef = cell.CellReference?.Value;
+            if (cellRef == null) continue;
+            var (cellCol, _) = ParseCellReference(cellRef);
+            var text = GetCellDisplayValue(cell);
+            if (string.IsNullOrEmpty(text)) continue;
+            var widthChars = EffectiveWidth(ColumnNameToIndex(cellCol));
+            int lines = 0;
+            foreach (var segment in text.Split('\n'))
+            {
+                var segWidth = ParseHelpers.EstimateTextWidthInChars(segment);
+                lines += Math.Max(1, (int)Math.Ceiling(segWidth / widthChars));
+            }
+            if (lines > maxLines) maxLines = lines;
+        }
+
+        return Math.Clamp(maxLines * LinePitchPt, 15, 409);
+    }
+
+    private void AutoFitAllRows(WorksheetPart worksheet)
+    {
+        var ws = GetSheet(worksheet);
+        var sheetData = ws.GetFirstChild<SheetData>();
+        if (sheetData == null) return;
+
+        foreach (var row in sheetData.Elements<Row>())
+        {
+            if (row.RowIndex == null || !row.Elements<Cell>().Any()) continue;
+            row.Height = CalculateAutoFitHeight(worksheet, (int)row.RowIndex.Value);
+            row.CustomHeight = true;
+        }
+        SaveWorksheet(worksheet);
+    }
+
     // ==================== Row Set (height, hidden) ====================
 
     // Set a manual page break's position / span / manual flag, keeping the
@@ -371,6 +434,13 @@ public partial class ExcelHandler
                 case "collapsed":
                     row.Collapsed = value.Equals("true", StringComparison.OrdinalIgnoreCase)
                         || value == "1" || value.Equals("yes", StringComparison.OrdinalIgnoreCase);
+                    break;
+                case "autofit":
+                    if (ParseHelpers.IsTruthy(value))
+                    {
+                        row.Height = CalculateAutoFitHeight(worksheet, (int)rowIdx);
+                        row.CustomHeight = true;
+                    }
                     break;
                 default:
                     // A non-row-attribute key. First try it as a TABLE COLUMN on
