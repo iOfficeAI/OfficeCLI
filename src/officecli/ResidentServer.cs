@@ -1095,6 +1095,10 @@ public class ResidentServer : IDisposable
                 ExecuteQuery(request, format);
                 break;
             case "set":
+                // Reject missing Excel sheets before promotion latches _dirty;
+                // otherwise save/idle-autosave can rewrite an untouched file.
+                if (_handler is ExcelHandler excel)
+                    excel.ValidateSetSheet(request.GetArg("path"));
                 PromoteToEditable();
                 ExecuteSet(request);
                 NotifyWatchSlideChanged(request.GetArg("path"));
