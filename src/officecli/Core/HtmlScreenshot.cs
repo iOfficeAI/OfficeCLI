@@ -2,7 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
+using System.Net;
+using System.Net.Http;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace OfficeCli.Core;
 
@@ -84,6 +91,15 @@ internal static class HtmlScreenshot
         var outDir = Path.GetDirectoryName(outPath);
         if (!string.IsNullOrEmpty(outDir)) Directory.CreateDirectory(outDir);
         var url = new Uri(Path.GetFullPath(htmlPath)).AbsoluteUri + "#screenshot";
+
+        // Use the same exact-layout path as the standard screenshot capture.
+        // Keep the CSS viewport at w×h and let the device scale factor control
+        // raster density, so callers such as clipped capture retain their
+        // requested HiDPI output without reintroducing window-chrome offsets.
+        var cdp = TryChromeCdp(bin, url, outPath, w, h, scale);
+        if (cdp.Ok)
+            return true;
+
         var args = new[]
         {
             "--headless=new",
@@ -375,8 +391,12 @@ internal static class HtmlScreenshot
     {
         var pw = WhichFirst("playwright");
         if (pw == null) return (false, null);
-        var args = new[] { "screenshot", $"--viewport-size={w},{h}", "--full-page", url, outPath };
-        return RunBinary(pw, args);
+        // A screenshot request is an exact viewport capture.  `--full-page`
+        // changes that contract by growing the image to the document height,
+        // which can crop/letterbox callers that deliberately sized the viewport
+        // to a page or slide.
+        var args = new[] { "screenshot", $"--viewport-size={w},{h}", url, outPath };
+        return RunBinary(pw, args, timeoutMs: 30_000);
     }
 
     // ----- Chromium family ---------------------------------------------------------------
@@ -385,6 +405,19 @@ internal static class HtmlScreenshot
     {
         var bin = FindChrome();
         if (bin == null) return (false, null);
+
+        // `--window-size` is an outer-window size on some Chromium builds
+        // (notably Windows new-headless), whereas --screenshot paints a bitmap
+        // at that outer size.  The resulting layout viewport is shorter and a
+        // 16:9 slide loses its footer.  CDP device metrics specify the *layout*
+        // viewport, so use them for the normal capture path.  Keep the command
+        // line fallback for locked-down Chrome builds where remote debugging is
+        // disabled.
+        var cdp = TryChromeCdp(bin, url, outPath, w, h, scale: 1);
+        if (cdp.Ok)
+            return cdp;
+        DebugScreenshot($"CDP failed: {cdp.Error ?? "unknown"}; falling back to command-line Chrome");
+
         var args = new[]
         {
             "--headless=new",
@@ -406,7 +439,215 @@ internal static class HtmlScreenshot
             $"--screenshot={outPath}",
             url,
         };
-        return RunBinary(bin, args);
+        var fallback = RunBinary(bin, args, timeoutMs: 30_000);
+        if (!fallback.Item1)
+            DebugScreenshot($"Chrome fallback failed: {fallback.Item2 ?? "unknown"}");
+        return fallback;
+    }
+
+    /// <summary>
+    /// Capture through Chrome DevTools Protocol with an explicit layout viewport.
+    /// Unlike <c>--window-size</c>, <c>Emulation.setDeviceMetricsOverride</c>
+    /// has no title-bar/toolbar ambiguity, so the DOM viewport and PNG bounds are
+    /// exactly <paramref name="w"/>×<paramref name="h"/> on every platform.
+    /// </summary>
+    private static (bool Ok, string? Error) TryChromeCdp(string bin, string url, string outPath, int w, int h, int scale)
+    {
+        string profile = Path.Combine(Path.GetTempPath(), "officecli_chrome_" + Guid.NewGuid().ToString("N"));
+        Process? browser = null;
+        using var cdpTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var cdpToken = cdpTimeout.Token;
+        try
+        {
+            int port = GetFreeLoopbackPort();
+            Directory.CreateDirectory(profile);
+            var psi = new ProcessStartInfo
+            {
+                FileName = bin,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            foreach (var arg in new[]
+            {
+                "--headless=new", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
+                "--allow-file-access-from-files", "--disable-background-networking",
+                "--remote-allow-origins=*",
+                $"--remote-debugging-address=127.0.0.1", $"--remote-debugging-port={port}",
+                $"--user-data-dir={profile}", "about:blank",
+            }) psi.ArgumentList.Add(arg);
+            browser = Process.Start(psi);
+            if (browser == null) return (false, "Chrome did not start");
+
+            using var http = new HttpClient { Timeout = TimeSpan.FromMilliseconds(750) };
+            var deadline = DateTime.UtcNow.AddSeconds(12);
+            string? pageWs = null;
+            var endpoint = $"http://127.0.0.1:{port}";
+            // Ask the DevTools HTTP endpoint to create the target and return its
+            // websocket directly. This is deterministic on Windows Edge/Chrome
+            // and avoids the short race where /json/list briefly contains no
+            // websocket URL after a target is created.
+            var createDeadline = DateTime.UtcNow.AddSeconds(3);
+            while (DateTime.UtcNow < createDeadline && string.IsNullOrEmpty(pageWs))
+            {
+                try
+                {
+                    using var create = new HttpRequestMessage(HttpMethod.Put,
+                        $"{endpoint}/json/new?{Uri.EscapeDataString(url)}");
+                    using var response = http.SendAsync(create, cdpToken).GetAwaiter().GetResult();
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var created = response.Content.ReadAsStringAsync(cdpToken).GetAwaiter().GetResult();
+                        using var createdJson = JsonDocument.Parse(created);
+                        if (createdJson.RootElement.TryGetProperty("webSocketDebuggerUrl", out var ws))
+                            pageWs = ws.GetString();
+                    }
+                }
+                catch { /* endpoint may still be starting or unsupported */ }
+                if (string.IsNullOrEmpty(pageWs)) Thread.Sleep(50);
+                else break;
+            }
+            // Fallback for browsers that do not implement PUT /json/new:
+            // poll until a page target is fully discoverable.
+            deadline = DateTime.UtcNow.AddSeconds(12);
+            while (DateTime.UtcNow < deadline && string.IsNullOrEmpty(pageWs))
+            {
+                try
+                {
+                    var targets = http.GetStringAsync($"{endpoint}/json/list", cdpToken).GetAwaiter().GetResult();
+                    using var targetJson = JsonDocument.Parse(targets);
+                    foreach (var target in targetJson.RootElement.EnumerateArray())
+                    {
+                        if (target.TryGetProperty("type", out var type)
+                            && type.GetString() == "page"
+                            && target.TryGetProperty("webSocketDebuggerUrl", out var ws))
+                        {
+                            pageWs = ws.GetString();
+                            if (!string.IsNullOrEmpty(pageWs)) break;
+                        }
+                    }
+                }
+                catch { /* browser endpoint may still be starting */ }
+                if (string.IsNullOrEmpty(pageWs)) Thread.Sleep(50);
+            }
+            if (string.IsNullOrEmpty(pageWs)) return (false, "Chrome screenshot target was not discoverable");
+
+            using var pageSocket = new ClientWebSocket();
+            pageSocket.ConnectAsync(new Uri(pageWs), cdpToken).GetAwaiter().GetResult();
+            using var enabled = CdpCommand(pageSocket, 1, "Page.enable", new JsonObject(), cdpToken);
+            using var metrics = CdpCommand(pageSocket, 2, "Emulation.setDeviceMetricsOverride",
+                new JsonObject
+                {
+                    ["width"] = w, ["height"] = h, ["deviceScaleFactor"] = scale,
+                    ["mobile"] = false, ["screenWidth"] = w, ["screenHeight"] = h,
+                }, cdpToken);
+            using var navigate = CdpCommand(pageSocket, 3, "Page.navigate",
+                new JsonObject { ["url"] = url }, cdpToken);
+
+            // Wait for synchronous preview JS and local assets.  The normal HTML
+            // previews are local; this is deliberately bounded rather than using
+            // a browser-chrome offset or a full-page heuristic.
+            var readyDeadline = DateTime.UtcNow.AddSeconds(15);
+            while (DateTime.UtcNow < readyDeadline)
+            {
+                using var state = CdpCommand(pageSocket, 4, "Runtime.evaluate",
+                    new JsonObject { ["expression"] = "document.readyState", ["returnByValue"] = true }, cdpToken);
+                if (state.RootElement.GetProperty("result").GetProperty("result")
+                    .GetProperty("value").GetString() == "complete") break;
+                Thread.Sleep(50);
+            }
+            // Force the screenshot marker even when a caller supplies a custom
+            // HTML path without the hash-based bootstrap script. Then rescale
+            // from the actual emulated viewport and normalize the single-slide
+            // canvas inline; this also makes the CDP path self-diagnosing rather
+            // than silently relying on a stale flex layout.
+            const string normalize = "(()=>{document.documentElement.classList.add('headless');" +
+                "document.body.classList.remove('fullscreen');" +
+                "const m=document.querySelector('.main');if(m){m.style.width=innerWidth+'px';m.style.height=innerHeight+'px';m.style.minWidth=innerWidth+'px';m.style.minHeight=innerHeight+'px';m.style.padding='0';m.style.gap='0';m.style.flex='none';}" +
+                "const s=document.querySelectorAll('.main > .slide-container .slide');" +
+                "if(s.length===1){const e=s[0],sw=e.offsetWidth,sh=e.offsetHeight,k=Math.min(innerWidth/sw,innerHeight/sh);e.style.transform='scale('+k+')';e.style.transformOrigin='center top';const p=e.parentElement;p.style.width=(sw*k)+'px';p.style.height=(sh*k)+'px';}" +
+                "return JSON.stringify({className:document.documentElement.className,innerWidth:innerWidth,innerHeight:innerHeight,mainWidth:m&&m.clientWidth,mainHeight:m&&m.clientHeight,slideWidth:s.length?s[0].offsetWidth:0,slideHeight:s.length?s[0].offsetHeight:0});})()";
+            using var scaled = CdpCommand(pageSocket, 5, "Runtime.evaluate",
+                new JsonObject { ["expression"] = normalize, ["awaitPromise"] = true, ["returnByValue"] = true }, cdpToken);
+            Thread.Sleep(100);
+            using var screenshot = CdpCommand(pageSocket, 6, "Page.captureScreenshot",
+                new JsonObject
+                {
+                    ["format"] = "png", ["captureBeyondViewport"] = false,
+                    ["clip"] = new JsonObject
+                    {
+                        ["x"] = 0, ["y"] = 0, ["width"] = w, ["height"] = h, ["scale"] = 1,
+                    },
+                }, cdpToken);
+            var base64 = screenshot.RootElement.GetProperty("result").GetProperty("data").GetString();
+            if (string.IsNullOrEmpty(base64)) return (false, "Chrome returned an empty screenshot");
+            File.WriteAllBytes(outPath, Convert.FromBase64String(base64));
+            return File.Exists(outPath) && new FileInfo(outPath).Length > 0
+                ? (true, null)
+                : (false, "Chrome did not write the screenshot");
+        }
+        catch (Exception e)
+        {
+            return (false, e.Message);
+        }
+        finally
+        {
+            if (browser != null)
+            {
+                try { if (!browser.HasExited) browser.Kill(true); } catch { /* ignore */ }
+                browser.Dispose();
+            }
+            try { if (Directory.Exists(profile)) Directory.Delete(profile, recursive: true); } catch { /* ignore */ }
+        }
+    }
+
+    private static int GetFreeLoopbackPort()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        try { return ((IPEndPoint)listener.LocalEndpoint).Port; }
+        finally { listener.Stop(); }
+    }
+
+    private static void DebugScreenshot(string message)
+    {
+        if (string.Equals(Environment.GetEnvironmentVariable("OFFICECLI_SCREENSHOT_DEBUG"), "1", StringComparison.Ordinal))
+            Console.Error.WriteLine($"[officecli-screenshot] {message}");
+    }
+
+    private static JsonDocument CdpCommand(ClientWebSocket socket, int id, string method, JsonObject parameters,
+                                           CancellationToken cancellationToken)
+    {
+        var payload = new JsonObject
+        {
+            ["id"] = id,
+            ["method"] = method,
+            ["params"] = parameters,
+        }.ToJsonString();
+        var bytes = Encoding.UTF8.GetBytes(payload);
+        socket.SendAsync(bytes, WebSocketMessageType.Text, true, cancellationToken).GetAwaiter().GetResult();
+        while (true)
+        {
+            var text = ReceiveCdpMessage(socket, cancellationToken);
+            var json = JsonDocument.Parse(text);
+            if (json.RootElement.TryGetProperty("id", out var responseId) && responseId.GetInt32() == id)
+                return json;
+            json.Dispose(); // asynchronous protocol event for another command
+        }
+    }
+
+    private static string ReceiveCdpMessage(ClientWebSocket socket, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[16 * 1024];
+        using var stream = new MemoryStream();
+        WebSocketReceiveResult result;
+        do
+        {
+            result = socket.ReceiveAsync(buffer, cancellationToken).GetAwaiter().GetResult();
+            if (result.MessageType == WebSocketMessageType.Close)
+                throw new InvalidOperationException("Chrome DevTools connection closed");
+            stream.Write(buffer, 0, result.Count);
+        } while (!result.EndOfMessage);
+        return Encoding.UTF8.GetString(stream.GetBuffer(), 0, (int)stream.Length);
     }
 
     private static string? FindChrome()
@@ -584,7 +825,7 @@ internal static class HtmlScreenshot
         catch { return (false, null); }
     }
 
-    private static (bool, string?) RunBinary(string bin, string[] args)
+    private static (bool, string?) RunBinary(string bin, string[] args, int timeoutMs = 120_000)
     {
         try
         {
@@ -602,14 +843,24 @@ internal static class HtmlScreenshot
             foreach (var a in args) psi.ArgumentList.Add(a);
             using var p = Process.Start(psi);
             if (p == null) return (false, "process did not start");
-            if (!p.WaitForExit(120_000))
+            // Drain both redirected pipes while the child runs. Waiting first
+            // can deadlock a verbose browser once stderr/stdout fills its pipe.
+            var stdoutTask = p.StandardOutput.ReadToEndAsync();
+            var stderrTask = p.StandardError.ReadToEndAsync();
+            if (!p.WaitForExit(timeoutMs))
             {
                 try { p.Kill(true); } catch { /* ignore */ }
-                return (false, "timeout after 120s");
+                try
+                {
+                    Task.WhenAll(stdoutTask, stderrTask).Wait(TimeSpan.FromSeconds(2));
+                }
+                catch { /* ignore */ }
+                return (false, $"timeout after {timeoutMs}ms");
             }
+            stdoutTask.GetAwaiter().GetResult();
+            var stderr = stderrTask.GetAwaiter().GetResult();
             if (p.ExitCode != 0)
             {
-                var stderr = p.StandardError.ReadToEnd();
                 var lastLine = stderr.Trim().Split('\n').LastOrDefault() ?? $"exit {p.ExitCode}";
                 return (false, lastLine);
             }

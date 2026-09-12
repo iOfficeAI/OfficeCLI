@@ -16,17 +16,45 @@
         // 40px breathing room for interactive viewing; headless captures fill the
         // viewport (the screenshot path sizes it to the slide) so they take none.
         const headless = document.documentElement.classList.contains('headless');
-        const availW = main.clientWidth - (headless ? 0 : 40);
+        // For an exact headless capture, use the browser's emulated viewport
+        // directly. Flex children can report a narrower client box while the
+        // screenshot canvas is still the full viewport (especially on Windows
+        // Edge/Chrome), which otherwise shrinks a 16:9 slide to ~1116x627.
+        const availW = headless ? window.innerWidth : main.clientWidth - 40;
+        const availH = headless ? window.innerHeight : main.clientHeight - 40;
         const slides = document.querySelectorAll('.main > .slide-container .slide');
         // A lone headless slide is a single-slide screenshot: scale it to fill the
         // viewport in BOTH directions (up or down) so the capture is flush at the
         // requested resolution regardless of the slide's physical size. Interactive
         // and multi-slide views only ever shrink to fit.
         const fill = headless && slides.length === 1;
+        // Chromium's command-line screenshot can expose a layout viewport that
+        // is shorter than the bitmap it will emit (window chrome is included in
+        // --window-size).  For the one-slide capture path, use the outer canvas
+        // height when it is larger so the slide fills the requested bitmap
+        // instead of shrinking into a dark letterbox.  This is deliberately
+        // limited to headless one-slide previews: scrolling/grid/range previews
+        // and non-PPT HTML retain their normal responsive layout.
+        if (fill) {
+            const canvasH = Math.max(window.innerHeight, window.outerHeight || 0);
+            if (canvasH > main.clientHeight) {
+                document.documentElement.style.height = canvasH + 'px';
+                document.body.style.height = canvasH + 'px';
+                main.style.height = canvasH + 'px';
+                main.style.flex = 'none';
+            }
+        }
+        const captureH = fill ? main.clientHeight : availH;
         slides.forEach(slide => {
             const designW = slide.offsetWidth;
-            if (availW > 0 && (fill || designW > availW)) {
-                const s = availW / designW;
+            if (availW > 0 && captureH > 0 && (fill || designW > availW)) {
+                // A headless single-slide capture must fit both layout axes.
+                // Chromium's legacy command-line screenshot can expose a
+                // shorter layout viewport than its requested bitmap; fitting by
+                // height preserves footers/legends instead of cutting them off.
+                const s = fill
+                    ? Math.min(availW / designW, captureH / slide.offsetHeight)
+                    : availW / designW;
                 slide.style.transform = `scale(${s})`;
                 slide.style.transformOrigin = 'center top';
                 const designH = slide.offsetHeight;

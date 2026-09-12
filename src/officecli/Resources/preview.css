@@ -215,6 +215,22 @@ html.headless .sidebar,
 html.headless .sidebar-toggle,
 html.headless .toggle-zone,
 html.headless .page-counter { display: none !important; }
+/* Exact screenshot capture uses the document viewport as its canvas.  Keep the
+   headless page free of min-content expansion so a single slide is measured
+   against that viewport in both directions. */
+html.headless,
+html.headless body { width: 100vw; height: 100vh; min-width: 100vw; min-height: 100vh; }
+html.headless .main {
+    width: 100vw;
+    min-width: 100vw;
+    height: 100vh;
+    min-height: 100vh;
+    padding: 0 !important;
+    gap: 0 !important;
+    flex: none;
+}
+html.headless .slide-container,
+html.headless .slide-wrapper { width: 100vw; }
 
 /* ===== Narrow viewport: auto-hide sidebar ===== */
 @media (max-width: 900px) {
