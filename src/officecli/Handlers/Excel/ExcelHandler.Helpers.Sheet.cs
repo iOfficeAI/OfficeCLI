@@ -218,6 +218,7 @@ public partial class ExcelHandler
         RefreshStaleChartCaches();
         foreach (var part in _dirtyWorksheets)
         {
+            UpdateWorksheetDimension(GetSheet(part));
             ReorderWorksheetChildren(GetSheet(part));
             GetSheet(part).Save();
         }
@@ -227,6 +228,77 @@ public partial class ExcelHandler
             _doc.WorkbookPart?.WorkbookStylesPart?.Stylesheet?.Save();
             _dirtyStylesheet = false;
         }
+    }
+
+    // A stale dimension can hide appended rows from streaming readers. Rebuild
+    // it once at flush, not after every mutation in a batch. Keep the optional
+    // element absent when the source did not declare a dimension.
+    private static void UpdateWorksheetDimension(Worksheet ws)
+    {
+        var dimension = ws.GetFirstChild<SheetDimension>();
+        if (dimension == null) return;
+        int minRow = int.MaxValue, maxRow = 0;
+        int minCol = int.MaxValue, maxCol = 0;
+        void Include(int col, int row)
+        {
+            minRow = Math.Min(minRow, row);
+            maxRow = Math.Max(maxRow, row);
+            minCol = Math.Min(minCol, col);
+            maxCol = Math.Max(maxCol, col);
+        }
+        void IncludeReference(string reference)
+        {
+            var (col, row) = ParseCellReference(reference);
+            Include(ColumnNameToIndex(col), row);
+        }
+
+        var sheetData = ws.GetFirstChild<SheetData>();
+        int nextRow = 1;
+        if (sheetData != null)
+        {
+            foreach (var row in sheetData.Elements<Row>())
+            {
+                int rowIndex = (int)(row.RowIndex?.Value ?? (uint)nextRow);
+                nextRow = rowIndex + 1;
+                // Retain explicitly stored empty rows without expanding their
+                // column bounds. Cells with only formatting still count below.
+                minRow = Math.Min(minRow, rowIndex);
+                maxRow = Math.Max(maxRow, rowIndex);
+                int colIndex = 0;
+                foreach (var cell in row.Elements<Cell>())
+                {
+                    if (cell.CellReference?.Value is { Length: > 0 } reference)
+                    {
+                        var (col, cellRow) = ParseCellReference(reference);
+                        colIndex = ColumnNameToIndex(col);
+                        Include(colIndex, cellRow);
+                    }
+                    else
+                        Include(++colIndex, rowIndex);
+                }
+            }
+        }
+        // Whole-column formatting counts at row 1, not all 1,048,576 rows
+        // (CT_SheetDimension). Width-only columns do not add used cells.
+        var columns = ws.GetFirstChild<Columns>();
+        if (columns != null)
+            foreach (var col in columns.Elements<Column>())
+                if (col.Style?.HasValue == true && col.Min?.Value is { } first && col.Max?.Value is { } last)
+                {
+                    Include((int)first, 1);
+                    Include((int)last, 1);
+                }
+        var merges = ws.GetFirstChild<MergeCells>();
+        if (merges != null)
+            foreach (var merge in merges.Elements<MergeCell>())
+                if (merge.Reference?.Value is { Length: > 0 } range)
+                    foreach (var reference in range.Split(':')) IncludeReference(reference);
+
+        if (maxRow == 0) { dimension.Reference = "A1"; return; }
+        if (maxCol == 0) minCol = maxCol = 1;
+        var start = $"{IndexToColumnName(minCol)}{minRow}";
+        var end = $"{IndexToColumnName(maxCol)}{maxRow}";
+        dimension.Reference = start == end ? start : $"{start}:{end}";
     }
 
     /// <summary>
