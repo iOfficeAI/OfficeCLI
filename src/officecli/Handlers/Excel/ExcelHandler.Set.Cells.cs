@@ -708,6 +708,12 @@ public partial class ExcelHandler
                                  || p.Value.Equals("rich", StringComparison.OrdinalIgnoreCase))))
                         unsupported.Add("runs (only valid with type=richtext)");
                     break;
+                case "stylepreset":
+                    // Range-level preset landed on a cell-anchored path — point
+                    // at the range form instead of letting it die as a bare
+                    // unsupported key (03 §6: presets style free-form ranges).
+                    unsupported.Add("stylepreset (apply it to a range path: set '/Sheet1/B2:T6' --prop stylepreset=kpi_card)");
+                    break;
                 default:
                     // Legacy richtext mini-spec keys (run1=, run2=, …) are read
                     // inside ApplyRichTextToCell — same false-unsupported hole
