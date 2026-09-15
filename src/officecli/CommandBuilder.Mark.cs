@@ -241,12 +241,14 @@ static partial class CommandBuilder
     {
         var fileArg = new Argument<FileInfo>("file") { Description = "Office document path" };
         var pathOpt = new Option<string?>("--path") { Description = "Element path to unmark" };
+        var idOpt = new Option<string?>("--id") { Description = "Exact server-issued mark id to unmark" };
         var allOpt = new Option<bool>("--all") { Description = "Remove all marks for this file" };
 
         var cmd = new Command(name,
-            "Remove marks from the watch process. Specify --path <data-path> or --all.");
+            "Remove marks from the watch process. Specify --id, --path, or --all.");
         cmd.Add(fileArg);
         cmd.Add(pathOpt);
+        cmd.Add(idOpt);
         cmd.Add(allOpt);
         cmd.Add(jsonOption);
 
@@ -254,25 +256,22 @@ static partial class CommandBuilder
         {
             var file = result.GetValue(fileArg)!;
             var pathVal = OfficeCli.Core.MsysPathHint.Restore(result.GetValue(pathOpt));
+            var idVal = result.GetValue(idOpt)?.Trim();
             var allVal = result.GetValue(allOpt);
 
-            // Require explicit choice — never silently default
-            if (allVal && !string.IsNullOrEmpty(pathVal))
+            // Require exactly one explicit choice — never silently default.
+            var choices = (allVal ? 1 : 0)
+                + (!string.IsNullOrWhiteSpace(pathVal) ? 1 : 0)
+                + (!string.IsNullOrWhiteSpace(idVal) ? 1 : 0);
+            if (choices != 1)
             {
-                var err = "Specify either --path or --all, not both.";
-                if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(err));
-                else Console.Error.WriteLine(err);
-                return 2;
-            }
-            if (!allVal && string.IsNullOrEmpty(pathVal))
-            {
-                var err = "Must specify either --path <p> or --all.";
+                var err = "Specify exactly one of --id <id>, --path <path>, or --all.";
                 if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(err));
                 else Console.Error.WriteLine(err);
                 return 2;
             }
 
-            var req = new UnmarkRequest { Path = pathVal, All = allVal };
+            var req = new UnmarkRequest { Id = idVal, Path = pathVal, All = allVal };
             var removed = WatchNotifier.RemoveMarks(file.FullName, req);
             if (removed == null)
             {

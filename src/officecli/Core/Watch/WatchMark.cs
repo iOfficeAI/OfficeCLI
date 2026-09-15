@@ -83,6 +83,9 @@ internal class MarkRequest
 /// <summary>Request payload for the "unmark" pipe command.</summary>
 internal class UnmarkRequest
 {
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
     [JsonPropertyName("path")]
     public string? Path { get; set; }
 

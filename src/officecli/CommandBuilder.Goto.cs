@@ -16,30 +16,39 @@ static partial class CommandBuilder
     // a separate top-level command that talks to watch over the named
     // pipe (CONSISTENCY(watch-runtime-cmd)).
     //
-    // Word: path like /body/p[5] or /body/table[2] — resolves via
-    // WatchMessage.ExtractWordScrollTarget. PPT/Excel: not yet wired in
-    // (anchor coverage is the gap, not the command itself).
+    // Paths are resolved by the watch server against its cached rendered
+    // HTML. Server-issued mark ids target viewer-only highlighted fragments.
 
     private static Command BuildGotoCommand(Option<bool> jsonOption, string name = "goto")
     {
-        var fileArg = new Argument<FileInfo>("file") { Description = "Office document path (.docx)" };
-        var pathArg = new Argument<string>("path") { Description = "Element path to scroll to (e.g. /body/p[5], /body/table[1], /body/table[1]/tr[2]/tc[3])" };
+        var fileArg = new Argument<FileInfo>("file") { Description = "Office document path" };
+        var pathArg = new Argument<string?>("path")
+        {
+            Description = "Element path to center (Word, Excel, or PowerPoint)",
+            Arity = ArgumentArity.ZeroOrOne,
+        };
+        var markIdOpt = new Option<string?>("--mark-id")
+        {
+            Description = "Server-issued viewer mark id to center",
+        };
 
         var cmd = new Command(name,
-            "Scroll the running watch viewer(s) to the given element. Path resolves to an HTML anchor; broadcast to all SSE clients of the file. Word: paragraph, table, table row, table cell.");
+            "Center a document path or viewer mark in the running watch viewer(s). Broadcast to all SSE clients of the file.");
         cmd.Add(fileArg);
         cmd.Add(pathArg);
+        cmd.Add(markIdOpt);
         cmd.Add(jsonOption);
 
         cmd.SetAction(result => { var json = result.GetValue(jsonOption); return SafeRun(() =>
         {
             var file = result.GetValue(fileArg)!;
-            var path = OfficeCli.Core.MsysPathHint.Restore(result.GetValue(pathArg)!)!;
-
-            var selector = WatchMessage.ExtractWordScrollTarget(path);
-            if (selector == null)
+            var path = OfficeCli.Core.MsysPathHint.Restore(result.GetValue(pathArg));
+            var markId = result.GetValue(markIdOpt)?.Trim();
+            var hasPath = !string.IsNullOrWhiteSpace(path);
+            var hasMark = !string.IsNullOrWhiteSpace(markId);
+            if (hasPath == hasMark)
             {
-                var err = $"Cannot resolve scroll target for path '{path}'. Supported: /body/p[N], /body/paragraph[N], /body/table[N], /body/table[N]/tr[R], /body/table[N]/tr[R]/tc[C].";
+                var err = "Specify exactly one document path or --mark-id.";
                 if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(err));
                 else Console.Error.WriteLine(err);
                 return 2;
@@ -53,14 +62,30 @@ static partial class CommandBuilder
                 return 1;
             }
 
-            // BUG-BT-R33-3: validate the selector against the watch server's
-            // cached HTML snapshot before reporting success. Previously goto
-            // exited 0 even when the anchor didn't exist (e.g. /body/p[99] in
-            // a 4-paragraph doc).
-            var scroll = WatchNotifier.TryScroll(file.FullName, selector);
+            ScrollResult scroll;
+            string target;
+            if (hasMark)
+            {
+                scroll = WatchNotifier.TryScrollMark(file.FullName, markId!);
+                target = $"mark {markId}";
+            }
+            else
+            {
+                var normalizedPath = path!.Trim();
+                // Preserve legacy Word paragraph/table aliases and anchors.
+                var legacySelector = file.Extension.Equals(
+                    ".docx",
+                    StringComparison.OrdinalIgnoreCase)
+                    ? WatchMessage.ExtractWordScrollTarget(normalizedPath)
+                    : null;
+                scroll = legacySelector != null
+                    ? WatchNotifier.TryScroll(file.FullName, legacySelector)
+                    : WatchNotifier.TryScrollPath(file.FullName, normalizedPath);
+                target = normalizedPath;
+            }
             if (scroll.Kind == ScrollResult.K.NotFound)
             {
-                var err = $"Cannot scroll to '{path}': {scroll.Error}.";
+                var err = $"Cannot scroll to '{target}': {scroll.Error}.";
                 if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeError(err));
                 else Console.Error.WriteLine(err);
                 return 1;
@@ -73,7 +98,7 @@ static partial class CommandBuilder
                 return 1;
             }
 
-            var msg = $"Scrolled watcher(s) to {path} ({selector})";
+            var msg = $"Scrolled watcher(s) to {target}";
             if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(msg));
             else Console.WriteLine(msg);
             return 0;
