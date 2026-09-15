@@ -62,7 +62,8 @@ static partial class CommandBuilder
     internal static List<BatchResult> ApplyBatchItems(
         OfficeCli.Core.IDocumentHandler handler, List<BatchItem> items,
         bool stopOnError, bool json, bool skipResidentOnlyCommands = false,
-        ICollection<string>? unrecognizedLatex = null)
+        ICollection<string>? unrecognizedLatex = null,
+        OfficeCli.Core.BatchJournalWriter? journal = null)
     {
         var results = new List<BatchResult>();
         for (int bi = 0; bi < items.Count; bi++)
@@ -74,6 +75,7 @@ static partial class CommandBuilder
                 if (cmd is "open" or "close")
                 {
                     results.Add(new BatchResult { Index = bi, Success = true, Output = $"Skipped '{cmd}' (resident mode)" });
+                    journal?.ItemDone(bi, "skipped", null, null);
                     continue;
                 }
             }
@@ -105,11 +107,13 @@ static partial class CommandBuilder
                         }));
                     }
                 }
-                results.Add(new BatchResult { Index = bi, Success = true, Output = output, Warnings = warnings });
+                var successResult = new BatchResult { Index = bi, Success = true, Output = output, Warnings = warnings };
+                results.Add(successResult);
+                journal?.ItemDone(bi, "ok", null, null);
             }
             catch (Exception ex)
             {
-                results.Add(new BatchResult
+                var failureResult = new BatchResult
                 {
                     Index = bi,
                     Success = false,
@@ -117,7 +121,9 @@ static partial class CommandBuilder
                     Error = ex.Message,
                     Code = OfficeCli.Core.OutputFormatter.InferErrorCode(ex),
                     Warnings = OfficeCli.Core.WarningContext.End(),
-                });
+                };
+                results.Add(failureResult);
+                journal?.ItemDone(bi, "failed", failureResult.Code, failureResult.Error);
                 if (stopOnError) break;
             }
             // BUG-BT2: per-item unrecognized-LaTeX diagnostics. The handler
@@ -154,10 +160,11 @@ static partial class CommandBuilder
     /// </summary>
     internal static List<BatchResult> RunNonResidentBatch(
         OfficeCli.Core.IDocumentHandler handler, List<BatchItem> items,
-        bool stopOnError, bool json, ICollection<string>? unrecognizedLatex = null)
+        bool stopOnError, bool json, ICollection<string>? unrecognizedLatex = null,
+        OfficeCli.Core.BatchJournalWriter? journal = null)
     {
         if (handler is OfficeCli.Handlers.WordHandler wh) wh.DeferSave = true;
-        return ApplyBatchItems(handler, items, stopOnError, json, unrecognizedLatex: unrecognizedLatex);
+        return ApplyBatchItems(handler, items, stopOnError, json, unrecognizedLatex: unrecognizedLatex, journal: journal);
     }
 
     private static Command BuildBatchCommand(Option<bool> jsonOption)
@@ -182,10 +189,14 @@ static partial class CommandBuilder
         // old apply-what-succeeds semantics for callers that want partial
         // progress (e.g. lossy replays of dumps with known-unsupported items).
         var batchBestEffortOpt = new Option<bool>("--best-effort") { Description = "Apply the items that succeed even when others fail (pre-atomic legacy semantics). Default: any failure rolls back the whole batch" };
+        var batchResumeOpt = new Option<string?>("--resume") { Arity = ArgumentArity.ZeroOrOne, Description = "Resume an interrupted batch from its journal. Bare --resume picks the newest journal for this file; --resume <path> uses that journal. Mutually exclusive with --commands/--input/--from — the items come from the journal" };
+        var batchForceResumeOpt = new Option<bool>("--force-resume") { Description = "With --resume on an atomic-mode journal: re-run even though the file changed since the interrupted batch started" };
         var batchCommand = new Command("batch", BatchHelpDescription);
         batchCommand.Add(batchFileArg);
         batchCommand.Add(batchInputOpt);
         batchCommand.Add(batchCommandsOpt);
+        batchCommand.Add(batchResumeOpt);
+        batchCommand.Add(batchForceResumeOpt);
         batchCommand.Add(batchForceOpt);
         batchCommand.Add(batchStopOpt);
         batchCommand.Add(batchBestEffortOpt);
@@ -196,6 +207,9 @@ static partial class CommandBuilder
             var file = result.GetValue(batchFileArg)!;
             var inputFile = result.GetValue(batchInputOpt);
             var inlineCommands = result.GetValue(batchCommandsOpt);
+            var resumeAppeared = result.GetResult(batchResumeOpt) is not null;
+            var resumePath = result.GetValue(batchResumeOpt);
+            var forceResume = result.GetValue(batchForceResumeOpt);
             // Default: continue on error. --stop-on-error flips it to strict.
             // --force still acts as the docx-protection bypass (matches set
             // --force semantics) but no longer doubles as the continue-on-
@@ -204,7 +218,16 @@ static partial class CommandBuilder
             var forceFlag = result.GetValue(batchForceOpt);
             var bestEffort = result.GetValue(batchBestEffortOpt);
 
+            // Resolve a symlink up front so the final promote replaces the
+            // TARGET file; a plain rename would overwrite the link itself.
+            // (Needed early: --resume locates journals and hashes the target.)
+            string targetPath;
+            try { targetPath = new FileInfo(file.FullName).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? file.FullName; }
+            catch { targetPath = file.FullName; }
+
             string jsonText;
+            var resumeNote = "";
+            var resumeSourceJournal = (string?)null;
             // BUG-R7-09 (F-6): previously --commands/--input/stdin were
             // silently prioritized in that order — passing two of them at
             // once dropped the lower-priority source with no warning, so
@@ -242,9 +265,10 @@ static partial class CommandBuilder
                 }
                 catch { /* treat as no confirmed payload */ }
             }
-            if (inlineCommands != null && inputFile != null)
+            var batchSourceCount = (inlineCommands != null ? 1 : 0) + (inputFile != null ? 1 : 0) + (resumeAppeared ? 1 : 0);
+            if (batchSourceCount > 1)
                 throw new ArgumentException(
-                    "batch: --commands and --input are mutually exclusive. Pick one source.");
+                    "batch: --commands, --input, and --resume are mutually exclusive. With --resume the items come from the journal.");
             // '--input -' explicitly opts INTO stdin — don't emit the
             // "stdin will be ignored" warning in that case, since stdin
             // is exactly what will be read.
@@ -257,7 +281,37 @@ static partial class CommandBuilder
                     + "stdin will be ignored. Pass only one source to silence this warning, or set "
                     + "OFFICECLI_BATCH_ALLOW_STDIN_REDIRECT=1.");
             }
-            if (inlineCommands != null)
+            if (resumeAppeared)
+            {
+                // Resume runs the non-resident path; a live resident holds the
+                // file (and may carry in-memory state), so flush+release it
+                // first. The killed run's resident is already gone — this only
+                // catches one opened after the crash.
+                // Flush + release any live resident before the non-resident
+                // resume run (dedicated close API — same as the close command).
+                if (ResidentClient.SendCloseWithResponse(file.FullName, out _))
+                {
+                    // The close round-trip can return before the resident's
+                    // file handle is fully released — wait (bounded) for
+                    // exclusive availability so hashing and the resume run's
+                    // own open can't race the release.
+                    for (var wait = 0; wait < 40; wait++)
+                    {
+                        var released = false;
+                        try
+                        {
+                            using var probe = System.IO.File.Open(targetPath, System.IO.FileMode.Open,
+                                System.IO.FileAccess.ReadWrite, System.IO.FileShare.None);
+                            released = true;
+                        }
+                        catch (System.IO.IOException) { System.Threading.Thread.Sleep(250); }
+                        if (released) break;
+                    }
+                }
+                // Source = the interrupted run's journal; items come from it.
+                (jsonText, resumeNote, resumeSourceJournal) = BuildResumeBatch(targetPath, resumePath, forceResume);
+            }
+            else if (inlineCommands != null)
             {
                 jsonText = inlineCommands;
             }
@@ -422,8 +476,38 @@ static partial class CommandBuilder
             // defers the flush to the next save/close/idle-autosave. A reader
             // that bypasses the resident must flush first (see command-open /
             // command-batch wiki "Persisting changes").
+            // Crash-resume journal (batch --resume). Every mutating batch
+            // records its items and per-item outcomes in a JSONL ledger next
+            // to the target, and DELETES the journal when the run completes
+            // with a verdict — a journal that survives means the process died
+            // mid-run. Journaled batches run the NON-resident path: the
+            // resume semantics need disk to be the source of truth (atomic
+            // temp-copy / best-effort in-place), which is this flow.
+            // OFFICECLI_BATCH_NO_JOURNAL=1 opts out (resident fast path, no
+            // journal → --resume reports journal_not_found).
+            var mutatingBatch = items.Any(it => !ReadOnlyBatchVerbs.Contains(it.Command ?? ""));
+            var journaling = mutatingBatch && Environment.GetEnvironmentVariable("OFFICECLI_BATCH_NO_JOURNAL") != "1";
+            OfficeCli.Core.BatchJournalWriter? journal = null;
+
             if (ResidentClient.TryConnect(file.FullName, out _))
             {
+                // Resident route: the CLI writes the journal header+items, the
+                // resident appends per-item lines and deletes the journal when
+                // its run completes. The resident applies in memory with a
+                // deferred flush, so a killed resident leaves the DISK at the
+                // pre-batch state — the journal records atomic semantics
+                // (resume re-runs everything), which is exact on disk.
+                string? residentJournalPath = null;
+                if (journaling)
+                {
+                    residentJournalPath = OfficeCli.Core.BatchJournal.PathFor(targetPath);
+                    journal = OfficeCli.Core.BatchJournal.Start(
+                        residentJournalPath, targetPath,
+                        OfficeCli.Core.BatchJournal.ComputeSourceHash(targetPath),
+                        items.Count, "atomic");
+                    journal.WriteItems(items);
+                    journal.Dispose(); // keep the file; the resident appends to it
+                }
                 var req = new ResidentRequest
                 {
                     Command = "batch",
@@ -436,6 +520,7 @@ static partial class CommandBuilder
                         ["bestEffort"] = bestEffort.ToString()
                     }
                 };
+                if (residentJournalPath != null) req.Args["journal"] = residentJournalPath;
                 // CONSISTENCY(resident-two-step): long connectTimeoutMs so the
                 // batch waits for its turn in the main-pipe queue instead of
                 // silently timing out under load. Matches TryResident in
@@ -443,6 +528,8 @@ static partial class CommandBuilder
                 var response = ResidentClient.TrySend(file.FullName, req, maxRetries: 3, connectTimeoutMs: 30000);
                 if (response == null)
                 {
+                    if (residentJournalPath != null)
+                        try { System.IO.File.Delete(residentJournalPath); } catch { /* best-effort */ }
                     Console.Error.WriteLine($"Resident for {file.Name} is running but the batch could not be delivered (main pipe busy or unresponsive). Retry, or run 'officecli close {file.Name}' and try again.");
                     return 3;
                 }
@@ -452,6 +539,15 @@ static partial class CommandBuilder
                 if (!string.IsNullOrEmpty(response.Stderr))
                     Console.Error.Write(response.Stderr);
                 return response.ExitCode;
+            }
+
+            if (journaling)
+            {
+                journal = OfficeCli.Core.BatchJournal.Start(
+                    OfficeCli.Core.BatchJournal.PathFor(targetPath), targetPath,
+                    OfficeCli.Core.BatchJournal.ComputeSourceHash(targetPath),
+                    items.Count, bestEffort ? "best-effort" : stopOnError ? "stop-on-error" : "atomic");
+                journal.WriteItems(items);
             }
 
             // Non-resident: open file once, execute all commands, save once.
@@ -469,11 +565,6 @@ static partial class CommandBuilder
             // the legacy run-in-place semantics; all-read-only batches skip the
             // copy (nothing to protect).
             var atomic = !bestEffort && items.Any(it => !ReadOnlyBatchVerbs.Contains(it.Command ?? ""));
-            // Resolve a symlink up front so the final promote replaces the
-            // TARGET file; a plain rename would overwrite the link itself.
-            string targetPath;
-            try { targetPath = new FileInfo(file.FullName).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? file.FullName; }
-            catch { targetPath = file.FullName; }
             string? tmpPath = null;
             var workPath = targetPath;
             if (atomic)
@@ -583,13 +674,14 @@ static partial class CommandBuilder
                             Console.Error.WriteLine($"ERROR: {protBlock}");
                         if (tmpPath != null)
                             try { System.IO.File.Delete(tmpPath); } catch { /* best-effort */ }
+                        journal?.Complete();
                         return 1;
                     }
                 }
                 // DeferSave + replay loop, shared with the MCP batch surface. The
                 // handler's using-Dispose performs the single FinalizeDeferredIds +
                 // Save flush.
-                batchResults = RunNonResidentBatch(handler, items, stopOnError, json, batchUnrecognizedLatex);
+                batchResults = RunNonResidentBatch(handler, items, stopOnError, json, batchUnrecognizedLatex, journal);
                 batchSuccessLocal = batchResults.Count == 0 || !batchResults.Any(r => !r.Success);
                 // Watch preview: only when the document actually changes — the
                 // atomic rollback leaves the file exactly as the preview
@@ -603,6 +695,7 @@ static partial class CommandBuilder
                 // SafeRun): never leave the temp copy behind, never promote it.
                 if (tmpPath != null)
                     try { System.IO.File.Delete(tmpPath); } catch { /* best-effort */ }
+                journal?.Complete();
                 throw;
             }
             // The using-Dispose above fully serialized the (temp) document;
@@ -624,6 +717,7 @@ static partial class CommandBuilder
                     catch
                     {
                         try { System.IO.File.Delete(tmpPath); } catch { /* best-effort */ }
+                        journal?.Complete();
                         throw;
                     }
                 }
@@ -663,6 +757,13 @@ static partial class CommandBuilder
                 });
             }
             var rolledBack = atomic && !batchSuccess;
+            // Run completed with a verdict — the journal has served its purpose,
+            // and a consumed resume source journal goes with it.
+            journal?.Complete();
+            if (resumeSourceJournal != null)
+                try { System.IO.File.Delete(resumeSourceJournal); } catch { /* best-effort */ }
+            if (resumeNote != "")
+                batchWarnings.Add(new OfficeCli.Core.CliWarning { Message = resumeNote, Code = "batch_resumed" });
             if (json)
             {
                 using var sw = new System.IO.StringWriter();
@@ -679,8 +780,9 @@ static partial class CommandBuilder
             // (watch notify happened inside the handler scope above)
             // Exit precedence: a failed item (exit 1) outranks an
             // unrecognized-LaTeX-only warning (exit 2 mirrors single-shot).
+            // The batch_resumed notice is informational — never drives exit 2.
             if (!batchSuccess) return 1;
-            return batchWarnings.Count > 0 ? 2 : 0;
+            return batchWarnings.Any(w => w.Code != "batch_resumed") ? 2 : 0;
         }, json); });
 
         return batchCommand;
@@ -690,6 +792,59 @@ static partial class CommandBuilder
     // StreamReader's detect-encoding; the stdin reader feeds raw chars.
     private static string StripBom(string s)
         => !string.IsNullOrEmpty(s) && s[0] == '﻿' ? s.Substring(1) : s;
+
+    /// <summary>
+    /// Rebuild the batch from an interrupted run's journal (`batch --resume`).
+    /// An atomic-mode interruption leaves the original file untouched (the
+    /// temp copy is orphan-swept), so every item re-runs — hash-guarded
+    /// against external edits unless --force-resume. A best-effort
+    /// interruption applied its ok items in place, so only the
+    /// failed/skipped/never-started items re-run (no hash guard: the journal
+    /// statuses describe what ran, and the resume run itself carries the
+    /// normal atomic protection).
+    /// </summary>
+    private static (string jsonText, string note, string journalPath) BuildResumeBatch(string targetPath, string? resumePath, bool forceResume)
+    {
+        var journalPath = string.IsNullOrEmpty(resumePath)
+            ? OfficeCli.Core.BatchJournal.FindLatest(targetPath)
+            : resumePath;
+        if (journalPath == null || !System.IO.File.Exists(journalPath))
+            throw new OfficeCli.Core.CliException(
+                $"No interrupted batch journal found for {targetPath}.")
+            {
+                Code = "journal_not_found",
+                Suggestion = "--resume recovers a batch whose process was killed mid-run; completed runs delete their journal, so just re-run the batch from its original source."
+            };
+        var state = OfficeCli.Core.BatchJournal.Read(journalPath)
+            ?? throw new OfficeCli.Core.CliException($"Journal '{journalPath}' has no readable header.")
+            { Code = "journal_unreadable" };
+        if (state.AllItems.Count == 0)
+            throw new OfficeCli.Core.CliException($"Journal '{journalPath}' records no items to re-run.")
+            { Code = "journal_unreadable" };
+
+        var rerunAll = state.Mode != "best-effort";
+        if (rerunAll && !forceResume && !string.IsNullOrEmpty(state.SourceHash))
+        {
+            var currentHash = OfficeCli.Core.BatchJournal.ComputeSourceHash(targetPath);
+            if (currentHash != state.SourceHash)
+                throw new OfficeCli.Core.CliException(
+                    "The file changed since the interrupted batch started (journal sourceHash mismatch).")
+                {
+                    Code = "journal_hash_mismatch",
+                    Suggestion = "Inspect the file, then pass --force-resume to re-run the batch anyway."
+                };
+        }
+        var okCount = state.Items.Values.Count(s => s == "ok");
+        var rerun = rerunAll
+            ? state.AllItems
+            : state.AllItems.Where((_, i) => state.Items.GetValueOrDefault(i) != "ok").ToList();
+        if (rerun.Count == 0)
+            throw new OfficeCli.Core.CliException("Nothing to resume: every item in the journal already succeeded.")
+            { Code = "journal_nothing_to_resume" };
+        var note = $"resumed from {System.IO.Path.GetFileName(journalPath)}: re-running {rerun.Count} of {state.Total} item(s)" +
+                   (rerunAll ? " (atomic run interrupted — full re-run)" : $", skipping {okCount} already-applied");
+        return (System.Text.Json.JsonSerializer.Serialize(rerun, BatchJsonContext.Default.ListBatchItem), note, journalPath);
+    }
 
     /// <summary>
     /// UTF-8 view of the process's stdin, used everywhere this CLI reads piped

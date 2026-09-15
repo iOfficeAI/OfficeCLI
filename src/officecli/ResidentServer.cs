@@ -1307,10 +1307,19 @@ public class ResidentServer : IDisposable
         // LastUnrecognizedLatex per item, so a post-loop read would only see
         // the last item's tokens).
         var batchUnrecognizedLatex = new List<string>();
+        // Crash-resume journal: the CLI wrote header+items before routing here
+        // (request arg "journal"); this side appends per-item lines and deletes
+        // the journal when the run completes. The resident applies in memory
+        // with a deferred flush, so a killed resident leaves the disk at the
+        // pre-batch state — matching the atomic mode the journal records.
+        OfficeCli.Core.BatchJournalWriter? journal = null;
+        var residentJournalPath = request.GetArg("journal", "");
+        if (hasMutating && residentJournalPath != "" && System.IO.File.Exists(residentJournalPath))
+            journal = OfficeCli.Core.BatchJournalWriter.Attach(residentJournalPath);
         try
         {
             results = CommandBuilder.ApplyBatchItems(_handler, items, stopOnError, json,
-                skipResidentOnlyCommands: true, unrecognizedLatex: batchUnrecognizedLatex);
+                skipResidentOnlyCommands: true, unrecognizedLatex: batchUnrecognizedLatex, journal: journal);
         }
         finally
         {
@@ -1366,6 +1375,7 @@ public class ResidentServer : IDisposable
         // path.
         _lastBatchHadFailure = anyFailed;
         CommandBuilder.PrintBatchResults(results, json, items.Count, atomicRolledBack: rolledBack);
+        journal?.Complete();
         // BUG-BT2: emit the collected unrecognized-LaTeX markers so the
         // dispatcher maps them to exit 2 and the envelope warning code, exactly
         // as the single-shot resident add/set path (EmitUnrecognizedLatex) does.
