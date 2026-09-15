@@ -116,6 +116,7 @@ static partial class CommandBuilder
                     Item = item,
                     Error = ex.Message,
                     Code = OfficeCli.Core.OutputFormatter.InferErrorCode(ex),
+                    Suggestion = (ex as CliException)?.Suggestion,
                     Warnings = OfficeCli.Core.WarningContext.End(),
                 });
                 if (stopOnError) break;
@@ -666,13 +667,13 @@ static partial class CommandBuilder
             if (json)
             {
                 using var sw = new System.IO.StringWriter();
-                PrintBatchResults(batchResults, json, items.Count, sw, atomicRolledBack: rolledBack);
+                PrintBatchResults(batchResults, json, items.Count, sw, atomicRolledBack: rolledBack, bestEffort: bestEffort);
                 var inner = sw.ToString().TrimEnd('\n', '\r');
                 Console.WriteLine(OfficeCli.Core.OutputFormatter.WrapEnvelope(inner, batchWarnings, success: batchSuccess));
             }
             else
             {
-                PrintBatchResults(batchResults, json, items.Count, atomicRolledBack: rolledBack);
+                PrintBatchResults(batchResults, json, items.Count, atomicRolledBack: rolledBack, bestEffort: bestEffort);
                 foreach (var w in batchWarnings)
                     Console.Error.WriteLine($"  WARNING: {w.Message}");
             }
