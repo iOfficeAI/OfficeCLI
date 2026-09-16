@@ -160,7 +160,7 @@ public partial class PowerPointHandler
                         foreach (var sh in notesShapeTree.Elements<Shape>())
                         {
                             var ph = sh.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties?.GetFirstChild<PlaceholderShape>();
-                            if (ph?.Index?.Value == 1) { notesBody = sh; break; }
+                            if (ph?.Type?.Value == PlaceholderValues.Body) { notesBody = sh; break; }
                         }
                     }
                     if (notesBody != null)

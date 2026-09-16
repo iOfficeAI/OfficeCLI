@@ -21,7 +21,7 @@ public partial class PowerPointHandler
         {
             var ph = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
                 ?.GetFirstChild<PlaceholderShape>();
-            if (ph?.Index?.Value == 1) // body/notes placeholder
+            if (ph?.Type?.Value == PlaceholderValues.Body) // body/notes placeholder
             {
                 return string.Join("\n", shape.TextBody?.Elements<Drawing.Paragraph>()
                     .Select(p => string.Concat(p.Elements<Drawing.Run>().Select(r => r.Text?.Text ?? "")))
@@ -46,7 +46,7 @@ public partial class PowerPointHandler
         {
             var ph = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
                 ?.GetFirstChild<PlaceholderShape>();
-            if (ph?.Index?.Value == 1) { notesShape = shape; break; }
+            if (ph?.Type?.Value == PlaceholderValues.Body) { notesShape = shape; break; }
         }
         if (notesShape == null) return;
         var firstRun = notesShape.TextBody?
@@ -74,13 +74,13 @@ public partial class PowerPointHandler
         var spTree = notesPart.NotesSlide?.CommonSlideData?.ShapeTree
             ?? throw new InvalidOperationException("Notes slide has no shape tree");
 
-        // Find body placeholder (idx=1)
+        // Find the notes body by type; its index is defined by the notes master.
         Shape? notesShape = null;
         foreach (var shape in spTree.Elements<Shape>())
         {
             var ph = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
                 ?.GetFirstChild<PlaceholderShape>();
-            if (ph?.Index?.Value == 1)
+            if (ph?.Type?.Value == PlaceholderValues.Body)
             {
                 notesShape = shape;
                 break;
@@ -136,7 +136,7 @@ public partial class PowerPointHandler
         {
             var ph = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
                 ?.GetFirstChild<PlaceholderShape>();
-            if (ph?.Index?.Value == 1)
+            if (ph?.Type?.Value == PlaceholderValues.Body)
             {
                 notesShape = shape;
                 break;

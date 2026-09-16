@@ -367,7 +367,7 @@ public partial class PowerPointHandler
         {
             var ph = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
                 ?.GetFirstChild<PlaceholderShape>();
-            if (ph?.Index?.Value == 1)
+            if (ph?.Type?.Value == PlaceholderValues.Body)
             {
                 notesShape = shape;
                 break;
