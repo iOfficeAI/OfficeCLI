@@ -295,7 +295,9 @@ public partial class ExcelHandler
     private DocumentNode CellToNode(string sheetName, Cell cell, WorksheetPart? part = null, Core.FormulaEvaluator? evaluator = null)
     {
         var cellRef = cell.CellReference?.Value ?? "?";
-        var formula = cell.CellFormula?.Text is { } fText
+        // Shared-formula children hold an empty <f/>; ResolveText expands them
+        // from the master so they read back like any other formula cell.
+        var formula = Core.SharedFormulaResolver.ResolveText(cell) is { } fText
             ? Core.ModernFunctionQualifier.Unqualify(fText)
             : null;
         string type;

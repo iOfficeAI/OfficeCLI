@@ -218,8 +218,10 @@ public partial class ExcelHandler
         RefreshStaleChartCaches();
         foreach (var part in _dirtyWorksheets)
         {
-            ReorderWorksheetChildren(GetSheet(part));
-            GetSheet(part).Save();
+            var ws = GetSheet(part);
+            SyncSheetDimension(ws);
+            ReorderWorksheetChildren(ws);
+            ws.Save();
         }
         _dirtyWorksheets.Clear();
         if (_dirtyStylesheet)
@@ -227,6 +229,50 @@ public partial class ExcelHandler
             _doc.WorkbookPart?.WorkbookStylesPart?.Stylesheet?.Save();
             _dirtyStylesheet = false;
         }
+    }
+
+    /// <summary>
+    /// Bring <c>&lt;dimension ref&gt;</c> back in line with the rows and cells that
+    /// actually exist. Excel treats the element as advisory, but readers such as
+    /// openpyxl in read_only mode and dimension-driven Java/JS parsers use it as
+    /// the iteration bound — a row appended past the declared range is invisible
+    /// to them even though it is in sheetData. Runs once per dirty worksheet at
+    /// flush time, so every mutation path (row/col insert or delete, cell
+    /// auto-vivify, import) is covered by the same walk. Only maintained when
+    /// the source already carries one: officecli's own blanks never write the
+    /// (optional) element and readers fall back to scanning sheetData for it.
+    /// </summary>
+    private static void SyncSheetDimension(Worksheet ws)
+    {
+        var dim = ws.GetFirstChild<SheetDimension>();
+        if (dim == null) return;
+        var sheetData = ws.GetFirstChild<SheetData>();
+        uint minRow = 0, maxRow = 0;
+        int minCol = 0, maxCol = 0;
+        if (sheetData != null)
+        {
+            foreach (var row in sheetData.Elements<Row>())
+            {
+                var r = row.RowIndex?.Value ?? 0u;
+                if (r == 0) continue;
+                if (minRow == 0 || r < minRow) minRow = r;
+                if (r > maxRow) maxRow = r;
+                foreach (var cell in row.Elements<Cell>())
+                {
+                    if (cell.CellReference?.Value is not { } cref) continue;
+                    var c = ColumnNameToIndex(ParseCellReference(cref).Column);
+                    if (minCol == 0 || c < minCol) minCol = c;
+                    if (c > maxCol) maxCol = c;
+                }
+            }
+        }
+        if (maxRow == 0) { dim.Reference = "A1"; return; } // empty sheet, as Excel writes it
+        if (maxCol == 0) { minCol = maxCol = 1; }           // rows exist but hold no cells
+        var first = $"{IndexToColumnName(minCol)}{minRow}";
+        var last = $"{IndexToColumnName(maxCol)}{maxRow}";
+        var reference = first == last ? first : $"{first}:{last}";
+        if (!string.Equals(dim.Reference?.Value, reference, StringComparison.Ordinal))
+            dim.Reference = reference;
     }
 
     /// <summary>

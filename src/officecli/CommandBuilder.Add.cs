@@ -412,7 +412,11 @@ static partial class CommandBuilder
         var moveFileArg = new Argument<FileInfo>("file") { Description = "Office document path (required even with open/close mode)" };
         var movePathArg = new Argument<string>("path") { Description = "DOM path of the element to move" };
         var moveToOpt = new Option<string?>("--to") { Description = "Target parent path. If omitted, reorders within the current parent" };
-        var moveIndexOpt = new Option<int?>("--index") { Description = "Insert position (0-based). If omitted, appends to end" };
+        // Post-removal splice: the element is detached first and the index is
+        // applied to what remains, so moving p[1] to index 2 in [P1,P2,P3,P4]
+        // yields [P2,P3,P1,P4] — not "insert before the current p[3]". The
+        // two readings only differ for backward moves; say it in the help.
+        var moveIndexOpt = new Option<int?>("--index") { Description = "Insert position (0-based) among the remaining siblings after the element is detached — moving p[1] to --index 2 in [P1,P2,P3,P4] gives [P2,P3,P1,P4]. If omitted, appends to end" };
         var moveAfterOpt = new Option<string?>("--after") { Description = "Move after the element at this path" };
         var moveBeforeOpt = new Option<string?>("--before") { Description = "Move before the element at this path" };
         // --prop currently carries trackChange.author/date/id for the

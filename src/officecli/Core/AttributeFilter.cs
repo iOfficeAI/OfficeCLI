@@ -928,6 +928,48 @@ internal static class AttributeFilter
     /// always applies all conditions: stripping the bracket means the handler did
     /// not pre-filter, so the tree must evaluate every predicate itself.
     /// </param>
+    /// <summary>
+    /// A selector must begin with something a handler can read as an element,
+    /// a cell/sheet reference, a path or a predicate. One that opens with a
+    /// stray symbol (<c>%%%badselector</c>, <c>!!invalid!!</c>) parsed to an
+    /// EMPTY element token in xlsx and pptx, and an empty token means "no type
+    /// filter" — every cell / every shape came back with exit 0, which is a
+    /// bulk-edit hazard once the same selector reaches set/remove. docx
+    /// happened to return nothing. Reject it in one place so all three formats
+    /// answer with the same invalid_selector the bracket checks already emit.
+    /// </summary>
+    private static void RejectGarbageSelectorHead(string selector)
+    {
+        var s = selector.TrimStart();
+        if (s.Length == 0) return;
+        var c = s[0];
+        // letters/digits/_ : element names, A1 refs, sheet names
+        // ' "            : Excel-quoted sheet names ('My Data'!row)
+        // / [ :          : path form, bare predicate, pseudo-class
+        // * . # @ $ (    : wildcard / CSS-style heads left to the handlers
+        if (!(char.IsLetterOrDigit(c) || c == '_' || c == '\'' || c == '"'
+            || c == '/' || c == '[' || c == ':' || c == '*' || c == '.' || c == '#'
+            || c == '@' || c == '$' || c == '('))
+            throw new CliException($"Malformed selector: \"{selector}\" does not start with an element name, a cell reference or a path.")
+            {
+                Code = "invalid_selector",
+                Suggestion = "Start with an element type, e.g. cell[value>5], shape[text~=Hello], p[bold=true], or a path like /Sheet1/A1."
+            };
+
+        // The same empty element token also arises AFTER a separator: a sheet
+        // prefix with nothing behind it (`Sheet1!`), a trailing or doubled
+        // combinator (`slide[1]>`, `slide[1]>>shape`), an empty pseudo-class
+        // (`cell:`). Look only at top-level text — a '>' or '!' inside a
+        // predicate value is literal.
+        var outside = System.Text.RegularExpressions.Regex.Replace(s, @"\[[^\]]*\]|'[^']*'|""[^""]*""", "").TrimEnd();
+        if (outside.Length > 0 && (outside[^1] is '>' or '!' or ':' or ',' || outside.Contains(">>")))
+            throw new CliException($"Malformed selector: \"{selector}\" has no element name after '{(outside.Contains(">>") ? ">>" : outside[^1].ToString())}'.")
+            {
+                Code = "invalid_selector",
+                Suggestion = "Name the element, e.g. Sheet1!cell, slide[1]>shape, cell:contains(text)."
+            };
+    }
+
     public static (List<DocumentNode> Results, List<FilterDiagnostic> Warnings) FilterSelector(
         string selector, Func<string, List<DocumentNode>> query, Func<string, string>? keyResolver = null,
         bool applyAll = true)
@@ -951,6 +993,8 @@ internal static class AttributeFilter
             }
             return (unionResults, unionWarnings);
         }
+
+        RejectGarbageSelectorHead(selector);
 
         var expr = ParseExpr(selector);
         if (expr != null && keyResolver != null)

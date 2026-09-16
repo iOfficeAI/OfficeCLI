@@ -392,7 +392,22 @@ public partial class ExcelHandler
                 {
                     var newTlc = refMapper(tlc);
                     if (newTlc != null && !string.Equals(newTlc, tlc, StringComparison.Ordinal))
+                    {
                         pane.TopLeftCell = newTlc;
+                        // The freeze boundary itself is xSplit/ySplit, not topLeftCell
+                        // (Excel rewrites topLeftCell with the scroll position on
+                        // every save). Moving only the anchor left the pane saying
+                        // two different things; keep the splits in step so the
+                        // boundary the getter derives is the one Excel shows.
+                        if (pane.State?.Value == PaneStateValues.Frozen)
+                        {
+                            var (newCol, newRow) = ParseCellReference(newTlc);
+                            var colSplit = ColumnNameToIndex(newCol) - 1;
+                            var rowSplit = newRow - 1;
+                            pane.HorizontalSplit = colSplit > 0 ? colSplit : null;
+                            pane.VerticalSplit = rowSplit > 0 ? rowSplit : null;
+                        }
+                    }
                 }
                 foreach (var sel in sv.Elements<Selection>())
                 {

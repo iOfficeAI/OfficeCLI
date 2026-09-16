@@ -1791,7 +1791,7 @@ internal class ExcelStyleManager
 
     // ==================== Helpers ====================
 
-    private static Stylesheet CreateDefaultStylesheet()
+    internal static Stylesheet CreateDefaultStylesheet()
     {
         return new Stylesheet(
             new NumberingFormats() { Count = 0 },

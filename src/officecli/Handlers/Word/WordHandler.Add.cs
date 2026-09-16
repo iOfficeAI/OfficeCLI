@@ -16,8 +16,10 @@ namespace OfficeCli.Handlers;
 public partial class WordHandler
 {
     public string Add(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
+        => MarkModified(() => AddCore(parentPath, type, position, properties));
+
+    private string AddCore(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
     {
-        Modified = true;
         // The signature is non-nullable, but the body uses `type?.Equals(...)`
         // below to short-circuit header/footer routing — that null-conditional
         // makes the C# flow analyzer treat `type` as nullable from that point
@@ -604,6 +606,9 @@ public partial class WordHandler
     }
 
     public (string RelId, string PartPath) AddPart(string parentPartPath, string partType, Dictionary<string, string>? properties = null)
+        => MarkModified(() => AddPartCore(parentPartPath, partType, properties));
+
+    private (string RelId, string PartPath) AddPartCore(string parentPartPath, string partType, Dictionary<string, string>? properties)
     {
         var mainPart = _doc.MainDocumentPart!;
 

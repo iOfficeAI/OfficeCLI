@@ -49,6 +49,35 @@ public partial class ExcelHandler : IDocumentHandler, Rendering.IRenderModelHost
     internal bool Modified { get; set; }
 
     /// <summary>
+    /// Run a mutation with <see cref="Modified"/> raised, and put the flag back
+    /// the way it was if the mutation throws. Add/Set/Remove/RawSet used to set
+    /// the flag on entry, before any validation, so a command the handler
+    /// refused (unknown sheet, bad path) still took the Modified branch of
+    /// <see cref="Dispose"/>: the whole package was re-serialized, the
+    /// OfficeCLI.* audit stamp was written, and the file's hash changed for a
+    /// command that did nothing. A refused command must leave the file exactly
+    /// as it found it — the <c>!Modified</c> byte-preserving path in Dispose
+    /// already guarantees that once the flag is honest.
+    ///
+    /// This is all-or-nothing per command: a mutation that throws after
+    /// touching part of the DOM (a comma-list merge whose second range
+    /// overlaps) also persists nothing, which is what its success=false
+    /// envelope promises. Under a resident the partially touched in-memory DOM
+    /// is flushed by the next successful command — the batch path's
+    /// DiscardOnDispose rollback is the atomic mechanism there.
+    /// </summary>
+    private T MarkModified<T>(Func<T> mutation)
+    {
+        var wasModified = Modified;
+        Modified = true;
+        try { return mutation(); }
+        catch { Modified = wasModified; throw; }
+    }
+
+    private void MarkModified(Action mutation)
+        => MarkModified(() => { mutation(); return true; });
+
+    /// <summary>
     /// Number of bare empty cell declarations removed at open by
     /// <see cref="OfficeCli.Core.WorksheetBloatFilter"/> (issue #149).
     /// Zero for normal files.
@@ -315,8 +344,10 @@ public partial class ExcelHandler : IDocumentHandler, Rendering.IRenderModelHost
     }
 
     public void RawSet(string partPath, string xpath, string action, string? xml)
+        => MarkModified(() => RawSetCore(partPath, xpath, action, xml));
+
+    private void RawSetCore(string partPath, string xpath, string action, string? xml)
     {
-        Modified = true;
         if (partPath == null) throw new ArgumentNullException(nameof(partPath));
         var workbookPart = _doc.WorkbookPart
             ?? throw new InvalidOperationException("No workbook part");

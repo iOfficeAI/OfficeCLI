@@ -15,8 +15,10 @@ namespace OfficeCli.Handlers;
 public partial class PowerPointHandler
 {
     public string Add(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
+        => MarkModified(() => AddCore(parentPath, type, position, properties));
+
+    private string AddCore(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
     {
-        Modified = true;
         LastUnrecognizedLatex = new List<string>();
         // CONSISTENCY(prop-key-case): property keys are case-insensitive
         // ("SRC"/"src"/"Src" all resolve the same). Normalize once at the

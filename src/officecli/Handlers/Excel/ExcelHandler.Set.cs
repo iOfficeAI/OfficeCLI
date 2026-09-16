@@ -16,9 +16,8 @@ namespace OfficeCli.Handlers;
 
 public partial class ExcelHandler
 {
-    // Resolve sheet-scoped paths before either the handler or a resident marks
-    // the document dirty. A missing sheet must not turn a rejected set into a
-    // save. Keep selector and workbook-level dispatch in Set itself.
+    // Resolve sheet-scoped paths before a resident promotes the handler and
+    // marks itself dirty. Keep selector and workbook-level dispatch in Set.
     internal void ValidateSetSheet(string path)
     {
         if (!string.IsNullOrEmpty(path)
@@ -35,9 +34,10 @@ public partial class ExcelHandler
     }
 
     public List<string> Set(string path, Dictionary<string, string> properties)
+        => MarkModified(() => SetCore(path, properties));
+
+    private List<string> SetCore(string path, Dictionary<string, string> properties)
     {
-        ValidateSetSheet(path);
-        Modified = true;
         // Batch Set: route to the shared filter engine when the path is a bare
         // selector (no `/`) OR a `/`-scoped path that carries a content filter
         // (e.g. `/Sheet1/cell[value>5000 or value<300]`). The latter would

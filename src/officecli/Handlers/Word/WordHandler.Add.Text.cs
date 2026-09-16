@@ -538,7 +538,7 @@ public partial class WordHandler
             // BUG-IND-ALIAS (#367): clear the ISO/strict spelling so a cloned or
             // imported paragraph cannot keep a stale w:start next to the new
             // w:left (two conflicting indents; a later normalizing save picks one).
-            ind.Start = null;
+            WordIndentAliases.Normalize(ind);
         }
         if (properties.TryGetValue("rightindent", out var addRI) || properties.TryGetValue("rightIndent", out addRI) || properties.TryGetValue("indentright", out addRI))
         {
@@ -546,7 +546,7 @@ public partial class WordHandler
             // CONSISTENCY(lenient-spacing): see leftindent above.
             // BUG-DUMP-NEGIND: signed (see leftIndent above).
             ind.Right = SpacingConverter.ParseWordSpacingSigned(addRI).ToString();
-            ind.End = null; // BUG-IND-ALIAS (#367): w:end is ISO for w:right.
+            WordIndentAliases.Normalize(ind); // BUG-IND-ALIAS (#367)
         }
         if (properties.TryGetValue("hangingindent", out var addHI) || properties.TryGetValue("hangingIndent", out addHI) || properties.TryGetValue("hanging", out addHI))
         {

@@ -14,10 +14,12 @@ namespace OfficeCli.Handlers;
 public partial class PowerPointHandler
 {
     public string? Remove(string path, Dictionary<string, string>? properties = null)
+        => MarkModified(() => RemoveCore(path, properties));
+
+    private string? RemoveCore(string path, Dictionary<string, string>? properties)
     {
         // Phase 4: trackChange.* is Word-only. Silently ignored here for now;
         // PowerPoint has no revision-tracking schema equivalent.
-        Modified = true;
         // CONSISTENCY(null-path-guard): callers that pass null get an
         // ArgumentNullException instead of a confusing downstream NRE.
         // Mirrors the Word/Excel guards on the same surface.
@@ -712,6 +714,9 @@ public partial class PowerPointHandler
     }
 
     public string Move(string sourcePath, string? targetParentPath, InsertPosition? position, Dictionary<string, string>? properties = null)
+        => MarkModified(() => MoveCore(sourcePath, targetParentPath, position, properties));
+
+    private string MoveCore(string sourcePath, string? targetParentPath, InsertPosition? position, Dictionary<string, string>? properties)
     {
         // pptx has no track-change concept; `properties` is accepted for IDocumentHandler parity but ignored.
         var index = position?.Index;
@@ -977,6 +982,9 @@ public partial class PowerPointHandler
     }
 
     public (string NewPath1, string NewPath2) Swap(string path1, string path2)
+        => MarkModified(() => SwapCore(path1, path2));
+
+    private (string NewPath1, string NewPath2) SwapCore(string path1, string path2)
     {
         path1 = ResolveIdPath(path1);
         path2 = ResolveIdPath(path2);
@@ -1183,6 +1191,9 @@ public partial class PowerPointHandler
     }
 
     public string CopyFrom(string sourcePath, string targetParentPath, InsertPosition? position)
+        => MarkModified(() => CopyFromCore(sourcePath, targetParentPath, position));
+
+    private string CopyFromCore(string sourcePath, string targetParentPath, InsertPosition? position)
     {
         var index = position?.Index;
         sourcePath = ResolveIdPath(sourcePath);
