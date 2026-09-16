@@ -261,7 +261,16 @@ public partial class ExcelHandler
             var pane = ws.GetFirstChild<SheetViews>()?.GetFirstChild<SheetView>()?.GetFirstChild<DocumentFormat.OpenXml.Spreadsheet.Pane>();
             if (pane != null && pane.State?.Value == PaneStateValues.Frozen)
             {
-                sheetNode.Format["freeze"] = pane.TopLeftCell?.Value ?? "";
+                // The freeze boundary is defined solely by xSplit/ySplit. topLeftCell is
+                // the scrolled pane's scroll position, which Excel rewrites every time the
+                // sheet is saved while scrolled away from the boundary — reading it back
+                // reports a freeze wherever the file happened to be scrolled. The two only
+                // coincide in a freshly written file, which is why an officecli-only
+                // round-trip looks correct. Mirrors the `freeze` writer in Set.Sheet.cs,
+                // which derives xSplit/ySplit from the same cell reference.
+                var colSplit = (int)(pane.HorizontalSplit?.Value ?? 0D);
+                var rowSplit = (int)(pane.VerticalSplit?.Value ?? 0D);
+                sheetNode.Format["freeze"] = IndexToColumnName(colSplit + 1) + (rowSplit + 1);
             }
 
             // Include zoom and view properties

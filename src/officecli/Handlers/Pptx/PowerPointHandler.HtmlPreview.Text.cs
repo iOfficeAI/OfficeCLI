@@ -652,7 +652,13 @@ public partial class PowerPointHandler
                                 if (oMath != null)
                                 {
                                     var latex = FormulaParser.ToLatex(oMath);
-                                    sb.Append($"<span class=\"katex-formula\" data-formula=\"{HtmlEncode(latex)}\"></span>");
+                                    // <m:oMathPara> is a display equation on its own
+                                    // line; a bare <m:oMath> sits inline in the
+                                    // sentence. Tell the KaTeX bootstrap which one it
+                                    // is — rendering everything in displayMode broke
+                                    // "The value is [x + y]." into three lines.
+                                    var display = oMath.LocalName == "oMathPara" ? " data-display=\"1\"" : "";
+                                    sb.Append($"<span class=\"katex-formula\"{display} data-formula=\"{HtmlEncode(latex)}\"></span>");
                                 }
                             }
                             catch { }
@@ -1138,8 +1144,13 @@ public partial class PowerPointHandler
             // 3pt outline reads as a ~4px stroke. Color comes from the a:ln's
             // solidFill child (default black when absent). paint-order:stroke fill
             // keeps the fill painted on top so the stroke hugs the glyph outside.
+            // <a:ln><a:noFill/></a:ln> (or w="0") is PowerPoint's way of saying
+            // "no outline" — it is the form the UI writes when text outline is
+            // switched off, so it must not become a default black stroke.
             var runOutline = rp.GetFirstChild<Drawing.Outline>();
-            if (runOutline != null)
+            if (runOutline != null
+                && runOutline.GetFirstChild<Drawing.NoFill>() == null
+                && !(runOutline.Width?.HasValue == true && runOutline.Width.Value == 0))
             {
                 double strokePx = runOutline.Width?.HasValue == true
                     ? Units.EmuToPt(runOutline.Width.Value) * 4.0 / 3.0

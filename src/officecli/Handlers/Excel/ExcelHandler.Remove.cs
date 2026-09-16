@@ -15,9 +15,11 @@ namespace OfficeCli.Handlers;
 public partial class ExcelHandler
 {
     public string? Remove(string path, Dictionary<string, string>? properties = null)
+        => MarkModified(() => RemoveCore(path, properties));
+
+    private string? RemoveCore(string path, Dictionary<string, string>? properties)
     {
         // Phase 4: trackChange.* is Word-only. Silently ignored here.
-        Modified = true;
         // CONSISTENCY(container-remove-guard): reject removal of the
         // workbook root up front. Sheet-level removal has its own guard
         // (can't remove last sheet) further down and is a legitimate op;

@@ -13,8 +13,10 @@ namespace OfficeCli.Handlers;
 public partial class PowerPointHandler
 {
     public List<string> Set(string path, Dictionary<string, string> properties)
+        => MarkModified(() => SetCore(path, properties));
+
+    private List<string> SetCore(string path, Dictionary<string, string> properties)
     {
-        Modified = true;
         LastUnrecognizedLatex = new List<string>();
         path = NormalizePptxPathSegmentCasing(path);
         path = NormalizeCellPath(path);

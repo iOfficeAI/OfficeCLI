@@ -161,6 +161,26 @@ public partial class WordHandler : IDocumentHandler, Rendering.IRenderModelHost
     internal bool Modified { get; set; }
 
     /// <summary>
+    /// Run a mutation with <see cref="Modified"/> raised, and put the flag back
+    /// the way it was if the mutation throws. The entry points used to raise
+    /// the flag before any validation, so a refused command (missing path,
+    /// no-match xpath) still had the OfficeCLI.* audit stamp written on
+    /// Dispose — a file marked as modified by a command that did nothing.
+    /// Move/Swap/CopyFrom/AddPart never raised it at all, so a successful one
+    /// left no stamp. Same helper as ExcelHandler.
+    /// </summary>
+    private T MarkModified<T>(Func<T> mutation)
+    {
+        var wasModified = Modified;
+        Modified = true;
+        try { return mutation(); }
+        catch { Modified = wasModified; throw; }
+    }
+
+    private void MarkModified(Action mutation)
+        => MarkModified(() => { mutation(); return true; });
+
+    /// <summary>
     /// When true, per-mutation <c>Document.Save()</c> calls are skipped — the
     /// in-memory DOM stays authoritative and is serialized once at Dispose
     /// (AutoSave) / explicit flush. Set by the batch driver around a replay so
@@ -1567,8 +1587,10 @@ public partial class WordHandler : IDocumentHandler, Rendering.IRenderModelHost
     }
 
     public void RawSet(string partPath, string xpath, string action, string? xml)
+        => MarkModified(() => RawSetCore(partPath, xpath, action, xml));
+
+    private void RawSetCore(string partPath, string xpath, string action, string? xml)
     {
-        Modified = true;
         ClearBodyChildIndex(); // raw-set may rewrite the body / its paragraph set
         if (partPath == null) throw new ArgumentNullException(nameof(partPath));
         var mainPart = _doc.MainDocumentPart

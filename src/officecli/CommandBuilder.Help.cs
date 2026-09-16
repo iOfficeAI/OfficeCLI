@@ -329,6 +329,27 @@ static partial class CommandBuilder
             }
         }
 
+        // Case 1c: `help <format> <command>` where the trailing token is a CLI
+        // command rather than a schema element (`help docx move`, `help pptx
+        // swap`). move/swap/validate/… have no element schema, so this used to
+        // fall to Case 3 and die with "unknown element 'move' — did you mean
+        // ole?" on stderr and nothing on stdout, which a help-forwarding caller
+        // showed the user as an empty reference. Route it to the command's own
+        // SCL help, the same output `officecli move --help` gives.
+        if (rootCommand != null
+            && SchemaHelpLoader.IsKnownFormat(format)
+            && verb == null
+            && element != null
+            && !HelpVerbs.Contains(element, StringComparer.OrdinalIgnoreCase)
+            && rootCommand.Subcommands.FirstOrDefault(
+                   c => string.Equals(c.Name, element, StringComparison.OrdinalIgnoreCase)
+                        && !c.Hidden && c.Name != "help") is { } cmd)
+        {
+            Console.WriteLine($"'{cmd.Name}' is a command, not a {SchemaHelpLoader.NormalizeFormat(format)} element — showing command help. Element reference: officecli help {SchemaHelpLoader.NormalizeFormat(format)} <element>");
+            Console.WriteLine();
+            return rootCommand.Parse(new[] { cmd.Name, "--help" }).Invoke();
+        }
+
         // Validate verb if supplied.
         if (verb != null && !HelpVerbs.Contains(verb, StringComparer.OrdinalIgnoreCase))
         {

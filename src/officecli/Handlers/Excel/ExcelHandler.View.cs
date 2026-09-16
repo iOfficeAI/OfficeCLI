@@ -160,7 +160,7 @@ public partial class ExcelHandler
                 {
                     var cellRef = cell.CellReference?.Value ?? "?";
                     var value = GetCellDisplayValue(cell, evaluator);
-                    var formula = cell.CellFormula?.Text;
+                    var formula = Core.SharedFormulaResolver.ResolveText(cell);
                     var type = GetCellTypeName(cell);
 
                     var annotation = formula != null ? $"={formula}" : type;
@@ -591,7 +591,7 @@ public partial class ExcelHandler
                         // every other #VALUE!/#NAME?/#DIV/0!/etc. is the
                         // generic formula_eval_error — a real Excel-load
                         // error but without a more specific named cause.
-                        var fTextForErr = cell.CellFormula.Text;
+                        var fTextForErr = Core.SharedFormulaResolver.ResolveText(cell);
                         var isMissingSheetCause = value == "#REF!"
                             && fTextForErr != null
                             && FormulaReferencesMissingSheet(fTextForErr);
@@ -611,10 +611,10 @@ public partial class ExcelHandler
                             Message = semanticSubtype == Core.IssueSubtypes.FormulaRefMissingSheet
                                 ? $"Formula references missing sheet (cached as {value}; Excel would show #REF!)"
                                 : $"Formula error: {value}",
-                            Context = $"={cell.CellFormula.Text}"
+                            Context = $"={fTextForErr}"
                         });
                     }
-                    else if (cell.CellFormula?.Text is { } fText
+                    else if (Core.SharedFormulaResolver.ResolveText(cell) is { } fText
                         && (ShouldScan(Core.IssueSubtypes.FormulaNotEvaluated)
                             || ShouldScan(Core.IssueSubtypes.FormulaCacheStale)
                             || ShouldScan(Core.IssueSubtypes.FormulaRefMissingSheet)))

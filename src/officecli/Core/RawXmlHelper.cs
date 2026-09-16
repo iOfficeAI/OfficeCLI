@@ -53,6 +53,14 @@ internal static class RawXmlHelper
             }
         }
         rootElement.InnerXml = string.Concat(xDoc.Root.Nodes().Select(n => n.ToString()));
+        // Re-parsing a WordprocessingML part through InnerXml brings every
+        // <w:ind> back under the ISO-strict spelling (w:left/w:right become
+        // w:start/w:end) even though the source used the transitional one — so
+        // a raw-set that touched one node rewrote the indent of every paragraph
+        // in the part, and a later `set` then produced a mixed element. Fold the
+        // aliases straight back so the part keeps the spelling it arrived with.
+        foreach (var ind in rootElement.Descendants<DocumentFormat.OpenXml.Wordprocessing.Indentation>())
+            WordIndentAliases.Normalize(ind);
         // The InnerXml setter restores inner content but does NOT touch root
         // attributes — so non-xmlns attrs like `mc:Ignorable` carried by the
         // replacement root would be silently lost on round-trip. Copy them

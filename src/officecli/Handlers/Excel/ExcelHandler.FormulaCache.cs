@@ -198,7 +198,7 @@ public partial class ExcelHandler
                         budgetExhausted = true;
                         break;
                     }
-                    var formula = cell.CellFormula?.Text;
+                    var formula = Core.SharedFormulaResolver.ResolveText(cell, sheetData);
                     if (string.IsNullOrEmpty(formula)) continue;
                     // Array / dynamic-array spill cells own a multi-cell region;
                     // their <v> is Excel's to manage — leave it alone.

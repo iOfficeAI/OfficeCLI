@@ -1235,7 +1235,11 @@ internal partial class FormulaEvaluator
             // If cell has a formula, always evaluate it (cached values may be stale).
             // Guard recursive evaluation against an uncatchable StackOverflow that
             // would kill the resident process (DoS).
-            if (cell.CellFormula?.Text != null)
+            // A shared-formula child carries an empty <f/>; resolve it to the
+            // master's displaced text, otherwise the child evaluates to blank and
+            // every dependent is recomputed from that blank.
+            var refFormula = SharedFormulaResolver.ResolveText(cell, _sheetData);
+            if (!string.IsNullOrEmpty(refFormula))
             {
                 // Memoized? Referenced formula cells are re-evaluated (their
                 // cached <v> may be stale), but within one session the formula's
@@ -1270,7 +1274,7 @@ internal partial class FormulaEvaluator
                 try
                 {
                     var circularBefore = _session.CircularHits;
-                    var evaluated = EvaluateFormula(ModernFunctionQualifier.Unqualify(cell.CellFormula.Text));
+                    var evaluated = EvaluateFormula(ModernFunctionQualifier.Unqualify(refFormula));
                     if (evaluated != null)
                     {
                         // Memoize only clean results: no live bindings (see lookup

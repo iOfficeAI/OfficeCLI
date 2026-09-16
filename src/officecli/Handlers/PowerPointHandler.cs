@@ -39,6 +39,26 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
     internal bool Modified { get; set; }
 
     /// <summary>
+    /// Run a mutation with <see cref="Modified"/> raised, and put the flag back
+    /// the way it was if the mutation throws. The entry points used to raise
+    /// the flag before any validation, so a refused command (missing slide,
+    /// no-match xpath) still had the OfficeCLI.* audit stamp written on
+    /// Dispose — a file marked as modified by a command that did nothing.
+    /// Move/Swap/CopyFrom/AddPart never raised it at all, so a successful one
+    /// left no stamp. Same helper as ExcelHandler.
+    /// </summary>
+    private T MarkModified<T>(Func<T> mutation)
+    {
+        var wasModified = Modified;
+        Modified = true;
+        try { return mutation(); }
+        catch { Modified = wasModified; throw; }
+    }
+
+    private void MarkModified(Action mutation)
+        => MarkModified(() => { mutation(); return true; });
+
+    /// <summary>
     /// Enumerate every <see cref="OpenXmlPart"/> in the package (transitive
     /// walk via the SDK's own <c>GetAllParts</c> extension) yielding each
     /// part's zip-URI (<c>OpenXmlPart.Uri.OriginalString</c>). Used by the
@@ -260,8 +280,10 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
     }
 
     public void RawSet(string partPath, string xpath, string action, string? xml)
+        => MarkModified(() => RawSetCore(partPath, xpath, action, xml));
+
+    private void RawSetCore(string partPath, string xpath, string action, string? xml)
     {
-        Modified = true;
         if (partPath == null) throw new ArgumentNullException(nameof(partPath));
         if (xpath == null) throw new ArgumentNullException(nameof(xpath));
         if (action == null) throw new ArgumentNullException(nameof(action));
@@ -717,6 +739,9 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
     }
 
     public (string RelId, string PartPath) AddPart(string parentPartPath, string partType, Dictionary<string, string>? properties = null)
+        => MarkModified(() => AddPartCore(parentPartPath, partType, properties));
+
+    private (string RelId, string PartPath) AddPartCore(string parentPartPath, string partType, Dictionary<string, string>? properties)
     {
         var presentationPart = _doc.PresentationPart
             ?? throw new InvalidOperationException("No presentation part");

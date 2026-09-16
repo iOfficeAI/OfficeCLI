@@ -16,8 +16,10 @@ namespace OfficeCli.Handlers;
 public partial class WordHandler
 {
     public string? Remove(string path, Dictionary<string, string>? properties = null)
+        => MarkModified(() => RemoveCore(path, properties));
+
+    private string? RemoveCore(string path, Dictionary<string, string>? properties)
     {
-        Modified = true;
         using var _bodyCacheGuard = new BodyCacheGuard(this); // invalidate caches on return (AFTER the mutation)
 
         // Phase 4: remove + trackChange.* → produce w:del wrapper(s) instead
@@ -1208,6 +1210,9 @@ public partial class WordHandler
     }
 
     public string Move(string sourcePath, string? targetParentPath, InsertPosition? position, Dictionary<string, string>? properties = null)
+        => MarkModified(() => MoveCore(sourcePath, targetParentPath, position, properties));
+
+    private string MoveCore(string sourcePath, string? targetParentPath, InsertPosition? position, Dictionary<string, string>? properties)
     {
         using var _bodyCacheGuard = new BodyCacheGuard(this); // invalidate caches on return (AFTER the mutation)
         // Detect track-change branch: any trackChange.author/date/id signals
@@ -1620,6 +1625,9 @@ public partial class WordHandler
     }
 
     public (string NewPath1, string NewPath2) Swap(string path1, string path2)
+        => MarkModified(() => SwapCore(path1, path2));
+
+    private (string NewPath1, string NewPath2) SwapCore(string path1, string path2)
     {
         using var _bodyCacheGuard = new BodyCacheGuard(this); // invalidate caches on return (AFTER the mutation)
         var parts1 = ParsePath(path1);
@@ -1690,6 +1698,9 @@ public partial class WordHandler
     }
 
     public string CopyFrom(string sourcePath, string targetParentPath, InsertPosition? position)
+        => MarkModified(() => CopyFromCore(sourcePath, targetParentPath, position));
+
+    private string CopyFromCore(string sourcePath, string targetParentPath, InsertPosition? position)
     {
         using var _bodyCacheGuard = new BodyCacheGuard(this); // invalidate caches on return (AFTER the mutation)
         // Virtual table column clone — same-table only.

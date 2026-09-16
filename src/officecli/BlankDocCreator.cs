@@ -117,6 +117,18 @@ public static class BlankDocCreator
         themePart.Theme = BuildDefaultTheme(xlEa, xlCs);
         themePart.Theme.Save();
 
+        // styles.xml — the same parity gap as the theme part above. Every
+        // Excel-authored workbook ships one and the docx blank stamps its
+        // StyleDefinitionsPart; xlsx only grew the part on the first styled
+        // cell, so a workbook filled with plain values or charts had no
+        // xl/styles.xml, no Content_Types override and no workbook→styles
+        // relationship. Excel tolerates that (implied empty stylesheet); strict
+        // OPC readers fail with "entry not found: xl/styles.xml". Stamp the
+        // same minimal stylesheet EnsureStylesPart would have created.
+        var stylesPart = workbookPart.AddNewPart<DocumentFormat.OpenXml.Packaging.WorkbookStylesPart>();
+        stylesPart.Stylesheet = OfficeCli.Core.ExcelStyleManager.CreateDefaultStylesheet();
+        stylesPart.Stylesheet.Save();
+
         OfficeCliMetadata.StampOnCreate(doc);
     }
 

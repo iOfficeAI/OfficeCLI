@@ -218,9 +218,10 @@ public partial class ExcelHandler
         RefreshStaleChartCaches();
         foreach (var part in _dirtyWorksheets)
         {
-            UpdateWorksheetDimension(GetSheet(part));
-            ReorderWorksheetChildren(GetSheet(part));
-            GetSheet(part).Save();
+            var ws = GetSheet(part);
+            SyncSheetDimension(ws);
+            ReorderWorksheetChildren(ws);
+            ws.Save();
         }
         _dirtyWorksheets.Clear();
         if (_dirtyStylesheet)
@@ -230,75 +231,52 @@ public partial class ExcelHandler
         }
     }
 
-    // A stale dimension can hide appended rows from streaming readers. Rebuild
-    // it once at flush, not after every mutation in a batch. Keep the optional
-    // element absent when the source did not declare a dimension.
-    private static void UpdateWorksheetDimension(Worksheet ws)
+    /// <summary>
+    /// Bring <c>&lt;dimension ref&gt;</c> back in line with the rows and cells that
+    /// actually exist. Excel treats the element as advisory, but readers such as
+    /// openpyxl in read_only mode and dimension-driven Java/JS parsers use it as
+    /// the iteration bound — a row appended past the declared range is invisible
+    /// to them even though it is in sheetData. Runs once per dirty worksheet at
+    /// flush time, so every mutation path (row/col insert or delete, cell
+    /// auto-vivify, import) is covered by the same walk. Only maintained when
+    /// the source already carries one: officecli's own blanks never write the
+    /// (optional) element and readers fall back to scanning sheetData for it.
+    /// </summary>
+    private static void SyncSheetDimension(Worksheet ws)
     {
-        var dimension = ws.GetFirstChild<SheetDimension>();
-        if (dimension == null) return;
-        int minRow = int.MaxValue, maxRow = 0;
-        int minCol = int.MaxValue, maxCol = 0;
-        void Include(int col, int row)
-        {
-            minRow = Math.Min(minRow, row);
-            maxRow = Math.Max(maxRow, row);
-            minCol = Math.Min(minCol, col);
-            maxCol = Math.Max(maxCol, col);
-        }
-        void IncludeReference(string reference)
-        {
-            var (col, row) = ParseCellReference(reference);
-            Include(ColumnNameToIndex(col), row);
-        }
-
+        var dim = ws.GetFirstChild<SheetDimension>();
+        if (dim == null) return;
         var sheetData = ws.GetFirstChild<SheetData>();
-        int nextRow = 1;
+        uint minRow = 0, maxRow = 0;
+        int minCol = 0, maxCol = 0;
         if (sheetData != null)
         {
             foreach (var row in sheetData.Elements<Row>())
             {
-                int rowIndex = (int)(row.RowIndex?.Value ?? (uint)nextRow);
-                nextRow = rowIndex + 1;
-                // Retain explicitly stored empty rows without expanding their
-                // column bounds. Cells with only formatting still count below.
-                minRow = Math.Min(minRow, rowIndex);
-                maxRow = Math.Max(maxRow, rowIndex);
-                int colIndex = 0;
+                var r = row.RowIndex?.Value ?? 0u;
+                if (r == 0) continue;
+                if (minRow == 0 || r < minRow) minRow = r;
+                if (r > maxRow) maxRow = r;
+                int c = 0;
                 foreach (var cell in row.Elements<Cell>())
                 {
-                    if (cell.CellReference?.Value is { Length: > 0 } reference)
-                    {
-                        var (col, cellRow) = ParseCellReference(reference);
-                        colIndex = ColumnNameToIndex(col);
-                        Include(colIndex, cellRow);
-                    }
-                    else
-                        Include(++colIndex, rowIndex);
+                    // An omitted cell reference means the next column in this
+                    // row, not an unused cell. Explicit references reset it.
+                    c = cell.CellReference?.Value is { } cref
+                        ? ColumnNameToIndex(ParseCellReference(cref).Column)
+                        : c + 1;
+                    if (minCol == 0 || c < minCol) minCol = c;
+                    if (c > maxCol) maxCol = c;
                 }
             }
         }
-        // Whole-column formatting counts at row 1, not all 1,048,576 rows
-        // (CT_SheetDimension). Width-only columns do not add used cells.
-        var columns = ws.GetFirstChild<Columns>();
-        if (columns != null)
-            foreach (var col in columns.Elements<Column>())
-                if (col.Style?.HasValue == true && col.Min?.Value is { } first && col.Max?.Value is { } last)
-                {
-                    Include((int)first, 1);
-                    Include((int)last, 1);
-                }
-        var merges = ws.GetFirstChild<MergeCells>();
-        if (merges != null)
-            foreach (var merge in merges.Elements<MergeCell>())
-                if (merge.Reference?.Value is { Length: > 0 } range)
-                    foreach (var reference in range.Split(':')) IncludeReference(reference);
-
-        if (maxRow == 0) { dimension.Reference = "A1"; return; }
-        if (maxCol == 0) minCol = maxCol = 1;
-        var start = $"{IndexToColumnName(minCol)}{minRow}";
-        var end = $"{IndexToColumnName(maxCol)}{maxRow}";
-        dimension.Reference = start == end ? start : $"{start}:{end}";
+        if (maxRow == 0) { dim.Reference = "A1"; return; } // empty sheet, as Excel writes it
+        if (maxCol == 0) { minCol = maxCol = 1; }           // rows exist but hold no cells
+        var first = $"{IndexToColumnName(minCol)}{minRow}";
+        var last = $"{IndexToColumnName(maxCol)}{maxRow}";
+        var reference = first == last ? first : $"{first}:{last}";
+        if (!string.Equals(dim.Reference?.Value, reference, StringComparison.Ordinal))
+            dim.Reference = reference;
     }
 
     /// <summary>

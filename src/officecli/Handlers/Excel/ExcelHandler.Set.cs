@@ -17,8 +17,10 @@ namespace OfficeCli.Handlers;
 public partial class ExcelHandler
 {
     public List<string> Set(string path, Dictionary<string, string> properties)
+        => MarkModified(() => SetCore(path, properties));
+
+    private List<string> SetCore(string path, Dictionary<string, string> properties)
     {
-        Modified = true;
         // Batch Set: route to the shared filter engine when the path is a bare
         // selector (no `/`) OR a `/`-scoped path that carries a content filter
         // (e.g. `/Sheet1/cell[value>5000 or value<300]`). The latter would

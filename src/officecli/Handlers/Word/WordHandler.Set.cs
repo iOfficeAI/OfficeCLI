@@ -68,8 +68,10 @@ public partial class WordHandler
     }
 
     public List<string> Set(string path, Dictionary<string, string> properties)
+        => MarkModified(() => SetCore(path, properties));
+
+    private List<string> SetCore(string path, Dictionary<string, string> properties)
     {
-        Modified = true;
         LastSetWarnings = new List<string>();
         LastUnrecognizedLatex = new List<string>();
         LastSetNewPath = null;
@@ -1168,15 +1170,17 @@ public partial class WordHandler
                 // exports) kept the OLD w:start alongside our new w:left, so the
                 // element carried two conflicting indents; whichever one a later
                 // normalizing save collapses decides the result, which looked
-                // like the indent randomly disappearing. Clear the alias, same
-                // way firstLine/hanging clear each other below.
-                indentL.Start = null;
+                // like the indent randomly disappearing. Fold the aliases on
+                // BOTH sides so the element never mixes spellings (a lone
+                // w:end="0" left behind is not a conflict, but the next tool to
+                // touch it may make it one).
+                WordIndentAliases.Normalize(indentL);
                 return true;
             case "rightindent" or "indentright":
                 var indentR = pProps.Indentation ?? (pProps.Indentation = new Indentation());
                 // BUG-DUMP-NEGIND: signed.
                 indentR.Right = SpacingConverter.ParseWordSpacingSigned(value).ToString();
-                indentR.End = null; // BUG-IND-ALIAS (#367): w:end is ISO for w:right.
+                WordIndentAliases.Normalize(indentR); // BUG-IND-ALIAS (#367)
                 return true;
             case "hangingindent" or "hanging":
                 var indentH = pProps.Indentation ?? (pProps.Indentation = new Indentation());

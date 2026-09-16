@@ -84,7 +84,7 @@ public partial class ExcelHandler
         // distinguish "formula not evaluated" from "cell contains the literal
         // text `=FOO`". The sentinel matches Excel's `#…!` error-code shape
         // so it sorts visually next to #REF!/#VALUE!/etc.
-        if (string.IsNullOrEmpty(value) && cell.CellFormula?.Text != null)
+        if (string.IsNullOrEmpty(value) && Core.SharedFormulaResolver.ResolveText(cell) is { } formulaText)
         {
             // Missing-sheet refs: ResolveSheetCellResult silently returns 0
             // and the error path surfaces a fake #REF!. Neither value is
@@ -92,11 +92,11 @@ public partial class ExcelHandler
             // that suppresses computedValue and reports evaluated=false —
             // view text must emit the sentinel to keep the two readbacks
             // (view text vs Format["evaluated"]) consistent.
-            if (FormulaReferencesMissingSheet(cell.CellFormula.Text))
+            if (FormulaReferencesMissingSheet(formulaText))
                 return "#OCLI_NOTEVAL!";
             if (evaluator != null)
             {
-                var report = evaluator.EvaluateForReport(cell.CellFormula.Text);
+                var report = evaluator.EvaluateForReport(formulaText);
                 if (report.Status == Core.EvalReportStatus.Evaluated)
                     return report.Result!.ToCellValueText();
                 // Error values (#DIV/0!, #VALUE!, …) surface directly so users
