@@ -45,6 +45,9 @@ internal static class UpdateChecker
     /// </summary>
     internal static void CheckInBackground()
     {
+        if (Environment.GetEnvironmentVariable("OFFICECLI_SKIP_UPDATE") == "1")
+            return;
+
         // Best-effort: SaveConfig falls back to $TMPDIR inside containers when
         // home is read-only, so a CreateDirectory failure here is not fatal.
         try { Directory.CreateDirectory(ConfigDir); } catch { /* continue */ }
@@ -102,6 +105,9 @@ internal static class UpdateChecker
     /// </summary>
     internal static void RunRefresh()
     {
+        if (Environment.GetEnvironmentVariable("OFFICECLI_SKIP_UPDATE") == "1")
+            return;
+
         try
         {
             var config = LoadConfig();
