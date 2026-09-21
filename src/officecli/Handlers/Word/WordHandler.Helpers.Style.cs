@@ -147,4 +147,56 @@ public partial class WordHandler
         return styleName is "Normal" or "正文" or "Body Text" or "Body" or "a"
             || styleName.StartsWith("Normal");
     }
+
+    /// <summary>
+    /// Apply the <c>typography.preset=zh-body</c> compound preset to a
+    /// paragraph: set an East Asian body face (SimSun/宋体) on every run and on
+    /// the paragraph mark so CJK text stops falling back to an unknown default,
+    /// and set the paragraph rhythm to a CJK-friendly single-spaced body
+    /// (line rule atLeast, single-line, no space after). Run-level — lives here
+    /// because it is easiest to read next to the East-asian helpers, and it is
+    /// invoked from <see cref="WordHandler.Set.Element"/> where the paragraph is
+    /// in hand.
+    /// </summary>
+    private static void ApplyTypography_Body_Zh(
+        Paragraph para, ParagraphProperties pProps, List<string>? warnings)
+    {
+        const string eaFont = "SimSun";
+        // Runs keep their existing explicit western face; only the East Asia slot
+        // is pinned to a Chinese body face so latin tokens stay on the doc's font
+        // while CJK glyphs resolve deterministically.
+        foreach (var run in para.Elements<Run>())
+        {
+            var rProps = run.RunProperties ?? run.PrependChild(new RunProperties());
+            var rf = rProps.GetFirstChild<RunFonts>();
+            if (rf == null)
+            {
+                rf = new RunFonts();
+                // CT_RPr schema order: rFonts must come first (before b/i/sz…).
+                rProps.PrependChild(rf);
+            }
+            rf.EastAsia = eaFont;
+        }
+        // Paragraph-mark rPr needs the eastAsia face too, or the line rhythm
+        // cursor can still fall back.
+        var markRPr = pProps.ParagraphMarkRunProperties;
+        if (markRPr != null)
+        {
+            var mrF = markRPr.GetFirstChild<RunFonts>();
+            if (mrF == null)
+            {
+                mrF = new RunFonts();
+                markRPr.PrependChild(mrF);
+            }
+            mrF.EastAsia = eaFont;
+        }
+
+        // Rhythm: CJK body conventionally lineRule=atLeast single (so a line is
+        // never compressed below one full ascent of the letters), spaceAfter 0.
+        var spacing = pProps.SpacingBetweenLines ?? (pProps.SpacingBetweenLines = new SpacingBetweenLines());
+        spacing.Line = "240";                                          // single
+        spacing.LineRule = LineSpacingRuleValues.AtLeast;              // never compress
+        spacing.After = "0";
+        warnings?.Add($"zh-body preset: eastAsia font set to '{eaFont}' on all runs of this paragraph");
+    }
 }

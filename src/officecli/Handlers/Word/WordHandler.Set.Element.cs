@@ -1736,6 +1736,35 @@ public partial class WordHandler
                     ApplyParagraphLevelProperty(pProps, "hangingindent", value, LastSetWarnings);
                     break;
                 }
+                case "typography.preset":
+                {
+                    // Named Chinese-typography presets. These are COMPOUND:
+                    // they need both the paragraph mark (eastAsia font, spacing)
+                    // and the paragraph's own runs (eastAsia font), so they live
+                    // at the Set.Element level (where `para` is in hand) rather
+                    // than ApplyParagraphLevelProperty. Values:
+                    //   zh-body        — 宋体/SimSun eastAsia on runs + mark, line
+                    //                    rule atLeast 单倍, spaceAfter 0
+                    //   zh-first-indent— firstLineChars=200 (精确 2 字符，不随字号漂移)
+                    switch (value.Trim().ToLowerInvariant())
+                    {
+                        case "zh-body" or "zh_body":
+                            ApplyTypography_Body_Zh(para, pProps, LastSetWarnings);
+                            break;
+                        case "zh-first-indent" or "zh_first_indent":
+                            var indZi = pProps.Indentation ?? (pProps.Indentation = new Indentation());
+                            // 200 = 2 characters, per OOXML w:ind/@w:firstLineChars
+                            // (100 = 1 char). Clears a rival hard w:firstLine so
+                            // the char-relative rule is the only indent source.
+                            indZi.FirstLineChars = 200;
+                            indZi.FirstLine = null;
+                            break;
+                        default:
+                            throw new ArgumentException(
+                                $"Unknown typography preset '{value}'. Supported: zh-body, zh-first-indent.");
+                    }
+                    break;
+                }
                 default:
                     // Generic dotted "element.attr=value" fallback first.
                     // Probe pPr (where most paragraph attrs live: ind.*,

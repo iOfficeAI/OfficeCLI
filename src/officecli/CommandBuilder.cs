@@ -1709,6 +1709,7 @@ static partial class CommandBuilder
         "fill", "src", "path", "title", "name", "style", "caps", "smallcaps",
         "lineSpacing", "listStyle", "start", "level", "cols", "rows",
         "gridspan", "vmerge", "nowrap", "padding", "margin",
+        "typography.preset",
         "orientation", "pageWidth", "pageHeight",
         "x", "y", "cx", "cy", "rotation", "opacity",
         "border.color", "border.width", "border.style",
