@@ -243,6 +243,9 @@ public class ResidentServer : IDisposable
         }
     }
 
+    internal static string GetLockPath(string filePath)
+        => Path.Combine(Path.GetTempPath(), GetPipeName(filePath) + ".lock");
+
     public static string GetPipeName(string filePath)
     {
         // CONSISTENCY(path-identity): symlink-resolved so two path forms of the

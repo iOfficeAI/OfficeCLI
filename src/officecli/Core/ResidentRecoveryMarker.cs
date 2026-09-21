@@ -73,13 +73,67 @@ internal static class ResidentRecoveryMarker
         try { File.Delete(MarkerPath(filePath)); } catch { }
     }
 
+    // A failed pipe probe is not proof of exit. Hold the same singleton lock
+    // as __resident-serve__ across inspection/deletion, excluding both an old
+    // owner and a new session that could otherwise replace the marker.
+    internal static bool TryConsumeAfterExit(string filePath)
+    {
+        FileStream residentLock;
+        try
+        {
+            residentLock = new FileStream(ResidentServer.GetLockPath(filePath),
+                FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None,
+                bufferSize: 1, FileOptions.DeleteOnClose);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw CreateUnknownStateException(filePath);
+        }
+        using (residentLock)
+            return TryConsume(filePath);
+    }
+
+    // Caller must hold the resident singleton lock. Startup already holds it
+    // before constructing ResidentServer; save/close acquire it above.
     internal static bool TryConsume(string filePath)
     {
         var path = MarkerPath(filePath);
-        if (!File.Exists(path)) return false;
+        string payload;
+        try { payload = File.ReadAllText(path); }
+        catch (FileNotFoundException) { return false; }
+        catch (DirectoryNotFoundException) { return false; }
+        catch { throw CreateUnknownStateException(filePath); }
+        // Markers outlive a temp directory / IPC namespace. A live recorded
+        // PID may own a resident under a different TMPDIR, so the lock alone
+        // is not sufficient. Keep unknown or recycled-live PIDs conservatively;
+        // never infer loss from an unreadable process or malformed marker.
+        if (!WriterHasExited(payload)) throw CreateUnknownStateException(filePath);
         try { File.Delete(path); } catch { /* repeat the warning next time */ }
         return true;
     }
+
+    private static bool WriterHasExited(string payload)
+    {
+        var fields = payload.TrimEnd('\r', '\n').Split('\t');
+        if (fields.Length != 3 || fields[0] != "v1"
+            || !int.TryParse(fields[1], out var pid) || pid <= 0)
+            return false;
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return process.HasExited;
+        }
+        catch (ArgumentException) { return true; } // No process with this PID.
+        catch { return false; } // Unknown is not dead.
+    }
+
+    private static CliException CreateUnknownStateException(string filePath)
+        => new($"Resident state for {Path.GetFileName(filePath)} could not be verified. " +
+               "The resident may still hold unsaved changes; no recovery marker was consumed.")
+        {
+            Code = "resident_state_unknown",
+            Suggestion = "Retry save or close when the resident responds. Do not repeat edits based on this error."
+        };
 
     private static string MarkerPath(string filePath)
     {

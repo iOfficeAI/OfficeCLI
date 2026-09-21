@@ -99,7 +99,7 @@ static partial class CommandBuilder
             }
             else
             {
-                if (ResidentRecoveryMarker.TryConsume(file.FullName))
+                if (ResidentRecoveryMarker.TryConsumeAfterExit(file.FullName))
                     throw ResidentRecoveryMarker.CreateLossException(file.FullName);
                 // No resident is holding this file. In the non-resident model
                 // every mutation already eager-saved to disk, so there is
@@ -136,8 +136,7 @@ static partial class CommandBuilder
             // clients reconnect to the winner via the re-probe in
             // TryResident.
             FileStream? residentLock = null;
-            var lockPath = Path.Combine(Path.GetTempPath(),
-                ResidentServer.GetPipeName(file.FullName) + ".lock");
+            var lockPath = ResidentServer.GetLockPath(file.FullName);
             for (int attempt = 0; attempt < 3 && residentLock == null; attempt++)
             {
                 try

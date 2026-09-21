@@ -39,7 +39,7 @@ static partial class CommandBuilder
             // TryResident auto-start path that other verbs use.
             if (!ResidentClient.TryConnect(filePath, out _))
             {
-                if (ResidentRecoveryMarker.TryConsume(filePath))
+                if (ResidentRecoveryMarker.TryConsumeAfterExit(filePath))
                     throw ResidentRecoveryMarker.CreateLossException(filePath);
                 // No resident session to flush. In the non-resident model the
                 // document on disk is already current (each mutation eager-saved),
