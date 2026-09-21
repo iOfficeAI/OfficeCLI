@@ -908,6 +908,49 @@ public partial class PowerPointHandler
                         }
                     }
                 }
+
+                // Renderer-approximation audit: a text fill / warp can be stored
+                // faithfully in OOXML yet NOT displayable by the HTML/SVG preview,
+                // so a deck that "validates clean" still screens to a single color
+                // in the agent's preview. This is the silent-acceptance gap P0-A
+                // targets: the document is correct (PowerPoint renders it) but the
+                // preview only approximates it. Surface each advanced text fill /
+                // warp as a warning so the gap is observable in `view issues`
+                // instead of shipping a deck whose gradient never shows up.
+                string? warpApprox = GetTextWarpApproximation(shape);
+                if (warpApprox != null)
+                {
+                    issues.Add(new DocumentIssue
+                    {
+                        Id = $"W{++issueNum}",
+                        Type = IssueType.Format,
+                        Subtype = Core.IssueSubtypes.TextWarpRendererApproximated,
+                        Severity = IssueSeverity.Info,
+                        Path = shapePath,
+                        Message = warpApprox,
+                        Suggestion = "PowerPoint renders the true warp; the preview shows only a text-warp marker class."
+                    });
+                }
+
+                // One report per shape for text-fill approximation (mirrors the
+                // LowContrast one-report-per-shape policy).
+                string? fillApprox = shape.Descendants<Drawing.Run>()
+                    .Select(TextFillApproximationReason)
+                    .FirstOrDefault(r => r != null);
+                if (fillApprox != null)
+                {
+                    issues.Add(new DocumentIssue
+                    {
+                        Id = $"T{++issueNum}",
+                        Type = IssueType.Format,
+                        Subtype = Core.IssueSubtypes.TextFillRendererApproximated,
+                        Severity = IssueSeverity.Warning,
+                        Path = shapePath,
+                        Message = fillApprox,
+                        Suggestion = "The stored OOXML is correct and PowerPoint will render it; run a screenshot to confirm the delivered look."
+                    });
+                }
+                if (limit.HasValue && issues.Count >= limit.Value) break;
             }
 
             // Table row/grid width mismatch. OOXML requires each <a:tr> to have
@@ -1038,6 +1081,54 @@ public partial class PowerPointHandler
         if (sp.GetFirstChild<Drawing.PatternFill>() != null) return true;
         if (sp.GetFirstChild<Drawing.GradientFill>() != null) return true;
         return false; // inherited / no explicit fill → conservatively not an occluder
+    }
+
+    /// <summary>
+    /// Reason (or null) that a shape's text warp cannot be reproduced by the
+    /// HTML/SVG preview. The preview only paints a text-warp marker class, not
+    /// the per-glyph path PowerPoint computes, so a warped title previews as
+    /// straight text. Returns null when textWarp is absent or 'none'.
+    /// </summary>
+    private static string? GetTextWarpApproximation(Shape s)
+    {
+        var warp = s.TextBody?.BodyProperties?.PresetTextWarp;
+        if (warp == null) return null;
+        // Match the existing readback pattern (HtmlPreview reads
+        // PresetTextWarp.Preset.InnerText) instead of referencing the OOXML
+        // enum by name — its exact C# type name varies across SDK versions.
+        var prst = warp.Preset;
+        if (prst?.HasValue != true) return null;
+        if (string.Equals(prst.InnerText, "textNoShape", StringComparison.OrdinalIgnoreCase)) return null;
+        return $"Text warp '{prst.InnerText}' is only marked in the preview — the HTML preview cannot warp glyphs like PowerPoint.";
+    }
+
+    /// <summary>
+    /// Reason (or null) that a run's text fill is rendered only as a solid
+    /// approximation by the HTML/SVG preview, even though the stored OOXML is
+    /// correct. Returns null for the faithfully-rendered cases: no explicit
+    /// fill, an un-transformed solid, or a simple two-stop un-transformed
+    /// linear gradient. Flags image (blip) text fills, path gradients, and
+    /// gradients with 3+ stops — the forms the CSS path reduces to a single
+    /// color.
+    /// </summary>
+    private static string? TextFillApproximationReason(Drawing.Run run)
+    {
+        var rp = run.RunProperties;
+        if (rp == null) return null;
+
+        if (rp.GetFirstChild<Drawing.BlipFill>() != null)
+            return "Image (blip) text fill — the preview falls back to a single color unless the embedded image can be resolved.";
+
+        var grad = rp.GetFirstChild<Drawing.GradientFill>();
+        if (grad == null) return null;
+
+        if (grad.GetFirstChild<Drawing.PathGradientFill>() != null)
+            return "Path gradient text fill — the preview cannot reproduce the path and shows a solid approximation.";
+
+        var stops = grad.GradientStopList?.Elements<Drawing.GradientStop>().ToList();
+        if (stops != null && stops.Count > 2)
+            return $"Gradient text fill with {stops.Count} stops — the preview shows a solid approximation.";
+        return null;
     }
 
     /// <summary>
