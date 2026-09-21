@@ -31,6 +31,10 @@ public class ResidentServer : IDisposable
     // housekeeping pass even though the user's edits are already on disk.
     private bool _unflushedMutations;
     private bool _recoveryMarkerArmed;
+    // An ambiguous predecessor must not prevent reading the saved document,
+    // but this session must never overwrite its edits or recovery evidence.
+    // Latched for the session: close/reopen after resolving the old owner.
+    private readonly bool _recoveryReadOnly;
     // Stderr captured during DocumentHandlerFactory.Open (i.e. while the
     // constructor was building _handler). At that point there's no
     // per-command Console.SetError scope, so warnings written by plugin
@@ -219,7 +223,7 @@ public class ResidentServer : IDisposable
     {
         _filePath = Path.GetFullPath(filePath);
         _pipeName = GetPipeName(_filePath);
-        _editable = editable;
+        string? recoveryWarning = null;
 
         // Capture Console.Error during handler open so any warnings emitted
         // by the dump-reader / format-handler open path (which run before
@@ -230,16 +234,36 @@ public class ResidentServer : IDisposable
         var startupErrSink = new StringWriter();
         var origErr = Console.Error;
         Console.SetError(startupErrSink);
-        try { _handler = DocumentHandlerFactory.Open(_filePath, editable); }
+        try
+        {
+            // Validate/open without writing first: a failed document open
+            // must not consume the predecessor's crash notice.
+            _handler = DocumentHandlerFactory.Open(_filePath, editable: false);
+            try
+            {
+                if (ResidentRecoveryMarker.TryConsume(_filePath))
+                    recoveryWarning = ResidentRecoveryMarker.WarningMessage(_filePath);
+            }
+            catch (CliException ex) when (ex.Code == "resident_state_unknown")
+            {
+                _recoveryReadOnly = true;
+                recoveryWarning = ResidentRecoveryMarker.ReadOnlyWarningMessage(_filePath);
+            }
+            _editable = editable && !_recoveryReadOnly;
+            if (_editable)
+            {
+                _handler.Dispose();
+                _handler = DocumentHandlerFactory.Open(_filePath, editable: true);
+            }
+        }
         finally { Console.SetError(origErr); }
         var captured = startupErrSink.ToString().TrimEnd('\r', '\n');
         if (captured.Length > 0) _startupStderr = captured;
-        if (ResidentRecoveryMarker.TryConsume(_filePath))
+        if (recoveryWarning != null)
         {
-            var warning = ResidentRecoveryMarker.WarningMessage(_filePath);
             _startupStderr = string.IsNullOrEmpty(_startupStderr)
-                ? warning
-                : $"{_startupStderr}{Environment.NewLine}{warning}";
+                ? recoveryWarning
+                : $"{_startupStderr}{Environment.NewLine}{recoveryWarning}";
         }
     }
 
@@ -674,6 +698,9 @@ public class ResidentServer : IDisposable
                 if (_shutdownFileMissing)
                     response = MakeResponse(1, "",
                         $"save failed during shutdown — data may be lost: {_filePath}");
+                else if (_recoveryReadOnly)
+                    response = MakeResponse(0, "Closing read-only resident.",
+                        ResidentRecoveryMarker.ReadOnlyWarningMessage(_filePath));
                 else if (_shutdownFileVanishedAfterDispose)
                     response = MakeResponse(0, "Closing resident.",
                         $"WARNING: the backing file was missing at its original path during save: {_filePath}. " +
@@ -1078,6 +1105,8 @@ public class ResidentServer : IDisposable
     // has actually mutated the document.
     private void PromoteToEditable()
     {
+        if (_recoveryReadOnly)
+            throw ResidentRecoveryMarker.CreateReadOnlyException(_filePath);
         if (!_editable)
         {
             _handler.Dispose();
@@ -1103,6 +1132,7 @@ public class ResidentServer : IDisposable
 
     private void SyncRecoveryMarker()
     {
+        if (_recoveryReadOnly) return;
         if (!_unflushedMutations)
         {
             if (_recoveryMarkerArmed)
@@ -1125,6 +1155,9 @@ public class ResidentServer : IDisposable
 
     private void MarkMutationsFlushed()
     {
+        // Read-only disposal is not proof that the previous writer's edits
+        // reached disk. Keep its marker even after a successful shutdown.
+        if (_recoveryReadOnly) return;
         _unflushedMutations = false;
         // Always retry deletion. A previous process may have consumed the
         // marker but failed to remove it (for example because of a transient
@@ -2615,6 +2648,8 @@ public class ResidentServer : IDisposable
 
     private void ExecuteSave()
     {
+        if (_recoveryReadOnly)
+            throw ResidentRecoveryMarker.CreateReadOnlyException(_filePath);
         // No mutations have happened yet — the resident is still in the
         // shared-read state, and disk already matches the in-memory tree.
         // Treat as a no-op rather than promoting to editable (which would

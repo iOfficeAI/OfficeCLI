@@ -42,7 +42,9 @@ internal static class ResidentRecoveryMarker
             TryRestrictDirectory(dir);
 
             tempPath = $"{path}.{Environment.ProcessId}.{Guid.NewGuid():N}.tmp";
-            var payload = $"v1\t{Environment.ProcessId}\t{DateTimeOffset.UtcNow:O}\n";
+            using var owner = System.Diagnostics.Process.GetCurrentProcess();
+            var started = owner.StartTime.ToUniversalTime().Ticks;
+            var payload = $"v2\t{Environment.ProcessId}\t{started}\n";
             using (var stream = new FileStream(
                 tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
                 bufferSize: 4096, FileOptions.WriteThrough))
@@ -105,8 +107,9 @@ internal static class ResidentRecoveryMarker
         catch { throw CreateUnknownStateException(filePath); }
         // Markers outlive a temp directory / IPC namespace. A live recorded
         // PID may own a resident under a different TMPDIR, so the lock alone
-        // is not sufficient. Keep unknown or recycled-live PIDs conservatively;
-        // never infer loss from an unreadable process or malformed marker.
+        // is not sufficient. Legacy markers have only a PID; v2 also checks
+        // process start time so a recycled PID is not mistaken for the writer.
+        // Never infer loss from an unreadable process or malformed marker.
         if (!WriterHasExited(payload)) throw CreateUnknownStateException(filePath);
         try { File.Delete(path); } catch { /* repeat the warning next time */ }
         return true;
@@ -115,17 +118,36 @@ internal static class ResidentRecoveryMarker
     private static bool WriterHasExited(string payload)
     {
         var fields = payload.TrimEnd('\r', '\n').Split('\t');
-        if (fields.Length != 3 || fields[0] != "v1"
+        if (fields.Length != 3 || (fields[0] != "v1" && fields[0] != "v2")
             || !int.TryParse(fields[1], out var pid) || pid <= 0)
+            return false;
+        long started = 0;
+        if (fields[0] == "v2" && (!long.TryParse(fields[2], out started)
+            || started <= 0 || started > DateTime.MaxValue.Ticks))
             return false;
         try
         {
             using var process = System.Diagnostics.Process.GetProcessById(pid);
-            return process.HasExited;
+            return process.HasExited || (fields[0] == "v2"
+                && process.StartTime.ToUniversalTime().Ticks != started);
         }
         catch (ArgumentException) { return true; } // No process with this PID.
         catch { return false; } // Unknown is not dead.
     }
+
+    internal static string ReadOnlyWarningMessage(string filePath)
+        => $"WARNING: Resident recovery state for {Path.GetFileName(filePath)} could not be verified. " +
+           "This session is read-only and shows the last saved file, not any pending edits " +
+           "in another resident. The recovery marker is retained; no loss is confirmed. " +
+           "Close this session and resolve the previous resident or its recovery marker before reopening to edit.";
+
+    internal static CliException CreateReadOnlyException(string filePath)
+        => new(ReadOnlyWarningMessage(filePath))
+        {
+            Code = "resident_state_unknown",
+            Suggestion = "Read-only commands and close remain available. Preserve the recovery marker " +
+                         "until the previous writer's state is resolved; do not repeat possibly pending edits."
+        };
 
     private static CliException CreateUnknownStateException(string filePath)
         => new($"Resident state for {Path.GetFileName(filePath)} could not be verified. " +
