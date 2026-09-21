@@ -1631,9 +1631,8 @@ public class ResidentServer : IDisposable
                 }
                 if (renderMode == "native" && directPng == null)
                 {
-                    Console.Error.WriteLine(OfficeCli.Core.NativeRenderDiagnostics.Create(
-                        "Microsoft PowerPoint", nativeAttempted, nativeFailure).Message);
-                    return;
+                    throw OfficeCli.Core.NativeRenderDiagnostics.Create(
+                        "Microsoft PowerPoint", nativeAttempted, nativeFailure);
                 }
                 if (directPng == null)
                 {
@@ -1693,9 +1692,8 @@ public class ResidentServer : IDisposable
                 }
                 if (renderMode == "native" && directPng == null)
                 {
-                    Console.Error.WriteLine(OfficeCli.Core.NativeRenderDiagnostics.Create(
-                        "Microsoft Word", nativeAttempted, nativeFailure).Message);
-                    return;
+                    throw OfficeCli.Core.NativeRenderDiagnostics.Create(
+                        "Microsoft Word", nativeAttempted, nativeFailure);
                 }
                 if (directPng == null)
                 {
@@ -1729,9 +1727,8 @@ public class ResidentServer : IDisposable
                 }
                 if (renderMode == "native" && directPng == null)
                 {
-                    Console.Error.WriteLine(OfficeCli.Core.NativeRenderDiagnostics.Create(
-                        "Microsoft Word", nativeAttempted, nativeFailure).Message);
-                    return;
+                    throw OfficeCli.Core.NativeRenderDiagnostics.Create(
+                        "Microsoft Word", nativeAttempted, nativeFailure);
                 }
                 if (directPng == null) html = CommandBuilder.RenderViaRegistry(wordShotHandler, "docx",
                     new OfficeCli.Core.Rendering.RenderOptions { PageFilter = effectiveFilter })!;
