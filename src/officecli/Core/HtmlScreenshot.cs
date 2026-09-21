@@ -409,7 +409,7 @@ internal static class HtmlScreenshot
         return RunBinary(bin, args);
     }
 
-    private static string? FindChrome()
+    internal static string? FindChrome()
     {
         string[] names = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser",
                           "chrome", "microsoft-edge", "microsoft-edge-stable", "msedge"];
