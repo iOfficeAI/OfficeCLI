@@ -562,6 +562,17 @@ internal partial class FormulaEvaluator
                 if (i < formula.Length && formula[i] == '(')
                 { tokens.Add(new Token(TT.Func, word.Replace(".", "_").ToUpperInvariant())); continue; }
 
+                // Structured table reference: Table[Col], Table[[Col1]:[Col2]],
+                // Table[#Data]/[#All]/[#Headers] — folded to a plain A1 range
+                // token from the table's CURRENT definition, so every evaluation
+                // re-folds and row inserts/deletes inside the table are picked
+                // up (Excel recompute parity). Unknown table/column or an
+                // unsupported form (row context) throws NameResolutionException
+                // → #NAME?, mirroring Excel's invalid-structured-ref behavior.
+                if (i < formula.Length && formula[i] == '[')
+                { var folded = TryFoldStructuredRef(stripped, formula, ref i);
+                  if (folded != null) { tokens.Add(folded); continue; } }
+
                 if (IsCellRef(stripped)) { tokens.Add(new Token(TT.CellRef, stripped.ToUpperInvariant())); continue; }
 
                 // Defined name. Two flavors:
