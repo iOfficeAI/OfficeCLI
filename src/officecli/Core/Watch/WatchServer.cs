@@ -626,10 +626,97 @@ internal class WatchServer : IDisposable
                 }
                 else if (message != null && message.StartsWith("unmark ", StringComparison.Ordinal))
                 {
-                    // "unmark <json>" — remove marks by path or all
+                    // "unmark <json>" — remove marks by id, path, or all
                     var payload = message.Substring(7);
                     var resp = HandleMarkRemove(payload);
                     await writer.WriteLineAsync(resp.AsMemory(), token);
+                }
+                else if (message != null && message.StartsWith("scroll-mark ", StringComparison.Ordinal))
+                {
+                    // Validate a server-issued mark id before constructing the
+                    // fixed-form viewer selector.
+                    var markId = message.Substring(12).Trim();
+                    WatchMark? mark;
+                    lock (_marksLock)
+                    {
+                        mark = _currentMarks.FirstOrDefault(m =>
+                            string.Equals(m.Id, markId, StringComparison.Ordinal));
+                    }
+                    if (mark == null || mark.Stale)
+                    {
+                        await writer.WriteLineAsync(
+                            ("err:mark not found or stale: " + markId).AsMemory(),
+                            token);
+                    }
+                    else
+                    {
+                        await writer.WriteLineAsync("ok".AsMemory(), token);
+                        SendSseEvent(
+                            "scroll",
+                            0,
+                            null,
+                            $"[data-mark-id=\"{markId}\"]",
+                            _version);
+                    }
+                }
+                else if (message != null && message.StartsWith("scroll-path ", StringComparison.Ordinal))
+                {
+                    // A path-aware channel avoids accepting arbitrary CSS.
+                    // Resolve only against the already-cached HTML snapshot.
+                    string path;
+                    try
+                    {
+                        path = Encoding.UTF8.GetString(
+                            Convert.FromBase64String(message.Substring(12)));
+                    }
+                    catch
+                    {
+                        path = "";
+                    }
+                    var validPath = path.Length is > 0 and <= 4096
+                        && path.StartsWith("/", StringComparison.Ordinal)
+                        && !path.Any(char.IsControl);
+                    var slideMatch = validPath
+                        ? System.Text.RegularExpressions.Regex.Match(
+                            path, @"^/slide\[([1-9]\d{0,5})\]$")
+                        : System.Text.RegularExpressions.Match.Empty;
+                    if (slideMatch.Success)
+                    {
+                        var slide = slideMatch.Groups[1].Value;
+                        var slideMarker = $"data-slide=\"{slide}\"";
+                        if (_currentHtml.IndexOf(slideMarker, StringComparison.Ordinal) < 0)
+                        {
+                            await writer.WriteLineAsync(
+                                ("err:path not found in current HTML: " + path).AsMemory(),
+                                token);
+                        }
+                        else
+                        {
+                            await writer.WriteLineAsync("ok".AsMemory(), token);
+                            SendSseEvent(
+                                "scroll",
+                                0,
+                                null,
+                                $".main > .slide-container[data-slide=\"{slide}\"]",
+                                _version);
+                        }
+                    }
+                    else if (!validPath || FindDataPathInHtml(_currentHtml, path) == null)
+                    {
+                        await writer.WriteLineAsync(
+                            ("err:path not found in current HTML: " + path).AsMemory(),
+                            token);
+                    }
+                    else
+                    {
+                        await writer.WriteLineAsync("ok".AsMemory(), token);
+                        SendSseEvent(
+                            "scroll",
+                            0,
+                            null,
+                            scrollPath: path,
+                            version: _version);
+                    }
                 }
                 else if (message != null && message.StartsWith("scroll ", StringComparison.Ordinal))
                 {
@@ -859,8 +946,8 @@ internal class WatchServer : IDisposable
     }
 
     /// <summary>
-    /// Remove marks. UnmarkRequest must have either Path set, or All=true,
-    /// not both. Returns the number of marks removed.
+    /// Remove marks. UnmarkRequest must have exactly one of Id, Path, or
+    /// All=true. Returns the number of marks removed.
     /// </summary>
     internal string HandleMarkRemove(string json)
     {
@@ -877,6 +964,12 @@ internal class WatchServer : IDisposable
                 {
                     removed = _currentMarks.Count;
                     _currentMarks.Clear();
+                }
+                else if (!string.IsNullOrWhiteSpace(req.Id))
+                {
+                    var unmarkId = req.Id.Trim();
+                    removed = _currentMarks.RemoveAll(m =>
+                        string.Equals(m.Id, unmarkId, StringComparison.Ordinal));
                 }
                 else
                 {
@@ -1813,7 +1906,13 @@ internal class WatchServer : IDisposable
         BroadcastSse(sb.ToString());
     }
 
-    private void SendSseEvent(string action, int slideNum, string? html, string? scrollTo = null, int version = 0)
+    private void SendSseEvent(
+        string action,
+        int slideNum,
+        string? html,
+        string? scrollTo = null,
+        int version = 0,
+        string? scrollPath = null)
     {
         // Build JSON manually to avoid dependency
         var sb = new StringBuilder();
@@ -1829,6 +1928,11 @@ internal class WatchServer : IDisposable
         {
             sb.Append(",\"scrollTo\":");
             AppendJsonString(sb, scrollTo);
+        }
+        if (scrollPath != null)
+        {
+            sb.Append(",\"scrollPath\":");
+            AppendJsonString(sb, scrollPath);
         }
         sb.Append('}');
 
