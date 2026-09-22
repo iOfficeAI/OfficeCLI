@@ -25,6 +25,7 @@ public partial class ExcelHandler
 
         // Separate range-level props from cell-level props
         var cellProps = new Dictionary<string, string>();
+        string? stylePreset = null;
         // CONSISTENCY(range-action): sort/sortHeader are consumed together as a
         // range action (see sheet-level dispatch). If sort is present, apply it
         // after cell-level props are processed.
@@ -166,6 +167,11 @@ public partial class ExcelHandler
                     }
                     break;
                 }
+                case "stylepreset":
+                    // Range style preset (03 §6) — expanded after cellProps so
+                    // the preset bundle wins conflicts deterministically.
+                    stylePreset = value;
+                    break;
                 default:
                     // Treat as cell-level property to apply to every cell in the range
                     cellProps[key] = value;
@@ -215,6 +221,11 @@ public partial class ExcelHandler
                 throw;
             }
         }
+
+        // Apply the style preset after explicit cellProps (preset wins conflicts;
+        // its own per-row expansion is atomic via its internal sheetData backup).
+        if (stylePreset != null)
+            unsupported.AddRange(ApplyStylePresetRange(worksheet, rangeRef, stylePreset, cellProps));
 
         // Apply sort after cell-level props (range-action handler)
         if (sortSpec != null)
