@@ -18,6 +18,24 @@ public partial class WordHandler
     /// <summary>Rendering context passed through the HTML generation pipeline.</summary>
     private class HtmlRenderContext
     {
+        public sealed record ParaBaseCacheEntry(RunProperties baseProps, System.Collections.Generic.List<DocumentFormat.OpenXml.OpenXmlElement>? layersRef);
+        public Dictionary<Paragraph, ParaBaseCacheEntry> ParagraphBaseRPrCache { get; } = new();
+
+        // PERF(html-preview): memoized GetParagraphInlineCss output per
+        // (paragraph, isListItem) for the current render.
+        public Dictionary<(Paragraph, bool), string> ParagraphInlineCssCache { get; } = new();
+
+        // PERF(html-preview): pure-function-of-styleId resolutions memoized for
+        // the current render. Each previously re-walked the basedOn chain with
+        // a LINEAR Elements<Style>().FirstOrDefault scan PER hop, per call —
+        // O(paragraphs × chainDepth × totalStyles) on heavily-styled documents.
+        public Dictionary<string?, SpacingBetweenLines?> SpacingStyleCache { get; } = new();
+        public Dictionary<string?, bool> ContextualSpacingStyleCache { get; } = new();
+        public Dictionary<string?, Indentation?> IndentStyleCache { get; } = new();
+        public Dictionary<string?, JustificationValues?> JustificationStyleCache { get; } = new();
+        public Dictionary<string?, ParagraphBorders?> StyleBordersCache { get; } = new();
+        public Dictionary<Paragraph, string?> ParaFontLineHeightCache { get; } = new();
+        public Dictionary<Paragraph, bool> ParaAlignedTabCache { get; } = new();
         public List<int> FootnoteRefs { get; } = new();
         public List<int> EndnoteRefs { get; } = new();
         public List<(string markerId, string imgHtml)> TopAnchoredImages { get; } = new();
@@ -58,6 +76,21 @@ public partial class WordHandler
         // CJK line-break tracking: accumulate character widths and insert <br> at Word-compatible positions
         public double LineWidthPt { get; set; }      // available width for current line
         public double LineAccumPt { get; set; }       // accumulated width on current line
+
+        // PERF(html-preview): memoized ReadDocDefaults result. ReadDocDefaults
+        // walks styles.xml + body sectPr each call, and GetRunInlineCss /
+        // GetParagraphInlineCss call it once per run/paragraph — O(runs) full
+        // re-reads of the same immutable-per-render data (profiled at ~1/3 of
+        // the total render time on a large spec document). Read-only within a
+        // single ViewAsHtml render (a render never mutates styles), so a
+        // per-render memo is safe; _ctx is recreated for every render, which
+        // also makes stale-cache-between-resident-commands impossible.
+        public DocDef? CachedDocDefaults { get; set; }
+
+        // PERF(html-preview): per-paragraph memo of the style-chain portion of
+        // ResolveEffectiveRunPropertiesCore. Entries live in ParaBaseCacheEntry;
+        // see StyleList.cs (BuildParagraphBaseRunProperties) for the layers it
+        // folds in.
         public bool LineBreakEnabled { get; set; }    // whether line-break tracking is active
         public double DefaultFontSizePt { get; set; } // default font size for width estimation
 
@@ -1607,6 +1640,7 @@ public partial class WordHandler
 
     private DocDef ReadDocDefaults()
     {
+        if (_ctx?.CachedDocDefaults is { } cached) return cached;
         // Malformed styles.xml — same fallback policy as theme1.xml: the
         // preview should still render body content using system defaults
         // rather than rejecting the entire doc.
@@ -1710,7 +1744,9 @@ public partial class WordHandler
             };
         }
 
-        return new DocDef(font ?? GetThemeMinorLatinFont() ?? OfficeDefaultFonts.MinorLatin, sizePt, lineH, color, gridLinePitchPt, spaceAfterPt, defaultAlign);
+        var def = new DocDef(font ?? GetThemeMinorLatinFont() ?? OfficeDefaultFonts.MinorLatin, sizePt, lineH, color, gridLinePitchPt, spaceAfterPt, defaultAlign);
+        if (_ctx != null) _ctx.CachedDocDefaults = def;
+        return def;
     }
 
     /// <summary>Collect all distinct font names from document body, styles, and theme.</summary>

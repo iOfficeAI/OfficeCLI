@@ -335,6 +335,26 @@ public partial class WordHandler
 
     private string GetParagraphInlineCss(Paragraph para, bool isListItem = false)
     {
+        // PERF(html-preview): memoized per render. The CSS for a paragraph is a
+        // pure function of the paragraph subtree (styles resolve through
+        // read-only lookups), but the emitter asks for it more than once per
+        // paragraph across the paging/margin-join passes — and each miss
+        // re-walks the paragraph subtree (Descendants + effective-rPr chain).
+        // Keyed by (paragraph reference, isListItem); _ctx is per-render, so no
+        // mutation-staleness risk.
+        if (_ctx != null)
+        {
+            if (_ctx.ParagraphInlineCssCache.TryGetValue((para, isListItem), out var hit))
+                return hit;
+            var css = GetParagraphInlineCssCore(para, isListItem);
+            _ctx.ParagraphInlineCssCache[(para, isListItem)] = css;
+            return css;
+        }
+        return GetParagraphInlineCssCore(para, isListItem);
+    }
+
+    private string GetParagraphInlineCssCore(Paragraph para, bool isListItem = false)
+    {
         var parts = new List<string>();
 
         // Set paragraph font-size and font-family to match the first run.
@@ -913,6 +933,19 @@ public partial class WordHandler
     /// </summary>
     private JustificationValues? ResolveJustificationFromStyle(string? styleId)
     {
+        if (styleId == null) return ResolveJustificationFromStyleCore(styleId);
+        if (_ctx != null)
+        {
+            if (_ctx.JustificationStyleCache.TryGetValue(styleId, out var hit)) return hit;
+            var v = ResolveJustificationFromStyleCore(styleId);
+            _ctx.JustificationStyleCache[styleId] = v;
+            return v;
+        }
+        return ResolveJustificationFromStyleCore(styleId);
+    }
+
+    private JustificationValues? ResolveJustificationFromStyleCore(string? styleId)
+    {
         if (styleId == null) return null;
         var visited = new HashSet<string>();
         var currentStyleId = styleId;
@@ -1087,6 +1120,19 @@ public partial class WordHandler
 
     private SpacingBetweenLines? ResolveSpacingFromStyle(string? styleId)
     {
+        if (styleId == null) return ResolveSpacingFromStyleCore(styleId);
+        if (_ctx != null)
+        {
+            if (_ctx.SpacingStyleCache.TryGetValue(styleId, out var hit)) return hit;
+            var v = ResolveSpacingFromStyleCore(styleId);
+            _ctx.SpacingStyleCache[styleId] = v;
+            return v;
+        }
+        return ResolveSpacingFromStyleCore(styleId);
+    }
+
+    private SpacingBetweenLines? ResolveSpacingFromStyleCore(string? styleId)
+    {
         // Per OOXML, each attribute on <w:spacing> inherits independently
         // through the basedOn chain. A derived style overriding only `after`
         // must still pick up `before`/`beforeLines`/`line`/`lineRule` from
@@ -1116,8 +1162,7 @@ public partial class WordHandler
         var startStyleId = styleId;
         if (startStyleId == null)
         {
-            var defaultStyle = styles.Elements<Style>()
-                .FirstOrDefault(s => s.Type?.Value == StyleValues.Paragraph && s.Default?.Value == true);
+            var defaultStyle = FindDefaultParagraphStyle();
             startStyleId = defaultStyle?.StyleId?.Value;
         }
 
@@ -1126,8 +1171,7 @@ public partial class WordHandler
         var currentStyleId = startStyleId;
         while (currentStyleId != null && visited.Add(currentStyleId))
         {
-            var style = styles.Elements<Style>()
-                .FirstOrDefault(s => s.StyleId?.Value == currentStyleId);
+            var style = FindStyleById(currentStyleId);
             if (style == null) break;
             MergeFrom(style.StyleParagraphProperties?.SpacingBetweenLines);
             currentStyleId = style.BasedOn?.Val?.Value;
@@ -1146,14 +1190,26 @@ public partial class WordHandler
     /// <summary>Resolve contextualSpacing from the style chain, with docDefaults fallback.</summary>
     private bool ResolveContextualSpacingFromStyle(string? styleId)
     {
+        if (styleId == null) return ResolveContextualSpacingFromStyleCore(styleId);
+        if (_ctx != null)
+        {
+            if (_ctx.ContextualSpacingStyleCache.TryGetValue(styleId, out var hit)) return hit;
+            var v = ResolveContextualSpacingFromStyleCore(styleId);
+            _ctx.ContextualSpacingStyleCache[styleId] = v;
+            return v;
+        }
+        return ResolveContextualSpacingFromStyleCore(styleId);
+    }
+
+    private bool ResolveContextualSpacingFromStyleCore(string? styleId)
+    {
         var styles = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles;
         if (styles == null) return false;
 
         var startStyleId = styleId;
         if (startStyleId == null)
         {
-            var defaultStyle = styles.Elements<Style>()
-                .FirstOrDefault(s => s.Type?.Value == StyleValues.Paragraph && s.Default?.Value == true);
+            var defaultStyle = FindDefaultParagraphStyle();
             startStyleId = defaultStyle?.StyleId?.Value;
         }
 
@@ -1161,8 +1217,7 @@ public partial class WordHandler
         var currentStyleId = startStyleId;
         while (currentStyleId != null && visited.Add(currentStyleId))
         {
-            var style = styles.Elements<Style>()
-                .FirstOrDefault(s => s.StyleId?.Value == currentStyleId);
+            var style = FindStyleById(currentStyleId);
             if (style == null) break;
             var styleCs = IsContextualSpacingOn(style.StyleParagraphProperties?.ContextualSpacing);
             if (styleCs != null) return styleCs.Value;
@@ -1209,6 +1264,19 @@ public partial class WordHandler
     /// </summary>
     private Indentation? ResolveIndentationFromStyle(string? styleId)
     {
+        if (styleId == null) return ResolveIndentationFromStyleCore(styleId);
+        if (_ctx != null)
+        {
+            if (_ctx.IndentStyleCache.TryGetValue(styleId, out var hit)) return hit;
+            var v = ResolveIndentationFromStyleCore(styleId);
+            _ctx.IndentStyleCache[styleId] = v;
+            return v;
+        }
+        return ResolveIndentationFromStyleCore(styleId);
+    }
+
+    private Indentation? ResolveIndentationFromStyleCore(string? styleId)
+    {
         // Attribute-level inheritance through basedOn (mirrors
         // ResolveSpacingFromStyle): each indentation attribute inherits
         // independently. A derived style overriding only `firstLine` must
@@ -1218,8 +1286,7 @@ public partial class WordHandler
 
         if (styleId == null)
         {
-            var defaultStyle = styles.Elements<Style>()
-                .FirstOrDefault(s => s.Type?.Value == StyleValues.Paragraph && s.Default?.Value == true);
+            var defaultStyle = FindDefaultParagraphStyle();
             return defaultStyle?.StyleParagraphProperties?.Indentation;
         }
 
@@ -1229,8 +1296,7 @@ public partial class WordHandler
         var currentStyleId = styleId;
         while (currentStyleId != null && visited.Add(currentStyleId))
         {
-            var style = styles.Elements<Style>()
-                .FirstOrDefault(s => s.StyleId?.Value == currentStyleId);
+            var style = FindStyleById(currentStyleId);
             if (style == null) break;
             var ind = style.StyleParagraphProperties?.Indentation;
             if (ind != null)
@@ -2783,10 +2849,34 @@ public partial class WordHandler
 
     private string ResolveParaFontForLineHeight(Paragraph para)
     {
-        bool paraHasCjk = para.Elements<Run>()
-            .SelectMany(r => r.Descendants<Text>())
-            .SelectMany(t => t.Text ?? string.Empty)
-            .Any(IsCjkCodepoint);
+        // PERF(html-preview): paragraph-per-run scan (effective rPr per run +
+        // CJK text scan + font-metric lookups) called several times per
+        // paragraph from different line-height branches. Pure function of the
+        // paragraph within a render → memoize on the render context.
+        if (_ctx != null)
+        {
+            if (_ctx.ParaFontLineHeightCache.TryGetValue(para, out var hit)) return hit;
+            var f = ResolveParaFontForLineHeightCore(para);
+            _ctx.ParaFontLineHeightCache[para] = f;
+            return f;
+        }
+        return ResolveParaFontForLineHeightCore(para);
+    }
+
+    private string ResolveParaFontForLineHeightCore(Paragraph para)
+    {
+        bool paraHasCjk = false;
+        // PERF(html-preview): replace the two-level SelectMany char scan with
+        // direct loops (no iterator allocations; this runs for every paragraph).
+        foreach (var runC in para.Elements<Run>())
+            foreach (var tC in runC.Descendants<Text>())
+            {
+                var txt = tC.Text;
+                if (string.IsNullOrEmpty(txt)) continue;
+                foreach (var ch in txt)
+                    if (IsCjkCodepoint(ch)) { paraHasCjk = true; break; }
+                if (paraHasCjk) break;
+            }
 
         string? best = null;
         double bestRatio = 0;
@@ -2927,6 +3017,19 @@ public partial class WordHandler
     }
 
     private ParagraphBorders? ResolveStyleParagraphBorders(string? styleId)
+    {
+        if (styleId == null) return ResolveStyleParagraphBordersCore(styleId);
+        if (_ctx != null)
+        {
+            if (_ctx.StyleBordersCache.TryGetValue(styleId, out var hit)) return hit;
+            var v = ResolveStyleParagraphBordersCore(styleId);
+            _ctx.StyleBordersCache[styleId] = v;
+            return v;
+        }
+        return ResolveStyleParagraphBordersCore(styleId);
+    }
+
+    private ParagraphBorders? ResolveStyleParagraphBordersCore(string? styleId)
     {
         if (string.IsNullOrEmpty(styleId)) return null;
         // Word merges w:pBdr PER SIDE across the basedOn chain: a child style
