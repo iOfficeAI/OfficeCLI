@@ -25,7 +25,17 @@ internal static class WordLeanHtml
     internal sealed record Options
     {
         public bool StripMarkers { get; init; } = true;
-        public bool StripAnchors { get; init; } = true;
+
+        /// <summary>
+        /// Default false: the watch anchors (<c>&lt;a id="w-p-N"&gt;</c>/<c>&lt;a
+        /// id="w-table-N"&gt;</c>) decide which element the client-side pagination
+        /// script places first in a continuation page body, which the
+        /// <c>.page-body-cont &gt; :first-child</c> margin rule then treats
+        /// differently. Removing them shifted layout in sections.docx and the
+        /// MS-DOC spec (harness-confirmed; see commit history for the bisection),
+        /// so the lean profile keeps them by default.
+        /// </summary>
+        public bool StripAnchors { get; init; } = false;
         public bool StripDataPath { get; init; } = true;
         public bool StripColTwips { get; init; } = true;
         public bool InternStyles { get; init; } = true;
