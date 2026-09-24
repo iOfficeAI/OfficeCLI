@@ -32,6 +32,9 @@ static partial class CommandBuilder
             Arity = ArgumentArity.ZeroOrOne, // allow bare --grid (no value) → auto
         };
         var renderOpt = new Option<string>("--render") { Description = "Screenshot rendering path (docx/pptx): auto (default; native on Windows w/ Word/PowerPoint, html elsewhere), native (force OS-native, error if unavailable), html", DefaultValueFactory = _ => "auto" };
+        // Also used internally by the watch server's /api/switch child, which asks
+        // for the interactive markup that watch's client-side script relies on.
+        var htmlProfileOpt = new Option<string>("--html-profile") { Description = "html mode (docx): lean (default; styles in a class sheet, no watch markup) or interactive (inline styles plus data-path and watch markers, as in earlier versions)", DefaultValueFactory = _ => "lean" };
         var withPagesOpt = new Option<bool>("--page-count") { Description = "stats mode (docx only): also report total page count via Word repagination (Win + Word required; slow on long docs)" };
 
         var viewCommand = new Command("view", "View document in different modes");
@@ -51,6 +54,7 @@ static partial class CommandBuilder
         viewCommand.Add(screenshotHeightOpt);
         viewCommand.Add(gridOpt);
         viewCommand.Add(renderOpt);
+        viewCommand.Add(htmlProfileOpt);
         viewCommand.Add(withPagesOpt);
         viewCommand.Add(jsonOption);
 
@@ -79,6 +83,9 @@ static partial class CommandBuilder
             var renderMode = (result.GetValue(renderOpt) ?? "auto").ToLowerInvariant();
             if (renderMode is not ("auto" or "native" or "html"))
                 throw new OfficeCli.Core.CliException($"Invalid --render value: {renderMode}. Valid: auto, native, html") { Code = "invalid_render", ValidValues = ["auto", "native", "html"] };
+            var htmlProfile = (result.GetValue(htmlProfileOpt) ?? "lean").ToLowerInvariant();
+            if (htmlProfile is not ("lean" or "interactive"))
+                throw new OfficeCli.Core.CliException($"Invalid --html-profile value: {htmlProfile}. Valid: lean, interactive") { Code = "invalid_html_profile", ValidValues = ["lean", "interactive"] };
             var withPages = result.GetValue(withPagesOpt);
 
             // pdf mode runs entirely through an exporter plugin (no handler
@@ -132,6 +139,7 @@ static partial class CommandBuilder
                 req.Args["screenshot-height"] = screenshotHeight.ToString();
                 if (gridCols != 0) req.Args["grid"] = gridCols.ToString(); // -1 = auto
                 if (renderMode != "auto") req.Args["render"] = renderMode;
+                if (htmlProfile != "lean") req.Args["html-profile"] = htmlProfile;
                 if (withPages) req.Args["page-count"] = "true";
             }, json) is {} rc) return rc;
 
@@ -157,7 +165,7 @@ static partial class CommandBuilder
                     html = RenderViaRegistry(handler, "xlsx", new OfficeCli.Core.Rendering.RenderOptions());
                 else if (handler is OfficeCli.Handlers.WordHandler)
                     html = RenderViaRegistry(handler, "docx",
-                        new OfficeCli.Core.Rendering.RenderOptions { PageFilter = pageFilter });
+                        new OfficeCli.Core.Rendering.RenderOptions { PageFilter = pageFilter, Lean = htmlProfile == "lean" });
                 else if (handler is OfficeCli.Core.Plugins.FormatHandlerProxy proxy)
                     html = proxy.ViewAsHtml(int.TryParse(pageFilter, out var p) ? p : (int?)null);
 

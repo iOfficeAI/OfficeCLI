@@ -122,12 +122,18 @@ public partial class WordHandler
     /// <param name="gridCellWpx">Exact thumbnail cell width in CSS px. The CLI
     /// computes this from the viewport width and column count so the C# height
     /// math and the in-browser layout agree exactly.</param>
-    public string ViewAsHtml(string? pageFilter = null, int gridCols = 0, int gridCellWpx = 0)
+    /// <param name="lean">When true, run the finished page through <see cref="WordLeanHtml"/>
+    /// to strip watch/goto/range-screenshot scaffolding and hoist inline styles into a
+    /// class sheet. Default false keeps the interactive markup every watch producer relies on.</param>
+    public string ViewAsHtml(string? pageFilter = null, int gridCols = 0, int gridCellWpx = 0, bool lean = false)
     {
         using var _cul = InvariantCultureScope.Enter();
         try
         {
-            return ViewAsHtmlCore(pageFilter, gridCols, gridCellWpx);
+            var html = ViewAsHtmlCore(pageFilter, gridCols, gridCellWpx);
+            // Defaults keep the watch anchors — see WordLeanHtml.Options.StripAnchors
+            // for why removing them isn't safe.
+            return lean ? WordLeanHtml.Transform(html) : html;
         }
         catch (System.Xml.XmlException)
         {

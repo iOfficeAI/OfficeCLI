@@ -258,7 +258,7 @@ OfficeCLI is self-contained. The capabilities below ship inside the binary — *
 
 OfficeCLI's keystone: a from-scratch, high-fidelity HTML rendering engine that lets an AI agent *see* the rendered document instead of guessing from the DOM. It covers shapes, charts (trendlines, error bars, waterfall, candlestick, sparklines), equations (OMML → LaTeX, rendered with KaTeX), 3D `.glb` models via Three.js, morph transitions, slide zoom, and shape effects. Per-page PNG screenshots are produced by piping the rendered HTML through a headless browser. Three modes:
 
-- **`view html`** — standalone HTML file, assets inlined. Open in any browser.
+- **`view html`** — standalone HTML file, assets inlined. Needs a current browser (released 2022 or later; the page uses CSS cascade layers).
 - **`view screenshot`** — per-page PNG, ready for multimodal agents to read.
 - **`watch`** — local HTTP server with auto-refreshing preview; every `add` / `set` / `remove` updates the browser instantly. Excel watch supports inline cell editing and drag-to-reposition charts.
 
@@ -512,7 +512,7 @@ officecli get report.docx /body --depth 1 --json
 | Command | Description |
 |---------|-------------|
 | [`create`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-create) | Create a blank .docx, .xlsx, or .pptx (type from extension) |
-| [`view`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-view) | View content (modes: `outline`, `text`, `annotated`, `stats` (`--page-count`), `issues`, `html`, `svg`, `screenshot`, `pdf` (via exporter plugin), `forms` (via format-handler plugin)). docx supports `--render auto\|native\|html`. |
+| [`view`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-view) | View content (modes: `outline`, `text`, `annotated`, `stats` (`--page-count`), `issues`, `html`, `svg`, `screenshot`, `pdf` (via exporter plugin), `forms` (via format-handler plugin)). docx supports `--render auto\|native\|html`. docx `html` mode supports `--html-profile lean\|interactive` (default `lean`). |
 | [`load_skill`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-skills) | Print embedded SKILL.md content for a specialized skill (no install) |
 | [`get`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-get) | Get element and children (`--depth N`, `--json`) |
 | [`query`](https://github.com/iOfficeAI/OfficeCLI/wiki/command-query) | CSS-like query with boolean `and`/`or`, row-by-column-name (`row[Salary>5000]`), `--find` flag |
