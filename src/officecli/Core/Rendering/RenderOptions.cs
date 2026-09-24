@@ -46,4 +46,10 @@ public sealed class RenderOptions
 
     /// <summary>Target raster height in px for Png/Pdf output. 0 = renderer default.</summary>
     public int RasterHeightPx { get; init; }
+
+    /// <summary>Word HTML only: omit watch/goto/range-screenshot scaffolding and
+    /// hoist inline styles into a class sheet (<c>WordLeanHtml</c>). Default
+    /// false keeps the interactive markup every watch producer relies on.
+    /// Renderers that do not support it ignore it.</summary>
+    public bool Lean { get; init; }
 }
