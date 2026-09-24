@@ -1736,6 +1736,12 @@ public partial class WordHandler
                     ApplyParagraphLevelProperty(pProps, "hangingindent", value, LastSetWarnings);
                     break;
                 }
+                case "preset":
+                    // One-command paragraph styling (cards, kicker, band, quote).
+                    // Resolves the render-safe preset bundle and applies it via
+                    // the normal paragraph/run Set paths.
+                    ApplyParagraphPreset(para, pProps, value);
+                    break;
                 default:
                     // Generic dotted "element.attr=value" fallback first.
                     // Probe pPr (where most paragraph attrs live: ind.*,
@@ -2745,6 +2751,11 @@ public partial class WordHandler
                     }
                     break;
                 }
+                case "preset":
+                    // One-command table-row styling (e.g. table-header band).
+                    // Consumes the key so it isn't flagged unsupported below.
+                    ApplyTableRowPreset(row, value);
+                    break;
                 default:
                     // c1, c2, ... shorthand: set text of specific cell by index
                     if (key.Length >= 2 && key[0] == 'c' && int.TryParse(key.AsSpan(1), out var cIdx))
