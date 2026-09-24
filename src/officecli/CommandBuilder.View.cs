@@ -32,9 +32,9 @@ static partial class CommandBuilder
             Arity = ArgumentArity.ZeroOrOne, // allow bare --grid (no value) → auto
         };
         var renderOpt = new Option<string>("--render") { Description = "Screenshot rendering path (docx/pptx): auto (default; native on Windows w/ Word/PowerPoint, html elsewhere), native (force OS-native, error if unavailable), html", DefaultValueFactory = _ => "auto" };
-        // Hidden: internal callers (the watch server's /api/switch child) ask for
-        // the interactive markup; users get the lean page by default.
-        var htmlProfileOpt = new Option<string>("--html-profile") { Description = "html mode (docx): lean (default) or interactive (keeps watch/goto markup)", DefaultValueFactory = _ => "lean", Hidden = true };
+        // Also used internally by the watch server's /api/switch child, which asks
+        // for the interactive markup that watch's client-side script relies on.
+        var htmlProfileOpt = new Option<string>("--html-profile") { Description = "html mode (docx): lean (default; styles in a class sheet, no watch markup) or interactive (inline styles plus data-path and watch markers, as in earlier versions)", DefaultValueFactory = _ => "lean" };
         var withPagesOpt = new Option<bool>("--page-count") { Description = "stats mode (docx only): also report total page count via Word repagination (Win + Word required; slow on long docs)" };
 
         var viewCommand = new Command("view", "View document in different modes");
