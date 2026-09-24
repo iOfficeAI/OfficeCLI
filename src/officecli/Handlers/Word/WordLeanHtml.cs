@@ -77,7 +77,11 @@ internal static class WordLeanHtml
             {
                 int gt = html.IndexOf('>', lt);
                 int end = gt < 0 ? n : gt + 1;
-                if (headCloseAt < 0 && c1 == '/' && string.Compare(html, lt + 2, "head", 0, 4, OIC) == 0) headCloseAt = sb.Length;
+                if (headCloseAt < 0 && c1 == '/' && lt + 6 <= n && string.Compare(html, lt + 2, "head", 0, 4, OIC) == 0)
+                {
+                    char afterHead = lt + 6 < n ? html[lt + 6] : '\0';
+                    if (lt + 6 >= n || afterHead == '>' || char.IsWhiteSpace(afterHead)) headCloseAt = sb.Length;
+                }
                 sb.Append(html, lt, end - lt); i = end; continue;
             }
             if (!char.IsAsciiLetter(c1)) { sb.Append('<'); i = lt + 1; continue; }
@@ -89,8 +93,7 @@ internal static class WordLeanHtml
             int raw = Array.FindIndex(RawTextElements, r => r.Equals(tag.Name, OIC));
             if (raw >= 0 && !tag.SelfClosing)
             {
-                int close = html.IndexOf("</" + RawTextElements[raw], i, OIC);
-                if (close < 0) close = n;
+                int close = FindRawTextClose(html, RawTextElements[raw], i);
                 var content = html.AsSpan(i, close - i);
                 if (o.InternStyles && raw == StyleElement && !content.IsWhiteSpace())
                     sb.Append("@layer base {\n").Append(content).Append("\n}\n");
@@ -102,6 +105,22 @@ internal static class WordLeanHtml
         if (sheet.Length > 0)
             sb.Insert(headCloseAt < 0 ? 0 : headCloseAt, "<style>\n" + sheet + "</style>\n");
         return sb.ToString();
+    }
+
+    private static int FindRawTextClose(string html, string name, int start)
+    {
+        int n = html.Length;
+        string needle = "</" + name;
+        int searchFrom = start;
+        while (true)
+        {
+            int idx = html.IndexOf(needle, searchFrom, OIC);
+            if (idx < 0) return n;
+            int after = idx + needle.Length;
+            char c = after < n ? html[after] : '\0';
+            if (after >= n || c == '>' || c == '/' || char.IsWhiteSpace(c)) return idx;
+            searchFrom = idx + 1;
+        }
     }
 
     private static bool TryParseStartTag(string h, int lt, out Tag tag)
@@ -158,6 +177,24 @@ internal static class WordLeanHtml
         || rawStyle.Contains("column-count", OIC)
         || (classValue != null && classValue.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Contains("page"));
 
+    // A declaration that is harmless inline can break the whole generated sheet: a trailing
+    // backslash escapes the closing '}', an unclosed quote becomes a bad string, and an
+    // unclosed '/*' comments out every rule that follows. Anything with these shapes stays
+    // pinned (inline) instead of being hoisted.
+    private static bool IsUnsafeForSheet(string css)
+    {
+        if (css.IndexOfAny(SheetUnsafe) >= 0) return true;
+        if (css.Contains('\\')) return true;
+        if (css.Contains("/*", StringComparison.Ordinal)) return true;
+        int singleQuotes = 0, doubleQuotes = 0;
+        foreach (var ch in css)
+        {
+            if (ch == '\'') singleQuotes++;
+            else if (ch == '"') doubleQuotes++;
+        }
+        return (singleQuotes & 1) != 0 || (doubleQuotes & 1) != 0;
+    }
+
     private static string RewriteStartTag(string h, Tag t, Options o, Dictionary<string, string> classes, StringBuilder sheet)
     {
         int styleIdx = -1, classIdx = -1;
@@ -187,7 +224,7 @@ internal static class WordLeanHtml
             if (raw.Length > 0 && !IsPinned(raw, classIdx >= 0 ? t.Attrs[classIdx].Value : null))
             {
                 var css = WebUtility.HtmlDecode(raw);
-                if (css.IndexOfAny(SheetUnsafe) < 0)
+                if (!IsUnsafeForSheet(css))
                 {
                     if (!classes.TryGetValue(css, out internClass))
                     {
