@@ -131,7 +131,12 @@ public partial class WordHandler
         try
         {
             var html = ViewAsHtmlCore(pageFilter, gridCols, gridCellWpx);
-            return lean ? WordLeanHtml.Transform(html) : html;
+            // The watch anchors (<a id="w-p-N">/<a id="w-table-N">) stay: removing them
+            // changes which element the client-side pagination script places first in a
+            // continuation page body, which the `.page-body-cont > :first-child` margin
+            // rule then treats differently, shifting layout in sections.docx and the
+            // MS-DOC spec (harness-confirmed; see commit history for the bisection).
+            return lean ? WordLeanHtml.Transform(html, new WordLeanHtml.Options { StripAnchors = false }) : html;
         }
         catch (System.Xml.XmlException)
         {
