@@ -113,8 +113,26 @@ internal static class WordLeanHtml
             }
         }
         if (sheet.Length > 0)
-            sb.Insert(headCloseAt < 0 ? 0 : headCloseAt, "<style>\n" + sheet + "</style>\n");
+            sb.Insert(headCloseAt < 0 ? FallbackSheetInsertAt(sb) : headCloseAt, "<style>\n" + sheet + "</style>\n");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Where to insert the generated sheet when the page has no <c>&lt;/head&gt;</c>
+    /// to anchor on. Inserting at offset 0 would land the sheet before a leading
+    /// <c>&lt;!DOCTYPE ...&gt;</c>, dropping the page into quirks mode — so this
+    /// looks for one (case-insensitive) and, if found, returns the offset right
+    /// after its closing '&gt;'. Otherwise falls back to offset 0.
+    /// </summary>
+    private static int FallbackSheetInsertAt(StringBuilder sb)
+    {
+        const string needle = "<!doctype";
+        if (sb.Length < needle.Length) return 0;
+        for (int k = 0; k < needle.Length; k++)
+            if (char.ToLowerInvariant(sb[k]) != needle[k]) return 0;
+        for (int k = needle.Length; k < sb.Length; k++)
+            if (sb[k] == '>') return k + 1;
+        return 0;
     }
 
     private static int FindRawTextClose(string html, string name, int start)
