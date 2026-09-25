@@ -54,12 +54,25 @@ static partial class CommandBuilder
                 return 0;
             }
 
+            // Explicit open bypasses TryResident. Report the predecessor's
+            // dirty marker before a new resident can hide or overwrite it.
+            List<CliWarning>? warnings = null;
+            var lostEdits = ResidentDirtyMarker.Consume(filePath);
+            if (lostEdits != null)
+            {
+                Console.Error.WriteLine($"WARNING: {lostEdits}");
+                warnings = new List<CliWarning>
+                {
+                    new() { Message = lostEdits, Code = ResidentDirtyMarker.WarningCode }
+                };
+            }
+
             if (!TryStartResidentProcess(filePath, idleSeconds: null, out var startError))
                 throw new InvalidOperationException(startError);
 
             var startedMsg = $"Opened {file.Name} (resident started). "
                            + $"Still pass the file path on every command (e.g. get \"{file.Name}\" /body); run 'close {file.Name}' when done.";
-            if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(startedMsg));
+            if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(startedMsg, warnings));
             else Console.WriteLine(startedMsg);
             return 0;
         }, json); });
