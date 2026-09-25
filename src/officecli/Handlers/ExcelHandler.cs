@@ -36,6 +36,20 @@ public partial class ExcelHandler : IDocumentHandler, Rendering.IRenderModelHost
     // Turns the O(n) linear scan in FindOrCreateCell into O(1) lookup + O(log n) insert.
     // Invalidated by InvalidateRowIndex() whenever rows are structurally modified (shift, remove).
     private Dictionary<SheetData, SortedList<uint, Row>>? _rowIndex;
+    // Shared-string index cache: SharedStringTable → its <si> items, in document
+    // order, materialized once per table.
+    // `Elements<SharedStringItem>()` is a lazy LINQ iterator (OfTypeIterator), so
+    // `ElementAtOrDefault(idx)` cannot use an index and walks from the head on
+    // every call — O(idx). Cells resolve in row order, so a sheet whose text cells
+    // use the shared-strings table costs sum(idx) ≈ n²/2 to read (issue #435:
+    // 40,000 rows took 21.5s, the same cells written inline 0.8s). Reading through
+    // this list makes each lookup O(1).
+    // Note the two obvious shortcuts are NOT available: measured on OpenXml 3.4.1,
+    // `ChildElements.Count` and `ChildElements[idx]` are themselves O(n) (1.2ms per
+    // call on a 100,000-item table), so neither can serve as a cheap validity check.
+    // Built lazily by SharedStringItems(); dropped by InvalidateSharedStringIndex()
+    // wherever the table grows, the same contract _rowIndex has.
+    private Dictionary<SharedStringTable, List<SharedStringItem>>? _sharedStringIndex;
     public int LastFindMatchCount { get; internal set; }
     // Number of elements a no-slash selector Set matched and mutated (Sheet1!row[...]).
     // Read by the CLI/resident to echo the multi-element change count.
@@ -344,7 +358,17 @@ public partial class ExcelHandler : IDocumentHandler, Rendering.IRenderModelHost
     }
 
     public void RawSet(string partPath, string xpath, string action, string? xml)
-        => MarkModified(() => RawSetCore(partPath, xpath, action, xml));
+        => MarkModified(() =>
+        {
+            RawSetCore(partPath, xpath, action, xml);
+            // raw-set rewrites part XML directly, and it can reach the
+            // shared-strings table — `/sharedstrings`, or the same part by its zip
+            // URI. The read-side index mirrors that table by position, and a raw
+            // rewrite can remove or reorder items, not merely append; a stale list
+            // would then answer with the wrong item. Rebuilding costs one walk on
+            // the next read, so there is nothing to weigh here.
+            InvalidateSharedStringIndex();
+        });
 
     private void RawSetCore(string partPath, string xpath, string action, string? xml)
     {

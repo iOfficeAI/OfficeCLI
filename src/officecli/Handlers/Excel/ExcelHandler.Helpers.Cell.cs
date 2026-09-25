@@ -67,7 +67,7 @@ public partial class ExcelHandler
             var sst = _doc.WorkbookPart?.GetPartsOfType<SharedStringTablePart>().FirstOrDefault();
             if (sst?.SharedStringTable != null && int.TryParse(value, out int idx))
             {
-                var item = sst.SharedStringTable.Elements<SharedStringItem>().ElementAtOrDefault(idx);
+                var item = SharedStringAt(sst.SharedStringTable, idx);
                 if (item != null) return RstTextWithoutPhonetic(item);
             }
         }
@@ -501,6 +501,65 @@ public partial class ExcelHandler
             _rowIndex?.Remove(sheetData);
         else
             _rowIndex = null;
+    }
+
+    /// <summary>
+    /// The shared-string item (<c>&lt;si&gt;</c>) a cell's <c>&lt;v&gt;</c> index refers
+    /// to, in document order, or null when the table is absent or the index is not in
+    /// it. Every reader of a shared-string cell must resolve through here rather than
+    /// <c>table.Elements&lt;SharedStringItem&gt;().ElementAtOrDefault(idx)</c>: that
+    /// enumerable is a lazy iterator, so it re-walks the table from the head on each
+    /// call and a whole-sheet read becomes O(n²) in the table's length (issue #435).
+    /// </summary>
+    private SharedStringItem? SharedStringAt(SharedStringTable? table, int index)
+    {
+        // Negative indices were already out of range for ElementAtOrDefault, which
+        // returns default rather than throwing; keep that answer.
+        if (table == null || index < 0)
+            return null;
+
+        var items = SharedStringItems(table);
+        if (index < items.Count)
+            return items[index];
+
+        // Past the end of the cached list. The table is append-only in this codebase
+        // (nothing removes or replaces an <si>; the three growth sites are in
+        // ExcelHandler.Add.Cells.cs), so a stale list is always too SHORT, never
+        // wrong — a miss is therefore exactly the signal to re-read, and re-reading
+        // keeps the worst case (a file naming an index the table does not have) at the
+        // O(n) walk it has today instead of turning it into a wrong answer.
+        _sharedStringIndex?.Remove(table);
+        items = SharedStringItems(table);
+        return index < items.Count ? items[index] : null;
+    }
+
+    /// <summary>
+    /// The materialized <c>&lt;si&gt;</c> list of one table, built on first use.
+    /// Shared by every lookup so the walk happens once per table, not once per cell.
+    /// </summary>
+    private List<SharedStringItem> SharedStringItems(SharedStringTable table)
+    {
+        _sharedStringIndex ??= new();
+        if (!_sharedStringIndex.TryGetValue(table, out var items))
+        {
+            items = table.Elements<SharedStringItem>().ToList();
+            _sharedStringIndex[table] = items;
+        }
+        return items;
+    }
+
+    /// <summary>
+    /// Drop the cached shared-string list for one table (or all tables if null).
+    /// Must be called wherever items are appended to the table — the table's indices
+    /// are positional, so a new <c>&lt;si&gt;</c> shifts nothing but invalidates the
+    /// list's length.
+    /// </summary>
+    private void InvalidateSharedStringIndex(SharedStringTable? table = null)
+    {
+        if (table != null)
+            _sharedStringIndex?.Remove(table);
+        else
+            _sharedStringIndex = null;
     }
 
     private Cell FindOrCreateCell(SheetData sheetData, string cellRef)

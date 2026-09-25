@@ -2974,7 +2974,7 @@ public partial class ExcelHandler
         if (value == null || !int.TryParse(value, out int idx)) return null;
 
         var sst = _doc.WorkbookPart?.GetPartsOfType<SharedStringTablePart>().FirstOrDefault();
-        var item = sst?.SharedStringTable?.Elements<SharedStringItem>().ElementAtOrDefault(idx);
+        var item = SharedStringAt(sst?.SharedStringTable, idx);
         if (item == null) return null;
 
         var runs = item.Elements<Run>().ToList();

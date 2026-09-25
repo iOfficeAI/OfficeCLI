@@ -211,6 +211,15 @@ internal sealed class FormulaEvalSession
     // difference between minutes and seconds on formula-heavy workbooks. Safe for
     // the same reason CellMemo is: cell results are stable within a session.
     internal readonly Dictionary<string, RangeData> RangeMemo = new(StringComparer.OrdinalIgnoreCase);
+    // Materialized <si> items per shared-strings table. A cell reference resolves
+    // in row order and `Elements<SharedStringItem>()` is a lazy iterator, so
+    // `ElementAtOrDefault(idx)` walks the table from the head on every reference
+    // — O(idx) each, O(n²) per sheet of shared-string references (issue #435:
+    // 40,000 rows of `=A{i}` took 15.6s against the table and 1.4s against the
+    // same strings written inline). Evaluation never adds or removes an item, so
+    // the list is stable for the session's lifetime — the argument
+    // RowExtentBySheet above already makes.
+    internal readonly Dictionary<SharedStringTable, List<SharedStringItem>> SharedStringItemsByTable = new();
     internal int CircularHits;
     internal int CrossSheetDepth;
 }
@@ -1215,6 +1224,27 @@ internal partial class FormulaEvaluator
 
     // ==================== Cell & Range Resolution ====================
 
+    /// <summary>
+    /// The shared-string item a cell's index refers to, resolved through the
+    /// session's materialized list — see
+    /// <see cref="FormulaEvalSession.SharedStringItemsByTable"/> for why the table
+    /// is walked once per session rather than once per reference.
+    /// </summary>
+    private SharedStringItem? SharedStringAt(SharedStringTable table, int index)
+    {
+        // Negative indices were already out of range for ElementAtOrDefault, which
+        // returns default rather than throwing; keep that answer.
+        if (index < 0)
+            return null;
+
+        if (!_session.SharedStringItemsByTable.TryGetValue(table, out var items))
+        {
+            items = table.Elements<SharedStringItem>().ToList();
+            _session.SharedStringItemsByTable[table] = items;
+        }
+        return index < items.Count ? items[index] : null;
+    }
+
     internal FormulaResult? ResolveCellResult(string cellRef)
     {
         cellRef = StripDollar(cellRef).ToUpperInvariant();
@@ -1303,9 +1333,10 @@ internal partial class FormulaEvaluator
             {
                 if (cell.DataType?.Value == CellValues.SharedString)
                 {
-                    var sst = _workbookPart?.GetPartsOfType<SharedStringTablePart>().FirstOrDefault();
-                    if (sst?.SharedStringTable != null && int.TryParse(cached, out int idx))
-                        return FormulaResult.Str(sst.SharedStringTable.Elements<SharedStringItem>().ElementAtOrDefault(idx)?.InnerText ?? cached);
+                    var sst = _workbookPart?.GetPartsOfType<SharedStringTablePart>()
+                        .FirstOrDefault()?.SharedStringTable;
+                    if (sst != null && int.TryParse(cached, out int idx))
+                        return FormulaResult.Str(SharedStringAt(sst, idx)?.InnerText ?? cached);
                     return FormulaResult.Str(cached);
                 }
                 if (cell.DataType?.Value == CellValues.Boolean) return FormulaResult.Bool(cached == "1");

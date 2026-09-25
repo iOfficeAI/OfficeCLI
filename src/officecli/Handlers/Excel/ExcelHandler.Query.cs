@@ -939,7 +939,7 @@ public partial class ExcelHandler
                 !int.TryParse(runCell.CellValue?.Text, out var sstIdx))
                 throw new ArgumentException($"Cell {runCellRef} is not a rich text cell");
             var sstPart = _doc.WorkbookPart?.GetPartsOfType<SharedStringTablePart>().FirstOrDefault();
-            var ssi = sstPart?.SharedStringTable?.Elements<SharedStringItem>().ElementAtOrDefault(sstIdx);
+            var ssi = SharedStringAt(sstPart?.SharedStringTable, sstIdx);
             if (ssi == null) throw new ArgumentException($"SharedString entry {sstIdx} not found");
             var runs = ssi.Elements<Run>().ToList();
             if (runIdx < 1 || runIdx > runs.Count)

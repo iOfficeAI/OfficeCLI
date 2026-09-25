@@ -824,7 +824,7 @@ public partial class ExcelHandler
             {
                 var sst = _doc.WorkbookPart?.GetPartsOfType<SharedStringTablePart>().FirstOrDefault();
                 if (sst?.SharedStringTable != null && int.TryParse(cell.CellValue?.Text, out int idx))
-                    return sst.SharedStringTable.Elements<SharedStringItem>().ElementAtOrDefault(idx)?.InnerText ?? "";
+                    return SharedStringAt(sst.SharedStringTable, idx)?.InnerText ?? "";
                 return "";
             }
             if (cell.DataType?.Value == CellValues.InlineString)

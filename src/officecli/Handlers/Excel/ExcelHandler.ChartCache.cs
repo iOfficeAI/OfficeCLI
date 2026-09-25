@@ -162,7 +162,7 @@ public partial class ExcelHandler
             var sst = _doc.WorkbookPart?.GetPartsOfType<SharedStringTablePart>().FirstOrDefault();
             if (sst?.SharedStringTable != null && int.TryParse(value, out int sidx))
             {
-                var ssi = sst.SharedStringTable.Elements<SharedStringItem>().ElementAtOrDefault(sidx);
+                var ssi = SharedStringAt(sst.SharedStringTable, sidx);
                 return ssi != null ? RstTextWithoutPhonetic(ssi) : value;
             }
             return value;

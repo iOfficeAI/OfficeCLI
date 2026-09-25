@@ -1258,7 +1258,7 @@ public partial class ExcelHandler
         if (runCell.DataType?.Value == CellValues.SharedString &&
             int.TryParse(runCell.CellValue?.Text, out var existingSstIdx))
         {
-            runSsi = runSst.Elements<SharedStringItem>().ElementAtOrDefault(existingSstIdx);
+            runSsi = SharedStringAt(runSst, existingSstIdx);
         }
         if (runSsi == null)
         {
@@ -1277,6 +1277,7 @@ public partial class ExcelHandler
                     new Text(runExistingText) { Space = SpaceProcessingModeValues.Preserve }));
             runCell.RemoveAllChildren<InlineString>();
             runSst.AppendChild(runSsi);
+            InvalidateSharedStringIndex(runSst);
             var newSstIdx = runSst.Elements<SharedStringItem>().Count() - 1;
             runCell.CellValue = new CellValue(newSstIdx.ToString());
             runCell.DataType = new EnumValue<CellValues>(CellValues.SharedString);
@@ -1595,6 +1596,7 @@ public partial class ExcelHandler
         }
 
         sst.AppendChild(ssi);
+        InvalidateSharedStringIndex(sst);
         sst.Count = (uint)sst.Elements<SharedStringItem>().Count();
         sst.UniqueCount = sst.Count;
 
@@ -1621,8 +1623,7 @@ public partial class ExcelHandler
             && int.TryParse(cell.CellValue?.Text, out var existingIdx))
         {
             var existingSstPart = _doc.WorkbookPart?.GetPartsOfType<SharedStringTablePart>().FirstOrDefault();
-            var existingSsi = existingSstPart?.SharedStringTable?
-                .Elements<SharedStringItem>().ElementAtOrDefault(existingIdx);
+            var existingSsi = SharedStringAt(existingSstPart?.SharedStringTable, existingIdx);
             baseText = existingSsi?.Text?.Text
                 ?? string.Concat(existingSsi?.Elements<Run>().Select(r => r.Text?.Text ?? "")
                     ?? Enumerable.Empty<string>());
@@ -1653,6 +1654,7 @@ public partial class ExcelHandler
         ssi.AppendChild(rPh);
 
         sst.AppendChild(ssi);
+        InvalidateSharedStringIndex(sst);
         sst.Count = (uint)sst.Elements<SharedStringItem>().Count();
         sst.UniqueCount = sst.Count;
 

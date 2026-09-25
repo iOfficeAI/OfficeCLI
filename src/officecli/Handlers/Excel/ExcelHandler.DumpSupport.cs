@@ -181,7 +181,7 @@ public partial class ExcelHandler
             && int.TryParse(cell.CellValue?.Text, out var ssIdx))
         {
             var ssItems = _doc.WorkbookPart?.SharedStringTablePart?.SharedStringTable;
-            return ssItems?.Elements<SharedStringItem>().ElementAtOrDefault(ssIdx);
+            return SharedStringAt(ssItems, ssIdx);
         }
         return null;
     }

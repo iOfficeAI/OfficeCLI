@@ -449,8 +449,7 @@ public partial class ExcelHandler
             && int.TryParse(cell.CellValue?.Text, out var phSstIdx))
         {
             var phSst = _doc.WorkbookPart?.GetPartsOfType<SharedStringTablePart>().FirstOrDefault();
-            var phSsi = phSst?.SharedStringTable?
-                .Elements<SharedStringItem>().ElementAtOrDefault(phSstIdx);
+            var phSsi = SharedStringAt(phSst?.SharedStringTable, phSstIdx);
             var firstRPh = phSsi?.Elements<PhoneticRun>().FirstOrDefault();
             if (firstRPh?.Text?.Text is { Length: > 0 } phText)
                 node.Format["phonetic"] = phText;
@@ -814,7 +813,7 @@ public partial class ExcelHandler
             int.TryParse(cell.CellValue?.Text, out var sstIdx2))
         {
             var sst2 = _doc.WorkbookPart?.GetPartsOfType<SharedStringTablePart>().FirstOrDefault();
-            var ssi2 = sst2?.SharedStringTable?.Elements<SharedStringItem>().ElementAtOrDefault(sstIdx2);
+            var ssi2 = SharedStringAt(sst2?.SharedStringTable, sstIdx2);
             if (ssi2 != null)
             {
                 var runs = ssi2.Elements<Run>().ToList();

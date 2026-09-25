@@ -568,10 +568,12 @@ public partial class ExcelHandler
                         if (sst != null && cell.CellValue?.Text != null
                             && int.TryParse(cell.CellValue.Text, out var sstIdx))
                         {
-                            var items = sst.Elements<SharedStringItem>().ToList();
-                            if (sstIdx >= 0 && sstIdx < items.Count)
+                            // Resolve through the shared index rather than materializing the
+                            // table here: this runs once per cell, so a per-call ToList() is
+                            // O(n) per cell and makes a whole-sheet find/replace O(n²).
+                            var si = SharedStringAt(sst, sstIdx);
+                            if (si != null)
                             {
-                                var si = items[sstIdx];
                                 var siText = si.GetFirstChild<Text>();
                                 if (siText?.Text != null)
                                 {
