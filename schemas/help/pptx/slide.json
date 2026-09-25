@@ -88,6 +88,30 @@
       "readback": "true if slide is hidden in slideshow",
       "enforcement": "report"
     },
+    "align": {
+      "type": "string",
+      "description": "GEOMETRIC alignment of shapes on this slide in ONE call — do NOT hand-compute coordinates. Values: left | center | right | top | middle | bottom (relative to the bounding box of the targeted shapes), or slide-left | slide-center | slide-right | slide-top | slide-middle | slide-bottom (relative to the slide). Scope with targets= (default: all auto-shapes/textboxes on the slide). NOTE: this slide-level align= is geometric; align= on a SHAPE path is text alignment — different operation.",
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop align=bottom", "--prop align=bottom --prop targets=\"shape[@id=100000],shape[@id=100001]\"", "--prop align=slide-center"],
+      "readback": "not surfaced; verify with get --depth 1 (x/y readback)",
+      "enforcement": "report"
+    },
+    "distribute": {
+      "type": "string",
+      "description": "EVENLY distribute shapes on this slide in ONE call — do NOT hand-compute coordinates. Values: horizontal | vertical (aliases h/horiz, v/vert). Gaps between shapes become equal; the two endpoint shapes stay fixed. Needs at least 3 shapes. Scope with targets= (default: all auto-shapes/textboxes on the slide).",
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop distribute=horizontal", "--prop distribute=vertical --prop targets=\"shape[1],shape[2],shape[3]\""],
+      "readback": "not surfaced; verify with get --depth 1 (x/y readback)",
+      "enforcement": "report"
+    },
+    "targets": {
+      "type": "string",
+      "description": "Shape scope for slide-level align=/distribute= (and preset=). Comma-separated: shape[N] (1-based positional), bare N, or shape[@id=N] (stable — prefer the @id paths that get/query emit; positional order shifts as shapes are added/removed). Omit to target all auto-shapes/textboxes. NOTE: pictures/charts/tables/connectors are NOT matched — only p:sp shapes.",
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop targets=\"shape[@id=100000],shape[@id=100001]\""],
+      "readback": "not surfaced",
+      "enforcement": "report"
+    },
     "name": {
       "type": "string",
       "description": "slide name (cSld/@name) — shown by PowerPoint accessibility/VBA tooling and preserved on round-trip.",
