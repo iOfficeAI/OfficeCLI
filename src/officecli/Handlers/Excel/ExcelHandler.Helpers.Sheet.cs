@@ -257,10 +257,14 @@ public partial class ExcelHandler
                 if (r == 0) continue;
                 if (minRow == 0 || r < minRow) minRow = r;
                 if (r > maxRow) maxRow = r;
+                int c = 0;
                 foreach (var cell in row.Elements<Cell>())
                 {
-                    if (cell.CellReference?.Value is not { } cref) continue;
-                    var c = ColumnNameToIndex(ParseCellReference(cref).Column);
+                    // An omitted cell reference means the next column in this
+                    // row, not an unused cell. Explicit references reset it.
+                    c = cell.CellReference?.Value is { } cref
+                        ? ColumnNameToIndex(ParseCellReference(cref).Column)
+                        : c + 1;
                     if (minCol == 0 || c < minCol) minCol = c;
                     if (c > maxCol) maxCol = c;
                 }
