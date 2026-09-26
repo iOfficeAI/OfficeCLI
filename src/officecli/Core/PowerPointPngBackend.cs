@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Threading;
@@ -14,9 +15,9 @@ namespace OfficeCli.Core;
 /// OS-native PNG rendering for .pptx on Windows: drives the installed
 /// presentation application through its automation interface to export each
 /// requested slide straight to a PNG, then stitches a multi-slide range
-/// vertically. Returns null on any failure so the caller falls back to the
-/// HTML screenshot path. The COM/IDispatch plumbing and the PNG stitch are
-/// shared with <see cref="WordPdfBackend"/>.
+/// vertically. Failures are surfaced to the caller; auto mode catches them and
+/// falls back to the HTML screenshot path. The COM/IDispatch plumbing and the
+/// PNG stitch are shared with <see cref="WordPdfBackend"/>.
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal static class PowerPointPngBackend
@@ -25,8 +26,7 @@ internal static class PowerPointPngBackend
 
     /// Render slides [startSlide..endSlide] (1-based, inclusive) to a single PNG
     /// at width×height pixels. A range is stitched top-to-bottom. Runs on a
-    /// dedicated STA thread; returns null if the app is unavailable or any step
-    /// fails or exceeds the timeout.
+    /// dedicated STA thread and preserves failures from that thread.
     public static byte[]? Render(string pptx, int startSlide, int endSlide, int width, int height, int timeoutMs = 60000)
     {
         // Keep within the multi-image LLM ceiling, same 1920 long-edge cap as the HTML path.
@@ -45,8 +45,9 @@ internal static class PowerPointPngBackend
         th.SetApartmentState(ApartmentState.STA);
         th.IsBackground = true;
         th.Start();
-        if (!th.Join(timeoutMs + 30000)) return null;
-        if (error != null) return null;
+        if (!th.Join(timeoutMs + 30000))
+            throw new TimeoutException("PowerPoint native rendering timed out.");
+        if (error != null) ExceptionDispatchInfo.Capture(error).Throw();
         return result;
     }
 
@@ -54,7 +55,7 @@ internal static class PowerPointPngBackend
     /// last slide") into an N-column thumbnail grid. Each slide is exported at
     /// cellW×cellH and tiled with the given gap/padding (pixels) on a white
     /// background. Cells are scaled down if the composed image would exceed the
-    /// 1920 long-edge ceiling. Returns null on failure.
+    /// 1920 long-edge ceiling. Failures are surfaced to the caller.
     public static byte[]? RenderGrid(string pptx, int startSlide, int endSlide, int cellW, int cellH, int cols, int gap, int pad, int timeoutMs = 120000)
     {
         byte[]? result = null;
@@ -69,8 +70,9 @@ internal static class PowerPointPngBackend
         th.SetApartmentState(ApartmentState.STA);
         th.IsBackground = true;
         th.Start();
-        if (!th.Join(timeoutMs + 30000)) return null;
-        if (error != null) return null;
+        if (!th.Join(timeoutMs + 30000))
+            throw new TimeoutException("PowerPoint native grid rendering timed out.");
+        if (error != null) ExceptionDispatchInfo.Capture(error).Throw();
         return result;
     }
 

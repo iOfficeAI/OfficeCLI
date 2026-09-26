@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Threading;
@@ -660,8 +661,9 @@ internal static class WordPdfBackend
         th.SetApartmentState(ApartmentState.STA);
         th.IsBackground = true;
         th.Start();
-        if (!th.Join(timeoutMs + 30000)) return null;
-        if (error != null) return null;
+        if (!th.Join(timeoutMs + 30000))
+            throw new TimeoutException("Word native rendering timed out.");
+        if (error != null) ExceptionDispatchInfo.Capture(error).Throw();
         return result;
     }
 
@@ -670,13 +672,14 @@ internal static class WordPdfBackend
     /// each to <paramref name="cellW"/>×<paramref name="cellH"/>, and tile them
     /// into a <paramref name="cols"/>-column contact sheet. The docx analogue of
     /// PowerPointPngBackend.RenderGrid (which exports each slide at cell size via
-    /// PowerPoint). Returns null on non-Windows, missing/inauthentic Word, or any
-    /// failure — caller falls back to the HTML grid. cellW/cellH are the FINAL
-    /// (already 1920-capped) cell size, so the stitched image needs no further cap.
+    /// PowerPoint). Failures are surfaced to the caller; auto mode catches them
+    /// and falls back to the HTML grid. cellW/cellH are the FINAL (already
+    /// 1920-capped) cell size, so the stitched image needs no further cap.
     /// </summary>
     public static byte[]? RenderGrid(string docx, string pageFilter, int cellW, int cellH, int cols, int gap, int pad, int timeoutMs = 60000)
     {
         byte[]? result = null;
+        Exception? error = null;
         var th = new Thread(() =>
         {
             string? pdf = null;
@@ -701,13 +704,15 @@ internal static class WordPdfBackend
                 }
                 finally { Marshal.Release(factory); }
             }
-            catch { result = null; }
+            catch (Exception e) { error = e; }
             finally { if (pdf != null) try { File.Delete(pdf); } catch { } }
         });
         th.SetApartmentState(ApartmentState.STA);
         th.IsBackground = true;
         th.Start();
-        if (!th.Join(timeoutMs + 30000)) return null;
+        if (!th.Join(timeoutMs + 30000))
+            throw new TimeoutException("Word native grid rendering timed out.");
+        if (error != null) ExceptionDispatchInfo.Capture(error).Throw();
         return result;
     }
 }
