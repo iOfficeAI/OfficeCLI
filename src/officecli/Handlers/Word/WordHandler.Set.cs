@@ -836,9 +836,37 @@ public partial class WordHandler
         if (rPr != null)
             style.InsertBefore(pPr, rPr);
         else
+        {
+            // Nothing to insert before — but a table style can still own
+            // tblPr / trPr / tcPr / tblStylePr, and CT_Style places all of
+            // those after pPr, so let the schema authority slot it instead of
+            // tail-appending past them (issue #434).
             style.AppendChild(pPr);
+            Core.SchemaOrder.Place(style, pPr);
+        }
         return pPr;
     }
+
+    /// <summary>Attach a direct CT_Style child at its schema slot. A bare
+    /// AppendChild puts it after whatever the style already owns, and most of
+    /// these children (name / aliases / basedOn / next / link) precede pPr and
+    /// rPr in CT_Style — so on a style that already has pPr/rPr the append
+    /// landed them last and the SDK validator reported "unexpected child
+    /// element" (issue #434: `set /styles/Normal --prop basedOn=Title` wrote
+    /// basedOn after pPr). The Style particle declares all of them, so
+    /// SchemaOrder.Place knows the slot.</summary>
+    private static T InsertStyleChild<T>(Style style, T child) where T : OpenXmlElement
+    {
+        style.AppendChild(child);
+        Core.SchemaOrder.Place(style, child);
+        return child;
+    }
+
+    /// <summary>The style's rPr, created at its CT_Style slot when absent. A bare
+    /// AppendChild tail-appends it — after tblPr / trPr / tcPr on a table style,
+    /// where CT_Style places rPr before them (issue #434).</summary>
+    private static StyleRunProperties EnsureStyleRunProperties(Style style)
+        => style.StyleRunProperties ?? InsertStyleChild(style, new StyleRunProperties());
 
     private static BorderValues ParseBorderStyle(string style) => style.ToLowerInvariant() switch
     {

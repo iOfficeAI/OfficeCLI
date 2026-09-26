@@ -159,17 +159,22 @@ internal static class SchemaOrder
         Justification = "Reflecting over the SDK's internal element Metadata.Particle to reach the public CompiledParticle.Compare comparator. These members back the SDK's own validation and are preserved; if trimmed away, the probe returns null and callers leave child order unchanged (the prior, also-valid-enough behavior).")]
     private static Comparison<OpenXmlElement>? GetComparison(OpenXmlElement parent)
     {
-        return s_cmpCache.GetOrAdd(parent.GetType(), static (_, p) =>
+        return s_cmpCache.GetOrAdd(parent.GetType(), static (type, p) =>
         {
             try
             {
                 // Metadata is an instance property on OpenXmlElement; the
                 // particle it exposes is identical across instances of the same
                 // type, so building the delegate from any live instance and
-                // caching by type is correct.
+                // caching by type is correct. For the containers listed in
+                // s_particleAuthority the delegate is built from a different
+                // type's particle, deliberately — see that field.
+                var source = s_particleAuthority.TryGetValue(type, out var authority)
+                    ? authority()
+                    : p;
                 var metaProp = typeof(OpenXmlElement).GetProperty("Metadata",
                     BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-                var meta = metaProp?.GetValue(p);
+                var meta = metaProp?.GetValue(source);
                 var particle = meta?.GetType().GetProperty("Particle")?.GetValue(meta);
                 if (particle == null) return null;
                 var compare = particle.GetType().GetMethod("Compare",
@@ -183,4 +188,25 @@ internal static class SchemaOrder
             }
         }, parent);
     }
+
+    // Per-parent-type particle AUTHORITY override — for the containers whose own
+    // compiled particle does not model the schema type the validator tests them
+    // against. w:style/w:rPr is the case that bites: ISO/IEC 29500-4 CT_Style
+    // declares <xsd:element name="rPr" type="CT_RPr" minOccurs="0"/> — the same
+    // complex type a run's w:rPr uses — while SDK 3.4.1's compiled particle for
+    // StyleRunProperties is a TRUNCATED CT_RPr: 35 children against
+    // RunProperties' 51, missing rStyle, highlight, rtl, cs, oMath and the w14
+    // extension block (its typed class has no Highlight/RunStyle/... property
+    // either). The comparator sorts what it cannot recognise to the FRONT, so
+    // placing <w:highlight/> in a style's rPr hoisted it ahead of <w:rFonts/> —
+    // a slot neither CT_RPr nor Word's own writer produces. Borrow the
+    // RunProperties particle for that container: for every element both
+    // particles declare the relative order is identical, so this only moves the
+    // five undeclared ones and the w14 block, and it leaves GetMaxOccurs (which
+    // reads the parent's own particle) untouched.
+    private static readonly ConcurrentDictionary<Type, Func<OpenXmlElement>> s_particleAuthority = new()
+    {
+        [typeof(DocumentFormat.OpenXml.Wordprocessing.StyleRunProperties)] =
+            static () => new DocumentFormat.OpenXml.Wordprocessing.RunProperties(),
+    };
 }

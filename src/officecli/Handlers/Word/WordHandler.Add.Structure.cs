@@ -1085,16 +1085,21 @@ public partial class WordHandler
     }
 
     // ==================== CT_Style schema-order insertion ====================
-    // BUG-DUMP-STYLE-LATENT: canonical CT_Style child order (subset, in
-    // document order):
+    // BUG-DUMP-STYLE-LATENT: canonical CT_Style child order, in document order
+    // (ISO/IEC 29500-4 CT_Style — the same order the SDK's compiled particle for
+    // w:style reports):
     //   name, aliases, basedOn, next, link, autoRedefine, hidden,
     //   uiPriority, semiHidden, unhideWhenUsed, qFormat, locked,
-    //   personalCompose, personalReply, personal, rPr, pPr, tblPr, trPr, tcPr,
-    //   tblStylePr.
+    //   personal, personalCompose, personalReply, rsid, pPr, rPr,
+    //   tblPr, trPr, tcPr, tblStylePr.
     // Word and the OOXML validator reject out-of-order children, so a Set that
     // inserts a latent-style flag onto a style that already has pPr/rPr must
     // place it ahead of those. AddStyle appends in this order already; Set uses
-    // this helper to splice into the right slot. Maps a child to its rank.
+    // this helper to splice into the right slot — and InsertStyleChild does the
+    // same for the name/basedOn/next/link and pPr/rPr containers through the
+    // SDK's own particle (issue #434). Maps a child to its rank; 99 = not ranked
+    // here (tblStylePr is last in CT_Style anyway, and an unknown extension still
+    // sorts after every ranked child).
     private static int StyleChildOrder(OpenXmlElement el) => el switch
     {
         StyleName => 0,
@@ -1109,8 +1114,15 @@ public partial class WordHandler
         UnhideWhenUsed => 9,
         PrimaryStyle => 10,   // <w:qFormat/>
         Locked => 11,
-        StyleParagraphProperties => 14,
-        StyleRunProperties => 13,
+        Personal => 12,
+        PersonalCompose => 13,
+        PersonalReply => 14,
+        Rsid => 15,
+        StyleParagraphProperties => 16,
+        StyleRunProperties => 17,
+        StyleTableProperties => 18,
+        TableStyleConditionalFormattingTableRowProperties => 19,   // <w:trPr/>
+        StyleTableCellProperties => 20,
         _ => 99,
     };
 

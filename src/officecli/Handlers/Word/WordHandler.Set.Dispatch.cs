@@ -1681,7 +1681,7 @@ public partial class WordHandler
                 // lives in rPr/<w:rtl/>. Mirrors AddStyle's character branch.
                 if (style.Type?.Value == StyleValues.Character)
                 {
-                    var rpr = style.StyleRunProperties ?? style.AppendChild(new StyleRunProperties());
+                    var rpr = EnsureStyleRunProperties(style);
                     rpr.RemoveAllChildren<RightToLeftText>();
                     InsertRunPropInSchemaOrder(rpr, styleRtl
                         ? new RightToLeftText()
@@ -1745,7 +1745,7 @@ public partial class WordHandler
             if (ApplyRunFormatting(rPrProbeFmt, key, value))
             {
                 ApplyRunFormatting(
-                    style.StyleRunProperties ?? style.AppendChild(new StyleRunProperties()),
+                    EnsureStyleRunProperties(style),
                     key, value);
                 continue;
             }
@@ -1760,19 +1760,19 @@ public partial class WordHandler
                 // though Get exposes `styleName` as a canonical readback
                 // key. Same alias-trap pattern policy 19b3dd5b banned.
                 case "name" or "stylename":
-                    var sn = style.StyleName ?? style.AppendChild(new StyleName());
+                    var sn = style.StyleName ?? InsertStyleChild(style, new StyleName());
                     sn.Val = value;
                     break;
                 case "basedon":
-                    var bo = style.BasedOn ?? style.AppendChild(new BasedOn());
+                    var bo = style.BasedOn ?? InsertStyleChild(style, new BasedOn());
                     bo.Val = value;
                     break;
                 case "next":
-                    var ns = style.NextParagraphStyle ?? style.AppendChild(new NextParagraphStyle());
+                    var ns = style.NextParagraphStyle ?? InsertStyleChild(style, new NextParagraphStyle());
                     ns.Val = value;
                     break;
                 case "linked" or "link":
-                    var lk = style.LinkedStyle ?? style.AppendChild(new LinkedStyle());
+                    var lk = style.LinkedStyle ?? InsertStyleChild(style, new LinkedStyle());
                     lk.Val = value;
                     break;
                 case "align" or "alignment":
@@ -2035,7 +2035,7 @@ public partial class WordHandler
                 // produces a single rFonts element with both attrs.
                 case "font.ascii" or "font.hansi" or "font.eastasia" or "font.cs":
                 {
-                    var rPrFonts = style.StyleRunProperties ?? style.AppendChild(new StyleRunProperties());
+                    var rPrFonts = EnsureStyleRunProperties(style);
                     rPrFonts.RunFonts ??= new RunFonts();
                     switch (key.ToLowerInvariant())
                     {
@@ -2105,7 +2105,7 @@ public partial class WordHandler
                         var rPrAttrProbe = new StyleRunProperties();
                         if (Core.TypedAttributeFallback.TrySet(rPrAttrProbe, key, value))
                         {
-                            var rPrReal = style.StyleRunProperties ?? style.AppendChild(new StyleRunProperties());
+                            var rPrReal = EnsureStyleRunProperties(style);
                             Core.TypedAttributeFallback.TrySet(rPrReal, key, value);
                             break;
                         }
@@ -2121,7 +2121,7 @@ public partial class WordHandler
                     var rPrProbe = new StyleRunProperties();
                     if (Core.GenericXmlQuery.TryCreateTypedChild(rPrProbe, key, value))
                     {
-                        var rPrReal = style.StyleRunProperties ?? style.AppendChild(new StyleRunProperties());
+                        var rPrReal = EnsureStyleRunProperties(style);
                         Core.GenericXmlQuery.TryCreateTypedChild(rPrReal, key, value);
                         break;
                     }
