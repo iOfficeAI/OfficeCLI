@@ -32,6 +32,15 @@ public partial class ExcelHandler : IDocumentHandler, Rendering.IRenderModelHost
     // is semantically lossless.
     private MemoryStream? _filteredPackageStream;
     private readonly bool _editable;
+    // Prolog content (comments / processing instructions between the XML
+    // declaration and the root element) of each part, captured from the package
+    // as opened. No SDK node models it, so any editable save serializes the part
+    // without it; XmlPrologPreserver.Restore puts it back into the written zip
+    // from WriteBackFilteredPackage, which is the only path that writes the
+    // file (both `save` and close go through it). Null when no part had one —
+    // the overwhelmingly common case — which makes capture and restore no-ops.
+    // Keyed by zip entry name (no leading slash).
+    private readonly Dictionary<string, string>? _prologs;
     // Row index cache: SheetData → sorted map of rowIndex → Row.
     // Turns the O(n) linear scan in FindOrCreateCell into O(1) lookup + O(log n) insert.
     // Invalidated by InvalidateRowIndex() whenever rows are structurally modified (shift, remove).
@@ -132,6 +141,14 @@ public partial class ExcelHandler : IDocumentHandler, Rendering.IRenderModelHost
                 mem.Position = 0;
                 _filteredPackageStream = mem;
             }
+
+            // Must run on the open-time bytes, before any save rewrites them:
+            // this is the only point where every part still carries the prolog
+            // the author wrote. Read-only sessions never write, so they skip the
+            // scan (they cannot lose a prolog). Same placement as WordHandler.
+            if (editable)
+                _prologs = OfficeCli.Core.XmlPrologPreserver.Capture(
+                    (Stream?)_filteredPackageStream ?? _backingStream);
 
             _doc = SpreadsheetDocument.Open(
                 (Stream?)_filteredPackageStream ?? _backingStream, editable);
@@ -488,10 +505,16 @@ public partial class ExcelHandler : IDocumentHandler, Rendering.IRenderModelHost
         // the original in place (SetLength(0)) then copied the new bytes over it,
         // so a process death between the two left the original already gone and
         // only a partial file on disk — unrecoverable. See AtomicPackageWriter.
+        // The post-process runs against the temp, before the swap, so the
+        // caller's read handle on the original is never in the way — and because
+        // `save` and close both write back through here, hanging the prolog
+        // restore on this single call covers both (WordHandler needed two hooks:
+        // its own save and close write through different methods).
         OfficeCli.Core.AtomicPackageWriter.Flush(
             _filteredPackageStream, _filePath,
             releaseLock: () => { _backingStream!.Dispose(); _backingStream = null; },
-            reopenLock: () => { _backingStream = new FileStream(_filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read); });
+            reopenLock: () => { _backingStream = new FileStream(_filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read); },
+            postProcessTemp: tmp => OfficeCli.Core.XmlPrologPreserver.Restore(tmp, _prologs));
     }
 
     /// <summary>See <see cref="OfficeCli.Handlers.WordHandler.DiscardOnDispose"/> —
