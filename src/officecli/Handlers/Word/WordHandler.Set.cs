@@ -1128,6 +1128,10 @@ public partial class WordHandler
     private bool ApplyParagraphLevelProperty(ParagraphProperties pProps, string key, string? value, List<string>? warnings = null)
     {
         if (value is null) return false;
+        // CONSISTENCY(format-inherit): an explicit removal spelling drops the pPr
+        // child / attribute instead of being parsed as a value, so the paragraph
+        // inherits the setting from its style / docDefaults again (issue #274).
+        if (IsFormatRemovalToken(value) && TryRemoveParagraphFormatting(pProps, key, value)) return true;
         switch (key.ToLowerInvariant())
         {
             case "style" or "styleid":
@@ -1519,6 +1523,145 @@ public partial class WordHandler
             default:
                 return false;
         }
+    }
+
+    /// <summary>
+    /// CONSISTENCY(format-inherit): the paragraph-level half of the removal
+    /// vocabulary (see IsFormatRemovalToken and TryRemoveRunFormatting). Strips
+    /// one explicit pPr attribute or child so the setting falls back to the
+    /// paragraph style and docDefaults — e.g.
+    /// <c>set /body/p[3] --prop indent=clear --prop spaceAfter=clear</c> restores
+    /// the style's indent and spacing (issue #274).
+    ///
+    /// Removal is per-axis: <c>w:ind</c> and <c>w:spacing</c> are shared
+    /// containers, so clearing spaceAfter must not take an explicit spaceBefore
+    /// with it — the same "both units coexist" rule the spaceBefore*/spaceAfter*
+    /// cases document. The container element is dropped only once it has no
+    /// attributes left (cosmetic: a bare <c>&lt;w:ind/&gt;</c> masks nothing).
+    /// A key with no explicit value is a no-op, never an error.
+    ///
+    /// Deliberately excluded: <c>shading=clear</c> — the shading spelling put
+    /// through this path is a pattern plus fill (<c>solid;FF0000</c>), so the
+    /// bare token is left to the existing parser instead of being claimed as a
+    /// removal; use <c>shading=remove|unset|inherit</c> to strip the element.
+    /// Also out of scope: the pbdr/border group (its STYLE;SIZE;COLOR parser
+    /// already treats none/false/empty as a wipe) and numId (0/-1 already remove
+    /// numbering). The on/off toggles below are mapped: their removal spelling is
+    /// new behavior, because today the value fails to parse ("Invalid boolean
+    /// value") — only false/0/no/off are accepted, and those keep writing the
+    /// explicit val="0" override exactly as before.
+    /// </summary>
+    private static bool TryRemoveParagraphFormatting(ParagraphProperties pProps, string key, string value)
+    {
+        var token = value.Trim().ToLowerInvariant();
+        switch (key.ToLowerInvariant())
+        {
+            case "stylename" or "style" or "styleid":
+                // Drop the explicit binding so the default paragraph style applies.
+                pProps.ParagraphStyleId = null;
+                return true;
+            case "align" or "alignment" or "jc":
+                pProps.Justification = null;
+                return true;
+            case "firstlineindent":
+                RemoveIndentationAxis(pProps, i => i.FirstLine = null);
+                return true;
+            case "leftindent" or "indentleft" or "indent":
+                // Both spellings: w:start is ISO for w:left (BUG-IND-ALIAS #367).
+                RemoveIndentationAxis(pProps, i => { i.Left = null; i.Start = null; });
+                return true;
+            case "rightindent" or "indentright":
+                RemoveIndentationAxis(pProps, i => { i.Right = null; i.End = null; });
+                return true;
+            case "hangingindent" or "hanging":
+                RemoveIndentationAxis(pProps, i => i.Hanging = null);
+                return true;
+            case "firstlinechars":
+                RemoveIndentationAxis(pProps, i => i.FirstLineChars = null);
+                return true;
+            case "leftchars" or "startchars":
+                RemoveIndentationAxis(pProps, i => i.LeftChars = null);
+                return true;
+            case "rightchars" or "endchars":
+                RemoveIndentationAxis(pProps, i => i.RightChars = null);
+                return true;
+            case "hangingchars":
+                RemoveIndentationAxis(pProps, i => i.HangingChars = null);
+                return true;
+            case "spacebefore":
+                RemoveSpacingAxis(pProps, s => s.Before = null);
+                return true;
+            case "spaceafter":
+                RemoveSpacingAxis(pProps, s => s.After = null);
+                return true;
+            case "spacebeforelines":
+                RemoveSpacingAxis(pProps, s => s.BeforeLines = null);
+                return true;
+            case "spaceafterlines":
+                RemoveSpacingAxis(pProps, s => s.AfterLines = null);
+                return true;
+            case "spacebeforeauto" or "beforeautospacing":
+                RemoveSpacingAxis(pProps, s => s.BeforeAutoSpacing = null);
+                return true;
+            case "spaceafterauto" or "afterautospacing":
+                RemoveSpacingAxis(pProps, s => s.AfterAutoSpacing = null);
+                return true;
+            case "linespacing":
+                // The setter writes w:line + w:lineRule as a pair; clear both.
+                RemoveSpacingAxis(pProps, s => { s.Line = null; s.LineRule = null; });
+                return true;
+            case "linerule" or "linespacingrule":
+                RemoveSpacingAxis(pProps, s => s.LineRule = null);
+                return true;
+            case "direction" or "dir" or "bidi":
+                pProps.BiDi = null;
+                return true;
+            case "keepnext" or "keepwithnext":
+                pProps.KeepNext = null;
+                return true;
+            case "keeplines" or "keeptogether":
+                pProps.KeepLines = null;
+                return true;
+            case "pagebreakbefore":
+                pProps.PageBreakBefore = null;
+                return true;
+            case "widowcontrol" or "widoworphan":
+                pProps.WidowControl = null;
+                return true;
+            case "outlinelvl" or "outlinelevel":
+                pProps.OutlineLevel = null;
+                return true;
+            case "shading" or "shd" or "fill":
+                if (token == "clear") return false;  // ST_Shd pattern is a value
+                pProps.Shading = null;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Null one w:ind attribute, then drop the element if it is left bare.
+    /// Shared by TryRemoveParagraphFormatting (issue #274).
+    /// </summary>
+    private static void RemoveIndentationAxis(ParagraphProperties pProps, Action<Indentation> clearAxis)
+    {
+        var indentation = pProps.Indentation;
+        if (indentation == null) return;   // nothing explicit set: no-op
+        clearAxis(indentation);
+        if (!indentation.GetAttributes().Any()) pProps.Indentation = null;
+    }
+
+    /// <summary>
+    /// Null one w:spacing attribute, then drop the element if it is left bare.
+    /// Shared by TryRemoveParagraphFormatting (issue #274).
+    /// </summary>
+    private static void RemoveSpacingAxis(ParagraphProperties pProps, Action<SpacingBetweenLines> clearAxis)
+    {
+        var spacing = pProps.SpacingBetweenLines;
+        if (spacing == null) return;       // nothing explicit set: no-op
+        clearAxis(spacing);
+        if (!spacing.GetAttributes().Any()) pProps.SpacingBetweenLines = null;
     }
 
     // R17-consistency: align direction parsing across Word / PPT / Excel and
