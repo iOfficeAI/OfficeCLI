@@ -102,6 +102,15 @@ public partial class WordHandler : IDocumentHandler, Rendering.IRenderModelHost
     // sidesteps that entirely. Keyed by zip entry name (no leading slash).
     private Dictionary<string, string>? _pendingWholeParts;
 
+    // Prolog content (comments / processing instructions between the XML
+    // declaration and the root element) of each part, captured from the package
+    // as opened. No SDK node models it, so any editable save serializes the part
+    // without it; XmlPrologPreserver.Restore puts it back into the written zip.
+    // no part had one — the overwhelmingly common case — which makes both the
+    // capture and the restore a no-op. Keyed by zip entry name (no leading
+    // slash), like _pendingWholeParts.
+    private readonly Dictionary<string, string>? _prologs;
+
     // Part root elements mutated by a raw-set during a DeferSave batch. The
     // per-op rootElement.Save() (a whole-part re-serialize) and the four global
     // id sweeps are skipped during defer — a document with thousands of raw-set
@@ -376,6 +385,10 @@ public partial class WordHandler : IDocumentHandler, Rendering.IRenderModelHost
                 _packageStream = new MemoryStream();
                 _backingStream.CopyTo(_packageStream);
                 _packageStream.Position = 0;
+                // Must run on the open-time bytes, before any save rewrites
+                // them: this is the only point where every part still carries
+                // the prolog the author wrote.
+                _prologs = OfficeCli.Core.XmlPrologPreserver.Capture(_packageStream);
             }
             _doc = WordprocessingDocument.Open((Stream?)_packageStream ?? _backingStream, editable);
             WordStrictAttributeSanitizer.Sanitize(_doc);
@@ -2460,7 +2473,12 @@ public partial class WordHandler : IDocumentHandler, Rendering.IRenderModelHost
             catch { /* best-effort audit trail */ }
         }
         _doc.Save();
-        if (_packageStream != null) AtomicWriteBack();
+        // A mid-session flush persists without the prolog unless we put it back
+        // here too: `save` is a persist path a caller can stop at, and the
+        // resident keeps the package open afterwards. The post-process runs
+        // against the temp file, before the swap (see AtomicPackageWriter), so
+        // the caller's read handle on the original is not in the way.
+        if (_packageStream != null) AtomicWriteBack(tmp => OfficeCli.Core.XmlPrologPreserver.Restore(tmp, _prologs));
         else _backingStream?.Flush();
     }
 
@@ -2509,12 +2527,16 @@ public partial class WordHandler : IDocumentHandler, Rendering.IRenderModelHost
             //    persist on a stream-opened package (see RawReplaceWholePart).
             //  - NormalizeSelfClosingInDocx: canonicalize `<w:br />` -> `<w:br/>`
             //    (schema-equivalent; several consumers/tests want the short form).
+            //  - XmlPrologPreserver.Restore: put back the prolog (comments / PIs
+            //    the declaration and the root element) the SDK's re-serialize
+            //    drops — no node models it, so nothing in the DOM can carry it.
             try
             {
                 AtomicWriteBack(tmp =>
                 {
                     FlushPendingWholeParts(tmp);
                     NormalizeSelfClosingInDocx(tmp);
+                    OfficeCli.Core.XmlPrologPreserver.Restore(tmp, _prologs);
                 });
             }
             catch { /* best-effort: the original file is left intact */ }
