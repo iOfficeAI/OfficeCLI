@@ -185,7 +185,7 @@ public partial class ExcelHandler
             {
                 foreach (var cell in contentCells)
                 {
-                    rowNode.Children.Add(CellToNode(sheetName, cell, worksheetPart, eval));
+                    rowNode.Children.Add(CellToNode(sheetName, cell, worksheetPart, eval, depth - 1));
                 }
             }
 
@@ -292,7 +292,7 @@ public partial class ExcelHandler
         return false;
     }
 
-    private DocumentNode CellToNode(string sheetName, Cell cell, WorksheetPart? part = null, Core.FormulaEvaluator? evaluator = null)
+    private DocumentNode CellToNode(string sheetName, Cell cell, WorksheetPart? part = null, Core.FormulaEvaluator? evaluator = null, int depth = 1)
     {
         var cellRef = cell.CellReference?.Value ?? "?";
         // Shared-formula children hold an empty <f/>; ResolveText expands them
@@ -823,7 +823,7 @@ public partial class ExcelHandler
                     node.Format["richtext"] = true;
                     node.ChildCount = runs.Count;
                     int runI = 1;
-                    foreach (var run in runs)
+                    foreach (var run in depth > 0 ? runs : Enumerable.Empty<Run>())
                     {
                         node.Children.Add(RunToNode(run, $"/{sheetName}/{cellRef}/run[{runI}]"));
                         runI++;
