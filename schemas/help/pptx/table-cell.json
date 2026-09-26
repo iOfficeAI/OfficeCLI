@@ -306,10 +306,11 @@
     "image.relId": {
       "type": "string",
       "add": false,
-      "set": false,
+      "set": true,
       "get": true,
-      "description": "relationship id of an embedded image used as the cell's blip fill.",
+      "description": "relationship id of an embedded image used as the cell's blip fill. Settable so a dump→batch clone re-attaches the source's own image part (the emitter pins it, under this same id, on the slide); the id must resolve to an image part of the cell's own slide.",
       "readback": "relationship id token",
+      "examples": ["--prop image.relId=rId3"],
       "enforcement": "report"
     },
     "border.all": {
