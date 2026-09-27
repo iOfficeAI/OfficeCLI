@@ -492,6 +492,7 @@ public partial class ExcelHandler
 
         // Row height and hidden row lookup
         var rowHeights = new Dictionary<int, double>();
+        var customHeightRows = new HashSet<int>();
         var hiddenRows = new HashSet<int>();
         var customHeightRows = new HashSet<int>();
         foreach (var row in rows)
@@ -511,12 +512,12 @@ public partial class ExcelHandler
                 hiddenRows.Add(rowIdx);
         }
 
-        // Rotated-text rows auto-grow in real Excel so the vertical string is
-        // visible. The HTML <td> only carries transform:rotate, which keeps the
-        // glyph box at its un-rotated width — the row stays at default height and
-        // clips. Bump the row's min-height to the rotated text extent (approx
-        // text-length × font-size for ~90°), consistent with the spill/width
-        // estimation heuristics elsewhere in this renderer.
+        // Rotated-text rows with automatic height grow in real Excel so the
+        // vertical string is visible. The HTML <td> only carries transform:rotate,
+        // which keeps the glyph box at its un-rotated width — the row stays at
+        // default height and clips. Bump the row's min-height to the rotated text
+        // extent (approx text-length × font-size for ~90°), but never override an
+        // OOXML customHeight row: that height is an explicit user constraint.
         foreach (var ((r, _), cell) in cellMap)
         {
             // An explicit customHeight wins over the rotated-text auto-grow —
