@@ -486,7 +486,7 @@ officecli get report.docx /body --depth 1 --json
 {"success": true, "path": "/slide[1]/shape[1]"}
 ```
 
-**Exit codes.** `0` — the operation landed. `1` — it did not (process or business failure; the envelope carries `error`). `2` — it ran with caveats: an `unsupported_property` was dropped, or a validator raised a warning. Exit 2 covers both "landed with a warning" (`success: true`) and "nothing applied" (`success: false`, e.g. every property refused), so scripts must read `success` in the envelope, not the exit code alone; `warnings[]` lists what was dropped. The MCP server derives `isError` from the envelope the same way.
+**Exit codes.** `0` — the operation landed. `1` — it did not (process or business failure; the envelope carries `error`). `2` — it ran with caveats: an `unsupported_property` was dropped, or a validator raised a warning. Exit 2 covers both "landed with a warning" (`success: true`) and "nothing applied" (`success: false`, e.g. every property refused), so scripts must read `success` in the envelope, not the exit code alone; `warnings[]` lists what was dropped. `3` — the file has a running resident process and the command could not be delivered to it (main pipe busy or unresponsive). The command **never ran**, so this is retryable rather than a rejection — retry, or run `officecli close <file>` and try again. The MCP server derives `isError` from the envelope the same way.
 
 ## Comparison
 
