@@ -2931,18 +2931,18 @@ public partial class PowerPointHandler
                     tcPr.RemoveAllChildren<Drawing.NoFill>();
                     tcPr.RemoveAllChildren<Drawing.GradientFill>();
                     tcPr.RemoveAllChildren<Drawing.BlipFill>();
-                    // Insert fill after border line elements to maintain CT_TableCellProperties schema order
-                    var lastBorder = tcPr.ChildElements.LastOrDefault(c =>
-                        c is Drawing.LeftBorderLineProperties
-                        or Drawing.RightBorderLineProperties
-                        or Drawing.TopBorderLineProperties
-                        or Drawing.BottomBorderLineProperties
-                        or Drawing.TopLeftToBottomRightBorderLineProperties
-                        or Drawing.BottomLeftToTopRightBorderLineProperties);
-                    if (lastBorder != null)
-                        lastBorder.InsertAfterSelf(newCellFill);
-                    else
-                        tcPr.Append(newCellFill);
+                    // CONSISTENCY(cell-fill-schema-order): place the fill by the
+                    // SDK's own CT_TableCellProperties particle order instead of
+                    // anchoring it "after the last border element". That hand
+                    // anchor ignored an existing <a:cell3D> — which the schema
+                    // puts *before* the fill — so re-setting the fill of an
+                    // already-beveled cell moved the bevel behind the fill and
+                    // validate then rejected the package ("unexpected child
+                    // element …main:cell3D"). Place() only relocates the child
+                    // just added and delegates the order to the same compiled
+                    // comparator the validator uses (see Core.SchemaOrder).
+                    tcPr.Append(newCellFill);
+                    SchemaOrder.Place(tcPr, newCellFill);
                     break;
                 }
                 case "align" or "alignment" or "halign":
