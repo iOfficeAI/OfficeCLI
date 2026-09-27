@@ -1215,11 +1215,9 @@ internal static partial class ChartHelper
         {
             dLbl = new C.DataLabel();
             dLbl.AppendChild(new C.Index { Val = ooxmlIdx });
-            var insertBefore = dLbls.GetFirstChild<C.ShowLegendKey>() as OpenXmlElement
-                ?? dLbls.GetFirstChild<C.ShowValue>()
-                ?? dLbls.FirstChild;
-            if (insertBefore != null) dLbls.InsertBefore(dLbl, insertBefore);
-            else dLbls.AppendChild(dLbl);
+            // dLbl leads CT_DLbls — same canonical position as the
+            // dataLabel{N}.x/y/w/h path so both routes agree.
+            InsertDLblsChildInOrder(dLbls, dLbl);
         }
 
         switch (prop)
