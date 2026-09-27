@@ -16,6 +16,23 @@ namespace OfficeCli.Handlers;
 
 public partial class ExcelHandler
 {
+    // Resolve sheet-scoped paths before a resident promotes the handler and
+    // marks itself dirty. Keep selector and workbook-level dispatch in Set.
+    internal void ValidateSetSheet(string path)
+    {
+        if (!string.IsNullOrEmpty(path)
+            && (!path.StartsWith("/") || AttributeFilter.IsContentFilterPath(path)))
+            return;
+
+        path = ResolveSheetIndexInPath(NormalizeExcelPath(path));
+        if (path == "/" || Regex.IsMatch(path.TrimStart('/'), @"^namedrange\[(.+?)\]$", RegexOptions.IgnoreCase))
+            return;
+
+        var sheetName = path.TrimStart('/').Split('/', 2)[0];
+        if (FindWorksheet(sheetName) == null)
+            throw SheetNotFoundException(sheetName);
+    }
+
     public List<string> Set(string path, Dictionary<string, string> properties)
         => MarkModified(() => SetCore(path, properties));
 
