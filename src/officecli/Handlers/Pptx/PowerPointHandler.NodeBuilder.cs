@@ -2519,10 +2519,20 @@ public partial class PowerPointHandler
     // `add textbox normalizeH=true` and a multi-run shape silently broadcast
     // the first run's flag to every subsequent run on dump→replay. Filter
     // it here so it stays on the run where it lives.
+    // R87: kern (rPr/@kern, the minimum size at which pair kerning applies) is
+    // the same shape of attribute. The lift surfaced the FIRST run's value, and
+    // because dump splits a textbox's text into a later `set paragraph text=`
+    // item, the replayed `add textbox kern=…` met a runless shape and Add
+    // materialised it as a paragraph default (`<a:pPr><a:defRPr kern=…/>`)
+    // instead of on the run. In a mixed-kern paragraph (run1 1200, run2 unset)
+    // every sibling run then inherited a kern the source never gave it — a
+    // rendering change, not just a dump wobble — and in a uniform or single-run
+    // paragraph the replay stopped being a fixed point. Filter it here so it
+    // stays on the run that owns it.
     private static readonly System.Collections.Generic.HashSet<string> RunOnlyAttrs =
         new(System.StringComparer.Ordinal)
     {
-        "err", "dirty", "smtClean", "lang", "normalizeH",
+        "err", "dirty", "smtClean", "lang", "normalizeH", "kern",
     };
 
     private static void FillUnknownRunProps(Drawing.RunProperties? rPr, DocumentNode node, bool shapeLevel = false)

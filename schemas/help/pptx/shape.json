@@ -335,14 +335,14 @@
     },
     "kern": {
       "type": "number",
-      "description": "minimum kerning size in 1/100 pt (drawingML rPr/@kern). Get surfaces the raw integer via long-tail rPr attribute readback.",
+      "description": "minimum kerning size in 1/100 pt (drawingML rPr/@kern). kern lives per-run — a shape has no kerning threshold of its own, only an aggregate of its runs' rPr. add/set on a shape is a convenience that writes the runs; read it back at run scope (/shape[N]/paragraph[P]/run[R]). Not surfaced at shape level: the first-run projection could not be replayed, because `add textbox kern=…` meets a runless shape before the text is set and materialises a paragraph default (<a:pPr><a:defRPr kern=…>) the source never had — every sibling run without an explicit kern then inherited it.",
       "add": true,
       "set": true,
-      "get": true,
+      "get": false,
       "examples": [
         "--prop kern=1200"
       ],
-      "readback": "integer",
+      "readback": "run scope only (/shape[N]/paragraph[P]/run[R])",
       "enforcement": "report"
     },
     "autoFit": {
