@@ -455,6 +455,18 @@ public partial class WordHandler
                     cellPara.AppendChild(new Run(new Text(text) { Space = SpaceProcessingModeValues.Preserve }));
                 }
             }
+
+            // A GFM table always has a header row: mark it <w:tblHeader/> so it
+            // repeats at the top of every page the table spans. Same element
+            // `set tr[1] header=true` writes. cantSplit is deliberately not
+            // added — a row taller than a page would then be clipped.
+            if (rowEls.Count > 0)
+            {
+                var trPr = rowEls[0].TableRowProperties
+                           ?? rowEls[0].PrependChild(new TableRowProperties());
+                if (trPr.GetFirstChild<TableHeader>() == null)
+                    trPr.AppendChild(new TableHeader());
+            }
         }
         return tablePath;
     }
