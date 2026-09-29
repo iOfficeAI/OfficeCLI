@@ -15,6 +15,16 @@ internal static class WordHtmlRefresh
 {
     public static bool RefreshViaHtml(string docx)
     {
+        // The TOC regeneration below writes the package through the SDK, and it
+        // runs before we know whether a pagination backend exists at all — so a
+        // refresh that ends up reporting failure used to leave a half-updated
+        // document behind: the TOC entries were expanded (with the placeholder
+        // page number 0 the caller is supposed to overwrite) and fresh bookmarks
+        // were inserted, all after a 1-exit-code "refresh failed". Keep the bytes
+        // as opened and put them back on every failure path, so a failed refresh
+        // is a no-op on disk — the contract ElementRollback already holds for a
+        // failed element-level Set/Add.
+        var original = TryReadAllBytes(docx);
         try
         {
             string htmlSnapshot;
@@ -43,7 +53,11 @@ internal static class WordHtmlRefresh
             }
             finally { try { File.Delete(tmpHtml); } catch { } }
 
-            if (pagination == null) return false;
+            if (pagination == null)
+            {
+                RestoreOriginal(docx, original);
+                return false;
+            }
 
             using (var doc = WordprocessingDocument.Open(docx, isEditable: true))
             {
@@ -60,7 +74,27 @@ internal static class WordHtmlRefresh
             }
             return true;
         }
-        catch { return false; }
+        catch
+        {
+            RestoreOriginal(docx, original);
+            return false;
+        }
+    }
+
+    /// <summary>Bytes of the package as opened, or null when they could not be
+    /// read — there is then nothing to put back, which is the pre-fix behaviour.</summary>
+    static byte[]? TryReadAllBytes(string docx)
+    {
+        try { return File.ReadAllBytes(docx); } catch { return null; }
+    }
+
+    /// <summary>Put the snapshot back after a failed refresh. Best-effort: a
+    /// restore that fails must not turn "refresh failed" into a thrown error,
+    /// and every failure exit reports false either way.</summary>
+    static void RestoreOriginal(string docx, byte[]? original)
+    {
+        if (original == null) return;
+        try { File.WriteAllBytes(docx, original); } catch { }
     }
 
     static void ApplyPageNumbers(WordprocessingDocument doc, Dictionary<string, int> map)
