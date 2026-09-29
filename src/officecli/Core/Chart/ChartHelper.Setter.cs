@@ -2212,9 +2212,26 @@ internal static partial class ChartHelper
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
                     var varyVal = ParseHelpers.IsTruthy(value);
-                    foreach (var ct in plotArea2.ChildElements
-                        .Where(e => e.LocalName.Contains("Chart") || e.LocalName.Contains("chart"))
-                        .OfType<OpenXmlCompositeElement>())
+                    // Not every chart group carries varyColors. ECMA-376 declares it in
+                    // barChart/bar3DChart, lineChart/line3DChart, areaChart/area3DChart,
+                    // pieChart/pie3DChart, doughnutChart, ofPieChart, radarChart,
+                    // scatterChart and bubbleChart — but CT_StockChart (ser*, axId*,
+                    // dLbls?, dropLines?, hiLowLines?, upDownBars?) and
+                    // CT_SurfaceChart/CT_Surface3DChart (wireframe?, ser*, axId*) have no
+                    // such child at all. Matching on the local name used to sweep a
+                    // stockChart in, so `set varyColors=` on a stock chart (and the
+                    // replay of `charts-stock`, where the reference-line overlay's
+                    // lineChart carries the value) reported success while writing an
+                    // element the validator rejects.
+                    var chartGroups = plotArea2.ChildElements
+                        .Where(e => e is C.BarChart or C.Bar3DChart or C.LineChart or C.Line3DChart
+                            or C.AreaChart or C.Area3DChart or C.PieChart or C.Pie3DChart
+                            or C.DoughnutChart or C.OfPieChart or C.RadarChart
+                            or C.ScatterChart or C.BubbleChart)
+                        .OfType<OpenXmlCompositeElement>()
+                        .ToList();
+                    if (chartGroups.Count == 0) { unsupported.Add(key); break; }
+                    foreach (var ct in chartGroups)
                     {
                         ct.RemoveAllChildren<C.VaryColors>();
                         // ECMA-376: in every chart-type element (CT_BarChart,
