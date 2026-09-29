@@ -966,7 +966,15 @@ public partial class WordHandler
                 Date = tcDate,
                 Id = !string.IsNullOrEmpty(tcExplicitId) ? tcExplicitId : GenerateRevisionId(),
             };
-            pPrRpr.AppendChild(paraDel);
+            // CT_ParaRPr declares the revision markers BEFORE EG_RPrBase, so the
+            // marker must precede the rFonts/szCs a Word-authored ¶ mark almost
+            // always carries — a bare AppendChild puts it after them and the SDK
+            // rejects the part ("unexpected child element del"). A batch or
+            // resident flush hides that (it converges every rPr through
+            // NormalizeAllRunPropsSchemaOrder), but a one-shot command saves the
+            // freshly built DOM as-is. Insert through the same helper that
+            // normalizer places each of its children with, so both paths agree.
+            InsertRunPropInSchemaOrder(pPrRpr, paraDel);
 
             // Wrap every existing Run child in its own w:del with w:t → w:delText.
             // Each run wrapper gets its own unique id (still distinct from the
