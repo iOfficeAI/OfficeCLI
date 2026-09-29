@@ -835,6 +835,15 @@ public class ResidentServer : IDisposable
             var isBatch = request.Command.Equals("batch", StringComparison.OrdinalIgnoreCase);
             var batchFailure = isBatch && _lastBatchHadFailure;
 
+            // A failed refresh writes its reason to stderr and returns; the
+            // generic stderr inspection below finds no token in it, so text
+            // mode used to answer exit 0 for a refresh that did not happen.
+            // ExecuteRefresh records the verdict in _lastRefreshFailed (reset
+            // at the start of every refresh), so both modes agree with the
+            // one-shot path — see the field's declaration.
+            var isRefresh = request.Command.Equals("refresh", StringComparison.OrdinalIgnoreCase);
+            var refreshFailure = isRefresh && _lastRefreshFailed;
+
             // BUG-INTERVIEW-EDIT-R2: batch text-mode envelope is written by
             // the client via Console.Write (not WriteLine) to avoid double-
             // newlining single-command output. Without a trailing '\n' on
@@ -901,7 +910,7 @@ public class ResidentServer : IDisposable
                 // something was applied when nothing was. Single-command
                 // marker precedence (all-unsupported set → 2) is unchanged.
                 int jsonExitCode = 0;
-                if (batchFailure || validateFailure)
+                if (batchFailure || validateFailure || refreshFailure)
                     jsonExitCode = 1;
                 else if (rawCaveats || stderr.Contains("UNSUPPORTED") || stderr.Contains(UnrecognizedLatexMarker))
                     jsonExitCode = 2;
@@ -916,7 +925,7 @@ public class ResidentServer : IDisposable
             // errors (rawCaveats — the mutation is applied, see
             // ReportRawMutationOutcome; exit 1 here made callers retry and
             // duplicate content, issue #374).
-            int exitCode = (batchFailure || validateFailure) ? 1
+            int exitCode = (batchFailure || validateFailure || refreshFailure) ? 1
                 : ((rawCaveats || stderr.Contains("UNSUPPORTED") || stderr.Contains(UnrecognizedLatexMarker)) ? 2
                 : 0);
             return MakeResponse(exitCode, stdout, stderr);
@@ -2426,10 +2435,21 @@ public class ResidentServer : IDisposable
         Console.WriteLine($"Moved to {resultPath}");
     }
 
+    // A refresh that fails reports the failure on stderr and returns — it does
+    // not throw, because the handler is reopened either way and the resident
+    // has to stay usable. None of that text is a token the generic stderr
+    // inspection in ProcessRequest looks for, so text mode answered exit 0 for
+    // a refresh that failed (the one-shot path and the JSON envelope both say
+    // 1). Record the verdict here; ProcessRequest reads it and promotes it to a
+    // non-zero exit, exactly as ExecuteBatch / ExecuteValidate do.
+    private bool _lastRefreshFailed;
+
     private void ExecuteRefresh(ResidentRequest req)
     {
+        _lastRefreshFailed = false;
         if (_handler is not OfficeCli.Handlers.WordHandler)
         {
+            _lastRefreshFailed = true;
             Console.Error.WriteLine("refresh currently only supports .docx files.");
             return;
         }
@@ -2449,6 +2469,7 @@ public class ResidentServer : IDisposable
         _handler = OfficeCli.Handlers.DocumentHandlerFactory.Open(_filePath, _editable);
         if (!ok)
         {
+            _lastRefreshFailed = true;
             Console.Error.WriteLine("refresh failed (Word backend unavailable and HTML fallback failed).");
             return;
         }
