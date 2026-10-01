@@ -579,8 +579,16 @@ internal static partial class ChartHelper
         // R16-8: scatter and bubble charts inherently use two value axes
         // (X + Y), not a primary/secondary split. Reporting secondaryAxis for
         // them is a phantom readback that corrupts dump→replay. Skip them.
+        // Each axis pair, though, belongs to ONE chart child: when the series
+        // are spread over more than one chart-type child the axes beyond the
+        // first pair are a genuine primary/secondary split, and suppressing
+        // the key would replay the chart on a single axis. So the test is the
+        // number of chart children, not the type.
+        var chartChildCount = plotArea.ChildElements.Count(e =>
+            !(e is C.LineChart lc1 && IsReferenceLineOnlyChart(lc1)) && PlotChartTypeKey(e) != null);
         var valAxes = plotArea.Elements<C.ValueAxis>().ToList();
-        if (valAxes.Count > 1 && chartType is not ("scatter" or "bubble"))
+        if (valAxes.Count > 1
+            && (chartChildCount > 1 || chartType is not ("scatter" or "bubble")))
         {
             // Map AxisId -> rank by document order; rank 0 = primary, 1 = secondary.
             var axisRank = new Dictionary<uint, int>();
@@ -1691,18 +1699,67 @@ internal static partial class ChartHelper
         return "";
     }
 
+    /// <summary>
+    /// The type of one plotArea chart child, as compared by the combo test:
+    /// null for a child that is not a chart type. Two children with the same
+    /// key would rebuild into the same kind of chart — bar/column carry their
+    /// direction and bar/area/line their grouping, so two blocks that would
+    /// rebuild differently stay distinguishable, while the pair of siblings a
+    /// secondary-axis split produces collide (which is the point: they are one
+    /// chart, not a mix).
+    /// </summary>
+    private static string? PlotChartTypeKey(OpenXmlElement el)
+    {
+        static string Grp(OpenXmlElement e) =>
+            e.GetFirstChild<C.Grouping>()?.Val?.InnerText ?? "";
+        return el switch
+        {
+            C.BarChart bc =>
+                (bc.GetFirstChild<C.BarDirection>()?.Val?.Value == C.BarDirectionValues.Bar
+                    ? "bar" : "column")
+                + (bc.GetFirstChild<C.BarGrouping>()?.Val?.InnerText ?? ""),
+            C.LineChart lc => "line" + Grp(lc),
+            C.AreaChart ac => "area" + Grp(ac),
+            C.Area3DChart => "area3d",
+            C.ScatterChart => "scatter",
+            C.PieChart => "pie",
+            C.Pie3DChart => "pie3d",
+            C.DoughnutChart => "doughnut",
+            C.OfPieChart => "ofpie",
+            C.BubbleChart => "bubble",
+            C.RadarChart => "radar",
+            C.StockChart => "stock",
+            C.Bar3DChart b3 =>
+                b3.GetFirstChild<C.BarDirection>()?.Val?.Value == C.BarDirectionValues.Bar
+                    ? "bar3d" : "column3d",
+            C.Line3DChart => "line3d",
+            _ => null,
+        };
+    }
+
     internal static string? DetectChartType(C.PlotArea plotArea)
     {
-        // Count real chart-type elements. A LineChart containing only reference-line-shaped
-        // series (flat values, no marker, dashed outline) is a ref-line overlay added by
-        // AddReferenceLine — it must not promote the underlying chart to a "combo".
-        var chartTypeCount = plotArea.ChildElements
-            .Count(e => (e is C.BarChart or C.LineChart or C.PieChart or C.AreaChart or C.Area3DChart
-                or C.ScatterChart or C.DoughnutChart or C.Bar3DChart or C.Line3DChart or C.Pie3DChart
-                or C.OfPieChart
-                or C.BubbleChart or C.RadarChart or C.StockChart)
-                && !(e is C.LineChart lc && IsReferenceLineOnlyChart(lc)));
-        if (chartTypeCount > 1) return "combo";
+        // A chart is a "combo" only when it MIXES chart types. Counting the
+        // chart-type elements instead called every multi-element plotArea a
+        // combo, and one type spread over several elements is not a mix — it
+        // is how a primary/secondary axis split is stored (a bubble chart
+        // authored `chartType=bubble --prop secondaryAxis=2` lands as two
+        // <c:bubbleChart> siblings, one series each). Reading that split as a
+        // combo made the block below emit `comboTypes=bubble,bubble`, which
+        // the Builder rejects ("Expected bar/column/line/area/scatter"), so
+        // dump→batch of such a chart could not run at all.
+        // A LineChart containing only reference-line-shaped series (flat
+        // values, no marker, dashed outline) is a ref-line overlay added by
+        // AddReferenceLine — it must not promote the underlying chart to a
+        // "combo" either.
+        var typeKeys = new List<string>();
+        foreach (var ct in plotArea.ChildElements)
+        {
+            if (ct is C.LineChart lc0 && IsReferenceLineOnlyChart(lc0)) continue;
+            var key = PlotChartTypeKey(ct);
+            if (key != null) typeKeys.Add(key);
+        }
+        if (typeKeys.Distinct(StringComparer.Ordinal).Count() > 1) return "combo";
 
         // The dispatch below picks the first real chart-type child. A
         // reference-line-only LineChart sibling (added by AddReferenceLine on
