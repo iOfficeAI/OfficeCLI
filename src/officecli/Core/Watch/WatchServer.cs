@@ -2666,6 +2666,10 @@ internal class WatchServer : IDisposable
                 psi.ArgumentList.Add("html"); // mode is positional: view <file> <mode>
                 psi.ArgumentList.Add("--out");
                 psi.ArgumentList.Add(tmpOut);
+                // The switched page is served to watch clients: keep data-path,
+                // block markers and anchors (the CLI default is the lean page).
+                psi.ArgumentList.Add("--html-profile");
+                psi.ArgumentList.Add("interactive");
 
                 string renderErr = "";
                 int exitCode = -1;

@@ -32,7 +32,7 @@ public sealed class WordBasicRenderer : IRenderer
     public RenderResult Render(IRenderInput input, RenderOptions options)
     {
         var h = Handler<WordHandler>(input);
-        var html = h.ViewAsHtml(options.PageFilter, options.GridColumns, options.GridCellWidthPx);
+        var html = h.ViewAsHtml(options.PageFilter, options.GridColumns, options.GridCellWidthPx, options.Lean);
         return RenderResult.Html(html);
     }
 

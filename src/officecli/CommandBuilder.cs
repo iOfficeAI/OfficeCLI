@@ -1236,7 +1236,7 @@ static partial class CommandBuilder
                     if (handler is OfficeCli.Handlers.ExcelHandler excelH)
                         return excelH.ViewAsHtml();
                     if (handler is OfficeCli.Handlers.WordHandler wordH)
-                        return wordH.ViewAsHtml();
+                        return wordH.ViewAsHtml(lean: true);
                 }
                 if (mode.ToLowerInvariant() is "svg" or "g" && handler is OfficeCli.Handlers.PowerPointHandler pptSvg)
                 {

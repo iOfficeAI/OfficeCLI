@@ -255,7 +255,7 @@ OfficeCLI 是自包含的。下列能力全部内置在二进制中——**无�
 
 OfficeCLI 的基石：一个从零实现、高保真的 HTML 渲染引擎，让 AI 智能体能"看见"渲染后的文档，而不是凭 DOM 瞎猜。它覆盖形状、图表（趋势线、误差线、瀑布、K 线、sparkline）、公式（OMML → LaTeX，KaTeX 渲染）、通过 Three.js 渲染的 3D `.glb` 模型、morph 过渡、幻灯片缩放、形状效果。按页 PNG 截图是把渲染出的 HTML 通过无头浏览器截出来的。三种模式：
 
-- **`view html`** —— 独立 HTML 文件，资源内联。任何浏览器打开即可看。
+- **`view html`** —— 独立 HTML 文件，资源内联。需要较新的浏览器（2022 年及以后发布；页面使用了 CSS 级联层）。
 - **`view screenshot`** —— 按页 PNG，供多模态智能体读图检查。
 - **`watch`** —— 本地 HTTP 服务 + 自动刷新预览；每次 `add` / `set` / `remove` 立即更新浏览器。Excel watch 还支持单元格内联编辑、图表拖动定位。
 
