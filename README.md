@@ -453,7 +453,7 @@ All commands support `--json`. The general response shapes:
 ]
 ```
 
-**Errors** return a non-zero exit code with a structured error object including error code, suggestion, and valid values when available:
+**Errors** (exit code `1`) return a structured error object including error code, suggestion, and valid values when available:
 
 ```json
 {
