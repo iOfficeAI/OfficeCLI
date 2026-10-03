@@ -12,6 +12,9 @@ permissions:
 jobs:
   build:
     strategy:
+      # Keep platform builds independent: missing macOS signing secrets must
+      # not cancel Windows/Linux artifacts needed for validation.
+      fail-fast: false
       matrix:
         include:
           - rid: osx-arm64
