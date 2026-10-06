@@ -1769,7 +1769,21 @@ internal partial class FormulaEvaluator
     private FormulaResult? EvalSumProduct(List<object> args)
     {
         if (args.Count == 0) return FR(0);
-        var arrays = args.Select(a => AsDoubles(a)).ToList();
+        // Keep ranges position-aligned: Excel treats blank, text and boolean cells in a
+        // SUMPRODUCT range as 0. AsDoubles drops them, which pairs the wrong cells
+        // (SUMPRODUCT(A1:D1,A2:D2) with A2:B2 blank returned A1*C2+B1*D2).
+        var arrays = new List<double[]?>();
+        foreach (var a in args)
+        {
+            if (AsRangeData(a) is { } rd)
+            {
+                var cells = rd.ToFlatResults();
+                var firstErr = cells.FirstOrDefault(c => c is { IsError: true });
+                if (firstErr != null) return firstErr;
+                arrays.Add(cells.Select(c => c is { IsNumeric: true } ? c.AsNumber() : 0.0).ToArray());
+            }
+            else arrays.Add(AsDoubles(a));
+        }
         // Single numeric value: SUMPRODUCT(scalar) = scalar
         if (arrays.All(a => a == null) && args.Count == 1 && args[0] is FormulaResult single && single.IsNumeric)
             return single;
