@@ -47,9 +47,15 @@ internal static class SlideComposition
         if (slidePh.Index?.HasValue == true && layoutPh.Index?.HasValue == true)
             return slidePh.Index.Value == layoutPh.Index.Value;
 
-        // Match by type
+        // Match by type — a family counts as the same type. ECMA-376 §19.7.10
+        // spells the title-slide slots `ctrTitle` / `subTitle` in a LAYOUT and
+        // `title` / `body` on the MASTER; each pair is one inheritance slot, and
+        // PowerPoint and LibreOffice resolve the layout spelling through the
+        // master's. Without this a layout's ctrTitle (which carries no idx)
+        // never reaches the master's title placeholder, so that placeholder's
+        // own lstStyle — a cascade layer — is silently skipped.
         if (slidePh.Type?.HasValue == true && layoutPh.Type?.HasValue == true)
-            return slidePh.Type.Value == layoutPh.Type.Value;
+            return SamePlaceholderFamily(slidePh.Type.Value, layoutPh.Type.Value);
 
         // R26-5: slide ph has idx but NO type, layout ph has type but NO idx.
         // OOXML: a <p:ph idx=N/> with no type defaults to type=body, so it
@@ -78,6 +84,32 @@ internal static class SlideComposition
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Whether two placeholder types name the same inheritance slot.
+    ///
+    /// ECMA-376 §19.7.10 spells the title-slide slots differently in the layout
+    /// and on the master: a layout declares &lt;p:ph type="ctrTitle"/&gt; and
+    /// &lt;p:ph type="subTitle" idx="1"/&gt; where the master declares
+    /// &lt;p:ph type="title"/&gt; and &lt;p:ph type="body" idx="1"/&gt;.
+    /// PowerPoint and LibreOffice treat each pair as one slot, so a placeholder
+    /// inherits across the two spellings. This is the same partition the cascade
+    /// already uses to pick a master text style (titleStyle covers
+    /// Title/CenteredTitle, bodyStyle covers Body/SubTitle/Object) — here it
+    /// decides which master placeholder an inheritance step reaches.
+    /// </summary>
+    private static bool SamePlaceholderFamily(PlaceholderValues a, PlaceholderValues b)
+    {
+        if (a == b) return true;
+
+        static bool IsTitleFamily(PlaceholderValues v)
+            => v == PlaceholderValues.Title || v == PlaceholderValues.CenteredTitle;
+
+        static bool IsBodyFamily(PlaceholderValues v)
+            => v == PlaceholderValues.Body || v == PlaceholderValues.SubTitle;
+
+        return (IsTitleFamily(a) && IsTitleFamily(b)) || (IsBodyFamily(a) && IsBodyFamily(b));
     }
 
     // ==================== Inherited Frame Resolution ====================
