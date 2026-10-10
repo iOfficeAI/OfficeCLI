@@ -134,12 +134,21 @@ public partial class ExcelHandler
                 }
                 default:
                     // Long-tail Column attribute (CT_Col attrs beyond width/
-                    // hidden/outlineLevel/collapsed/customWidth — e.g. style,
-                    // bestFit, phonetic). Set as raw OOXML attribute. Symmetric
-                    // with the column Get reader which now uses
-                    // FillUnknownAttrProps for unrecognized attrs. Preserve
-                    // original case (OOXML attribute names are case-sensitive).
-                    col.SetAttribute(new DocumentFormat.OpenXml.OpenXmlAttribute("", key, "", value));
+                    // hidden/outlineLevel/collapsed/customWidth — style,
+                    // bestFit, phonetic). The key must name an attribute the
+                    // schema actually declares and the value must satisfy the
+                    // type it declares; the value is then written verbatim.
+                    // An undeclared key is an unsupported property. The raw
+                    // passthrough this replaces wrote whatever it was handed
+                    // (`<col zzz="1">`, `<col style="Total">`,
+                    // `<col customformat="1">` — attribute names are
+                    // case-sensitive) and returned 0 while the document failed
+                    // `validate`.
+                    if (!ColLongTailAttrs.TryGetValue(key, out var colAttr))
+                        unsupported.Add(key);
+                    else
+                        col.SetAttribute(new DocumentFormat.OpenXml.OpenXmlAttribute(
+                            "", colAttr.Attr, "", CheckLongTailValue(key, value, colAttr.Type)));
                     break;
             }
         }
@@ -281,16 +290,70 @@ public partial class ExcelHandler
         return unsupported;
     }
 
+    private enum LongTailAttrType { UInt32, Boolean, CellSpans }
+
+    // CT_Row / CT_Col declare a handful of attributes beyond the ones switched
+    // on explicitly above (height, hidden, outline, collapsed, width, …). Each
+    // table maps a lower-cased input key to the name the schema actually
+    // declares and the type it declares it with, so both the name and the value
+    // can be checked before anything is written. NOTE the asymmetry they
+    // encode: CT_Row spells its style index `s`, CT_Col spells it `style`.
+    private static readonly Dictionary<string, (string Attr, LongTailAttrType Type)> RowLongTailAttrs =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["s"] = ("s", LongTailAttrType.UInt32),
+            ["spans"] = ("spans", LongTailAttrType.CellSpans),
+            ["customformat"] = ("customFormat", LongTailAttrType.Boolean),
+            ["ph"] = ("ph", LongTailAttrType.Boolean),
+            ["thicktop"] = ("thickTop", LongTailAttrType.Boolean),
+            ["thickbot"] = ("thickBot", LongTailAttrType.Boolean),
+            ["customheight"] = ("customHeight", LongTailAttrType.Boolean),
+        };
+
+    private static readonly Dictionary<string, (string Attr, LongTailAttrType Type)> ColLongTailAttrs =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["style"] = ("style", LongTailAttrType.UInt32),
+            ["bestfit"] = ("bestFit", LongTailAttrType.Boolean),
+            ["phonetic"] = ("phonetic", LongTailAttrType.Boolean),
+        };
+
+    // The value must be in the lexical space of the attribute's declared type;
+    // it is then written verbatim. Anything else is reported, because `set`
+    // returning 0 while `validate` rejects the file is what made these
+    // invisible to the caller.
+    private static string CheckLongTailValue(string key, string value, LongTailAttrType type)
+    {
+        switch (type)
+        {
+            case LongTailAttrType.UInt32:
+                if (!uint.TryParse(value, System.Globalization.NumberStyles.None,
+                        System.Globalization.CultureInfo.InvariantCulture, out _))
+                    throw new ArgumentException(
+                        $"Invalid '{key}' value: '{value}'. Expected an unsigned integer.");
+                break;
+            case LongTailAttrType.Boolean:
+                if (value != "0" && value != "1"
+                    && !value.Equals("true", StringComparison.OrdinalIgnoreCase)
+                    && !value.Equals("false", StringComparison.OrdinalIgnoreCase))
+                    throw new ArgumentException(
+                        $"Invalid '{key}' value: '{value}'. Expected a boolean (1/0/true/false).");
+                break;
+            case LongTailAttrType.CellSpans:
+                if (!Regex.IsMatch(value, @"^\d+(?::\d+)?(?: \d+(?::\d+)?)*$"))
+                    throw new ArgumentException(
+                        $"Invalid '{key}' value: '{value}'. Expected cell spans such as '1:3'.");
+                break;
+        }
+        return value;
+    }
+
     // Genuine CT_Row long-tail attributes that the row Get reader round-trips.
     // Anything outside height/hidden/outlineLevel/collapsed (handled explicitly)
     // and this set is rejected rather than silently written, so a typo or a
     // column-name that binds to no table surfaces as unsupported_property.
-    private static bool IsLongTailRowAttribute(string key) => key.ToLowerInvariant() switch
-    {
-        "spans" or "style" or "s" or "customformat" or "ph"
-            or "thicktop" or "thickbot" or "customheight" => true,
-        _ => false,
-    };
+    private static bool IsLongTailRowAttribute(string key)
+        => RowLongTailAttrs.ContainsKey(key);
 
     // Every key SetRow interprets as a row property — used by the
     // column-shadow collision check: a bare key in this set that ALSO resolves
@@ -390,9 +453,10 @@ public partial class ExcelHandler
                             colCell, colCellRef, worksheet, new() { ["value"] = value }));
                         PruneEmptyCell(colCell);
                     }
-                    else if (!forcedCol && IsLongTailRowAttribute(key))
+                    else if (!forcedCol && RowLongTailAttrs.TryGetValue(key, out var rowAttr))
                     {
-                        row.SetAttribute(new DocumentFormat.OpenXml.OpenXmlAttribute("", key, "", value));
+                        row.SetAttribute(new DocumentFormat.OpenXml.OpenXmlAttribute(
+                            "", rowAttr.Attr, "", CheckLongTailValue(key, value, rowAttr.Type)));
                     }
                     else
                     {
