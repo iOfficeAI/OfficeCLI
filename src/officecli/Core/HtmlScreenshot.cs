@@ -182,7 +182,7 @@ internal static class HtmlScreenshot
     /// a rendered element.
     /// </summary>
     public static Result CaptureClipped(string htmlPath, string outPath, IReadOnlyList<string> dataPaths,
-                                        int padPx = 0, int scale = 2)
+                                        int padPx = 0, int scale = 2, bool containingPages = false)
     {
         if (FindChrome() == null)
             return new Result(false, "", "clip mode requires a Chrome-family browser (Chrome/Edge/Chromium)");
@@ -203,8 +203,13 @@ internal static class HtmlScreenshot
             "if(best)return best;if(cands.length===0)return null;" +
             "var el=cands[0];for(var an=el;an&&an!==document.documentElement;an=an.parentElement){" +
             "if(getComputedStyle(an).display==='none')an.style.display='block';}return el;}" +
-            "function _clipEls(){var els=[];_clipPaths.forEach(function(p){" +
-            "var el=_clipPick(p);if(el)els.push(el);});return els;}";
+            (containingPages
+                ? "function _clipEls(){var els=[],seen=new Set();_clipPaths.forEach(function(p){" +
+                  "var cands=document.querySelectorAll('[data-path=\"'+p+'\"]');cands.forEach(function(el){" +
+                  "var page=el.closest('.page,.slide,.sheet-content')||el;" +
+                  "if(!seen.has(page)){seen.add(page);els.push(page);}});});return els;}"
+                : "function _clipEls(){var els=[];_clipPaths.forEach(function(p){" +
+                  "var el=_clipPick(p);if(el)els.push(el);});return els;}");
 
         // The rect is reported via console.log -> --enable-logging=stderr in
         // the SAME chrome invocation that captures the full page: headless
