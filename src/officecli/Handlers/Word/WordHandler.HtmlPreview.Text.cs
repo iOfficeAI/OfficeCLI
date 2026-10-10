@@ -60,6 +60,21 @@ public partial class WordHandler
     /// </summary>
     private bool ParagraphHasAlignedTab(Paragraph para)
     {
+        // PERF(html-preview): called from multiple render passes per paragraph
+        // and itself walks the whole paragraph subtree for tab characters.
+        // Pure function of the paragraph within a render → memoize on _ctx.
+        if (_ctx != null)
+        {
+            if (_ctx.ParaAlignedTabCache.TryGetValue(para, out var hit)) return hit;
+            var v = ParagraphHasAlignedTabCore(para);
+            _ctx.ParaAlignedTabCache[para] = v;
+            return v;
+        }
+        return ParagraphHasAlignedTabCore(para);
+    }
+
+    private bool ParagraphHasAlignedTabCore(Paragraph para)
+    {
         if (!para.Descendants<TabChar>().Any()) return false;
         var tabs = para.ParagraphProperties?.Tabs?.Elements<TabStop>();
         if (tabs == null || !tabs.Any())
