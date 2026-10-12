@@ -628,7 +628,7 @@ static partial class CommandBuilder
                     // temp copy must not leak on that path.
                     try
                     {
-                        System.IO.File.Replace(tmpPath, targetPath, destinationBackupFileName: null);
+                        AtomicPackageWriter.Replace(tmpPath, targetPath);
                     }
                     catch
                     {

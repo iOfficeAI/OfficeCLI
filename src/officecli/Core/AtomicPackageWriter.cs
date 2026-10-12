@@ -17,6 +17,27 @@ namespace OfficeCli.Core;
 /// </summary>
 internal static class AtomicPackageWriter
 {
+    internal static void Replace(string replacement, string destination)
+    {
+        // Authorize an edit with the operating system before a replacement can
+        // rename the original. Keep the handle through the atomic operation.
+        using var writable = new FileStream(destination, FileMode.Open,
+            FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete);
+        try
+        {
+            File.Replace(replacement, destination, destinationBackupFileName: null);
+        }
+        catch (UnauthorizedAccessException) when (OperatingSystem.IsWindows())
+        {
+            // ReplaceFile also requests WRITE_DAC on the sibling temporary file
+            // to preserve security metadata. A restricted token can edit the
+            // document without that right. The native fallback keeps the atomic
+            // swap and the temporary file's inherited directory permissions.
+            File.Replace(replacement, destination, destinationBackupFileName: null,
+                ignoreMetadataErrors: true);
+        }
+    }
+
     /// <param name="package">Complete in-memory package bytes. Left at position 0.</param>
     /// <param name="path">Target file, replaced atomically.</param>
     /// <param name="releaseLock">Closes the caller's own writable handle on
@@ -62,7 +83,7 @@ internal static class AtomicPackageWriter
             // and fsync-flushed, so this is just as crash-safe as the replace,
             // and the session's managed path (`path`) is what gets the data.
             if (File.Exists(path))
-                File.Replace(tmp, path, destinationBackupFileName: null);
+                Replace(tmp, path);
             else
                 File.Move(tmp, path);
         }
