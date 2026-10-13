@@ -1408,9 +1408,23 @@ internal static partial class ChartHelper
     /// <summary>
     /// Insert a <c>&lt;c:dLbls&gt;</c> element into a chart-group element
     /// (CT_BarChart / CT_LineChart / CT_PieChart / CT_ScatterChart / etc.) at
-    /// the correct schema position. dLbls schema-orders BEFORE the optional
-    /// per-group tail (dropLines, hiLowLines, upDownBars, gapWidth, overlap,
-    /// showMarker, holeSize, firstSliceAngle) and the mandatory axId(+).
+    /// the correct schema position: dLbls precedes the group's optional tail —
+    /// dropLines, hiLowLines, upDownBars, marker, smooth, gapWidth, overlap,
+    /// serLines, splitType, splitPos, custSplit, secondPieSize, holeSize,
+    /// firstSliceAngle, bubbleScale, showNegBubbles, sizeRepresents — and the
+    /// mandatory axId(+).
+    ///
+    /// That tail differs per group type, so the child is appended and then
+    /// hoisted with <see cref="SchemaOrder"/> rather than anchored on a
+    /// hand-listed subset: the SDK's own particle comparator knows every group's
+    /// tail exactly. The subset this replaces stopped at
+    /// showMarker/holeSize/firstSliceAngle/axId, so a later
+    /// <c>set … dataLabels=…</c> wrote <c>&lt;c:dLbls&gt;</c> after CT_LineChart's
+    /// <c>&lt;c:smooth&gt;</c>, after CT_BubbleChart's
+    /// bubbleScale/showNegBubbles/sizeRepresents, and — CT_OfPieChart having no
+    /// axId to anchor on — at the very end past secondPieSize/serLines; officecli's
+    /// own <c>validate</c> then rejected the file the <c>set</c> had just
+    /// reported as successful.
     ///
     /// CONSISTENCY(insert-chart-group-dlbls): callers used to hand-roll the
     /// same anchor chain three times (datalabels= bootstrap, labelPos=
@@ -1421,17 +1435,8 @@ internal static partial class ChartHelper
     /// </summary>
     internal static void InsertChartGroupDLbls(OpenXmlElement chartGroup, C.DataLabels dLbls)
     {
-        var anchor = chartGroup.GetFirstChild<C.DropLines>() as OpenXmlElement
-            ?? chartGroup.GetFirstChild<C.HighLowLines>() as OpenXmlElement
-            ?? chartGroup.GetFirstChild<C.UpDownBars>() as OpenXmlElement
-            ?? chartGroup.GetFirstChild<C.GapWidth>() as OpenXmlElement
-            ?? chartGroup.GetFirstChild<C.Overlap>() as OpenXmlElement
-            ?? chartGroup.GetFirstChild<C.ShowMarker>() as OpenXmlElement
-            ?? chartGroup.GetFirstChild<C.HoleSize>() as OpenXmlElement
-            ?? chartGroup.GetFirstChild<C.FirstSliceAngle>() as OpenXmlElement
-            ?? (OpenXmlElement?)chartGroup.GetFirstChild<C.AxisId>();
-        if (anchor != null) chartGroup.InsertBefore(dLbls, anchor);
-        else chartGroup.AppendChild(dLbls);
+        chartGroup.AppendChild(dLbls);
+        SchemaOrder.Place(chartGroup, dLbls);
     }
 
     /// <summary>
