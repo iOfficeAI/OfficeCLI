@@ -828,8 +828,9 @@ internal static partial class ChartHelper
         if (dispBlanksAs?.HasValue == true) node.Format["dispBlanksAs"] = dispBlanksAs.InnerText;
 
         // varyColors: lives on the per-chart-type element (PieChart, BarChart, etc.).
-        // Set writes the same value to every chart-type child of plotArea, so any
-        // child carrying VaryColors faithfully represents the user-visible state.
+        // Set writes the same value to every chart group that can carry it, so any
+        // child holding one faithfully represents the user-visible state. A stock or
+        // surface chart never does — CT_StockChart has no varyColors child.
         var varyColorsEl = plotArea.ChildElements
             .OfType<OpenXmlCompositeElement>()
             .Where(e => e.LocalName.Contains("Chart") || e.LocalName.Contains("chart"))
