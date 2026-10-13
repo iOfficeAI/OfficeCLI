@@ -417,7 +417,12 @@ public partial class ExcelHandler
                 case "autofit":
                 {
                     if (ParseHelpers.IsTruthy(value))
+                    {
+                        // Columns first, then rows: the row wrap estimate
+                        // depends on the final column widths.
                         AutoFitAllColumns(worksheet);
+                        AutoFitAllRows(worksheet);
+                    }
                     break;
                 }
                 case "zoom" or "zoomscale":
