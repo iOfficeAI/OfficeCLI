@@ -843,14 +843,19 @@ public partial class PowerPointHandler
                     if (gf.Descendants<Drawing.Table>().Any())
                         RenderTable(sb, gf, themeColors, part: part);
                     break;
+                // Pictures render INLINE, in the layer's XML order: DOM order
+                // is the stacking order, so a picture that precedes a later
+                // shape in the layout/master tree must stay under it —
+                // PowerPoint paints each layer strictly in tree order. The old
+                // trailing second pass rendered every layout/master picture
+                // after all shapes/connectors, inverting that order (e.g.
+                // burying the white bentConnector layout10 draws over its
+                // sidebar picture). The slide-level pass
+                // (RenderSlideElements) already renders inline.
+                case Picture pic:
+                    RenderPicture(sb, pic, part, themeColors);
+                    break;
             }
-        }
-
-        // Also render pictures from layout/master (logos, decorative images)
-        foreach (var pic in shapeTree.Elements<Picture>())
-        {
-            if (SlideComposition.IsHidden(pic)) continue;
-            RenderPicture(sb, pic, part, themeColors);
         }
     }
 
