@@ -2069,6 +2069,76 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
                 return (csRid, parentPartPath);
             }
 
+            case "chartembed":
+            {
+                // Attach a chart's embedded data workbook to a slide's Nth
+                // ChartPart with a pinned rId, then re-wire <c:externalData
+                // r:id> into the chartSpace (counterpart of
+                // GetChartEmbeddedParts; the semantic chart rebuild creates a
+                // fresh part and drops both). Props: chart, rid,
+                // content-type, data (base64 xlsx bytes). The reference side
+                // mirrors WordHandler.AttachChartSidecars' package branch,
+                // including the CT_ChartSpace anchor position.
+                //
+                // The part URI is the SDK's own choice — <chart dir>/embeddings/
+                // package.bin next to the rebuilt chart. A new part's URI is
+                // pinned inside the Open XML SDK (ITargetFeature / IPartUriFeature
+                // are internal and ChartPart generates no typed
+                // AddEmbeddedPackagePart), so the source's part name and
+                // directory are not restored; the bytes, the .../relationship/
+                // package relationship and the externalData reference are what
+                // round-trip, which is what "Edit Data" follows.
+                var cem = System.Text.RegularExpressions.Regex.Match(parentPartPath, @"^/slide\[(\d+)\]$");
+                if (!cem.Success)
+                    throw new ArgumentException("add-part chartembed: parent must be /slide[N]");
+                if (properties == null
+                    || !properties.TryGetValue("rid", out var ceRid) || string.IsNullOrEmpty(ceRid))
+                    throw new ArgumentException("add-part chartembed requires property 'rid'");
+                if (!properties.TryGetValue("chart", out var ceOrdRaw) || !int.TryParse(ceOrdRaw, out var ceOrd))
+                    throw new ArgumentException("add-part chartembed requires property 'chart' (1-based chart ordinal)");
+                if (!properties.TryGetValue("data", out var ceB64) || string.IsNullOrEmpty(ceB64))
+                    throw new ArgumentException("add-part chartembed requires property 'data' (base64)");
+                var ceCt = properties.GetValueOrDefault("content-type",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+                var ceIdx = int.Parse(cem.Groups[1].Value);
+                var ceSlides = GetSlideParts().ToList();
+                if (ceIdx < 1 || ceIdx > ceSlides.Count)
+                    throw new ArgumentException($"slide index {ceIdx} out of range");
+                var ceCharts = ceSlides[ceIdx - 1].ChartParts.ToList();
+                if (ceOrd < 1 || ceOrd > ceCharts.Count)
+                    throw new ArgumentException($"chart ordinal {ceOrd} out of range (total: {ceCharts.Count})");
+                var ceChart = ceCharts[ceOrd - 1];
+                if (ceChart.Parts.Any(pp => pp.RelationshipId == ceRid))
+                    return (ceRid, parentPartPath);
+                if (ceChart.ChartSpace == null)
+                    throw new ArgumentException($"chart ordinal {ceOrd} has no chartSpace");
+                byte[] ceBytes;
+                try { ceBytes = Convert.FromBase64String(ceB64); }
+                catch (FormatException) { throw new ArgumentException("add-part chartembed: 'data' is not valid base64"); }
+                var cePart = ceChart.AddNewPart<EmbeddedPackagePart>(ceCt, ceRid);
+                using (var ces = new MemoryStream(ceBytes)) cePart.FeedData(ces);
+                var ceSpace = ceChart.ChartSpace;
+                if (ceSpace.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.ExternalData>() == null)
+                {
+                    var ceExtData = new DocumentFormat.OpenXml.Drawing.Charts.ExternalData
+                    {
+                        Id = ceRid,
+                        AutoUpdate = new DocumentFormat.OpenXml.Drawing.Charts.AutoUpdate { Val = false },
+                    };
+                    // CT_ChartSpace order: …chart, spPr, txPr, externalData,
+                    // printSettings, userShapes, extLst. Insert before the
+                    // first of those trailing elements when present, else
+                    // append.
+                    var ceAnchor = ceSpace.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.PrintSettings>() as OpenXmlElement
+                        ?? ceSpace.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.UserShapes>() as OpenXmlElement
+                        ?? ceSpace.GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.ChartSpaceExtensionList>() as OpenXmlElement;
+                    if (ceAnchor != null) ceSpace.InsertBefore(ceExtData, ceAnchor);
+                    else ceSpace.AppendChild(ceExtData);
+                    ceSpace.Save();
+                }
+                return (ceRid, parentPartPath);
+            }
+
             case "extrel":
             {
                 // Re-create an EXTERNAL relationship (TargetMode=External) with a
@@ -4747,6 +4817,39 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
             st.CopyTo(ms);
             result.Add((kind, pair.RelationshipId, Convert.ToBase64String(ms.ToArray())));
         }
+        return result;
+    }
+
+    // A classic chart's embedded data workbook. PowerPoint stores a chart's
+    // data twice: the cached values in the chart XML and the referenced cells
+    // of an embedded .xlsx under ppt/embeddings/, wired from the chart part by
+    // <c:externalData r:id>. The semantic chart rebuild creates a FRESH
+    // ChartPart, so the part and its reference are both lost and "Edit Data"
+    // has no workbook to open. Enumerate the part the chartSpace actually
+    // points at (not every embedded package on the chart's rels — an
+    // unrelated one has no in-XML reference to re-create). Counterpart of
+    // GetChartStyleParts.
+    internal IReadOnlyList<(string RelId, string ContentType, string Base64Data)>
+        GetChartEmbeddedParts(int slideIdx, int chartOrdinal)
+    {
+        var result = new List<(string, string, string)>();
+        var parts = GetSlideParts().ToList();
+        if (slideIdx < 1 || slideIdx > parts.Count) return result;
+        var chartParts = parts[slideIdx - 1].ChartParts.ToList();
+        if (chartOrdinal < 1 || chartOrdinal > chartParts.Count) return result;
+        var chartPart = chartParts[chartOrdinal - 1];
+        var relId = chartPart.ChartSpace?
+            .GetFirstChild<DocumentFormat.OpenXml.Drawing.Charts.ExternalData>()?.Id?.Value;
+        if (string.IsNullOrEmpty(relId)) return result;
+        try
+        {
+            if (chartPart.GetPartById(relId) is not EmbeddedPackagePart pkg) return result;
+            using var st = pkg.GetStream();
+            using var ms = new MemoryStream();
+            st.CopyTo(ms);
+            result.Add((relId, pkg.ContentType, Convert.ToBase64String(ms.ToArray())));
+        }
+        catch (ArgumentOutOfRangeException) { }
         return result;
     }
 
