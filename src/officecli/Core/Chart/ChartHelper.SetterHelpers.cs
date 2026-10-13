@@ -1485,7 +1485,13 @@ internal static partial class ChartHelper
             // styling/data sibling; dPt sits after spPr/invertIfNeg/pictureOpts
             // and before dLbls and the data tail. Appending either at the end
             // makes Word silently ignore it (and the validator rejects it).
-            "spPr" => ["invertIfNegative", "pictureOptions", "dPt", "dLbls", "trendline", "errBars", "cat", "val", "xVal", "yVal", "bubbleSize", "bubble3D", "marker", "shape", "smooth", "extLst"],
+            // CT_PieSer / CT_DoughnutSer put explosion right where the bar
+            // series put invertIfNegative/pictureOptions, so it belongs in this
+            // list for the same reason: a pie series that carries explosion=…
+            // already has a child spPr must precede, and without it spPr lands
+            // after explosion — `set series[1] spPr=…` on a chart added with
+            // explosion=… produced "unexpected child element 'spPr'".
+            "spPr" => ["invertIfNegative", "pictureOptions", "explosion", "dPt", "dLbls", "trendline", "errBars", "cat", "val", "xVal", "yVal", "bubbleSize", "bubble3D", "marker", "shape", "smooth", "extLst"],
             "dPt" => ["dLbls", "trendline", "errBars", "cat", "val", "xVal", "yVal", "bubbleSize", "bubble3D", "shape", "smooth", "extLst"],
             "invertIfNegative" => ["pictureOptions", "dPt", "dLbls", "trendline", "errBars", "cat", "val", "xVal", "yVal", "bubbleSize", "bubble3D", "shape", "smooth", "extLst"],
             // CT_PieSer / CT_DoughnutSer: idx, order, tx?, spPr?, explosion?, dPt*, dLbls?, cat?, val?
