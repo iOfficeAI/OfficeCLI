@@ -182,6 +182,37 @@ internal static class SlideComposition
         return (IsTitleFamily(a) && IsTitleFamily(b)) || (IsBodyFamily(a) && IsBodyFamily(b));
     }
 
+    /// <summary>
+    /// The layout→master edge of slot matching: BY TYPE, not idx. The master
+    /// numbers its placeholders independently of the layout, so idx never
+    /// correlates across that edge — a layout's sldNum idx=12 inherits from
+    /// the master's sldNum idx=4. Types map at the master level per
+    /// PowerPoint: ctrTitle→title, subTitle/obj/pic/chart/tbl→body; the
+    /// metadata types (dt/ftr/hdr/sldNum) keep their own.
+    /// </summary>
+    public static bool MatchesMasterSlot(PlaceholderShape ph, PlaceholderShape masterPh)
+    {
+        var a = ph.Type?.HasValue == true ? ph.Type.Value : PlaceholderValues.Object;
+        var b = masterPh.Type?.HasValue == true ? masterPh.Type.Value : PlaceholderValues.Object;
+        return MasterLevelType(a) == MasterLevelType(b);
+    }
+
+    // Master-level type mapping: the master's placeholder vocabulary is
+    // coarser than the layout's. A typeless <p:ph> is obj (ECMA-376 default)
+    // and lands on body. (PlaceholderValues is a struct of static properties
+    // in the SDK, not an enum — switch cases need constants, so == it is.)
+    private static PlaceholderValues MasterLevelType(PlaceholderValues t)
+    {
+        if (t == PlaceholderValues.CenteredTitle) return PlaceholderValues.Title;
+        if (t == PlaceholderValues.SubTitle
+            || t == PlaceholderValues.Object
+            || t == PlaceholderValues.Picture
+            || t == PlaceholderValues.Chart
+            || t == PlaceholderValues.Table)
+            return PlaceholderValues.Body;
+        return t;
+    }
+
     // ==================== Inherited Frame Resolution ====================
 
     /// <summary>
@@ -262,9 +293,10 @@ internal static class SlideComposition
 
     /// <summary>
     /// R12-5: find the layout (then master) placeholder shape that the given
-    /// slide placeholder inherits from. Same ph type/idx matching as
-    /// ResolveInheritedPosition, but returns the whole shape so callers can
-    /// read inherited spPr fill/etc. Returns null for non-placeholders.
+    /// slide placeholder inherits from. Same two edges as
+    /// ResolveInheritedPosition — slide→layout by idx, layout→master by type —
+    /// but returns the whole shape so callers can read inherited spPr fill/etc.
+    /// Returns null for non-placeholders.
     /// </summary>
     public static Shape? ResolveInheritedPlaceholderShape(Shape shape, OpenXmlPart part)
     {
@@ -278,7 +310,7 @@ internal static class SlideComposition
         var layoutShapeTree = slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.ShapeTree;
         var masterShapeTree = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.ShapeTree;
 
-        foreach (var tree in new[] { layoutShapeTree, masterShapeTree })
+        foreach (var (tree, toMaster) in new[] { (layoutShapeTree, false), (masterShapeTree, true) })
         {
             if (tree == null) continue;
             foreach (var candidate in tree.Elements<Shape>())
@@ -286,7 +318,8 @@ internal static class SlideComposition
                 var candidatePh = candidate.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
                     ?.GetFirstChild<PlaceholderShape>();
                 if (candidatePh == null) continue;
-                if (PlaceholderMatches(ph, candidatePh)) return candidate;
+                if (toMaster ? MatchesMasterSlot(ph, candidatePh) : PlaceholderMatches(ph, candidatePh))
+                    return candidate;
             }
         }
 

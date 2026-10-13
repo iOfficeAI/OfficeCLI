@@ -131,19 +131,21 @@ public partial class PowerPointHandler
                 ApplyLevelPpr(r, styleList, level, $"/master[{masterIdx}]/{styleLabel}/lvl{level + 1}pPr");
         }
 
-        // Layer 4: master placeholder (matching ph type/idx) lstStyle
+        // Layer 4: master placeholder (matched by TYPE — the master numbers
+        // its placeholders independently of the layout) lstStyle
         if (ph != null)
         {
             var masterTree = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.ShapeTree;
-            ApplyPhTreeLayer(r, masterTree, ph, level, $"/master[{masterIdx}]");
+            ApplyPhTreeLayer(r, masterTree, ph, level, $"/master[{masterIdx}]", toMaster: true);
         }
 
-        // Layer 5: layout placeholder lstStyle
+        // Layer 5: layout placeholder (matched by idx — the shared layout
+        // numbering) lstStyle
         if (ph != null)
         {
             var slideIdx = GetSlideIndex(slidePart);
             var layoutTree = slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.ShapeTree;
-            ApplyPhTreeLayer(r, layoutTree, ph, level, $"/slide[{slideIdx}]/layout");
+            ApplyPhTreeLayer(r, layoutTree, ph, level, $"/slide[{slideIdx}]/layout", toMaster: false);
         }
 
         // Layer 6: shape's own lstStyle/lvlNpPr defRPr
@@ -180,14 +182,22 @@ public partial class PowerPointHandler
         OpenXmlCompositeElement? tree,
         PlaceholderShape ph,
         int level,
-        string layerRoot)
+        string layerRoot,
+        bool toMaster = false)
     {
         if (tree == null) return;
         foreach (var candidate in tree.Elements<Shape>())
         {
             var cPh = candidate.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
                 ?.GetFirstChild<PlaceholderShape>();
-            if (cPh == null || !SlideComposition.PlaceholderMatches(ph, cPh)) continue;
+            if (cPh == null) continue;
+            // The shape→layout edge keys on idx (the shared layout numbering);
+            // the shape→master edge keys on TYPE, because the master numbers
+            // its placeholders independently of the layout.
+            if (!(toMaster
+                    ? SlideComposition.MatchesMasterSlot(ph, cPh)
+                    : SlideComposition.PlaceholderMatches(ph, cPh)))
+                continue;
 
             var typeAttr = cPh.Type?.HasValue == true ? cPh.Type.InnerText : null;
             var idxAttr = cPh.Index?.HasValue == true ? cPh.Index.Value.ToString() : null;
