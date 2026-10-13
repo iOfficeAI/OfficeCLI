@@ -528,6 +528,68 @@ public partial class ExcelHandler
         return maxCols;
     }
 
+    /// <summary>
+    /// Wall-clock budget for formula evaluation inside one issues scan.
+    ///
+    /// Evaluating a formula cell that reaches a circular reference is not
+    /// memoizable — the cycle's result depends on the entry point, so the
+    /// evaluator taints every cell it visits on the way in and stores nothing —
+    /// and a sheet whose formulas all reference one such cell turns the scan
+    /// exponential: each row re-evaluates every row above it (issue #456).
+    /// Measured there: an 18-row auto-number chain over a 2-cell cycle takes
+    /// ~5-7 s, a 20-row one ~15 s, the reporter's real ~240-row template never
+    /// returns. An issues scan is a read, so it bounds that work instead of
+    /// hanging: the content scan reports the formula cells it never reached as
+    /// <c>formula_not_evaluated</c> (so "clean" stays distinguishable from "not
+    /// assessed"), and the format scans stop where they are, exactly like a
+    /// user-supplied <c>--limit</c> already makes them.
+    ///
+    /// Every evaluation the commands this change touches can reach is gated on it,
+    /// not just the content scan: the format families evaluate the same cells
+    /// through a different API (<c>FormulaEvaluator.TryEvaluateFull</c> rather than
+    /// <c>EvaluateForReport</c>), and on the workbook in #456 they hang the command
+    /// just as hard — gating the content scan alone leaves a plain <c>view issues</c>
+    /// hanging. The budget is checked between evaluations, so it costs a scan the
+    /// starting cell's evaluation at most (as the save-time sweep does).
+    ///
+    /// The opt-in <c>--type chart_cache_stale</c> scan reaches a third evaluator
+    /// call and is deliberately left alone: its cost is one aggregate evaluation
+    /// per chart series, so a check *before* the call cannot bound it — it would
+    /// need cancellation inside the evaluator, which this change does not add.
+    /// Nothing the reported commands run reaches that path.
+    ///
+    /// Distinct from <see cref="FormulaSweepBudget"/>, which bounds the same work
+    /// at persist time (issue #187) and must stay short because it runs inside
+    /// every save; this one is generous enough for the slow-but-terminating
+    /// workbooks in #456 (n=18, ~7 s) to still scan completely.
+    /// </summary>
+    private static readonly TimeSpan ViewIssuesFormulaBudget = TimeSpan.FromSeconds(
+        double.TryParse(Environment.GetEnvironmentVariable("OFFICECLI_FORMULA_VIEW_BUDGET_SECONDS"),
+            System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var vb) && vb > 0
+            ? vb : 10);
+
+    /// <summary>
+    /// Started by the first budget check of one <see cref="ViewAsIssues"/> call and
+    /// cleared at the start of the next, so the budget bounds the whole command
+    /// rather than each scan family separately. Started lazily (on the first
+    /// check, not at the top of the scan) so it measures formula evaluation — the
+    /// unbounded part — and not the outer, cheap cell walk.
+    /// </summary>
+    private System.Diagnostics.Stopwatch? _viewIssuesFormulaClock;
+
+    /// <summary>
+    /// True once this issues scan has spent <see cref="ViewIssuesFormulaBudget"/>.
+    /// A true means "stop evaluating and report what you have": the work is not
+    /// memoizable (#456), so no amount of patience gets to the end of the
+    /// pathological workbooks, and the caller is expected to treat the unevaluated
+    /// remainder as unassessed rather than as clean.
+    /// </summary>
+    private bool ViewIssuesFormulaBudgetExhausted()
+    {
+        var clock = _viewIssuesFormulaClock ??= System.Diagnostics.Stopwatch.StartNew();
+        return clock.Elapsed > ViewIssuesFormulaBudget;
+    }
+
     public List<DocumentIssue> ViewAsIssues(string? issueType = null, int? limit = null)
     {
         var issues = new List<DocumentIssue>();
@@ -536,6 +598,11 @@ public partial class ExcelHandler
         // sees sheet add/rename/delete between successive calls.
         _viewAsIssuesWorksheetCache = null;
         _viewAsIssuesSheetNameCache = null;
+        // The formula budget is per-invocation too: this handler can serve many
+        // commands (the resident), and a clock carried over from the previous
+        // scan would read as already exhausted. The next budget check starts a
+        // fresh one.
+        _viewIssuesFormulaClock = null;
 
         // Should the scan that produces issues of `subtypeName` run?
         // True when no filter is active, when the filter is the broad bucket
@@ -562,6 +629,9 @@ public partial class ExcelHandler
         // cachedValue vs computedValue agreement (1e-9 relative tolerance for
         // numerics) is shared with the save-time cache sweep — see
         // CachedComputedAgree in ExcelHandler.FormulaCache.cs.
+        // The evaluations below — and the ones the format scans further down run
+        // through TryGetNumericValue — are the only unbounded work here, so they
+        // all run against one wall-clock budget: ViewIssuesFormulaBudget.
         var sheets = GetWorksheets();
         foreach (var (sheetName, worksheetPart) in sheets)
         {
@@ -622,7 +692,8 @@ public partial class ExcelHandler
                             || ShouldScan(Core.IssueSubtypes.FormulaCacheStale)
                             || ShouldScan(Core.IssueSubtypes.FormulaRefMissingSheet)))
                     {
-                        // Three subtypes can fire on the same formula cell:
+                        // The three subtypes below can fire on the same formula
+                        // cell, plus the budget-truncation case above them:
                         //   formula_ref_missing_sheet — formula text names a
                         //     sheet that no longer exists. Distinct from
                         //     "evaluator gave up" so agents filtering on
@@ -638,14 +709,24 @@ public partial class ExcelHandler
                         var rawCached = cell.CellValue?.Text;
                         var hasCache = !string.IsNullOrEmpty(rawCached);
                         var missingSheet = FormulaReferencesMissingSheet(fText);
-                        var report = evaluator.EvaluateForReport(fText);
+                        // Bound the evaluation — the only unbounded work in this
+                        // scan (see ViewIssuesFormulaBudget). Checked per formula
+                        // cell, so a workbook whose cost grows cell by cell stops
+                        // within one cell of the budget, and the cells that were
+                        // never reached are reported as not-evaluated below rather
+                        // than silently missing from the report.
+                        var budgetExhausted = ViewIssuesFormulaBudgetExhausted();
                         string? computed = null;
-                        if (!missingSheet)
+                        if (!budgetExhausted)
                         {
-                            if (report.Status == Core.EvalReportStatus.Evaluated)
-                                computed = report.Result!.ToCellValueText();
-                            else if (report.Status == Core.EvalReportStatus.Error)
-                                computed = report.Result!.ErrorValue!;
+                            var report = evaluator.EvaluateForReport(fText);
+                            if (!missingSheet)
+                            {
+                                if (report.Status == Core.EvalReportStatus.Evaluated)
+                                    computed = report.Result!.ToCellValueText();
+                                else if (report.Status == Core.EvalReportStatus.Error)
+                                    computed = report.Result!.ErrorValue!;
+                            }
                         }
 
                         if (missingSheet && ShouldScan(Core.IssueSubtypes.FormulaRefMissingSheet))
@@ -662,6 +743,27 @@ public partial class ExcelHandler
                                 Severity = IssueSeverity.Error,
                                 Path = $"{sheetName}!{cellRef}",
                                 Message = "Formula references missing sheet (officecli evaluator silently returns 0; Excel would show #REF!)",
+                                Context = $"={fText}"
+                            });
+                        }
+                        else if (budgetExhausted && ShouldScan(Core.IssueSubtypes.FormulaNotEvaluated))
+                        {
+                            // The scan hit its wall-clock budget before this cell,
+                            // so it was never evaluated — reported as
+                            // not-evaluated (rather than silently absent) so an
+                            // agent reading only the issues stream can tell
+                            // "clean" apart from "not assessed". Ordering: this
+                            // branch sits ahead of the no-cache branch below,
+                            // which would otherwise also fire here (a skipped
+                            // cell has no computedValue by construction).
+                            issues.Add(new DocumentIssue
+                            {
+                                Id = $"U{++issueNum}",
+                                Type = IssueType.Content,
+                                Subtype = Core.IssueSubtypes.FormulaNotEvaluated,
+                                Severity = IssueSeverity.Warning,
+                                Path = $"{sheetName}!{cellRef}",
+                                Message = "Formula not evaluated: the content scan reached its time budget (OFFICECLI_FORMULA_VIEW_BUDGET_SECONDS); raise the budget to scan it",
                                 Context = $"={fText}"
                             });
                         }

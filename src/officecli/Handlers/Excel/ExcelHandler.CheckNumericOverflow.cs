@@ -415,7 +415,7 @@ public partial class ExcelHandler
         return customFormat ?? ExcelDataFormatter.ResolveBuiltInFormatCode(numberFormatId);
     }
 
-    private static bool TryGetNumericValue(
+    private bool TryGetNumericValue(
         Cell cell,
         Core.FormulaEvaluator evaluator,
         out double numericValue)
@@ -423,6 +423,15 @@ public partial class ExcelHandler
         numericValue = 0;
         if (cell.CellFormula?.Text is { } formula)
         {
+            // This is the issues scan's second evaluation funnel — the numeric-fit
+            // and general-precision families both reach the evaluator here — and it
+            // is not the content scan's: it calls TryEvaluateFull, not
+            // EvaluateForReport. The workbook in #456 drives both of them into the
+            // same exponential blowup, so both must spend the same budget (see
+            // ViewIssuesFormulaBudget). Returning false leaves the cell unassessed,
+            // which is what an exhausted scan does everywhere: fewer findings, no
+            // wrong ones.
+            if (ViewIssuesFormulaBudgetExhausted()) return false;
             var result = evaluator.TryEvaluateFull(formula);
             if (result != null)
             {
