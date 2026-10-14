@@ -36,8 +36,8 @@ A `.docx` is a ZIP of XML parts (`document.xml`, `styles.xml`, `numbering.xml`, 
 docx paths contain `[]`; some prop values contain `$`. Both are shell metacharacters. Escaping happens at three layers — keep them separate.
 
 1. **Shell.** ALWAYS quote element paths: `"/body/p[1]"`, not `/body/p[1]` (zsh/bash glob `[N]`). Single-quote any value containing `$`: `--prop text='$50M'` — at any length, the whole value inside one pair of single quotes. Unquoted `$50M` is stripped to `M`; mixing `'…$var…'` and `"…$50…"` on one long string is where the `$50` silently vanishes.
-2. **CLI (`text=`).** The two-char escapes `\n` and `\t` ARE interpreted in `--prop text=` — `\n` becomes a `<w:br/>` soft line break, `\t` a `<w:tab/>` — consistently across docx / pptx / xlsx. Double them (`\\n`) for a literal backslash-n (rarely wanted). This applies to row-level table `c1…cN` shortcuts too (`\n` → `<w:br/>` within the cell).
-3. **JSON (batch).** A real newline can also be passed as `"\n"` in the JSON string of a `batch` heredoc; same result.
+2. **CLI (`text=`).** The two-char escapes `\n`, `\v` and `\t` ARE interpreted in `--prop text=`. On a paragraph, `\n` **starts a new paragraph** (both paragraphs carry the same props), `\v` is a `<w:br/>` soft line break, `\t` a `<w:tab/>`. In the row-level table `c1…cN` shortcuts, `\n` is a `<w:br/>` within the cell. Double them (`\\n`) for a literal backslash-n (rarely wanted).
+3. **JSON (batch).** Batch values take JSON escapes only — the two-char CLI escapes are not resolved. A real newline `"\n"` acts like CLI `\n`, a soft line break is `"\u000b"`, and `"\\n"` / `"\\v"` stay literal text.
 
 If in doubt, `view text` after writing and compare character-for-character.
 
