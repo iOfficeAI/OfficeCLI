@@ -258,6 +258,7 @@ internal static partial class ChartHelper
                     break;
 
                 case "min":
+                case "axismin":
                     // CONSISTENCY(chart/axis-role-write): the legacy `axismin` key
                     // always targets the primary value axis. For role=value2 we must
                     // write to the secondary axis directly to mirror BuildAxisNode's
@@ -265,6 +266,15 @@ internal static partial class ChartHelper
                     // Category (date) and series axes must also write directly:
                     // the legacy `axismin` fallback targets the primary VALUE
                     // axis, which would clobber the wrong scaling.
+                    // `axismin` is the spelling the chart schema declares as an
+                    // alias of `min` (schemas/help/_shared/chart.json), so it has
+                    // to take this branch too: while it fell to `default:` the
+                    // forwarded legacy key wrote the PRIMARY value axis even
+                    // though the path addressed the secondary one (issue #503).
+                    // `axismax` / `axisnumfmt` below carry their own aliases for
+                    // the same reason.
+                    // CONSISTENCY(chart/axis-alias-path): an alias and its
+                    // canonical name must resolve identically on a role path.
                     if (normalizedRole is "value2" or "category" or "series"
                         && targetAxis is OpenXmlCompositeElement minAx2)
                     {
@@ -291,6 +301,7 @@ internal static partial class ChartHelper
                     break;
 
                 case "max":
+                case "axismax":
                     if (normalizedRole is "value2" or "category" or "series"
                         && targetAxis is OpenXmlCompositeElement maxAx2)
                     {
@@ -509,9 +520,13 @@ internal static partial class ChartHelper
                 }
 
                 case "format":
+                case "axisnumfmt":
+                case "axisnumberformat":
                 {
                     // Number-format string written as the axis's NumberingFormat child.
                     // Schema declares format on all roles; apply directly on the resolved axis.
+                    // `axisnumfmt` / `axisnumberformat` are its declared alias
+                    // spellings — see the `min` case above.
                     if (targetAxis is OpenXmlCompositeElement axNf)
                     {
                         axNf.RemoveAllChildren<C.NumberingFormat>();
