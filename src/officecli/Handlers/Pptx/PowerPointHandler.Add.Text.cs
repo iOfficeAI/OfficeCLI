@@ -60,8 +60,16 @@ public partial class PowerPointHandler
                 );
                 var eqSpPr = new ShapeProperties();
                 {
-                    long eqX = 838200, eqY = 2743200;        // default: ~2.33cm, ~7.62cm
-                    long eqCx = 10515600, eqCy = 2743200;    // default: ~29.21cm, ~7.62cm
+                    // Default frame is authored for a 13.33in x 7.5in slide; scale it to
+                    // the deck's slide size so it stays inside a 4:3 or 10in deck
+                    // (#460 class — same rule as the chart frame and the title/text
+                    // placeholders). Explicit x/y/width/height props still win below.
+                    var (eqSlideW, eqSlideH) = GetSlideSize();
+                    double eqFx = eqSlideW / (double)SlideSizeDefaults.Widescreen16x9Cx;
+                    double eqFy = eqSlideH / (double)SlideSizeDefaults.Widescreen16x9Cy;
+                    static long ScaleEmu(long emu, double f) => f == 1.0 ? emu : (long)Math.Round(emu * f / 12700.0) * 12700L;
+                    long eqX = ScaleEmu(838200, eqFx), eqY = ScaleEmu(2743200, eqFy);        // default: ~2.33cm, ~7.62cm
+                    long eqCx = ScaleEmu(10515600, eqFx), eqCy = ScaleEmu(2743200, eqFy);    // default: ~29.21cm, ~7.62cm
                     if (properties.TryGetValue("x", out var exStr)) eqX = ParseEmu(exStr);
                     if (properties.TryGetValue("y", out var eyStr)) eqY = ParseEmu(eyStr);
                     if (properties.TryGetValue("width", out var ewStr)) eqCx = ParseEmu(ewStr);
