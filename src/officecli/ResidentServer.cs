@@ -1757,8 +1757,32 @@ public class ResidentServer : IDisposable
                 }
                 if (renderMode == "native" && directPng == null)
                     throw OfficeCli.Core.NativeRenderFailure.ToCliException("Word", nativeFailure);
-                if (directPng == null) html = CommandBuilder.RenderViaRegistry(wordShotHandler, "docx",
-                    new OfficeCli.Core.Rendering.RenderOptions { PageFilter = effectiveFilter })!;
+                if (directPng == null)
+                {
+                    // Mirror CommandBuilder.View.cs's docx sizing so a resident-served
+                    // screenshot is the same image as one served directly: a single page
+                    // is captured as the page itself, a page RANGE as a one-column
+                    // contact sheet whose viewport follows the rows (issue #485).
+                    // Without this the resident kept its 1600x1200 default, cropped a
+                    // range to its first page, and letterboxed even a single page.
+                    var (docW, docH) = wordShotHandler.GetPageNativePixels();
+                    int docPages = CommandBuilder.CountRequestedPages(effectiveFilter);
+                    int docRangeCols = 0, docCellW = 0;
+                    if (rangeArg == null && gridCols == 0 && docPages > 1)
+                    {
+                        docRangeCols = 1;
+                        (sw, sh, docCellW) = CommandBuilder.PageSheetSize(sw, sh, docW, docH, docPages, docRangeCols);
+                    }
+                    else if (docPages == 1 && gridCols == 0)
+                    {
+                        if (sw == 1600 && sh == 1200) { sw = docW; sh = docH; }
+                        else if (sh == 1200) sh = Math.Max(1, (int)Math.Round(sw * (double)docH / docW));
+                    }
+                    html = CommandBuilder.RenderViaRegistry(wordShotHandler, "docx", docRangeCols > 0
+                        ? new OfficeCli.Core.Rendering.RenderOptions
+                        { PageFilter = effectiveFilter, GridColumns = docRangeCols, GridCellWidthPx = docCellW }
+                        : new OfficeCli.Core.Rendering.RenderOptions { PageFilter = effectiveFilter })!;
+                }
             }
             if (html == null && directPng == null)
             {

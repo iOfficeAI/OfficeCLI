@@ -413,8 +413,25 @@ static partial class CommandBuilder
                         throw OfficeCli.Core.NativeRenderFailure.ToCliException("Word", nativeFailure);
                     if (directPng == null)
                     {
-                        html = RenderViaRegistry(wordHandler, "docx",
-                            new OfficeCli.Core.Rendering.RenderOptions { PageFilter = effectiveFilter })!;
+                        // A page RANGE is captured as a one-column contact sheet: the
+                        // preview tiles only the requested pages and the viewport follows
+                        // the rows, mirroring the pptx range fix (19c15da9) for the docx
+                        // half of issue #485. Nothing else scales the pages on this path,
+                        // so a full-size stack would be cut by the 1920px ceiling
+                        // HtmlScreenshot.CapDim applies.
+                        int docPages = CountRequestedPages(effectiveFilter);
+                        int docRangeCols = 0, docCellW = 0;
+                        if (clipArg == null && gridCols == 0 && docPages > 1)
+                        {
+                            docRangeCols = 1;
+                            var (rangeW, rangeH) = wordHandler.GetPageNativePixels();
+                            (screenshotWidth, screenshotHeight, docCellW) = PageSheetSize(
+                                screenshotWidth, screenshotHeight, rangeW, rangeH, docPages, docRangeCols);
+                        }
+                        html = RenderViaRegistry(wordHandler, "docx", docRangeCols > 0
+                            ? new OfficeCli.Core.Rendering.RenderOptions
+                            { PageFilter = effectiveFilter, GridColumns = docRangeCols, GridCellWidthPx = docCellW }
+                            : new OfficeCli.Core.Rendering.RenderOptions { PageFilter = effectiveFilter })!;
 
                         // HTML-path screenshot of a single page: size the viewport to the
                         // page's 96-DPI native pixels so the PNG is the page, padding-free
@@ -422,7 +439,7 @@ static partial class CommandBuilder
                         // headless). Default dims -> native px; a custom --screenshot-width
                         // -> that width with an aspect-matched height. The Windows COM path
                         // (directPng != null) renders real pages and is untouched.
-                        if (int.TryParse(effectiveFilter, out _) && gridCols == 0)
+                        if (docPages == 1 && gridCols == 0)
                         {
                             var (nativeW, nativeH) = wordHandler.GetPageNativePixels();
                             if (screenshotWidth == 1600 && screenshotHeight == 1200)
@@ -801,5 +818,63 @@ static partial class CommandBuilder
         if (p > slideCount)
             throw new ArgumentException($"--page {p} out of range (total slides: {slideCount}).");
         return (p, p);
+    }
+
+    /// <summary>
+    /// Number of distinct pages a docx <c>--page</c> filter selects ("2-5", "1,3,5",
+    /// "2-4,7"). Parsed exactly as the preview parses it into its requested-page set
+    /// (WordHandler.HtmlPreview.cs), so the row count computed here and the pages the
+    /// preview leaves visible agree. 0 for an empty or unparsable filter; 1 for a
+    /// filter naming a single page — captured as the page itself rather than as a
+    /// sheet, whether it was written "2" or "2-2", the way the pptx range fix
+    /// (19c15da9) sizes a one-slide range.
+    /// </summary>
+    internal static int CountRequestedPages(string? pageFilter)
+    {
+        if (string.IsNullOrWhiteSpace(pageFilter)) return 0;
+        var requested = new HashSet<int>();
+        foreach (var part in pageFilter.Split(','))
+        {
+            var token = part.Trim();
+            if (token.Contains('-'))
+            {
+                var range = token.Split('-', 2);
+                if (int.TryParse(range[0].Trim(), out var from) && int.TryParse(range[1].Trim(), out var to))
+                    for (int p = from; p <= to; p++) requested.Add(p);
+            }
+            else if (int.TryParse(token, out var page)) requested.Add(page);
+        }
+        return requested.Count;
+    }
+
+    /// <summary>
+    /// Viewport and per-cell width for a docx page sheet of <paramref name="count"/>
+    /// pages in <paramref name="cols"/> columns. Uses the constants the preview's own
+    /// <c>layoutGrid</c> applies to the body (12px padding, 12px gap) and the 1920px
+    /// ceiling <see cref="OfficeCli.Core.HtmlScreenshot.CapDim"/> applies anyway, then
+    /// recomputes the cell and the height from the CAPPED width — the width the
+    /// browser's clientWidth will match, so the tiled rows land inside the capture
+    /// instead of past its bottom edge.
+    /// </summary>
+    internal static (int Width, int Height, int CellWidth) PageSheetSize(
+        int width, int height, int nativeW, int nativeH, int count, int cols)
+    {
+        const int pad = 12, gap = 12, maxDim = 1920;
+        int rows = Math.Max(1, (count + cols - 1) / cols);
+        // Default dims (1600x1200) size the sheet to the page itself in one column;
+        // an explicit --screenshot-width is honored, then capped below.
+        double vpW = width == 1600 && height == 1200 && cols == 1 ? nativeW + 2 * pad : width;
+        double cellW = Math.Max(1.0, (vpW - 2 * pad - (cols - 1) * gap) / cols);
+        double cellH = cellW * nativeH / nativeW;
+        double vpH = 2 * pad + rows * cellH + (rows - 1) * gap;
+        var over = Math.Max(vpW, vpH) / maxDim;
+        if (over > 1.0) vpW /= over;
+        int finalW = Math.Max(1, (int)Math.Round(vpW));
+        // The browser derives its cell width from clientWidth (= the viewport width;
+        // scrollbars are hidden at capture), so recompute it from the final width.
+        cellW = Math.Max(1.0, (finalW - 2 * pad - (cols - 1) * gap) / cols);
+        cellH = cellW * nativeH / nativeW;
+        int finalH = Math.Max(1, (int)Math.Ceiling(2 * pad + rows * cellH + (rows - 1) * gap));
+        return (finalW, finalH, Math.Max(1, (int)Math.Round(cellW)));
     }
 }
