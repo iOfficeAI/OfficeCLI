@@ -1233,6 +1233,44 @@ public partial class WordHandler
         });
     }
 
+    /// <summary>
+    /// Break the active list run when the item being rendered belongs to a
+    /// different numId than the one the run is counting: clear the in-run
+    /// counters (but NOT <see cref="OrderedListNumberingState.AbsNumLevelCounters"/>
+    /// — that carries continuation across sibling nums sharing an abstractNum)
+    /// and re-arm the new num's per-instance startOverrides. Same numId is a
+    /// no-op: Word continues one list across intervening non-list paragraphs.
+    ///
+    /// Shared by BOTH marker renderers (CONSISTENCY(list-marker)): the text
+    /// walker and the HTML preview's table-cell path. The cell path needs it
+    /// because its items arrive interleaved with the body walk — a cell list
+    /// whose numId is its own must restart from its own definition (GitHub
+    /// #512), while one that reuses the body's numId keeps continuing it.
+    /// </summary>
+    /// <param name="st">The walk's counter state.</param>
+    /// <param name="numId">The numId of the item about to be rendered.</param>
+    private void BreakListRunOnNumIdChange(OrderedListNumberingState st, int numId)
+    {
+        if (st.CurrentNumId == numId) return;
+        st.OlCountPerLevel.Clear();
+        st.MultiLevelCounters.Clear();
+        st.CurrentNumId = numId;
+        // Re-arm per-instance startOverrides for the new num: each overridden
+        // level fires its override the next time it is DIRECTLY advanced, even
+        // if a deeper item carried the level over first. EXCEPTION: a level with
+        // lvlRestart="0" (never restart) that is already running does NOT fire —
+        // startOverride applies only on a level's initial start or an
+        // lvlRestart-triggered restart (ECMA-376 §17.9.7), and a never-restart
+        // continued level meets neither, so it keeps counting (Word continues
+        // such a level across the numId switch instead of jumping to the
+        // override value).
+        st.PendingInstanceOverride.Clear();
+        for (int lv = 0; lv <= 8; lv++)
+            if (GetNumInstanceOverrideStart(numId, lv).HasValue
+                && GetEffectiveLvlRestart(numId, lv) != 0)
+                st.PendingInstanceOverride.Add(lv);
+    }
+
     private string GetListPrefix(Paragraph para, OrderedListNumberingState? state = null)
     {
         // A direct <w:numPr><w:numId val="0"/> explicitly suppresses numbering
@@ -1284,31 +1322,7 @@ public partial class WordHandler
         // Stateless fallback: no walk context → render from the level start.
         var st = state ?? new OrderedListNumberingState();
 
-        // A different numId breaks the active run: clear the in-run counters
-        // (but NOT AbsNumLevelCounters — that carries continuation across
-        // sibling nums sharing an abstractNum). Mirrors the HTML reset at
-        // WordHandler.HtmlPreview.cs. Same numId continues across intervening
-        // non-list paragraphs, exactly as Word does.
-        if (st.CurrentNumId != numId.Value)
-        {
-            st.OlCountPerLevel.Clear();
-            st.MultiLevelCounters.Clear();
-            st.CurrentNumId = numId.Value;
-            // Re-arm per-instance startOverrides for the new num: each overridden
-            // level fires its override the next time it is DIRECTLY advanced,
-            // even if a deeper item carried the level over first. EXCEPTION: a
-            // level with lvlRestart="0" (never restart) that is already running
-            // does NOT fire — startOverride applies only on a level's initial
-            // start or an lvlRestart-triggered restart (ECMA-376 §17.9.7), and a
-            // never-restart continued level meets neither, so it keeps counting
-            // (Word continues such a level across the numId switch instead of
-            // jumping to the override value).
-            st.PendingInstanceOverride.Clear();
-            for (int lv = 0; lv <= 8; lv++)
-                if (GetNumInstanceOverrideStart(numId.Value, lv).HasValue
-                    && GetEffectiveLvlRestart(numId.Value, lv) != 0)
-                    st.PendingInstanceOverride.Add(lv);
-        }
+        BreakListRunOnNumIdChange(st, numId.Value);
 
         var absId = GetAbstractNumId(numId.Value);
         AdvanceOrderedCounter(st, numId.Value, absId, ilvl);

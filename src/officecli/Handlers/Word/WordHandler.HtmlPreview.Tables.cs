@@ -1076,6 +1076,11 @@ public partial class WordHandler
             // Advance + render through the shared ordered-list engine (same as
             // the body walk) so a cell's list continues document-flow numbering
             // 1./2./3. instead of restarting at the level start on every item.
+            // A numId of its OWN breaks that run first (GitHub #512): without
+            // it the cell inherited the body walk's running count and numbered
+            // its first item 100 instead of the level's own <w:start>. Same
+            // numId stays a no-op, so a genuine continuation is preserved.
+            BreakListRunOnNumIdChange(olState, numId);
             var seedAbsId = GetAbstractNumId(numId);
             AdvanceOrderedCounter(olState, numId, seedAbsId, ilvl);
             var marker = RenderOrderedMarker(olState, numId, ilvl, lvlText);

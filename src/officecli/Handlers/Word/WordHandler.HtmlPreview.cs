@@ -3044,12 +3044,30 @@ public partial class WordHandler
                     // deeper levels, mirror to the abstractNum store) via the
                     // shared state machine — identical to the text walker.
                     if (tag == "ol")
+                    {
+                        // A table cell renders into THIS counter, in document
+                        // order, so a cell list with its own numId takes the
+                        // active run over. The body walk's own currentNumId is
+                        // the authority on which list the body is inside: when
+                        // it still names this numId (or names none — a table
+                        // before the first list), re-establish our run before
+                        // advancing, so the body item continues its own
+                        // sequence and not the cell list's (GitHub #512).
+                        if (currentNumId == numId || currentNumId == null)
+                            BreakListRunOnNumIdChange(olState, numId);
                         AdvanceOrderedCounter(olState, numId, seedAbsId, ilvl);
+                    }
 
                     currentListType = listStyle;
                     currentListLevel = ilvl;
                     prevOoxmlIlvl = ilvlOoxml;
                     currentNumId = numId;
+                    // Publish the active numId to the shared state so the cell
+                    // path's BreakListRunOnNumIdChange can tell "a cell list that
+                    // continues THIS list" (same numId → keep counting, the
+                    // documented threading) from "a cell list with its own numId"
+                    // (GitHub #512 → restart from its own definition).
+                    olState.CurrentNumId = numId;
                     sb.Append("<li");
                     sb.Append($" data-path=\"/body/p[{wParaCount}]\"");
                     // Marker class wires up the ::marker rule emitted by
