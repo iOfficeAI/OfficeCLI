@@ -1273,6 +1273,25 @@ internal static partial class ChartHelper
                 Drawing.SolidFill? serColor = null;
                 if (serIsLineBased)
                     serColor = serSpPr?.GetFirstChild<Drawing.Outline>()?.GetFirstChild<Drawing.SolidFill>();
+                // A markers-only scatter carries its colour on the markers: its
+                // series line is <a:ln><a:noFill/></a:ln>, so there is no stroke
+                // fill to read and the colour would vanish from dump output —
+                // and with it from a dump→batch replay, which paints the series
+                // from `color` alone. Read the marker fill instead, but only
+                // where that is what the replay will do: a `marker`-styled
+                // scatter (BuildScatterChart colours its markers) whose line is
+                // hidden. Anywhere else a series-level `color` would be replayed
+                // as a visible stroke and resurrect a line the document
+                // deliberately hides.
+                if (serColor == null
+                    && serIsLineBased
+                    && serSpPr?.GetFirstChild<Drawing.Outline>()?.GetFirstChild<Drawing.NoFill>() != null
+                    && IsMarkersOnlyScatter(serEl))
+                {
+                    serColor = serEl!.GetFirstChild<C.Marker>()
+                        ?.GetFirstChild<C.ChartShapeProperties>()
+                        ?.GetFirstChild<Drawing.SolidFill>();
+                }
                 serColor ??= serSpPr?.GetFirstChild<Drawing.SolidFill>();
                 if (serColor != null)
                 {
@@ -1587,6 +1606,23 @@ internal static partial class ChartHelper
         {
             node.ChildCount = seriesCount;
         }
+    }
+
+    /// <summary>
+    /// True when the series sits in a scatter chart group whose
+    /// <c>c:scatterStyle</c> is <c>marker</c> — the markers-only plot, where
+    /// the connecting line is hidden by the style itself and the series colour
+    /// belongs to the markers (mirrors BuildScatterChart's hideLines branch).
+    /// Matched by LOCAL NAME rather than the typed accessors so it also works
+    /// on a part that has been round-tripped through XML.
+    /// </summary>
+    private static bool IsMarkersOnlyScatter(OpenXmlElement? serEl)
+    {
+        var parent = serEl?.Parent;
+        if (parent?.LocalName != "scatterChart") return false;
+        var style = parent.ChildElements.FirstOrDefault(e => e.LocalName == "scatterStyle");
+        var val = style?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+        return string.Equals(val, "marker", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

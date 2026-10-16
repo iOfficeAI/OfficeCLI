@@ -271,7 +271,8 @@ internal static partial class ChartHelper
                 break;
             case "scatter":
                 var scatterStyle = properties.GetValueOrDefault("scatterStyle", "lineMarker");
-                chartElement = BuildScatterChart(categories, seriesData, catAxisId, valAxisId, scatterStyle, colors);
+                chartElement = BuildScatterChart(categories, seriesData, catAxisId, valAxisId,
+                    scatterStyle, colors, SeriesWithExplicitLine(properties, seriesData.Count));
                 break;
             case "bubble":
                 chartElement = BuildBubbleChart(categories, seriesData, catAxisId, valAxisId, colors, properties);
@@ -1155,10 +1156,40 @@ internal static partial class ChartHelper
         }
     }
 
+    /// <summary>
+    /// Which series the caller gave an explicit LINE property to
+    /// (<c>series{N}.lineWidth</c> / <c>.lineDash</c> / <c>.dash</c>, or the
+    /// chart-level equivalents, which fan out to every series). A series that
+    /// names a line width or dash wants a visible connecting line — the stroke
+    /// is re-created after the build by ApplySeriesLineWidth /
+    /// ApplySeriesLineDash, which drop the markers-only NoFill — so its colour
+    /// belongs on the stroke. Index i answers for series i+1.
+    /// </summary>
+    private static bool[] SeriesWithExplicitLine(
+        Dictionary<string, string> properties, int count)
+    {
+        var flags = new bool[count];
+        foreach (var (key, value) in properties)
+        {
+            if (string.IsNullOrEmpty(value)) continue;
+            if (TryParseSeriesDottedKey(key, out var idx, out var prop))
+            {
+                if (idx <= count && prop is "linewidth" or "linedash" or "dash")
+                    flags[idx - 1] = true;
+            }
+            else if (key.ToLowerInvariant() is "linewidth" or "linedash" or "dash")
+            {
+                // Chart-level: the deferred add applies it to every series.
+                for (int i = 0; i < count; i++) flags[i] = true;
+            }
+        }
+        return flags;
+    }
+
     internal static C.ScatterChart BuildScatterChart(
         string[]? categories, List<(string name, double[] values)> seriesData,
         uint catAxisId, uint valAxisId, string scatterStyle = "lineMarker",
-        string[]? colors = null)
+        string[]? colors = null, bool[]? seriesWantsLine = null)
     {
         var styleVal = scatterStyle.ToLowerInvariant() switch
         {
@@ -1199,13 +1230,71 @@ internal static partial class ChartHelper
             // or a colors property, apply per-series so scatter rounds-trip
             // a non-default palette through dump→replay.
             if (colors != null && i < colors.Length && !string.IsNullOrEmpty(colors[i]))
-                ApplySeriesColor(ser, colors[i]);
+            {
+                // A markers-only scatter has no series line to colour:
+                // ApplySeriesColor would drop the <a:ln><a:noFill/> written
+                // just above and put the colour on a 2pt stroke instead.
+                // PowerPoint and LibreOffice pick the series line over
+                // c:scatterStyle when drawing, so the "marker" chart came back
+                // as a line chart in the series colour. Colour the markers.
+                //
+                // Two cases keep the colour on the line, where it belongs:
+                // "none" is a request to REMOVE the colour (the legacy
+                // noFill-spPr path), and a series with an explicit line width
+                // or dash is a lined one — its own lineWidth re-enables the
+                // stroke afterwards (ApplySeriesLineWidth drops the NoFill), so
+                // colouring the markers would leave a width-only, colourless
+                // line behind.
+                var wantsLine = seriesWantsLine != null && i < seriesWantsLine.Length
+                    && seriesWantsLine[i];
+                if (hideLines && !wantsLine
+                    && !colors[i].Equals("none", StringComparison.OrdinalIgnoreCase))
+                    ApplySeriesMarkerColor(ser, colors[i]);
+                else
+                    ApplySeriesColor(ser, colors[i]);
+            }
             scatterChart.AppendChild(ser);
         }
 
         scatterChart.AppendChild(new C.AxisId { Val = catAxisId });
         scatterChart.AppendChild(new C.AxisId { Val = valAxisId });
         return scatterChart;
+    }
+
+    /// <summary>
+    /// Colour a series' markers — fill and outline — for a chart whose series
+    /// line is deliberately hidden (a markers-only scatter, whose colour has
+    /// nowhere else to live).
+    ///
+    /// The outline is written in the same colour on purpose: with a fill only,
+    /// PowerPoint keeps its automatic marker border (the theme accent), which
+    /// shows through a dark fill and turns e.g. a blue marker purple-ish —
+    /// the reporter of the markers-only-scatter bug hit exactly that with
+    /// `marker=circle:7:&lt;hex&gt;`. LibreOffice shows no such border, so the
+    /// fill alone renders differently in the two applications.
+    ///
+    /// No &lt;c:symbol&gt; is written: the marker SHAPE is not what the caller
+    /// asked for (only a colour), and leaving it unset keeps PowerPoint's own
+    /// per-series marker cycle instead of flattening every series to a circle.
+    /// </summary>
+    private static void ApplySeriesMarkerColor(OpenXmlCompositeElement series, string color)
+    {
+        var marker = new C.Marker();
+        var mSpPr = new C.ChartShapeProperties();
+        // CT_ShapeProperties order: fill group first, then <a:ln>.
+        var fill = new Drawing.SolidFill();
+        fill.AppendChild(BuildChartColorElement(color));
+        mSpPr.AppendChild(fill);
+        var outline = new Drawing.Outline();
+        var lnFill = new Drawing.SolidFill();
+        lnFill.AppendChild(BuildChartColorElement(color));
+        outline.AppendChild(lnFill);
+        mSpPr.AppendChild(outline);
+        marker.AppendChild(mSpPr);
+        // CONSISTENCY(insert-series-child): route through the shared helper —
+        // the marker must precede dPt/dLbls/cat/xVal/yVal, so a plain
+        // AppendChild would land it after the data and strict readers drop it.
+        InsertSeriesChildInOrder(series, marker);
     }
 
     // ==================== Bubble Chart ====================
