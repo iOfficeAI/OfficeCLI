@@ -95,6 +95,7 @@ static partial class CommandBuilder
             handler.RawSet(partPath, xpath, action, xml);
             var warnings = ReportNewErrorsAsWarnings(handler, errorsBefore);
             var message = $"raw-set applied: {action} at {xpath}";
+            handler.Persist(); // issue #517: write before reporting — see IDocumentHandler.Persist
             if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(message, warnings));
             else
             {
@@ -143,6 +144,7 @@ static partial class CommandBuilder
             var (relId, partPath) = handler.AddPart(parent, type);
             var warnings = ReportNewErrorsAsWarnings(handler, errorsBefore);
             var message = $"Created {type} part: relId={relId} path={partPath}";
+            handler.Persist(); // issue #517: write before reporting — see IDocumentHandler.Persist
             if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(message, warnings));
             else
             {

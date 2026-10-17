@@ -129,6 +129,11 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
     // AtomicWriteBack / OfficeCli.Core.AtomicPackageWriter.
     private MemoryStream? _packageStream;
 
+    // Set by Persist() once the package is on disk; Dispose then skips its own
+    // serialize + write-back. See WordHandler.Persist for the reasoning
+    // (issue #517).
+    private bool _persisted;
+
     public PowerPointHandler(string filePath, bool editable)
     {
         _filePath = filePath;
@@ -2370,6 +2375,21 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
         else _backingStream?.Flush();
     }
 
+    // Issue #517: the terminal write, with failures visible to the caller. Save()
+    // already runs exactly the write path Dispose does, so it is reused as-is;
+    // the atomic write-back throws and that throw is what the calling command
+    // turns into an io_error envelope instead of an announced-but-lost edit.
+    public void Persist()
+    {
+        if (_persisted) return;
+        // Read-only sessions never write, and a released stream leaves nothing
+        // to persist onto — leave _persisted unset so Dispose keeps its own
+        // behaviour for this session.
+        if (_packageStream == null || _backingStream == null) return;
+        Save();
+        _persisted = true;
+    }
+
     // Crash-atomic flush of the in-memory package to disk (temp + File.Replace).
     // No-op for read-only sessions (_packageStream == null), which never write.
     // See OfficeCli.Core.AtomicPackageWriter.
@@ -2401,20 +2421,31 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
             _packageStream = null;
             return;
         }
-        if (Modified)
+        // _persisted: Persist() already wrote through to disk and reported any
+        // failure to the caller (issue #517); re-serializing here would be the
+        // same work with nobody left to tell.
+        if (Modified && !_persisted)
         {
             try { ReconcileSlideMasterIds(); }
             catch { /* best-effort id reconcile */ }
             try { OfficeCli.Core.OfficeCliMetadata.StampOnSave(_doc); }
             catch { /* best-effort audit trail */ }
         }
-        try { _doc.Save(); } catch { /* read-only or already disposed */ }
+        if (!_persisted)
+        {
+            try { _doc.Save(); } catch { /* read-only or already disposed */ }
+        }
         if (_packageStream != null)
         {
             // Editable: read the in-memory package into the atomic temp BEFORE
             // _doc.Dispose() (the SDK may close the stream it was opened over on
             // dispose), then swap it over the original in one File.Replace.
-            try { AtomicWriteBack(); } catch { /* best-effort: original left intact */ }
+            // Backstop for sessions that mutated without Persist(); every
+            // mutating command persists before it prints.
+            if (!_persisted)
+            {
+                try { AtomicWriteBack(); } catch { /* best-effort: original left intact */ }
+            }
             _doc.Dispose();
             _packageStream.Dispose();
             _packageStream = null;

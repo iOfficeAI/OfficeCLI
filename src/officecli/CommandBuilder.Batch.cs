@@ -605,6 +605,14 @@ static partial class CommandBuilder
                 // already shows it, so a refresh would be a lie (and a waste).
                 if (batchResults.Any(r => r.Success) && (batchSuccessLocal || !atomic))
                     NotifyWatch(handler, file.FullName, null);
+                // Issue #517: the using-Dispose below used to be the only write,
+                // and it swallows a failing write-back — the promote further down
+                // would then swap in a temp copy whose edits never landed. Persist
+                // here, while the temp copy is still deletable on failure, so a
+                // failed save aborts the batch instead of promoting a stale file.
+                // A failed atomic batch is rolled back by deleting the temp, so its
+                // poisoned DOM is deliberately not written.
+                if (!atomic || batchSuccessLocal) handler.Persist();
             }
             catch
             {

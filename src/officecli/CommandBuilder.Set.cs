@@ -312,6 +312,37 @@ static partial class CommandBuilder
             };
             bool hasUnrecognizedLatex = setUnrecognizedLatex is { Count: > 0 };
 
+            // BUG-BT-R5-01: apply the same prop set to the remaining selected
+            // paths. Each call goes through handler.Set independently so each
+            // path gets its own auto-correct, find-count, and unsupported list,
+            // matching the per-path semantics that mark already uses for
+            // `mark <file> selected`. We collect any non-zero return as an
+            // error escalation but keep going so partial application is at
+            // least observable.
+            var extraStillUnsupported = false;
+            if (extraSelectedPaths is not null && extraSelectedPaths.Count > 0)
+            {
+                foreach (var extraPath in extraSelectedPaths)
+                {
+                    var extraResult = handler.Set(extraPath, properties);
+                    if (extraResult.Count > 0)
+                    {
+                        extraStillUnsupported = true;
+                        if (!json)
+                            Console.Error.WriteLine($"  {extraPath}: {FormatUnsupported(extraResult, suggestionScope)}");
+                    }
+                    NotifyWatch(handler, file.FullName, extraPath);
+                }
+            }
+
+            // Issue #517: persist before reporting. Everything above this line
+            // has already mutated the document (main path and the selected
+            // siblings); the write used to happen in the using-scope Dispose,
+            // after the verdict was printed, where a failing atomic write-back
+            // could only be swallowed. Persist() throws instead, and SafeRun
+            // turns that into an io_error envelope with a non-zero exit.
+            handler.Persist();
+
             if (json)
             {
                 var allWarnings = new List<OfficeCli.Core.CliWarning>();
@@ -416,30 +447,7 @@ static partial class CommandBuilder
             }
             NotifyWatch(handler, file.FullName, path);
 
-            // BUG-BT-R5-01: apply the same prop set to the remaining selected
-            // paths. Each call goes through handler.Set independently so each
-            // path gets its own auto-correct, find-count, and unsupported list,
-            // matching the per-path semantics that mark already uses for
-            // `mark <file> selected`. We collect any non-zero return as an
-            // error escalation but keep going so partial application is at
-            // least observable.
-            if (extraSelectedPaths is not null && extraSelectedPaths.Count > 0)
-            {
-                var extraStillUnsupported = false;
-                foreach (var extraPath in extraSelectedPaths)
-                {
-                    var extraResult = handler.Set(extraPath, properties);
-                    if (extraResult.Count > 0)
-                    {
-                        extraStillUnsupported = true;
-                        if (!json)
-                            Console.Error.WriteLine($"  {extraPath}: {FormatUnsupported(extraResult, suggestionScope)}");
-                    }
-                    NotifyWatch(handler, file.FullName, extraPath);
-                }
-                if (extraStillUnsupported && stillUnsupported.Count == 0) return 2;
-            }
-
+            if (extraStillUnsupported && stillUnsupported.Count == 0) return 2;
             if (stillUnsupported.Count > 0) return 2;
             if (hasUnrecognizedLatex) return 2;
             return 0;

@@ -295,6 +295,14 @@ internal sealed class FormatHandlerProxy : IDocumentHandler
         }
     }
 
+    /// <summary>
+    /// Plugin sessions own their own write-back and their own durability story
+    /// (the protocol's `save` verb, which a plugin may not even implement), so
+    /// there is no atomic-replace failure for this side to report: the proxy
+    /// can only ask the plugin to flush. See IDocumentHandler.Persist.
+    /// </summary>
+    public void Persist() => Save();
+
     public void Dispose() => _session.Dispose();
 
     // ----- Helpers ------------------------------------------------------

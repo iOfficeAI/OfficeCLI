@@ -161,6 +161,7 @@ static partial class CommandBuilder
                 using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
                 var oldCount = (handler as OfficeCli.Handlers.PowerPointHandler)?.GetSlideCount() ?? 0;
                 var resultPath = handler.CopyFrom(from, parentPath, position);
+                handler.Persist(); // issue #517: write before reporting — see IDocumentHandler.Persist
                 var message = $"Copied to {resultPath}";
                 if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(message));
                 else Console.WriteLine(message);
@@ -304,6 +305,7 @@ static partial class CommandBuilder
                     }
                 }
 
+                handler.Persist(); // issue #517: write before reporting — see IDocumentHandler.Persist
                 if (json)
                 {
                     Console.WriteLine(OutputFormatter.WrapEnvelopeText(
@@ -392,6 +394,7 @@ static partial class CommandBuilder
             {
                 warning = handler.Remove(path, parsedProps);
             }
+            handler.Persist(); // issue #517: write before reporting — see IDocumentHandler.Persist
             var message = $"Removed {path}";
             if (warning != null) message += $"\n{warning}";
             if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(message));
@@ -473,6 +476,7 @@ static partial class CommandBuilder
 
             using var handler = DocumentHandlerFactory.Open(file.FullName, editable: true);
             var resultPath = handler.Move(path, to, position, moveProps.Count > 0 ? moveProps : null);
+            handler.Persist(); // issue #517: write before reporting — see IDocumentHandler.Persist
             var message = $"Moved to {resultPath}";
             if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(message));
             else Console.WriteLine(message);
@@ -516,6 +520,7 @@ static partial class CommandBuilder
                 OfficeCli.Handlers.ExcelHandler excel => excel.Swap(path1, path2),
                 _ => throw new InvalidOperationException("swap not supported for this document type")
             };
+            handler.Persist(); // issue #517: write before reporting — see IDocumentHandler.Persist
             var message = $"Swapped {p1} <-> {p2}";
             if (json) Console.WriteLine(OutputFormatter.WrapEnvelopeText(message));
             else Console.WriteLine(message);

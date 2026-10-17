@@ -19,6 +19,9 @@ public partial class ExcelHandler : IDocumentHandler, Rendering.IRenderModelHost
     private readonly HashSet<WorksheetPart> _dirtyWorksheets = new();
     private bool _dirtyStylesheet;
     private bool _disposed;
+    // Set by Persist() once the package is on disk; Dispose then skips its own
+    // serialize + write-back. See WordHandler.Persist (issue #517).
+    private bool _persisted;
     // Backing FileStream — mirrors the PPT/Word pattern. Opening via a shared
     // FileStream (FileShare.Read in editable mode) lets external readers
     // observe the file while the handler is alive, which is required for
@@ -506,6 +509,19 @@ public partial class ExcelHandler : IDocumentHandler, Rendering.IRenderModelHost
         _backingStream?.Flush();
     }
 
+    // Issue #517: the terminal write, with failures visible to the caller.
+    // Save() above already runs Dispose's write path; the difference is that
+    // this one is reached on purpose, and a throwing atomic write-back becomes
+    // the command's io_error verdict instead of a swallowed best-effort. Only
+    // an untouched document is skipped, matching Dispose's early return — a
+    // read-only inspection must stay byte-preserving.
+    public void Persist()
+    {
+        if (_persisted || !Modified) return;
+        Save();
+        _persisted = true;
+    }
+
     // Issue #149: when the SDK operates on the bloat-filtered in-memory
     // copy, saves land in that MemoryStream — push the bytes out to the
     // backing FileStream so mid-session `save` snapshots (issue #114) and
@@ -562,21 +578,29 @@ public partial class ExcelHandler : IDocumentHandler, Rendering.IRenderModelHost
             _filteredPackageStream = null;
             return;
         }
-        try { FlushDirtyParts(); } catch { /* best-effort */ }
-        // Mirror the PPT/Word pattern: when we own the backing FileStream the
-        // package would otherwise leave the on-disk file in whatever state
-        // the last auto-flush left it. Save explicitly before disposing.
-        if (Modified)
+        // _persisted: Persist() already ran this whole write path and reported
+        // any failure to the caller (issue #517). What is left to do here is
+        // releasing the streams.
+        if (!_persisted)
         {
-            try { OfficeCli.Core.OfficeCliMetadata.StampOnSave(_doc); }
-            catch { /* best-effort audit trail */ }
+            try { FlushDirtyParts(); } catch { /* best-effort */ }
+            // Mirror the PPT/Word pattern: when we own the backing FileStream the
+            // package would otherwise leave the on-disk file in whatever state
+            // the last auto-flush left it. Save explicitly before disposing.
+            if (Modified)
+            {
+                try { OfficeCli.Core.OfficeCliMetadata.StampOnSave(_doc); }
+                catch { /* best-effort audit trail */ }
+            }
+            try { _doc.Save(); } catch { /* read-only or already disposed */ }
+            // Write back while the MemoryStream is guaranteed alive — the SDK
+            // may close the stream it was opened over during _doc.Dispose().
+            // After _doc.Save() the in-memory zip is complete (same contract
+            // the direct FileStream path relies on for mid-session saves).
+            // Backstop for sessions that mutated without Persist(); every
+            // mutating command persists before it prints.
+            try { WriteBackFilteredPackage(); } catch { /* best-effort */ }
         }
-        try { _doc.Save(); } catch { /* read-only or already disposed */ }
-        // Write back while the MemoryStream is guaranteed alive — the SDK
-        // may close the stream it was opened over during _doc.Dispose().
-        // After _doc.Save() the in-memory zip is complete (same contract
-        // the direct FileStream path relies on for mid-session saves).
-        try { WriteBackFilteredPackage(); } catch { /* best-effort */ }
         _doc.Dispose();
         _filteredPackageStream?.Dispose();
         _filteredPackageStream = null;

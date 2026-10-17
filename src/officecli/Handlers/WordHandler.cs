@@ -92,6 +92,11 @@ public partial class WordHandler : IDocumentHandler, Rendering.IRenderModelHost
     // AtomicWriteBack / OfficeCli.Core.AtomicPackageWriter.
     private MemoryStream? _packageStream;
 
+    // Set by Persist() once the package is on disk. Dispose then skips its own
+    // serialize + write-back: redoing it would either rewrite the file twice or,
+    // worse, run a second atomic replace that nobody is waiting to report.
+    private bool _persisted;
+
     // Whole-part payloads (docProps/core|app|custom.xml) staged by
     // RawReplaceWholePart and written straight into the saved zip after the
     // package closes (FlushPendingWholeParts). The Open-XML SDK does not
@@ -2464,6 +2469,37 @@ public partial class WordHandler : IDocumentHandler, Rendering.IRenderModelHost
         else _backingStream?.Flush();
     }
 
+    // Issue #517: the terminal write, with failures visible to the caller. The
+    // Save() above is the mid-session flush — it skips the post-close rewrites
+    // (see its comment) and it is allowed to leave a missing write unremarked,
+    // because the session is still open and a later save may succeed. This
+    // runs Dispose's write path instead, so a mutating command can report the
+    // outcome of the actual write rather than the outcome of the mutation.
+    public void Persist()
+    {
+        if (_persisted) return;
+        // Read-only sessions never write, and a released stream means there is
+        // nothing to persist onto — leave _persisted unset so Dispose keeps
+        // whatever behaviour it had for this session.
+        if (_packageStream == null || _backingStream == null) return;
+        if (DeferSave) FinalizeDeferredIds();
+        if (Modified)
+        {
+            try { OfficeCli.Core.OfficeCliMetadata.StampOnSave(_doc); }
+            catch { /* best-effort audit trail */ }
+        }
+        _doc.Save();
+        // AtomicWriteBack throws when the temp/replace step fails; that is the
+        // failure this method exists to surface, so it is deliberately not
+        // caught here.
+        AtomicWriteBack(tmp =>
+        {
+            FlushPendingWholeParts(tmp);
+            NormalizeSelfClosingInDocx(tmp);
+        });
+        _persisted = true;
+    }
+
     // Crash-atomic flush of the in-memory package to disk (temp + File.Replace).
     // No-op for read-only sessions (_packageStream == null), which never write.
     // See OfficeCli.Core.AtomicPackageWriter.
@@ -2493,12 +2529,19 @@ public partial class WordHandler : IDocumentHandler, Rendering.IRenderModelHost
             return;
         }
         if (DeferSave) FinalizeDeferredIds();
-        if (Modified)
+        // _persisted: the command already wrote the document through Persist(),
+        // which reports its failures instead of swallowing them (issue #517).
+        // Serializing again here would only re-run the same work with nobody
+        // left to tell.
+        if (Modified && !_persisted)
         {
             try { OfficeCli.Core.OfficeCliMetadata.StampOnSave(_doc); }
             catch { /* best-effort audit trail */ }
         }
-        try { _doc.Save(); } catch { /* read-only or already disposed */ }
+        if (!_persisted)
+        {
+            try { _doc.Save(); } catch { /* read-only or already disposed */ }
+        }
         if (_packageStream != null)
         {
             // Editable: read the in-memory package into the atomic temp BEFORE
@@ -2509,15 +2552,21 @@ public partial class WordHandler : IDocumentHandler, Rendering.IRenderModelHost
             //    persist on a stream-opened package (see RawReplaceWholePart).
             //  - NormalizeSelfClosingInDocx: canonicalize `<w:br />` -> `<w:br/>`
             //    (schema-equivalent; several consumers/tests want the short form).
-            try
+            // This is a backstop for sessions that mutated without calling
+            // Persist(): its failure stays unreported by design, so every
+            // mutating command persists before it prints.
+            if (!_persisted)
             {
-                AtomicWriteBack(tmp =>
+                try
                 {
-                    FlushPendingWholeParts(tmp);
-                    NormalizeSelfClosingInDocx(tmp);
-                });
+                    AtomicWriteBack(tmp =>
+                    {
+                        FlushPendingWholeParts(tmp);
+                        NormalizeSelfClosingInDocx(tmp);
+                    });
+                }
+                catch { /* best-effort: the original file is left intact */ }
             }
-            catch { /* best-effort: the original file is left intact */ }
             _doc.Dispose();
             _packageStream.Dispose();
             _packageStream = null;

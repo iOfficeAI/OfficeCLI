@@ -143,6 +143,7 @@ static partial class CommandBuilder
             ResidentClient.SendClose(file.FullName);
             using var handler = new OfficeCli.Handlers.ExcelHandler(file.FullName, editable: true);
             var msg = handler.Import(parentPath, csvContent, delimiter, header, startCell, decimalSeparator);
+            handler.Persist(); // issue #517: write before reporting — see IDocumentHandler.Persist
             if (json)
                 Console.WriteLine(OutputFormatter.WrapEnvelopeText(msg));
             else

@@ -124,6 +124,20 @@ public interface IDocumentHandler : IDisposable
     /// Only meaningful when the handler was opened with editable=true.
     /// </summary>
     void Save();
+
+    /// <summary>
+    /// Write every pending change to disk now and <b>let a failure propagate</b>.
+    /// This is the whole Dispose write path (including the Word-only whole-part
+    /// flush and self-closing normalization), minus closing the session: after it
+    /// succeeds, Dispose does not serialize the document again.
+    ///
+    /// Callers are the mutating commands: persist first, then report. A command
+    /// that announces success and leaves the write to the using-scope Dispose
+    /// cannot take that announcement back — the atomic write-back throws, Dispose
+    /// swallows it as best-effort, and the user is told an unsaved edit was saved
+    /// (issue #517).
+    /// </summary>
+    void Persist();
 }
 
 public record ValidationError(string ErrorType, string Description, string? Path, string? Part);
