@@ -249,6 +249,64 @@ internal partial class ChartSvgRenderer
         sb.AppendLine($"        <text x=\"{x:0.#}\" y=\"{y:0.#}\" fill=\"{color}\" font-size=\"{fontSize}\"{weightAttr} text-anchor=\"end\" dominant-baseline=\"middle\" transform=\"rotate({rot} {x:0.#} {y:0.#})\">{enc}</text>");
     }
 
+    /// <summary>
+    /// Which chart types take part in <see cref="AutoCatLabelRotationDeg"/>: only
+    /// the ones whose renderer actually draws the category labels along the
+    /// bottom axis AND honours the angle. The cx emitters (funnel / treemap /
+    /// sunburst / boxWhisker) draw their own labels and ignore it, so growing
+    /// the margins for a rotation they will not perform would only shrink their
+    /// plot area; horizontal bars label down the left side; pie, doughnut,
+    /// radar, scatter, bubble, stock and combo label differently; and the 3D
+    /// renderers take no angle. Every other type reaches RenderBarChartSvg,
+    /// RenderLineChartSvg or the area renderer, all three of which do.
+    /// </summary>
+    private static bool TakesAutoCatLabelRotation(string chartType, bool is3D)
+    {
+        if (is3D) return false;
+        switch (chartType)
+        {
+            case "funnel":
+            case "treemap":
+            case "sunburst":
+            case "boxwhisker":
+            case "combo":
+            case "bubble":
+            case "scatter":
+            case "stock":
+                return false;
+        }
+        if (chartType.Contains("pie") || chartType.Contains("doughnut")) return false;
+        if (chartType.Contains("radar")) return false;
+        if (chartType.Contains("bar") && !chartType.Contains("column")) return false;
+        return true;
+    }
+
+    /// <summary>
+    /// Automatic category-axis label rotation for a chart whose OOXML names no
+    /// explicit &lt;c:catAx&gt;&lt;c:txPr&gt;&lt;a:bodyPr rot&gt; (issue #516). The
+    /// file leaves the layout to the viewer, and a viewer escalates rather than
+    /// overlapping: horizontal while the longest label fits its per-category
+    /// slot, then -45°, then -90° — what Word and PowerPoint draw for the same
+    /// file. Returns null when the labels already fit, so the unrotated output
+    /// stays byte-for-byte what it was.
+    ///
+    /// <paramref name="labelPx"/> is the longest label's pixel length, using the
+    /// same 0.5 × fontSize per-character estimate the bottom-margin reservation
+    /// below uses. Text rotated by 45° occupies cos(45°) ≈ 0.707 of that length
+    /// horizontally; rotating it also widens the left margin the text hangs
+    /// into, which shortens every slot in turn — so the second measure takes
+    /// that widened margin into account instead of assuming the first one.
+    /// </summary>
+    private static int? AutoCatLabelRotationDeg(int svgW, int marginLeft, int marginRight,
+        int shownLabels, double labelPx)
+    {
+        double Slot(int left) => (svgW - left - marginRight) / (double)Math.Max(1, shownLabels);
+        if (labelPx <= Slot(marginLeft)) return null;
+        var projected = labelPx * 0.70710678;
+        var leftAt45 = Math.Max(marginLeft, (int)projected + 4);
+        return projected <= Slot(leftAt45) ? -45 : -90;
+    }
+
     public void RenderBarChartSvg(StringBuilder sb, List<(string name, double[] values)> series,
         string[] categories, List<string> colors, int ox, int oy, int pw, int ph,
         bool horizontal, bool stacked = false, bool percentStacked = false,
@@ -3156,6 +3214,11 @@ internal partial class ChartSvgRenderer
         /// &lt;c:catAx&gt;&lt;c:txPr&gt;&lt;a:bodyPr rot="..."/&gt; (OOXML rot is
         /// 1/60000 degree). Null = no rotation (labels horizontal, default).</summary>
         public int? CatAxisLabelRotationDeg { get; set; }
+        /// <summary>True when the file names &lt;c:catAx&gt;&lt;c:txPr&gt;&lt;a:bodyPr rot&gt;
+        /// at all — including rot="0". The automatic rotation of issue #516 must
+        /// not second-guess an explicit choice, and ExtractAxisLabelRotationDeg
+        /// folds 0 into null, so presence is remembered separately.</summary>
+        public bool CatAxisLabelRotationSpecified { get; set; }
         /// <summary>Value-axis tick-label rotation in degrees (analogous to
         /// CatAxisLabelRotationDeg). Null = no rotation.</summary>
         public int? ValAxisLabelRotationDeg { get; set; }
@@ -3762,6 +3825,9 @@ internal partial class ChartSvgRenderer
             if (catDefRPr?.Bold?.HasValue == true) info.CatFontBold = catDefRPr.Bold.Value;
             if (catDefRPr?.Italic?.HasValue == true) info.CatFontItalic = catDefRPr.Italic.Value;
             info.CatAxisLabelRotationDeg = ExtractAxisLabelRotationDeg(catTxPr);
+            info.CatAxisLabelRotationSpecified = catTxPr != null
+                && catTxPr.Elements().Any(e => e.LocalName == "bodyPr"
+                    && e.GetAttributes().Any(a => a.LocalName == "rot"));
         }
 
         // Data label font size
@@ -4567,11 +4633,31 @@ internal partial class ChartSvgRenderer
         if (!string.IsNullOrEmpty(info.ValNumFmt) && marginRight < 30)
             marginRight = 30;
 
+        // Automatic category-label rotation (issue #516). Without an explicit
+        // <c:bodyPr rot> the labels used to be drawn horizontally whatever the
+        // slot width, so a chart with many short categories (12 months, 24
+        // months) painted every label on top of its neighbour. Only charts that
+        // draw category labels along the BOTTOM axis take part: horizontal bars
+        // label down the left side, 3D renderers ignore the angle, and pie /
+        // radar / scatter / bubble / stock / combo label differently.
+        int? catLabelRot = info.CatAxisLabelRotationDeg;
+        if (catLabelRot == null && !info.CatAxisLabelRotationSpecified
+            && info.Categories.Length > 0 && !info.CatTickLabelsHidden
+            && TakesAutoCatLabelRotation(info.ChartType, info.Is3D))
+        {
+            var maxLen = info.Categories.Max(c => (c ?? "").Length);
+            var shown = info.CatTickLabelSkip <= 1
+                ? info.Categories.Length
+                : (info.Categories.Length + info.CatTickLabelSkip - 1) / info.CatTickLabelSkip;
+            catLabelRot = AutoCatLabelRotationDeg(svgW, marginLeft, marginRight, shown,
+                maxLen * info.CatFontPx * 0.5);
+        }
+
         // Rotated category labels (catAx txPr bodyPr rot) hang diagonally below
         // the axis and trail toward the side, so reserve extra bottom (and, for
         // the leading label, left) space so they aren't clipped. Approximate the
         // longest label's pixel length, then project it onto the rotation angle.
-        if (info.CatAxisLabelRotationDeg is int catRot && catRot != 0
+        if (catLabelRot is int catRot && catRot != 0
             && info.Categories.Length > 0)
         {
             var maxLen = info.Categories.Max(c => (c ?? "").Length);
@@ -4637,7 +4723,7 @@ internal partial class ChartSvgRenderer
                     info.AxisMin, info.AxisMax, info.MajorUnit, info.ValNumFmt,
                     info.ShowDataLabels, info.ShowDataLabelVal, info.ShowDataLabelSerName,
                     info.ShowDataLabelCatName, info.DataLabelsNumFmt,
-                    info.CatAxisLabelRotationDeg, info.ValAxisLabelRotationDeg,
+                    catLabelRot, info.ValAxisLabelRotationDeg,
                     info.IsReversed, info.Trendlines);
         }
         else if (chartType == "combo")
@@ -4693,7 +4779,7 @@ internal partial class ChartSvgRenderer
                     info.MarkerFillColors, info.MarkerLineColors,
                     info.ShowDataLabelSerName, info.ShowDataLabelCatName,
                     info.ShowDataLabelVal || info.ShowDataLabelPercent,
-                    info.CatAxisLabelRotationDeg, info.ValAxisLabelRotationDeg,
+                    catLabelRot, info.ValAxisLabelRotationDeg,
                     info.SeriesLineHide);
         }
         else
@@ -4723,7 +4809,7 @@ internal partial class ChartSvgRenderer
                     info.IsWaterfall, info.ErrorBars,
                     info.IsPercent && info.ShowDataLabelPercent && !info.ShowDataLabelVal,
                     info.DataLabelsNumFmt, info.Overlap, info.IsReversed, info.PerPointColors,
-                    info.CatAxisLabelRotationDeg, info.ValAxisLabelRotationDeg, info.Trendlines,
+                    catLabelRot, info.ValAxisLabelRotationDeg, info.Trendlines,
                     info.ShowDataLabelSerName, info.ShowDataLabelCatName,
                     info.ShowDataLabelVal || info.ShowDataLabelPercent, info.LogBase);
         }
