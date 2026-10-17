@@ -242,6 +242,24 @@ public static partial class PptxBatchEmitter
                         if (key == "trendline") anySeriesTrendline = true;
                     }
                 }
+                // A scatter/bubble series carries its own X data in <c:xVal>,
+                // which the Reader surfaces as Format["x"]. Forward it as
+                // series{N}.categories so replay rebuilds THIS series' xVal
+                // instead of fanning the chart-level list (read off series 1)
+                // onto every series. Skipped when the source xVal was a cell
+                // range — `categoriesRef` already carries that form.
+                if (s.Format.TryGetValue("x", out var xObj) && xObj?.ToString() is { Length: > 0 } xLiteral
+                    && !s.Format.ContainsKey("categoriesRef")
+                    // The chart-level `categories` key is the source's series-1
+                    // X list; when this series matches it, that key already
+                    // covers the series and a duplicate row would only add
+                    // noise to every ordinary scatter dump.
+                    && !(props.TryGetValue("categories", out var chartLevelCats)
+                         && string.Equals(chartLevelCats, xLiteral, StringComparison.Ordinal)))
+                {
+                    props[$"series{seriesIdx}.categories"] = xLiteral;
+                }
+
                 // Sparse series (blank source cells): Reader pads values with
                 // zeros and lists the blank 0-based indexes. Forward them as
                 // `series{N}._blankIndexes` so BuildNumberingCacheFromLiteral

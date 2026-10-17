@@ -431,6 +431,11 @@ internal static partial class ChartHelper
             {
                 if (IsRangeReference(catsStr))
                     info.CategoriesRef = NormalizeRangeReference(catsStr);
+                // A literal list (`series{N}.categories=2.74,5.92`) is not a
+                // reference and has no place on this struct — the scatter and
+                // bubble builders read it by series index through
+                // ParseSeriesCategoriesLiteral, where it becomes that series'
+                // own <c:xVal>.
             }
 
             // R52 bt-3: bubble series carry per-point sizes. `series{N}.bubbleSize`
@@ -519,6 +524,28 @@ internal static partial class ChartHelper
         // If the value is a cell range reference, don't treat as literal categories
         if (IsRangeReference(catStr)) return null;
         return catStr.Split(',').Select(c => c.Trim()).ToArray();
+    }
+
+    /// <summary>
+    /// Literal `series{N}.categories` for the 1-based series N, parsed as
+    /// numbers. A scatter or bubble series plots X/Y pairs, so its own list is
+    /// its <c:xVal</c>.
+    ///
+    /// Read by series index rather than through <see cref="ParseSeriesDataExtended"/>:
+    /// that list is compacted (it only holds an entry for a series that carried
+    /// some dotted key), so on a chart where only series 2 names its own
+    /// categories its entry would sit at index 0 and land on series 1. The
+    /// range form is not handled here — that is `CategoriesRef`, consumed by
+    /// ApplySeriesReferences.
+    /// </summary>
+    internal static double[]? ParseSeriesCategoriesLiteral(
+        Dictionary<string, string>? properties, int index1)
+    {
+        if (properties == null) return null;
+        if (!properties.TryGetValue($"series{index1}.categories", out var catStr)
+            || string.IsNullOrEmpty(catStr) || IsRangeReference(catStr))
+            return null;
+        return ParseSeriesValues(catStr, $"series{index1}.categories");
     }
 
     // BUG-DUMP-R36-3: series indices (0-based) whose dump carried per-point

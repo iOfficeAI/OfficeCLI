@@ -271,7 +271,7 @@ internal static partial class ChartHelper
                 break;
             case "scatter":
                 var scatterStyle = properties.GetValueOrDefault("scatterStyle", "lineMarker");
-                chartElement = BuildScatterChart(categories, seriesData, catAxisId, valAxisId, scatterStyle, colors);
+                chartElement = BuildScatterChart(categories, seriesData, catAxisId, valAxisId, scatterStyle, colors, properties);
                 break;
             case "bubble":
                 chartElement = BuildBubbleChart(categories, seriesData, catAxisId, valAxisId, colors, properties);
@@ -575,6 +575,18 @@ internal static partial class ChartHelper
 
             // Replace CategoryAxisData with StringReference (preserving literal data as cache)
             var catRef = info.CategoriesRef ?? topCategoriesRef;
+            // A scatter/bubble series that names its own literal
+            // `series{N}.categories` keeps that list: it IS the series' X data,
+            // so the shared chart-level ref must not overwrite it. (info.CategoriesRef
+            // cannot be set here — one key holds either a range or a literal.)
+            // Other chart types keep the shared category axis untouched.
+            if (!string.IsNullOrEmpty(catRef)
+                && ser is C.ScatterChartSeries or C.BubbleChartSeries
+                && properties.TryGetValue($"series{i + 1}.categories", out var ownCats)
+                && !string.IsNullOrEmpty(ownCats) && !IsRangeReference(ownCats))
+            {
+                catRef = null;
+            }
             if (!string.IsNullOrEmpty(catRef))
             {
                 // CONSISTENCY(scatter-bubble-no-cat / R21-bt2): scatter and
@@ -1158,7 +1170,7 @@ internal static partial class ChartHelper
     internal static C.ScatterChart BuildScatterChart(
         string[]? categories, List<(string name, double[] values)> seriesData,
         uint catAxisId, uint valAxisId, string scatterStyle = "lineMarker",
-        string[]? colors = null)
+        string[]? colors = null, Dictionary<string, string>? properties = null)
     {
         var styleVal = scatterStyle.ToLowerInvariant() switch
         {
@@ -1173,6 +1185,9 @@ internal static partial class ChartHelper
             new C.VaryColors { Val = false }
         );
 
+        // A scatter chart plots X/Y pairs per series (CT_ScatterSer carries its
+        // own <c:xVal>), so a series-level `series{N}.categories` literal is
+        // that series' X data and outranks the shared chart-level list.
         double[]? xValues = null;
         if (categories != null)
             xValues = categories.Select(c => double.TryParse(c, out var v) ? v : 0).ToArray();
@@ -1180,8 +1195,9 @@ internal static partial class ChartHelper
         var hideLines = styleVal == C.ScatterStyleValues.Marker;
         for (int i = 0; i < seriesData.Count; i++)
         {
+            var seriesX = ParseSeriesCategoriesLiteral(properties, i + 1) ?? xValues;
             var ser = BuildScatterSeries((uint)i, seriesData[i].name,
-                xValues, seriesData[i].values);
+                seriesX, seriesData[i].values);
             // For marker-only style, explicitly hide connecting lines.
             // CT_ScatterSer schema: idx, order, tx, spPr, marker, dPt*, dLbls?,
             // trendline*, errBars?, xVal?, yVal?, smooth?, extLst? — spPr must
@@ -1288,11 +1304,15 @@ internal static partial class ChartHelper
             );
             ApplySeriesColor(series, color);
 
-            if (xValues != null)
+            // A bubble series plots X/Y pairs too, so a series-level
+            // `series{N}.categories` literal is its own X data and outranks
+            // the shared chart-level list (same rule as BuildScatterChart).
+            var seriesX = ParseSeriesCategoriesLiteral(properties, i + 1) ?? xValues;
+            if (seriesX != null)
             {
-                var xLit = new C.NumberLiteral(new C.PointCount { Val = (uint)xValues.Length });
-                for (int j = 0; j < xValues.Length; j++)
-                    xLit.AppendChild(new C.NumericPoint(new C.NumericValue(xValues[j].ToString("G"))) { Index = (uint)j });
+                var xLit = new C.NumberLiteral(new C.PointCount { Val = (uint)seriesX.Length });
+                for (int j = 0; j < seriesX.Length; j++)
+                    xLit.AppendChild(new C.NumericPoint(new C.NumericValue(seriesX[j].ToString("G"))) { Index = (uint)j });
                 series.AppendChild(new C.XValues(xLit));
             }
 
