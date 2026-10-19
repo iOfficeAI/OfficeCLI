@@ -1231,8 +1231,8 @@ public partial class WordHandler
   function flushScreenshotPage(){
     if(!SCREENSHOT)return;
     // offsetParent is null when the page OR its wrapper is display:none, so this
-    // counts only genuinely-visible pages (page-1 path hides wrappers; page-N
-    // path hides .page elements via applyPageFilter).
+    // counts only genuinely-visible pages after applyPageFilter or an earlier
+    // flush has hidden pages/wrappers.
     var vis=Array.prototype.filter.call(document.querySelectorAll('.page'),function(p){return p.offsetParent!==null;});
     if(vis.length!==1)return;
     var page=vis[0];
@@ -1381,17 +1381,10 @@ public partial class WordHandler
         sb.AppendLine(@"  var SCREENSHOT=location.hash.indexOf('screenshot')>=0||navigator.webdriver||/HeadlessChrome/.test(navigator.userAgent);
   window._wpSync=SCREENSHOT;
   if(SCREENSHOT){
-    var rp=window._requestedPages;
-    if(window._gridCols>0){paginate();}
-    else if(rp&&rp.length===1&&rp[0]===1){
-      // Page 1 is the first .page before pagination — flush it directly, skipping
-      // the full paginate pass. Other single pages go through paginate and flush
-      // at its sync completion. flushScreenshotPage clips + drops the chrome.
-      document.querySelectorAll('.page-wrapper:not(:first-of-type)').forEach(function(w){w.style.display='none';});
-      var _p1=document.querySelector('.page');if(_p1)adjustHeaderPadding(_p1);
-      positionFootnotes();wrapFloats();applyLineNumbers();
-      flushScreenshotPage();
-    }else{paginate();}
+    // Page 1 must use the same page boundaries as every other screenshot.
+    // Clip only after pagination, including its requested-pages early exit.
+    paginate();
+    if(!(window._gridCols>0))flushScreenshotPage();
   }else{setTimeout(paginate,100);}");
         sb.AppendLine("}");
         sb.AppendLine("if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',_wordInit);");
