@@ -1769,13 +1769,32 @@ internal partial class FormulaEvaluator
     private FormulaResult? EvalSumProduct(List<object> args)
     {
         if (args.Count == 0) return FR(0);
-        var arrays = args.Select(a => AsDoubles(a)).ToList();
         // Single numeric value: SUMPRODUCT(scalar) = scalar
-        if (arrays.All(a => a == null) && args.Count == 1 && args[0] is FormulaResult single && single.IsNumeric)
+        if (args.Count == 1 && args[0] is FormulaResult single && single.IsNumeric && AsRangeData(single) == null && !single.IsArray)
             return single;
-        if (arrays.Any(a => a == null)) return null;
-        var len = arrays.Min(a => a!.Length); double sum = 0;
-        for (int i = 0; i < len; i++) { double p = 1; foreach (var arr in arrays) p *= arr![i]; sum += p; }
+        // Ranges stay position-aligned. Excel treats every non-numeric entry in a
+        // SUMPRODUCT range (blank, text, TRUE/FALSE) as 0; AsDoubles drops blanks and
+        // text instead, which paired the wrong cells: SUMPRODUCT(A1:D1,A2:D2) with
+        // A2:B2 blank returned A1*C2+B1*D2.
+        var arrays = new List<double[]>();
+        (int Rows, int Cols)? shape = null;
+        foreach (var a in args)
+        {
+            if (a is FormulaResult { IsError: true } err) return err;
+            if (AsRangeData(a) is { } rd)
+            {
+                if (rd.FirstError() is { } cellErr) return cellErr;
+                // Excel requires every range argument to have the same dimensions.
+                if (shape is { } s0 && (s0.Rows != rd.Rows || s0.Cols != rd.Cols)) return FormulaResult.Error("#VALUE!");
+                shape ??= (rd.Rows, rd.Cols);
+                arrays.Add(rd.ToFlatResults().Select(c => c is { IsNumeric: true } ? c.NumericValue!.Value : 0.0).ToArray());
+            }
+            else if (AsDoubles(a) is { } arr) arrays.Add(arr);
+            else return null;
+        }
+        if (arrays.Select(x => x.Length).Distinct().Count() > 1) return FormulaResult.Error("#VALUE!");
+        double sum = 0;
+        for (int i = 0; i < arrays[0].Length; i++) { double p = 1; foreach (var arr in arrays) p *= arr[i]; sum += p; }
         return FR(sum);
     }
 
