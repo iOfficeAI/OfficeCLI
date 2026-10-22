@@ -1276,6 +1276,11 @@ public partial class PowerPointHandler
         if (srcSlidePart != tgtSlidePart)
             CopyRelationships(clone, srcSlidePart, tgtSlidePart);
 
+        // Tags need work even when the clone stays on its own slide: that path
+        // copies no relationships at all, so the clone kept the source shape's
+        // <p:tags r:id> and two shapes on the slide ended up sharing one part.
+        GiveCloneItsOwnTags(clone, srcSlidePart, tgtSlidePart);
+
         InsertAtPosition(tgtShapeTree, clone, index);
         GetSlide(tgtSlidePart).Save();
 
@@ -1933,6 +1938,11 @@ public partial class PowerPointHandler
                 when parent is SlidePart sp6 => sp6.AddNewPart<DocumentFormat.OpenXml.Packaging.DiagramStylePart>(),
             DocumentFormat.OpenXml.Packaging.DiagramPersistLayoutPart
                 when parent is SlidePart sp7 => sp7.AddNewPart<DocumentFormat.OpenXml.Packaging.DiagramPersistLayoutPart>(),
+            // A tags part belongs to the slide that owns the tagged shape; the
+            // typed add is what puts the copy on its own URI instead of the
+            // generic fallback reusing the source's part.
+            DocumentFormat.OpenXml.Packaging.UserDefinedTagsPart
+                => parent.AddNewPart<DocumentFormat.OpenXml.Packaging.UserDefinedTagsPart>(),
             // Generic fallback — content-type addressed. Less reliable for
             // uniqueness but at least the method doesn't throw on unknown
             // parent/child combinations.
@@ -1957,7 +1967,12 @@ public partial class PowerPointHandler
         or DocumentFormat.OpenXml.Packaging.DiagramColorsPart
         or DocumentFormat.OpenXml.Packaging.DiagramLayoutDefinitionPart
         or DocumentFormat.OpenXml.Packaging.DiagramStylePart
-        or DocumentFormat.OpenXml.Packaging.DiagramPersistLayoutPart;
+        or DocumentFormat.OpenXml.Packaging.DiagramPersistLayoutPart
+        // Programmability tags are per-shape metadata (what a PowerPoint add-in
+        // writes to recognise its own shapes). Two shapes referencing one tags
+        // part is a package Desktop PowerPoint refuses to open, so a cloned
+        // slide gets its own parts rather than a relationship to the source's.
+        or DocumentFormat.OpenXml.Packaging.UserDefinedTagsPart;
 
     /// <summary>
     /// Recursively deep-copy sub-parts (e.g. a ChartPart's embedded workbook,
@@ -2072,6 +2087,51 @@ public partial class PowerPointHandler
         };
 
         return (slidePart, element);
+    }
+
+    /// <summary>
+    /// Give a cloned element its own tags parts, one per
+    /// <c>&lt;p:custDataLst&gt;&lt;p:tags r:id="rIdN"/&gt;</c> reference. Tags are
+    /// per-shape metadata — what a PowerPoint add-in writes to recognise its own
+    /// shapes again — and Desktop PowerPoint refuses to open a deck in which two
+    /// shapes reference one tags part. A clone that kept the source's id produced
+    /// exactly that, so each reference gets a fresh part with copied content and
+    /// a rewritten id; the source's part and XML are left untouched.
+    /// </summary>
+    private static void GiveCloneItsOwnTags(OpenXmlElement clone, SlidePart sourcePart, SlidePart targetPart)
+    {
+        const string presentationNs = "http://schemas.openxmlformats.org/presentationml/2006/main";
+        const string relationshipsNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+        // The SDK has no typed class for <p:tags> (the batch emitter handles it
+        // as raw XML for the same reason), so match on the element shape.
+        foreach (var tags in clone.Descendants()
+                     .Where(e => e.LocalName == "tags" && e.NamespaceUri == presentationNs)
+                     .ToList())
+        {
+            var idAttr = tags.GetAttributes()
+                .FirstOrDefault(a => a.LocalName == "id" && a.NamespaceUri == relationshipsNs);
+            var oldRelId = idAttr.Value;
+            if (string.IsNullOrEmpty(oldRelId)) continue;
+
+            // An id the source part does not own has already been rebound to a
+            // part of the target's (a cross-slide clone does that in
+            // CopyRelationships); copying again would leave an orphan behind.
+            UserDefinedTagsPart? sourceTagsPart;
+            try
+            {
+                sourceTagsPart = sourcePart.GetPartById(oldRelId) as UserDefinedTagsPart;
+            }
+            catch (ArgumentOutOfRangeException) { continue; }
+            if (sourceTagsPart == null) continue;
+
+            var newTagsPart = targetPart.AddNewPart<UserDefinedTagsPart>();
+            using (var stream = sourceTagsPart.GetStream())
+                newTagsPart.FeedData(stream);
+            tags.SetAttribute(new OpenXmlAttribute(
+                idAttr.Prefix, idAttr.LocalName, idAttr.NamespaceUri,
+                targetPart.GetIdOfPart(newTagsPart)));
+        }
     }
 
     private static void CopyRelationships(OpenXmlElement element, SlidePart sourcePart, SlidePart targetPart)
