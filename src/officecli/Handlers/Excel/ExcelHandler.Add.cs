@@ -22,6 +22,14 @@ public partial class ExcelHandler
     private string AddCore(string parentPath, string type, InsertPosition? position, Dictionary<string, string> properties)
     {
         var index = position?.Index;
+
+        // Reject negative --index up front with a clean message instead of
+        // letting it fall through and surface as a raw .NET
+        // ArgumentOutOfRangeException from collection indexing. Matches
+        // the guard in WordHandler.Add.
+        if (index.HasValue && index.Value < 0)
+            throw new ArgumentException("--index must be non-negative.");
+
         // Normalize to case-insensitive lookup so camelCase keys (e.g. minColor) match lowercase lookups.
         // Preserve TrackingPropertyDictionary so handler-as-truth read
         // tracking survives — its comparer wraps OrdinalIgnoreCase already.
