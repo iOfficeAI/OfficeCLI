@@ -34,6 +34,74 @@ public partial class WordHandler
     private RunProperties ResolveEffectiveRunPropertiesCore(
         Run run, Paragraph para, Dictionary<string, string>? sources)
     {
+        // PERF(html-preview): the docDefaults merge + paragraph-style chain +
+        // paragraph-mark bidi lift are identical for every run in a paragraph,
+        // but this method runs once per run — on large documents that re-walks
+        // the basedOn chain (and re-scans styles for the default paragraph
+        // style) thousands of times. Memoize the paragraph-level base on the
+        // render context (per-render lifetime → no mutation-staleness risk),
+        // clone it per run, then apply the run-scoped layers (rStyle chain +
+        // direct rPr). Provenance (sources) requests stay uncached.
+        var tableLayers = _ctx?.CurrentCellTableStyleRunProps;
+        if (_ctx == null || sources != null)
+            return ResolveEffectiveRunPropertiesCoreUncached(run, para, sources);
+
+        if (!_ctx.ParagraphBaseRPrCache.TryGetValue(para, out var entry)
+            || !ReferenceEquals(entry.layersRef, tableLayers))
+        {
+            var baseRPr = BuildParagraphBaseRunProperties(para, tableLayers, sources: null);
+            entry = new HtmlRenderContext.ParaBaseCacheEntry(baseRPr, tableLayers);
+            _ctx.ParagraphBaseRPrCache[para] = entry;
+        }
+
+        var effective = (RunProperties)entry.baseProps.CloneNode(true);
+        // Run-scoped layers on top of the memoized paragraph base:
+        // step 3 (character-style chain) and step 4 (direct rPr).
+        MergeRunStyleChain(effective, run, sources);
+        if (run.RunProperties != null)
+            MergeRunProperties(effective, run.RunProperties, "/direct", sources);
+        return effective;
+    }
+
+    /// <summary>
+    /// Step 3 of the cascade: resolve the run's rStyle and merge each style in
+    /// its basedOn chain (base→derived) into the accumulating effective rPr.
+    /// Shared by the memoized fast path and the uncached full resolver.
+    /// </summary>
+    private void MergeRunStyleChain(RunProperties effective, Run run, Dictionary<string, string>? sources)
+    {
+        var rStyleId = run.RunProperties?.GetFirstChild<RunStyle>()?.Val?.Value;
+        if (rStyleId == null) return;
+        var rStyleChain = new List<Style>();
+        var rVisited = new HashSet<string>();
+        var curRStyleId = rStyleId;
+        while (curRStyleId != null && rVisited.Add(curRStyleId))
+        {
+            var rStyle = FindStyleById(curRStyleId);
+            if (rStyle == null) break;
+            rStyleChain.Add(rStyle);
+            curRStyleId = rStyle.BasedOn?.Val?.Value;
+        }
+        for (int i = rStyleChain.Count - 1; i >= 0; i--)
+        {
+            var sRPr = rStyleChain[i].StyleRunProperties;
+            if (sRPr != null)
+                MergeRunProperties(effective, sRPr,
+                    $"/styles/{rStyleChain[i].StyleId?.Value}", sources);
+        }
+    }
+
+    /// <summary>
+    /// Paragraph-level run-property layers: docDefaults (step 1), table-style
+    /// conditional layers (1b), paragraph-style basedOn chain merged base→top
+    /// (step 2), and the paragraph-mark direct BiDi lift (3b). Everything a
+    /// paragraph's runs share; NOT applied here: the run's rStyle chain and
+    /// direct rPr — those vary per run.
+    /// </summary>
+    private RunProperties BuildParagraphBaseRunProperties(
+        Paragraph para, List<DocumentFormat.OpenXml.OpenXmlElement>? tableLayers,
+        Dictionary<string, string>? sources)
+    {
         var effective = new RunProperties();
 
         // 1. Start with docDefaults rPr
@@ -119,29 +187,6 @@ public partial class WordHandler
             }
         }
 
-        // 3. Resolve character style (rStyle) from the run's rPr
-        var rStyleId = run.RunProperties?.GetFirstChild<RunStyle>()?.Val?.Value;
-        if (rStyleId != null)
-        {
-            var rStyleChain = new List<Style>();
-            var rVisited = new HashSet<string>();
-            var curRStyleId = rStyleId;
-            while (curRStyleId != null && rVisited.Add(curRStyleId))
-            {
-                var rStyle = FindStyleById(curRStyleId);
-                if (rStyle == null) break;
-                rStyleChain.Add(rStyle);
-                curRStyleId = rStyle.BasedOn?.Val?.Value;
-            }
-            for (int i = rStyleChain.Count - 1; i >= 0; i--)
-            {
-                var sRPr = rStyleChain[i].StyleRunProperties;
-                if (sRPr != null)
-                    MergeRunProperties(effective, sRPr,
-                        $"/styles/{rStyleChain[i].StyleId?.Value}", sources);
-            }
-        }
-
         // 3b. Lift direct pPr/<w:bidi/> into effective RightToLeftText.
         // CONSISTENCY(rtl-cascade): mirrors step-2 paragraph-style pPr/bidi
         // lift, but for the paragraph's own direct pPr (not its style).
@@ -164,6 +209,25 @@ public partial class WordHandler
             if (sources != null)
                 sources["effective.rtl"] = "/direct";
         }
+
+        return effective;
+    }
+
+    /// <summary>
+    /// FULL (uncached) per-run cascade: the paragraph base
+    /// (<see cref="BuildParagraphBaseRunProperties"/>) followed by the
+    /// run-scoped layers — character-style chain (step 3) and the run's own
+    /// direct rPr (step 4). Used when provenance tracking is requested and
+    /// whenever no render context is active.
+    /// </summary>
+    private RunProperties ResolveEffectiveRunPropertiesCoreUncached(
+        Run run, Paragraph para, Dictionary<string, string>? sources)
+    {
+        var effective = BuildParagraphBaseRunProperties(
+            para, _ctx?.CurrentCellTableStyleRunProps, sources);
+
+        // 3. Resolve character style (rStyle) from the run's rPr
+        MergeRunStyleChain(effective, run, sources);
 
         // 4. Apply run's own direct rPr (highest priority, excluding rStyle which was resolved above)
         if (run.RunProperties != null)
