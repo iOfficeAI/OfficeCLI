@@ -1933,6 +1933,13 @@ public partial class PowerPointHandler
                 when parent is SlidePart sp6 => sp6.AddNewPart<DocumentFormat.OpenXml.Packaging.DiagramStylePart>(),
             DocumentFormat.OpenXml.Packaging.DiagramPersistLayoutPart
                 when parent is SlidePart sp7 => sp7.AddNewPart<DocumentFormat.OpenXml.Packaging.DiagramPersistLayoutPart>(),
+            // Chart sidecars hang off the chart part, not the slide: give them
+            // a real typed AddNewPart so each clone gets its own style.xml /
+            // colors.xml instead of a relationship to the source's.
+            DocumentFormat.OpenXml.Packaging.ChartStylePart
+                => parent.AddNewPart<DocumentFormat.OpenXml.Packaging.ChartStylePart>(),
+            DocumentFormat.OpenXml.Packaging.ChartColorStylePart
+                => parent.AddNewPart<DocumentFormat.OpenXml.Packaging.ChartColorStylePart>(),
             // Generic fallback — content-type addressed. Less reliable for
             // uniqueness but at least the method doesn't throw on unknown
             // parent/child combinations.
@@ -1951,6 +1958,11 @@ public partial class PowerPointHandler
     private static bool NeedsDeepCopy(OpenXmlPart part) => part is
         DocumentFormat.OpenXml.Packaging.ChartPart
         or DocumentFormat.OpenXml.Packaging.ExtendedChartPart
+        // A chart's style and colour-style sidecars are ordinary per-chart data:
+        // two charts pointing at one style.xml is the part-sharing PowerPoint
+        // refuses (and for an extended chart there is nothing to repair with).
+        or DocumentFormat.OpenXml.Packaging.ChartStylePart
+        or DocumentFormat.OpenXml.Packaging.ChartColorStylePart
         or DocumentFormat.OpenXml.Packaging.EmbeddedPackagePart
         or DocumentFormat.OpenXml.Packaging.EmbeddedObjectPart
         or DocumentFormat.OpenXml.Packaging.DiagramDataPart
@@ -1988,6 +2000,21 @@ public partial class PowerPointHandler
                     if (newId != sub.RelationshipId)
                         subRIdMap[sub.RelationshipId] = newId;
                 }
+            }
+            catch { /* best-effort copy */ }
+        }
+
+        // External relationships live in their own collection — Parts does not
+        // enumerate them — so a chart whose data points at an external workbook
+        // (the oleObject relationship PowerPoint writes for a chart pasted from
+        // Excel) lost it here while its cloned XML kept <c:externalData r:id>.
+        // Copy them across with their original ids so those references resolve;
+        // nothing else in the part changes, so no remap entry is needed.
+        foreach (var extRel in source.ExternalRelationships)
+        {
+            try
+            {
+                target.AddExternalRelationship(extRel.RelationshipType, extRel.Uri, extRel.Id);
             }
             catch { /* best-effort copy */ }
         }
