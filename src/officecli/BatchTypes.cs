@@ -247,6 +247,12 @@ public class BatchResult
     public string? Code { get; set; }
     /// <summary>The original batch item, included when the command fails so the agent can inspect/retry.</summary>
     public BatchItem? Item { get; set; }
+    /// <summary>
+    /// Recovery hint for a failed item ("did you mean border.all?", the exact
+    /// command to retry) when the underlying CliException carried one. Purely
+    /// additive field; null on most failures.
+    /// </summary>
+    public string? Suggestion { get; set; }
     /// <summary>Advisory diagnostics produced while executing this item.</summary>
     internal List<OfficeCli.Core.CliWarning>? Warnings { get; set; }
 }
@@ -297,6 +303,8 @@ internal class BatchResultConverter : JsonConverter<BatchResult>
             writer.WriteString("error", value.Error);
             if (value.Code != null)
                 writer.WriteString("code", value.Code);
+            if (value.Suggestion != null)
+                writer.WriteString("suggestion", value.Suggestion);
             if (value.Item != null)
             {
                 writer.WritePropertyName("item");
