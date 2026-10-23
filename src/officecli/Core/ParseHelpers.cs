@@ -603,6 +603,22 @@ internal static class ParseHelpers
     }
 
     /// <summary>
+    /// Parse a marker size against ST_MarkerSize, whose range is 2..72
+    /// (ECMA-376 Part 1, §20.1.10.43). A byte is not narrow enough: a
+    /// <c>c:marker/c:size</c> outside 2..72 makes the package one PowerPoint
+    /// refuses to open (and cannot repair), so the value is rejected here
+    /// rather than written and left for the reader to discover.
+    /// </summary>
+    public static byte ParseMarkerSize(string value, string propertyName)
+    {
+        if (!byte.TryParse(value, CultureInfo.InvariantCulture, out var result) || result < 2 || result > 72)
+            throw new ArgumentException(
+                $"Invalid '{propertyName}' value '{value}'. Must be an integer 2..72 (OOXML ST_MarkerSize); " +
+                "PowerPoint cannot open a file whose marker size is outside that range.");
+        return result;
+    }
+
+    /// <summary>
     /// Normalize a hex color string to 8-char ARGB format (e.g. "FFFF0000").
     /// Accepts: "FF0000" (6-char RGB → prepend FF), "#FF0000" (strip #), "F00" (3-char → expand),
     /// "80FF0000" (8-char ARGB → as-is). Always returns uppercase.

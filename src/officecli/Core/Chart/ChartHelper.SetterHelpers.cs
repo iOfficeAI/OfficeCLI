@@ -555,6 +555,12 @@ internal static partial class ChartHelper
             case "auto":     style = C.MarkerStyleValues.Auto; break;
             default:         return false;
         }
+        // ST_MarkerSize is 2..72 (ECMA-376 §20.1.10.43): reject the size before
+        // the data point is created or its marker rebuilt, so a bad value leaves
+        // the chart as it was. Mirrors ApplySeriesMarker.
+        byte? specSize = parts.Length > 1 && parts[1].Trim().Length > 0
+            ? ParseHelpers.ParseMarkerSize(parts[1].Trim(), $"point{pointIndex + 1}.marker")
+            : null;
         var dPt = EnsureDataPoint(series, pointIndex);
         var existing = dPt.GetFirstChild<C.Marker>();
         var existingSize = existing?.GetFirstChild<C.Size>()?.CloneNode(true) as C.Size;
@@ -562,8 +568,8 @@ internal static partial class ChartHelper
         dPt.RemoveAllChildren<C.Marker>();
         var marker = new C.Marker();
         marker.AppendChild(new C.Symbol { Val = style });
-        if (parts.Length > 1 && byte.TryParse(parts[1], out var size))
-            marker.AppendChild(new C.Size { Val = size });
+        if (specSize.HasValue)
+            marker.AppendChild(new C.Size { Val = specSize.Value });
         else if (existingSize != null)
             marker.AppendChild(existingSize);
         if (parts.Length > 2)
@@ -582,7 +588,9 @@ internal static partial class ChartHelper
 
     internal static bool ApplyDataPointMarkerSize(OpenXmlCompositeElement series, int pointIndex, string value)
     {
-        if (!byte.TryParse(value, out var size)) return false;
+        // ST_MarkerSize is 2..72: parse first so a rejected value neither creates
+        // the data point nor disturbs an existing marker.
+        var size = ParseHelpers.ParseMarkerSize(value, $"point{pointIndex + 1}.markerSize");
         var dPt = EnsureDataPoint(series, pointIndex);
         var marker = dPt.GetFirstChild<C.Marker>();
         if (marker == null)
@@ -745,6 +753,9 @@ internal static partial class ChartHelper
             case "markersize":
             case "marker.size":
             {
+                // ST_MarkerSize is 2..72: parse before touching the marker so a
+                // rejected value leaves any existing c:size in place.
+                var mSize = ParseHelpers.ParseMarkerSize(value, "series.markerSize");
                 var marker = ser.GetFirstChild<C.Marker>();
                 if (marker == null)
                 {
@@ -760,7 +771,7 @@ internal static partial class ChartHelper
                 // markerColor ran first (the dump emits marker→markerColor→
                 // markerSize), producing 'unexpected child element size'. Mirrors
                 // ApplyDataPointMarkerSize.
-                var szEl = new C.Size { Val = ParseHelpers.SafeParseByte(value, "series.markerSize") };
+                var szEl = new C.Size { Val = mSize };
                 var sym = marker.GetFirstChild<C.Symbol>();
                 if (sym != null) sym.InsertAfterSelf(szEl);
                 else marker.PrependChild(szEl);

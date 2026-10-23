@@ -1258,7 +1258,7 @@ internal static partial class ChartHelper
                 {
                     var plotArea2 = chart.GetFirstChild<C.PlotArea>();
                     if (plotArea2 == null) { unsupported.Add(key); break; }
-                    var mSize = ParseHelpers.SafeParseByte(value, "markersize");
+                    var mSize = ParseHelpers.ParseMarkerSize(value, "markersize");
                     foreach (var ser in plotArea2.Descendants<OpenXmlCompositeElement>().Where(e => e.LocalName == "ser"))
                     {
                         if (ser is not (C.LineChartSeries or C.ScatterChartSeries or C.RadarChartSeries))
@@ -3985,6 +3985,13 @@ internal static partial class ChartHelper
             default:         return false; // unsupported style — caller surfaces
         }
 
+        // ST_MarkerSize is 2..72 (ECMA-376 §20.1.10.43): a size outside it makes
+        // a package PowerPoint cannot open, so reject it before the marker is
+        // rebuilt and the series' existing marker is removed.
+        byte? specSize = parts.Length > 1 && parts[1].Trim().Length > 0
+            ? ParseHelpers.ParseMarkerSize(parts[1].Trim(), "marker")
+            : null;
+
         // Snapshot existing per-series marker children so a fan-out (e.g.
         // `marker=circle` after `markerSize=10`) does not blow away
         // previously-set size/spPr/extLst. Spec parts override snapshots.
@@ -3996,8 +4003,8 @@ internal static partial class ChartHelper
         series.RemoveAllChildren<C.Marker>();
         var marker = new C.Marker();
         marker.AppendChild(new C.Symbol { Val = style });
-        if (parts.Length > 1 && byte.TryParse(parts[1], out var size))
-            marker.AppendChild(new C.Size { Val = size });
+        if (specSize.HasValue)
+            marker.AppendChild(new C.Size { Val = specSize.Value });
         else if (existingSize != null)
             marker.AppendChild(existingSize);
         if (parts.Length > 2)
