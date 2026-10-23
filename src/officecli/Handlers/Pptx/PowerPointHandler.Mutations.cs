@@ -1715,6 +1715,24 @@ public partial class PowerPointHandler
             }
         }
 
+        // The animation/build tree is the other consumer of the same map.
+        // CONSISTENCY(clone-timing-spid): <p:timing> binds to shapes purely by
+        // the numeric shape id in an @spid attribute — <p:spTgt> in the time-node
+        // tree, and <p:bldP>/<p:bldG>/<p:bldDgm>/<p:bldO> in <p:bldLst>. Steps
+        // 3b above renumbers the clone's <p:cNvPr> ids, so a copied @spid still
+        // names the SOURCE slide's shape: the animation detaches from its shape
+        // and `validate` reports the build entry as referencing a non-existent
+        // element. Remapping the whole @spid set through shapeIdRemap keeps the
+        // copy consistent with its own renumbered shapes.
+        //
+        // Deliberately attribute-driven rather than enumerating those element
+        // types: every @spid in <p:timing> is a slide-local shape id, and a
+        // type list would silently miss whichever build kind a later schema
+        // adds. Same shape as RemapRelationshipIds below, and scoped to
+        // <p:timing> so unrelated @spid attributes elsewhere on the slide
+        // (VML/OLE ids) are left untouched.
+        RemapTimingShapeIds(newSlidePart.Slide, shapeIdRemap);
+
         // 4. Copy all referenced parts (images, charts, embedded objects, media)
         CopySlideParts(srcSlidePart, newSlidePart);
 
@@ -2006,6 +2024,34 @@ public partial class PowerPointHandler
             }
             catch { /* not all parts have a typed RootElement */ }
         }
+    }
+
+    /// <summary>
+    /// Rewrite every <c>@spid</c> inside the slide's animation tree through
+    /// <paramref name="shapeIdRemap"/>. Ids absent from the map (targets inherited
+    /// from a layout or master, which legitimately do not name a slide-local
+    /// shape) are left as they are.
+    /// </summary>
+    private static void RemapTimingShapeIds(OpenXmlElement? slide, Dictionary<uint, uint> shapeIdRemap)
+    {
+        if (slide == null || shapeIdRemap.Count == 0) return;
+
+        var timing = slide.GetFirstChild<Timing>();
+        if (timing == null) return;
+
+        foreach (var el in timing.Descendants().Prepend(timing).ToList())
+        {
+            foreach (var attr in el.GetAttributes().ToList())
+            {
+                // @spid is unprefixed on every element that carries it.
+                if (attr.LocalName != "spid" || !string.IsNullOrEmpty(attr.NamespaceUri)) continue;
+                if (!uint.TryParse(attr.Value, out var oldId)) continue;
+                if (!shapeIdRemap.TryGetValue(oldId, out var newId)) continue;
+                el.SetAttribute(new OpenXmlAttribute(attr.Prefix, attr.LocalName, attr.NamespaceUri, newId.ToString()));
+            }
+        }
+        // No Save() here: Timing is a child element, not a part root. CloneSlide
+        // saves the whole slide at the end of step 5.
     }
 
     /// <summary>
