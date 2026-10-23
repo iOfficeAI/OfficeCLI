@@ -49,9 +49,20 @@ public partial class PowerPointHandler
                 var hasFrom = properties.ContainsKey("from") || properties.ContainsKey("startshape") || properties.ContainsKey("startShape");
                 var hasTo = properties.ContainsKey("to") || properties.ContainsKey("endshape") || properties.ContainsKey("endShape");
 
-                long cxnX = (properties.TryGetValue("x", out var cx1) || properties.TryGetValue("left", out cx1)) ? ParseEmu(cx1) : 2000000;
-                long cxnY = (properties.TryGetValue("y", out var cy1) || properties.TryGetValue("top", out cy1)) ? ParseEmu(cy1) : 3000000;
-                long cxnCx = properties.TryGetValue("width", out var cw) ? ParseEmu(cw) : 4000000;
+                // Default frame is authored for a 13.33in x 7.5in slide; scale it
+                // to the deck's slide size so the connector is not placed below the
+                // bottom edge of a short deck such as the 7.5in x 1in banner preset
+                // (#460 class — same rule as the shape, chart, equation, table and
+                // placeholder defaults). A deck at the default size keeps the
+                // previous frame exactly, and an explicit x/y/width/height is user
+                // input and is never scaled.
+                var (cxnSlideW, cxnSlideH) = GetSlideSize();
+                double cxnFx = cxnSlideW / (double)SlideSizeDefaults.Widescreen16x9Cx;
+                double cxnFy = cxnSlideH / (double)SlideSizeDefaults.Widescreen16x9Cy;
+                static long ScaleEmu(long emu, double f) => f == 1.0 ? emu : (long)Math.Round(emu * f / 12700.0) * 12700L;
+                long cxnX = (properties.TryGetValue("x", out var cx1) || properties.TryGetValue("left", out cx1)) ? ParseEmu(cx1) : ScaleEmu(2000000, cxnFx);
+                long cxnY = (properties.TryGetValue("y", out var cy1) || properties.TryGetValue("top", out cy1)) ? ParseEmu(cy1) : ScaleEmu(3000000, cxnFy);
+                long cxnCx = properties.TryGetValue("width", out var cw) ? ParseEmu(cw) : ScaleEmu(4000000, cxnFx);
                 long cxnCy = properties.TryGetValue("height", out var ch) ? ParseEmu(ch) : 0;
                 var cxnFlipH = false;
                 var cxnFlipV = false;
