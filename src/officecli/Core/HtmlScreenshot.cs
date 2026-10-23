@@ -453,7 +453,128 @@ internal static class HtmlScreenshot
                 if (!string.IsNullOrEmpty(r))
                     foreach (var s in suffixes) abs.Add(Path.Combine(r, s));
         }
-        return abs.FirstOrDefault(File.Exists);
+        return abs.FirstOrDefault(File.Exists) ?? FindPlaywrightChrome();
+    }
+
+    /// <summary>
+    /// The Chromium that <c>playwright install chromium</c> downloaded, out of
+    /// Playwright's own browser store. It is on no PATH and in none of the
+    /// locations above, which made the advice this lookup's failure message
+    /// prints — "pip install playwright &amp;&amp; playwright install chromium" —
+    /// something the tool itself could not act on (issue #469).
+    ///
+    /// Consulted last, so a browser the user installed for their own use keeps
+    /// winning over one a Python package pulled in as a side effect.
+    /// </summary>
+    private static string? FindPlaywrightChrome()
+    {
+        var store = PlaywrightBrowsersStore();
+        if (store == null || !Directory.Exists(store)) return null;
+
+        // A store holds two browser directories per install — `chromium-<rev>`
+        // (the full browser) and `chromium_headless_shell-<rev>` (the
+        // headless-only build Playwright fetches beside it) — and either can be
+        // installed on its own, so both are scanned. Newest revision first, so an
+        // older install left behind by a previous Playwright cannot shadow the
+        // current one; at one revision the full browser comes first, because the
+        // flags the caller passes (--headless=new, --window-size, --screenshot)
+        // are that build's.
+        var dirs = Directory.EnumerateDirectories(store)
+            .Select(dir => Path.GetFileName(dir))
+            .Select(name => (name, rev: PlaywrightRevision(name)))
+            .Where(x => x.rev >= 0)
+            .OrderByDescending(x => x.rev)
+            .ThenBy(x => x.name.StartsWith(PlaywrightHeadlessShellPrefix, StringComparison.Ordinal))
+            .ThenByDescending(x => x.name, StringComparer.Ordinal);
+
+        foreach (var (name, _) in dirs)
+        {
+            var dir = Path.Combine(store, name);
+            foreach (var rel in PlaywrightBinaryPaths())
+            {
+                var candidate = Path.Combine(dir, rel);
+                if (File.Exists(candidate)) return candidate;
+            }
+        }
+        return null;
+    }
+
+    private const string PlaywrightChromiumPrefix = "chromium-";
+    private const string PlaywrightHeadlessShellPrefix = "chromium_headless_shell-";
+
+    /// <summary>
+    /// Revision in a store directory's name — <c>chromium-1243</c>,
+    /// <c>chromium_headless_shell-1243</c> — or -1 when the name is neither,
+    /// which is how unrelated entries in the store are skipped.
+    /// </summary>
+    private static int PlaywrightRevision(string dirName)
+    {
+        string? tail = null;
+        if (dirName.StartsWith(PlaywrightChromiumPrefix, StringComparison.Ordinal))
+            tail = dirName[PlaywrightChromiumPrefix.Length..];
+        else if (dirName.StartsWith(PlaywrightHeadlessShellPrefix, StringComparison.Ordinal))
+            tail = dirName[PlaywrightHeadlessShellPrefix.Length..];
+        return tail != null && int.TryParse(tail, out var rev) ? rev : -1;
+    }
+
+    /// <summary>
+    /// Where a browser sits inside one store directory, per platform, newest
+    /// layout first — Playwright has moved it (Linux gained the
+    /// <c>chrome-linux64</c> directory, macOS an explicit <c>-arm64</c> one) and
+    /// an existing install keeps whichever shape it was fetched in.
+    /// </summary>
+    private static string[] PlaywrightBinaryPaths()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            return
+            [
+                Path.Combine("chrome-mac-arm64", "Chromium.app", "Contents", "MacOS", "Chromium"),
+                Path.Combine("chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium"),
+                Path.Combine("chrome-mac-arm64", "headless_shell"),
+                Path.Combine("chrome-mac", "headless_shell"),
+            ];
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return
+            [
+                Path.Combine("chrome-win", "chrome.exe"),
+                Path.Combine("chrome-win", "headless_shell.exe"),
+            ];
+        return
+        [
+            Path.Combine("chrome-linux64", "chrome"),
+            Path.Combine("chrome-linux64", "headless_shell"),
+            Path.Combine("chrome-linux", "chrome"),
+            Path.Combine("chrome-linux", "headless_shell"),
+        ];
+    }
+
+    /// <summary>
+    /// Playwright's browser store, resolved the way Playwright resolves it:
+    /// <c>PLAYWRIGHT_BROWSERS_PATH</c> when set — the documented way to relocate
+    /// it, and the way the verification for this lookup points it at a fixture —
+    /// otherwise the platform's cache directory. The value <c>0</c> means
+    /// "inside the playwright package", a location that cannot be enumerated
+    /// from here, so it falls through to the default store rather than
+    /// resolving to a path named "0".
+    /// </summary>
+    private static string? PlaywrightBrowsersStore()
+    {
+        var over = Environment.GetEnvironmentVariable("PLAYWRIGHT_BROWSERS_PATH");
+        if (!string.IsNullOrEmpty(over) && over != "0") return over;
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            var local = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+            return string.IsNullOrEmpty(local) ? null : Path.Combine(local, "ms-playwright");
+        }
+
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            return Path.Combine(home, "Library", "Caches", "ms-playwright");
+
+        // Linux (and the other Unixes) follow the XDG cache convention.
+        var xdg = Environment.GetEnvironmentVariable("XDG_CACHE_HOME");
+        return Path.Combine(string.IsNullOrEmpty(xdg) ? Path.Combine(home, ".cache") : xdg, "ms-playwright");
     }
 
     // ----- Firefox -----------------------------------------------------------------------
