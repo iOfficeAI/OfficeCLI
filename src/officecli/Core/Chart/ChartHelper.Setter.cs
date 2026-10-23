@@ -307,7 +307,34 @@ internal static partial class ChartHelper
                 case "title.lang" or "titlelang":
                 {
                     var ctitle = chart.GetFirstChild<C.Title>();
-                    if (ctitle == null) { unsupported.Add(key); break; }
+                    if (ctitle == null)
+                    {
+                        // CONSISTENCY(chart-title-styling): mirror the axis Set
+                        // path (R52 bt-2), which auto-creates an empty title so
+                        // title.size/bold/font/color apply instead of being
+                        // reported as unknown keys. Same request, one contract
+                        // at both levels.
+                        //
+                        // c:title is CT_Chart's first child, so it lands where
+                        // the `title=` case puts it. The text stays empty:
+                        // styling says how a title looks, `title=` says what it
+                        // says. autoTitleDeleted is left alone for the same
+                        // reason — a title the caller suppressed stays
+                        // suppressed instead of reappearing blank.
+                        ctitle = new C.Title(
+                            new C.ChartText(
+                                new C.RichText(
+                                    new Drawing.BodyProperties(),
+                                    new Drawing.ListStyle(),
+                                    new Drawing.Paragraph(
+                                        new Drawing.ParagraphProperties(
+                                            new Drawing.DefaultRunProperties()),
+                                        new Drawing.Run(
+                                            new Drawing.RunProperties { Language = "en-US" },
+                                            new Drawing.Text(string.Empty))))),
+                            new C.Overlay { Val = false });
+                        chart.PrependChild(ctitle);
+                    }
                     foreach (var run in ctitle.Descendants<Drawing.Run>())
                     {
                         var rPr = run.RunProperties ?? (run.RunProperties = new Drawing.RunProperties());
