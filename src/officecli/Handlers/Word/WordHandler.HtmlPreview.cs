@@ -117,8 +117,10 @@ public partial class WordHandler
     /// </summary>
     /// <param name="gridCols">When &gt; 0, render every page tiled into a
     /// thumbnail contact-sheet grid this many columns wide (screenshot mode).
-    /// Mirrors pptx's HTML grid; <paramref name="pageFilter"/> is ignored
-    /// (the grid always shows the whole document).</param>
+    /// Mirrors pptx's HTML grid, including its handling of
+    /// <paramref name="pageFilter"/>: with a filter the sheet tiles those pages
+    /// (which is how a screenshot page RANGE is laid out), without one it tiles
+    /// the whole document.</param>
     /// <param name="gridCellWpx">Exact thumbnail cell width in CSS px. The CLI
     /// computes this from the viewport width and column count so the C# height
     /// math and the in-browser layout agree exactly.</param>
@@ -1081,7 +1083,11 @@ public partial class WordHandler
       document.querySelectorAll('a[id^=""_Toc""]').forEach(function(a){
         for(var i=0;i<pgs.length;i++) if(pgs[i].contains(a)){pmap.push(a.id+'='+(i+1));break;}
       });
-      if(window._gridCols>0){layoutGrid(window._gridCols);}
+      // The filter is applied BEFORE tiling: a caller that asked for pages 1-3 of a
+      // longer document gets those three tiled (one column is how a screenshot range
+      // is laid out — see CommandBuilder.View.cs), not the whole document. Mirrors
+      // pptx, whose grid has always honored StartPage/EndPage.
+      if(window._gridCols>0){applyPageFilter();layoutGrid(window._gridCols);}
       else{applyPageFilter();flushScreenshotPage();}
       document.title='PAGES:'+pgs.length+(pmap.length?'|MAP:'+pmap.join(','):'');
     }
