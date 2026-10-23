@@ -98,10 +98,19 @@ public partial class PowerPointHandler
                 if (cols > MaxTableDim)
                     throw new ArgumentException($"cols={cols} exceeds practical maximum ({MaxTableDim}); reduce cols or split into multiple tables.");
 
-                // Position & size
-                long tblX = properties.TryGetValue("x", out var txStr) ? ParseEmu(txStr) : 457200; // ~1.27cm
-                long tblY = properties.TryGetValue("y", out var tyStr) ? ParseEmu(tyStr) : 1600200; // ~4.44cm
-                long tblCx = properties.TryGetValue("width", out var twStr) || properties.TryGetValue("w", out twStr) ? ParseEmu(twStr) : 8229600; // ~22.86cm
+                // Position & size. The defaults below are authored for a
+                // 13.33in x 7.5in slide; scale them by the deck's slide size so a
+                // table added at the default frame stays inside a 4:3, 10in, A4
+                // or B5 deck (#460 class — the same rule the chart, equation and
+                // placeholder frames follow). A deck at the default size keeps
+                // every one of these numbers exactly as it was.
+                var (tblSlideW, tblSlideH) = GetSlideSize();
+                double tFx = tblSlideW / (double)SlideSizeDefaults.Widescreen16x9Cx;
+                double tFy = tblSlideH / (double)SlideSizeDefaults.Widescreen16x9Cy;
+                static long ScaleEmu(long emu, double f) => f == 1.0 ? emu : (long)Math.Round(emu * f / 12700.0) * 12700L;
+                long tblX = properties.TryGetValue("x", out var txStr) ? ParseEmu(txStr) : ScaleEmu(457200, tFx); // ~1.27cm
+                long tblY = properties.TryGetValue("y", out var tyStr) ? ParseEmu(tyStr) : ScaleEmu(1600200, tFy); // ~4.44cm
+                long tblCx = properties.TryGetValue("width", out var twStr) || properties.TryGetValue("w", out twStr) ? ParseEmu(twStr) : ScaleEmu(8229600, tFx); // ~22.86cm
                 long rowHeight;
                 long tblCy;
                 if (properties.TryGetValue("rowHeight", out var rhStr) || properties.TryGetValue("rowheight", out rhStr))
@@ -111,7 +120,10 @@ public partial class PowerPointHandler
                 }
                 else
                 {
-                    tblCy = properties.TryGetValue("height", out var thStr) || properties.TryGetValue("h", out thStr) ? ParseEmu(thStr) : (long)(rows * 370840); // ~1.03cm per row
+                    // The default height is rows x a default row height, so it is
+                    // the whole frame that scales: scale the total, then divide,
+                    // and rowHeight stays an exact share of what is written.
+                    tblCy = properties.TryGetValue("height", out var thStr) || properties.TryGetValue("h", out thStr) ? ParseEmu(thStr) : ScaleEmu(rows * 370840L, tFy); // ~1.03cm per row
                     rowHeight = tblCy / rows;
                 }
                 long colWidth = tblCx / cols;
