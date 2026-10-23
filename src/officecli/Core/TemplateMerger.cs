@@ -438,13 +438,20 @@ internal static class TemplateMerger
 
         foreach (var slidePart in presentationPart.SlideParts)
         {
-            // Process shapes on slide
+            // Every <a:p> in the part, not just the ones sitting directly in a
+            // top-level <p:sp>. A table holds its text at
+            // p:graphicFrame/a:graphic/a:graphicData/a:tbl/a:tr/a:tc/a:txBody/a:p
+            // and a grouped shape at p:grpSp/.../p:sp/a:txBody/a:p, neither of
+            // which is an Element<Shape> of the shape tree, so walking only the
+            // direct Shape children left both untouched. The docx side already
+            // walks Descendants (ReplacePlaceholdersInDocx) and reaching a table
+            // cell there works, so this matches that traversal.
             var shapeTree = slidePart.Slide?.CommonSlideData?.ShapeTree;
             if (shapeTree != null)
             {
-                foreach (var shape in shapeTree.Elements<Shape>())
+                foreach (var para in shapeTree.Descendants<Drawing.Paragraph>())
                 {
-                    totalReplacements += ReplaceInTextBody(shape.TextBody, data, usedKeys);
+                    totalReplacements += ReplaceInParagraph(para, data, usedKeys);
                 }
             }
 
@@ -455,9 +462,9 @@ internal static class TemplateMerger
                 var notesShapeTree = notesPart.NotesSlide?.CommonSlideData?.ShapeTree;
                 if (notesShapeTree != null)
                 {
-                    foreach (var shape in notesShapeTree.Elements<Shape>())
+                    foreach (var para in notesShapeTree.Descendants<Drawing.Paragraph>())
                     {
-                        totalReplacements += ReplaceInTextBody(shape.TextBody, data, usedKeys);
+                        totalReplacements += ReplaceInParagraph(para, data, usedKeys);
                     }
                 }
                 notesPart.NotesSlide?.Save();
@@ -470,19 +477,6 @@ internal static class TemplateMerger
         var unresolved = ScanUnresolvedPptx(doc);
 
         return new MergeResult(totalReplacements, unresolved, usedKeys.ToList());
-    }
-
-    private static int ReplaceInTextBody(OpenXmlElement? textBody, Dictionary<string, string> data, HashSet<string> usedKeys)
-    {
-        if (textBody == null) return 0;
-        int replacements = 0;
-
-        foreach (var para in textBody.Elements<Drawing.Paragraph>())
-        {
-            replacements += ReplaceInParagraph(para, data, usedKeys);
-        }
-
-        return replacements;
     }
 
     /// <summary>
@@ -525,15 +519,15 @@ internal static class TemplateMerger
         var presentationPart = doc.PresentationPart;
         if (presentationPart == null) return unresolved.ToList();
 
+        // Same traversal as MergePptx, so what gets replaced and what gets
+        // reported unresolved can never diverge: a placeholder in a table cell
+        // or a grouped shape is scanned here exactly as it is replaced there.
         foreach (var slidePart in presentationPart.SlideParts)
         {
             var shapeTree = slidePart.Slide?.CommonSlideData?.ShapeTree;
             if (shapeTree != null)
             {
-                foreach (var shape in shapeTree.Elements<Shape>())
-                {
-                    ScanTextBody(shape.TextBody, unresolved);
-                }
+                ScanParagraphs(shapeTree, unresolved);
             }
 
             var notesPart = slidePart.NotesSlidePart;
@@ -542,10 +536,7 @@ internal static class TemplateMerger
                 var notesShapeTree = notesPart.NotesSlide?.CommonSlideData?.ShapeTree;
                 if (notesShapeTree != null)
                 {
-                    foreach (var shape in notesShapeTree.Elements<Shape>())
-                    {
-                        ScanTextBody(shape.TextBody, unresolved);
-                    }
+                    ScanParagraphs(notesShapeTree, unresolved);
                 }
             }
         }
@@ -553,11 +544,9 @@ internal static class TemplateMerger
         return unresolved.OrderBy(x => x).ToList();
     }
 
-    private static void ScanTextBody(OpenXmlElement? textBody, HashSet<string> unresolved)
+    private static void ScanParagraphs(OpenXmlElement root, HashSet<string> unresolved)
     {
-        if (textBody == null) return;
-
-        foreach (var para in textBody.Elements<Drawing.Paragraph>())
+        foreach (var para in root.Descendants<Drawing.Paragraph>())
         {
             var text = string.Concat(para.Elements<Drawing.Run>().Select(r => r.Text?.Text ?? ""));
             foreach (Match match in PlaceholderPattern.Matches(text))
