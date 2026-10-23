@@ -555,20 +555,17 @@ public partial class WordHandler
                     if (isRegex && matchObjs != null && i < matchObjs.Count)
                         effectiveReplace = matchObjs[i].Result(replace);
 
-                    // Cross-hyperlink replacement is still rejected — the wrapped
-                    // form would corrupt the URL/format-binding of the hyperlink
-                    // structure just as the unwrapped form did.
-                    {
-                        var affected = BuildRunTexts(para)
-                            .Where(rt => rt.End > matchStart && rt.Start < matchEnd)
-                            .Select(rt => rt.Run.Ancestors<Hyperlink>().FirstOrDefault())
-                            .Distinct()
-                            .ToList();
-                        if (affected.Count > 1)
-                            throw new ArgumentException(
-                                $"find/replace+revision cannot span a hyperlink boundary "
-                                + $"(match at offset {matchStart}, length {matchLen})");
-                    }
+                    // Issue #279: a match that spans a <w:hyperlink> boundary is
+                    // handled like any other cross-run match. SplitRunsAtRange
+                    // splits each covered run in place, and WrapRunAsDeleted
+                    // substitutes the w:del wrapper at run.Parent — so a run that
+                    // lives inside a hyperlink keeps the link's r:id, URL and
+                    // formatting binding instead of being flattened into a
+                    // paragraph-level run. The replacement w:ins lands beside the
+                    // last wrapper, i.e. in the container that held the match's
+                    // trailing run, exactly as it does for a single-container match.
+                    // (The non-tracked path below still refuses this shape; that
+                    // half of #279 is a separate change.)
 
                     // Split the runs so the matched span is a contiguous list of
                     // sibling runs we can wrap individually.
