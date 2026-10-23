@@ -1879,6 +1879,28 @@ public partial class PowerPointHandler
             }
         }
 
+        // Media reachable only through a data-part reference relationship —
+        // <a:videoFile|a:audioFile r:link> and the p14:media <p14:media
+        // r:embed> — is NOT in `source.Parts`: a MediaDataPart is reached
+        // through DataPartReferenceRelationships alone, and GetPartById throws
+        // on those ids (the sound-extraction reader in PowerPointHandler.cs
+        // says so in as many words). Walking Parts therefore left a duplicated
+        // slide's video pointing at the SOURCE slide's rIds — both dangle, and
+        // the copy's media is not linked into the package at all.
+        //
+        // The media bytes themselves are shared, like an ImagePart: read-only
+        // after creation, so two slides may name the same part.
+        foreach (var dataRel in source.DataPartReferenceRelationships)
+        {
+            try
+            {
+                var newRelId = AddDataPartReference(target, dataRel);
+                if (newRelId != null && newRelId != dataRel.Id && dataRel.Id != null)
+                    rIdMap[dataRel.Id] = newRelId;
+            }
+            catch { /* Best effort — a target part kind that cannot carry it */ }
+        }
+
         // Also copy external relationships (hyperlinks, media links)
         foreach (var extRel in source.ExternalRelationships)
         {
@@ -1898,6 +1920,32 @@ public partial class PowerPointHandler
         }
 
         return rIdMap;
+    }
+
+    /// <summary>
+    /// Reproduce one <see cref="DataPartReferenceRelationship"/> on
+    /// <paramref name="target"/> and return the new rId, or null when the
+    /// target part kind cannot carry that relationship.
+    ///
+    /// The SDK exposes no container-level Add for these — only the typed
+    /// <c>AddXReferenceRelationship</c> helpers on concrete part types — so this
+    /// is a dispatch rather than a loop. The relationship KIND is still read
+    /// from the source object, so a kind added by a later schema lands in the
+    /// default arm visibly instead of being written out under the wrong type.
+    /// </summary>
+    private static string? AddDataPartReference(OpenXmlPartContainer target, DataPartReferenceRelationship rel)
+    {
+        if (rel.DataPart is not MediaDataPart media) return null;
+
+        return (target, rel) switch
+        {
+            (SlidePart sp, VideoReferenceRelationship) => sp.AddVideoReferenceRelationship(media).Id,
+            (SlidePart sp, AudioReferenceRelationship) => sp.AddAudioReferenceRelationship(media).Id,
+            (SlidePart sp, MediaReferenceRelationship) => sp.AddMediaReferenceRelationship(media).Id,
+            (NotesSlidePart np, VideoReferenceRelationship) => np.AddVideoReferenceRelationship(media).Id,
+            (NotesSlidePart np, AudioReferenceRelationship) => np.AddAudioReferenceRelationship(media).Id,
+            _ => null
+        };
     }
 
     /// <summary>
