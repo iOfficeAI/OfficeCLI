@@ -226,14 +226,20 @@ public partial class ExcelHandler
                     var cellRef = cell.CellReference?.Value;
                     var memoKey = cellRef is string cref ? $"{sheetName}!{cref}" : null;
                     var report = evaluator.EvaluateForReport(formula, cellRef);
-                    if (memoKey != null && session.CycleTaintedCells.Contains(memoKey))
-                    {
-                        EnsureFullCalcOnLoad();
-                        if (hasCache) continue;
-                    }
                     // Act only when we can confidently recompute the value.
                     if (report.Status != Core.EvalReportStatus.Evaluated) continue;
                     var computed = report.Result!.ToCellValueText();
+
+                    if (memoKey != null && session.CycleTaintedCells.Contains(memoKey))
+                    {
+                        EnsureFullCalcOnLoad();
+                        if (!hasCache || !CachedComputedAgree(cell.CellValue!.Text, computed))
+                        {
+                            WriteFormulaResultToCell(cell, report.Result);
+                            sheetChanged = true;
+                        }
+                        continue;
+                    }
 
                     if (!hasCache)
                     {

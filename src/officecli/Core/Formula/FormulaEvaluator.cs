@@ -222,6 +222,10 @@ internal sealed class FormulaEvalSession
     internal readonly Dictionary<SharedStringTable, List<SharedStringItem>> SharedStringItemsByTable = new();
     internal readonly HashSet<string> CycleTaintedCells = new(StringComparer.OrdinalIgnoreCase);
     internal readonly HashSet<string> CycleTaintedRanges = new(StringComparer.OrdinalIgnoreCase);
+    internal readonly Dictionary<string, FormulaResult> CycleSeedValues = new(StringComparer.OrdinalIgnoreCase);
+    internal readonly Dictionary<string, (FormulaEvaluator Evaluator, string CellRef)> CycleCellTargets = new(StringComparer.OrdinalIgnoreCase);
+    internal readonly HashSet<string> ConvergedCycleCells = new(StringComparer.OrdinalIgnoreCase);
+    internal bool IsConverging;
     internal int CircularHits;
     internal int CrossSheetDepth;
 }
@@ -342,11 +346,18 @@ internal partial class FormulaEvaluator
     {
         try
         {
+            var circularBefore = _session.CircularHits;
             if (_depth == 0) { _visiting.Clear(); _expandingNames.Clear(); }
-            // Accept both qualified (`_xlfn.SEQUENCE`) and bare (`SEQUENCE`)
-            // forms. Stored XML uses the qualified form post-R11-2; user code
-            // and tests still pass the canonical name.
-            return EvaluateFormula(ModernFunctionQualifier.Unqualify(formula));
+            var unqualified = ModernFunctionQualifier.Unqualify(formula);
+            var r = EvaluateFormula(unqualified);
+            if (_depth == 0 && !_session.IsConverging
+                && _session.CycleTaintedCells.Count > _session.ConvergedCycleCells.Count)
+            {
+                ConvergeCircularCells();
+                if (circularBefore != _session.CircularHits)
+                    r = EvaluateFormula(unqualified);
+            }
+            return r;
         }
         catch (NameResolutionException) { return FormulaResult.Error("#NAME?"); }
         catch { return null; }
@@ -392,7 +403,17 @@ internal partial class FormulaEvaluator
         {
             _session.CellMemo[qualifiedRef] = r;
             if (circularBefore != _session.CircularHits)
+            {
                 _session.CycleTaintedCells.Add(qualifiedRef);
+                _session.CycleCellTargets[qualifiedRef] = (this, StripDollar(cellRef!).ToUpperInvariant());
+            }
+        }
+        if (_depth == 0 && !_session.IsConverging
+            && _session.CycleTaintedCells.Count > _session.ConvergedCycleCells.Count)
+        {
+            ConvergeCircularCells();
+            if (qualifiedRef != null && _session.CellMemo.TryGetValue(qualifiedRef, out var converged))
+                r = converged;
         }
         if (r == null) return new EvalReport(EvalReportStatus.NotEvaluated, null);
         if (r.IsError) return new EvalReport(EvalReportStatus.Error, r);
@@ -1304,11 +1325,14 @@ internal partial class FormulaEvaluator
         var qualifiedRef = string.IsNullOrEmpty(_sheetKey) ? cellRef : $"{_sheetKey}!{cellRef}";
         if (!_visiting.Add(qualifiedRef))
         {
-            // Circular ref: seed from the cell's persisted cached value when
-            // present (so a workbook saved by Excel feeds its converged cache
-            // into the loop), or 0 when uncached (matches Excel iterative calc).
+            // Circular ref: during iterative convergence use the previous pass's
+            // seed value; on the initial pass seed from the cell's persisted
+            // cached value when present, or 0 when uncached.
             _session.CircularHits++;
             _session.CycleTaintedCells.Add(qualifiedRef);
+            _session.CycleCellTargets[qualifiedRef] = (this, cellRef);
+            if (_session.CycleSeedValues.TryGetValue(qualifiedRef, out var seeded))
+                return seeded;
             var cycleCell = FindCell(cellRef);
             return cycleCell != null && TryReadCachedCellResult(cycleCell) is { } cachedCycle
                 ? cachedCycle
@@ -1377,7 +1401,10 @@ internal partial class FormulaEvaluator
                         {
                             _session.CellMemo[qualifiedRef] = evaluated;
                             if (circularBefore != _session.CircularHits)
+                            {
                                 _session.CycleTaintedCells.Add(qualifiedRef);
+                                _session.CycleCellTargets[qualifiedRef] = (this, cellRef);
+                            }
                         }
                         return evaluated;
                     }
@@ -1389,6 +1416,79 @@ internal partial class FormulaEvaluator
             return TryReadCachedCellResult(cell) ?? FormulaResult.Blank();
         }
         finally { _visiting.Remove(qualifiedRef); }
+    }
+
+    private void ConvergeCircularCells()
+    {
+        if (_session.IsConverging) return;
+        var pending = _session.CycleTaintedCells
+            .Where(k => !_session.ConvergedCycleCells.Contains(k) && _session.CycleCellTargets.ContainsKey(k))
+            .ToList();
+        if (pending.Count == 0) return;
+
+        var calcPr = _workbookPart?.Workbook?.CalculationProperties;
+        int maxIterations = (int?)calcPr?.IterateCount?.Value is int ic && ic > 0 ? Math.Min(ic, 1000) : 100;
+        double maxChange = calcPr?.IterateDelta?.Value is double id && id > 0 ? id : 0.001;
+
+        _session.IsConverging = true;
+        try
+        {
+            foreach (var k in pending)
+                if (_session.CellMemo.TryGetValue(k, out var initial))
+                    _session.CycleSeedValues[k] = initial;
+
+            for (int iter = 0; iter < maxIterations; iter++)
+            {
+                foreach (var k in pending)
+                    _session.CellMemo.Remove(k);
+                foreach (var rk in _session.CycleTaintedRanges)
+                    _session.RangeMemo.Remove(rk);
+                _session.CycleTaintedRanges.Clear();
+
+                double maxDelta = 0;
+                bool nonFinite = false;
+                foreach (var k in pending)
+                {
+                    var (eval, cRef) = _session.CycleCellTargets[k];
+                    _visiting.Clear();
+                    _expandingNames.Clear();
+                    var next = eval.ResolveCellResult(cRef);
+                    if (next == null) continue;
+                    _session.CellMemo[k] = next;
+                    if (_session.CycleSeedValues.TryGetValue(k, out var prev) && (next.IsNumeric || prev.IsNumeric))
+                    {
+                        double nVal = next.AsNumber(), pVal = prev.AsNumber();
+                        if (double.IsNaN(nVal) || double.IsInfinity(nVal))
+                        {
+                            nonFinite = true;
+                            break;
+                        }
+                        maxDelta = Math.Max(maxDelta, Math.Abs(nVal - pVal));
+                    }
+                }
+                if (nonFinite)
+                {
+                    foreach (var k in pending)
+                        if (_session.CycleSeedValues.TryGetValue(k, out var prev))
+                            _session.CellMemo[k] = prev;
+                    break;
+                }
+                foreach (var k in pending)
+                    if (_session.CellMemo.TryGetValue(k, out var cur))
+                        _session.CycleSeedValues[k] = cur;
+                if (maxDelta <= maxChange)
+                    break;
+            }
+
+            foreach (var k in pending)
+                _session.ConvergedCycleCells.Add(k);
+        }
+        finally
+        {
+            _session.IsConverging = false;
+            _visiting.Clear();
+            _expandingNames.Clear();
+        }
     }
 
     private FormulaResult? TryReadCachedCellResult(Cell cell)
