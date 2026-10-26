@@ -8,6 +8,7 @@ using System.Security;
 using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Wordprocessing;
+using OfficeCli.Core;
 using OfficeCli.Core.Diagram;
 
 namespace OfficeCli.Handlers;
@@ -423,7 +424,7 @@ public partial class WordHandler
         pgSz.Height = W(pageHCm);
 
         var pgMar = sect.Elements<PageMargin>().FirstOrDefault();
-        if (pgMar == null) { pgMar = new PageMargin(); sect.InsertAfter(pgMar, pgSz); }
+        if (pgMar == null) { pgMar = WordPageDefaults.CreatePageMargin(); sect.InsertAfter(pgMar, pgSz); }
         pgMar.Top = (int)W(marginCm);
         pgMar.Bottom = (int)W(marginCm);
         pgMar.Left = (uint)W(marginCm);

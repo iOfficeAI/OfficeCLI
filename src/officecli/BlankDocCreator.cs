@@ -148,7 +148,7 @@ public static class BlankDocCreator
         // CT_SectPr schema order: pgSz → pgMar → … → bidi → docGrid.
         var sectPr = new SectionProperties(
             new PageSize { Width = WordPageDefaults.A4WidthTwips, Height = WordPageDefaults.A4HeightTwips },
-            new PageMargin { Top = 1440, Right = 1800U, Bottom = 1440, Left = 1800U }
+            WordPageDefaults.CreatePageMargin()
         );
         if (isRtl)
             sectPr.AppendChild(new BiDi());
