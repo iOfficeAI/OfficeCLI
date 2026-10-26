@@ -1164,7 +1164,28 @@ internal static class RawXmlHelper
                     XmlResolver = null,
                     IgnoreWhitespace = false,
                 });
-                while (r.Read()) { /* drain */ }
+                var wordPart = package is WordprocessingDocument && part is MainDocumentPart or GlossaryDocumentPart;
+                var parents = new Stack<(string Name, string Namespace)>();
+                while (r.Read())
+                {
+                    if (!wordPart) continue;
+                    if (r.NodeType == XmlNodeType.EndElement) { parents.Pop(); continue; }
+                    if (r.NodeType != XmlNodeType.Element) continue;
+                    const string wordNamespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+                    var pageMargin = r.LocalName == "pgMar" && r.NamespaceURI == wordNamespace &&
+                        parents.TryPeek(out var parent) && parent == ("sectPr", wordNamespace);
+                    if (!r.IsEmptyElement) parents.Push((r.LocalName, r.NamespaceURI));
+                    if (!pageMargin) continue;
+                    // ECMA-376 Part 4 CT_PageMar requires all seven attributes;
+                    // the SDK's PageMargin metadata does not mark them required.
+                    foreach (var attribute in new[] { "top", "right", "bottom", "left", "header", "footer", "gutter" })
+                    {
+                        if (r.GetAttribute(attribute, r.NamespaceURI) != null) continue;
+                        errors.Add(new ValidationError("Sch_MissRequiredAttribute",
+                            $"The required attribute 'w:{attribute}' is missing from w:pgMar.",
+                            "//w:pgMar", part.Uri.ToString()));
+                    }
+                }
             }
             catch (Exception ex)
             {
