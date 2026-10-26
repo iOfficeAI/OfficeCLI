@@ -638,7 +638,7 @@ public partial class ExcelHandler
                         var rawCached = cell.CellValue?.Text;
                         var hasCache = !string.IsNullOrEmpty(rawCached);
                         var missingSheet = FormulaReferencesMissingSheet(fText);
-                        var report = evaluator.EvaluateForReport(fText);
+                        var report = evaluator.EvaluateForReport(fText, cellRef);
                         string? computed = null;
                         if (!missingSheet)
                         {

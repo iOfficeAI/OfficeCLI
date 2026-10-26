@@ -220,6 +220,8 @@ internal sealed class FormulaEvalSession
     // the list is stable for the session's lifetime — the argument
     // RowExtentBySheet above already makes.
     internal readonly Dictionary<SharedStringTable, List<SharedStringItem>> SharedStringItemsByTable = new();
+    internal readonly HashSet<string> CycleTaintedCells = new(StringComparer.OrdinalIgnoreCase);
+    internal readonly HashSet<string> CycleTaintedRanges = new(StringComparer.OrdinalIgnoreCase);
     internal int CircularHits;
     internal int CrossSheetDepth;
 }
@@ -287,7 +289,26 @@ internal partial class FormulaEvaluator
     }
 
     public FormulaEvaluator(SheetData sheetData, WorkbookPart? workbookPart = null)
-        : this(sheetData, workbookPart, new FormulaEvalSession(), 0, "") { }
+        : this(sheetData, workbookPart, new FormulaEvalSession(), ResolveSheetName(sheetData, workbookPart)) { }
+
+    private static string ResolveSheetName(SheetData sheetData, WorkbookPart? workbookPart)
+    {
+        if (workbookPart?.Workbook == null) return "";
+        try
+        {
+            var targetWs = sheetData.Parent as Worksheet;
+            foreach (var sheet in workbookPart.Workbook.Descendants<Sheet>())
+            {
+                if (sheet.Id?.Value is not { } relId || sheet.Name?.Value is not { } name) continue;
+                var wsPart = workbookPart.GetPartById(relId) as WorksheetPart;
+                if ((targetWs != null && ReferenceEquals(wsPart?.Worksheet, targetWs))
+                    || ReferenceEquals(wsPart?.Worksheet?.GetFirstChild<SheetData>(), sheetData))
+                    return name;
+            }
+        }
+        catch { }
+        return "";
+    }
 
     /// <summary>
     /// Root evaluator bound to a caller-owned session, so several root evaluators
@@ -340,7 +361,39 @@ internal partial class FormulaEvaluator
     internal EvalReport EvaluateForReport(string formula, string? cellRef = null)
     {
         SetCellContext(cellRef);
-        var r = TryEvaluateFull(formula);
+        string? qualifiedRef = null;
+        if (!string.IsNullOrEmpty(cellRef))
+        {
+            var cleanRef = StripDollar(cellRef).ToUpperInvariant();
+            qualifiedRef = string.IsNullOrEmpty(_sheetKey) ? cleanRef : $"{_sheetKey}!{cleanRef}";
+            if (_bindings.Count == 0 && _session.CellMemo.TryGetValue(qualifiedRef, out var memoized))
+            {
+                if (_session.CycleTaintedCells.Contains(qualifiedRef))
+                    _session.CircularHits++;
+                if (memoized.IsError) return new EvalReport(EvalReportStatus.Error, memoized);
+                return new EvalReport(EvalReportStatus.Evaluated, memoized);
+            }
+        }
+        var circularBefore = _session.CircularHits;
+        if (_depth == 0) { _visiting.Clear(); _expandingNames.Clear(); }
+        if (qualifiedRef != null) _visiting.Add(qualifiedRef);
+        FormulaResult? r;
+        try
+        {
+            r = EvaluateFormula(ModernFunctionQualifier.Unqualify(formula));
+        }
+        catch (NameResolutionException) { r = FormulaResult.Error("#NAME?"); }
+        catch { r = null; }
+        finally
+        {
+            if (qualifiedRef != null) _visiting.Remove(qualifiedRef);
+        }
+        if (r != null && qualifiedRef != null && _bindings.Count == 0 && !r.IsLambda)
+        {
+            _session.CellMemo[qualifiedRef] = r;
+            if (circularBefore != _session.CircularHits)
+                _session.CycleTaintedCells.Add(qualifiedRef);
+        }
         if (r == null) return new EvalReport(EvalReportStatus.NotEvaluated, null);
         if (r.IsError) return new EvalReport(EvalReportStatus.Error, r);
         return new EvalReport(EvalReportStatus.Evaluated, r);
@@ -1251,11 +1304,15 @@ internal partial class FormulaEvaluator
         var qualifiedRef = string.IsNullOrEmpty(_sheetKey) ? cellRef : $"{_sheetKey}!{cellRef}";
         if (!_visiting.Add(qualifiedRef))
         {
-            // Circular ref: use 0 as initial value (matches Excel iterative calc).
-            // Count the hit so in-flight evaluations know their result is
-            // entry-point-dependent and must not be memoized.
+            // Circular ref: seed from the cell's persisted cached value when
+            // present (so a workbook saved by Excel feeds its converged cache
+            // into the loop), or 0 when uncached (matches Excel iterative calc).
             _session.CircularHits++;
-            return FormulaResult.Number(0);
+            _session.CycleTaintedCells.Add(qualifiedRef);
+            var cycleCell = FindCell(cellRef);
+            return cycleCell != null && TryReadCachedCellResult(cycleCell) is { } cachedCycle
+                ? cachedCycle
+                : FormulaResult.Number(0);
         }
         try
         {
@@ -1278,7 +1335,11 @@ internal partial class FormulaEvaluator
                 // sees the caller's bindings (pre-existing quirk), so a result
                 // computed under bindings must not leak into other contexts.
                 if (_bindings.Count == 0 && _session.CellMemo.TryGetValue(qualifiedRef, out var memoized))
+                {
+                    if (_session.CycleTaintedCells.Contains(qualifiedRef))
+                        _session.CircularHits++;
                     return memoized;
+                }
                 // Primary: probe the real remaining stack (adapts to formula
                 // complexity, so complex nested formulas are covered too).
                 // Secondary: a high fixed backstop. Over either, surface a
@@ -1312,9 +1373,12 @@ internal partial class FormulaEvaluator
                         // evaluation (a 0-seeded cycle result depends on where the
                         // cycle was entered). Lambdas capture evaluator state and
                         // are not safe to replay.
-                        if (_bindings.Count == 0 && !evaluated.IsLambda
-                            && circularBefore == _session.CircularHits)
+                        if (_bindings.Count == 0 && !evaluated.IsLambda)
+                        {
                             _session.CellMemo[qualifiedRef] = evaluated;
+                            if (circularBefore != _session.CircularHits)
+                                _session.CycleTaintedCells.Add(qualifiedRef);
+                        }
                         return evaluated;
                     }
                 }
@@ -1322,36 +1386,37 @@ internal partial class FormulaEvaluator
                 finally { _sameSheetDepth--; _parseDepth = savedParseDepth; }
             }
 
-            // InlineString cells store their text in <is><t>…</t></is>, NOT in
-            // <v>. Reading CellValue?.Text returns null and the inline content
-            // would silently degrade to 0 in any reference. Pull from
-            // cell.InlineString.InnerText first when DataType says inlineStr.
-            var cached = cell.DataType?.Value == CellValues.InlineString
-                ? cell.InlineString?.InnerText
-                : cell.CellValue?.Text;
-            if (!string.IsNullOrEmpty(cached))
-            {
-                if (cell.DataType?.Value == CellValues.SharedString)
-                {
-                    var sst = _workbookPart?.GetPartsOfType<SharedStringTablePart>()
-                        .FirstOrDefault()?.SharedStringTable;
-                    if (sst != null && int.TryParse(cached, out int idx))
-                        return FormulaResult.Str(SharedStringAt(sst, idx)?.InnerText ?? cached);
-                    return FormulaResult.Str(cached);
-                }
-                if (cell.DataType?.Value == CellValues.Boolean) return FormulaResult.Bool(cached == "1");
-                // BUG R4-4: error-typed cells (DataType=Error, e.g. cached "#REF!"
-                // written by `Set value=#REF! type=error`) must propagate as an
-                // Error FormulaResult so downstream formulas like =A1+1 return
-                // #REF! instead of coercing the cached string to a number.
-                if (cell.DataType?.Value == CellValues.Error) return FormulaResult.Error(cached);
-                if (cell.DataType?.Value == CellValues.String || cell.DataType?.Value == CellValues.InlineString) return FormulaResult.Str(cached);
-                return NumericText.TryParse(cached, out var v) ? FormulaResult.Number(v) : FormulaResult.Str(cached);
-            }
-
-            return FormulaResult.Blank();
+            return TryReadCachedCellResult(cell) ?? FormulaResult.Blank();
         }
         finally { _visiting.Remove(qualifiedRef); }
+    }
+
+    private FormulaResult? TryReadCachedCellResult(Cell cell)
+    {
+        // InlineString cells store their text in <is><t>…</t></is>, NOT in
+        // <v>. Reading CellValue?.Text returns null and the inline content
+        // would silently degrade to 0 in any reference. Pull from
+        // cell.InlineString.InnerText first when DataType says inlineStr.
+        var cached = cell.DataType?.Value == CellValues.InlineString
+            ? cell.InlineString?.InnerText
+            : cell.CellValue?.Text;
+        if (string.IsNullOrEmpty(cached)) return null;
+        if (cell.DataType?.Value == CellValues.SharedString)
+        {
+            var sst = _workbookPart?.GetPartsOfType<SharedStringTablePart>()
+                .FirstOrDefault()?.SharedStringTable;
+            if (sst != null && int.TryParse(cached, out int idx))
+                return FormulaResult.Str(SharedStringAt(sst, idx)?.InnerText ?? cached);
+            return FormulaResult.Str(cached);
+        }
+        if (cell.DataType?.Value == CellValues.Boolean) return FormulaResult.Bool(cached == "1");
+        // BUG R4-4: error-typed cells (DataType=Error, e.g. cached "#REF!"
+        // written by `Set value=#REF! type=error`) must propagate as an
+        // Error FormulaResult so downstream formulas like =A1+1 return
+        // #REF! instead of coercing the cached string to a number.
+        if (cell.DataType?.Value == CellValues.Error) return FormulaResult.Error(cached);
+        if (cell.DataType?.Value == CellValues.String || cell.DataType?.Value == CellValues.InlineString) return FormulaResult.Str(cached);
+        return NumericText.TryParse(cached, out var v) ? FormulaResult.Number(v) : FormulaResult.Str(cached);
     }
 
     /// <summary>
@@ -1569,7 +1634,11 @@ internal partial class FormulaEvaluator
             ? $"{sheetPrefix ?? _sheetKey}|{cMin},{r1},{cols},{rows}"
             : null;
         if (rangeMemoKey != null && _session.RangeMemo.TryGetValue(rangeMemoKey, out var memoRange))
+        {
+            if (_session.CycleTaintedRanges.Contains(rangeMemoKey))
+                _session.CircularHits++;
             return memoRange;
+        }
         var circularBefore = _session.CircularHits;
         var cells = new FormulaResult?[rows, cols];
         for (int r = 0; r < rows; r++)
@@ -1585,8 +1654,12 @@ internal partial class FormulaEvaluator
         // tokenizer routes those through Expand2DRange, bypassing ResolveRef
         // where Round 2 introduced BaseRow/BaseCol propagation.
         var range = new RangeData(cells) { BaseRow = r1, BaseCol = cMin, BaseSheet = sheetPrefix };
-        if (rangeMemoKey != null && circularBefore == _session.CircularHits)
+        if (rangeMemoKey != null)
+        {
             _session.RangeMemo[rangeMemoKey] = range;
+            if (circularBefore != _session.CircularHits)
+                _session.CycleTaintedRanges.Add(rangeMemoKey);
+        }
         return range;
     }
 
