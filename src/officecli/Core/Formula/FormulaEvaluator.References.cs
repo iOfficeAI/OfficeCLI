@@ -113,7 +113,11 @@ internal partial class FormulaEvaluator
             ? $"{r.Sheet ?? _sheetKey}|{r.Col},{r.Row},{r.Width},{r.Height}"
             : null;
         if (rangeMemoKey != null && _session.RangeMemo.TryGetValue(rangeMemoKey, out var memoRange))
+        {
+            if (_session.CycleTaintedRanges.Contains(rangeMemoKey))
+                _session.CircularHits++;
             return FormulaResult.Area(memoRange);
+        }
         var circularBefore = _session.CircularHits;
         var cells = new FormulaResult?[r.Height, r.Width];
         for (int dr = 0; dr < r.Height; dr++)
@@ -138,10 +142,12 @@ internal partial class FormulaEvaluator
         // ADDRESS can answer correctly. Single-cell consumers (AsNumber, AsString)
         // transparently peek the lone cell via FirstCell() in FormulaResult.
         var range = new RangeData(cells) { BaseRow = r.Row, BaseCol = r.Col, BaseSheet = r.Sheet };
-        // Same cycle-taint rule as CellMemo: a rect whose materialization tripped
-        // the circular-ref fallback holds entry-point-dependent seed values.
-        if (rangeMemoKey != null && circularBefore == _session.CircularHits)
+        if (rangeMemoKey != null)
+        {
             _session.RangeMemo[rangeMemoKey] = range;
+            if (circularBefore != _session.CircularHits)
+                _session.CycleTaintedRanges.Add(rangeMemoKey);
+        }
         return FormulaResult.Area(range);
     }
 

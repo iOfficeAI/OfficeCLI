@@ -223,21 +223,13 @@ public partial class ExcelHandler
                     // through another formula's reference has its result on hand —
                     // reuse it instead of re-evaluating; symmetrically, feed this
                     // cell's fresh result back so later references reuse ours.
-                    var memoKey = cell.CellReference?.Value is string cref ? $"{sheetName}!{cref}" : null;
-                    Core.EvalReport report;
-                    if (memoKey != null && session.CellMemo.TryGetValue(memoKey, out var memoized))
+                    var cellRef = cell.CellReference?.Value;
+                    var memoKey = cellRef is string cref ? $"{sheetName}!{cref}" : null;
+                    var report = evaluator.EvaluateForReport(formula, cellRef);
+                    if (memoKey != null && session.CycleTaintedCells.Contains(memoKey))
                     {
-                        report = new Core.EvalReport(
-                            memoized.IsError ? Core.EvalReportStatus.Error : Core.EvalReportStatus.Evaluated,
-                            memoized);
-                    }
-                    else
-                    {
-                        var circularBefore = session.CircularHits;
-                        report = evaluator.EvaluateForReport(formula);
-                        if (memoKey != null && report.Result != null && !report.Result.IsLambda
-                            && circularBefore == session.CircularHits)
-                            session.CellMemo[memoKey] = report.Result;
+                        EnsureFullCalcOnLoad();
+                        if (hasCache) continue;
                     }
                     // Act only when we can confidently recompute the value.
                     if (report.Status != Core.EvalReportStatus.Evaluated) continue;
