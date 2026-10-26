@@ -990,7 +990,7 @@ static partial class CommandBuilder
             var hint = readVerb switch
             {
                 "query" => "Put the output options on the item itself: \"compact\": true, \"fields\": \"x,y\".",
-                "view" => "A bounded view (start/end/max-lines/cols/range) is not available inside a batch yet — run `view` as its own command.",
+                "view" => "Put the view options on the item itself: \"start\": 1, \"end\": 20, \"max-lines\": 5, \"cols\": \"A,B\", \"range\": \"A1:D9\".",
                 _ => "A get item takes \"path\" and \"depth\" only.",
             };
             OfficeCli.Core.WarningContext.Add(
@@ -1011,6 +1011,29 @@ static partial class CommandBuilder
                 $"'{item.Command}' does not read {string.Join(" or ", misplacedReadOptions)}: they are query-item options. Ignored.",
                 "unsupported_property",
                 "Put them on the item that reads them: {\"command\":\"query\",\"selector\":\"...\",\"compact\":true}.");
+
+        // Same rule for the `view` options, for the same reason: they parse
+        // now, so a `get` or `add` item that carries one would be a fresh
+        // silent drop. Only text/annotated views consume them — html, svg,
+        // outline, stats and issues render whole documents by definition.
+        var misplacedViewOptions = new List<string>();
+        if (item.Start.HasValue) misplacedViewOptions.Add("\"start\"");
+        if (item.End.HasValue) misplacedViewOptions.Add("\"end\"");
+        if (item.MaxLines.HasValue) misplacedViewOptions.Add("\"max-lines\"");
+        if (item.Cols != null) misplacedViewOptions.Add("\"cols\"");
+        if (item.Range != null) misplacedViewOptions.Add("\"range\"");
+        if (misplacedViewOptions.Count > 0)
+        {
+            var viewMode = (item.Mode ?? "text").ToLowerInvariant();
+            var modeReadsThem = viewMode is "text" or "t" or "annotated" or "a";
+            if (readVerb != "view" || !modeReadsThem)
+                OfficeCli.Core.WarningContext.Add(
+                    readVerb != "view"
+                        ? $"'{item.Command}' does not read {string.Join(" or ", misplacedViewOptions)}: they are view-item options. Ignored."
+                        : $"view mode '{viewMode}' does not read {string.Join(" or ", misplacedViewOptions)}: only text and annotated views are bounded. Ignored.",
+                    "unsupported_property",
+                    "Put them on the item that reads them: {\"command\":\"view\",\"mode\":\"text\",\"max-lines\":5}.");
+        }
 
         switch (item.Command.ToLowerInvariant())
         {
@@ -1304,10 +1327,19 @@ static partial class CommandBuilder
                 {
                     return pptSvg.ViewAsSvg(1);
                 }
+                // The five view options the CLI flags spell (--start/--end/
+                // --max-lines/--cols/--range) reach the same handler methods the
+                // standalone command calls, so a batch item cannot render a
+                // different window than `view text` for the same arguments.
+                // "cols" is split exactly as the standalone splits it, and as
+                // ResidentServer.GetCols splits the request argument.
+                var viewCols = item.Cols != null
+                    ? new HashSet<string>(item.Cols.Split(',').Select(c => c.Trim().ToUpperInvariant()))
+                    : null;
                 return mode.ToLowerInvariant() switch
                 {
-                    "text" or "t" => handler.ViewAsText(null, null, null, null),
-                    "annotated" or "a" => handler.ViewAsAnnotated(null, null, null, null),
+                    "text" or "t" => handler.ViewAsText(item.Start, item.End, item.MaxLines, viewCols, item.Range),
+                    "annotated" or "a" => handler.ViewAsAnnotated(item.Start, item.End, item.MaxLines, viewCols),
                     "outline" or "o" => handler.ViewAsOutline(),
                     "stats" or "s" => handler.ViewAsStats(),
                     "issues" or "i" => OfficeCli.Core.OutputFormatter.FormatIssues(handler.ViewAsIssues(null, null), format),
