@@ -114,7 +114,7 @@ internal static partial class ChartHelper
         // Mandatory sheet prefix (Sheet1! or 'Sheet with spaces'!), single
         // cell A1 or $A$1, optionally followed by :A1 range of size 1.
         return System.Text.RegularExpressions.Regex.IsMatch(trimmed,
-            @"^(?:'[^']+'!|[A-Za-z_][\w\.]*!)\$?[A-Za-z]+\$?\d+(?::\$?[A-Za-z]+\$?\d+)?$");
+            @"^(?:'(?:[^']|'')+'!|[A-Za-z_][\w\.]*!)\$?[A-Za-z]+\$?\d+(?::\$?[A-Za-z]+\$?\d+)?$");
     }
 
     /// <summary>
@@ -129,7 +129,7 @@ internal static partial class ChartHelper
         var trimmed = value.Trim();
         string sheetPart = "";
         string cellPart = trimmed;
-        var bangIdx = trimmed.IndexOf('!');
+        var bangIdx = trimmed.LastIndexOf('!');
         if (bangIdx >= 0)
         {
             sheetPart = trimmed[..(bangIdx + 1)];
@@ -170,7 +170,7 @@ internal static partial class ChartHelper
         string sheetPart = "";
         string rangePart = trimmed;
 
-        var bangIdx = trimmed.IndexOf('!');
+        var bangIdx = trimmed.LastIndexOf('!');
         if (bangIdx >= 0)
         {
             sheetPart = trimmed[..(bangIdx + 1)];

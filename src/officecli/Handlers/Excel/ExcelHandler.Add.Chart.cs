@@ -556,7 +556,7 @@ public partial class ExcelHandler
                     {
                         var bang = catRef.LastIndexOf('!');
                         f.Text = bang > 0
-                            ? Core.ModernFunctionQualifier.QuoteSheetNameForRef(catRef[..bang].Trim('\'')) + catRef[bang..]
+                            ? Core.ModernFunctionQualifier.QuoteSheetNameForRef(UnquoteSheetName(catRef[..bang])) + catRef[bang..]
                             : catRef;
                     }
                     else
