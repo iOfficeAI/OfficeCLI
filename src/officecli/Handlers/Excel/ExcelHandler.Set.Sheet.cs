@@ -267,6 +267,15 @@ public partial class ExcelHandler
                                     wsChanged = true;
                                 }
                             }
+                            foreach (var relationship in anyWsPart2.HyperlinkRelationships.ToList())
+                            {
+                                var target = relationship.Uri.OriginalString;
+                                var separator = target.LastIndexOf('!');
+                                if (!target.StartsWith('#') || separator < 2 || !UnquoteSheetName(target[1..separator]).Equals(oldName, StringComparison.OrdinalIgnoreCase)) continue;
+                                anyWsPart2.DeleteReferenceRelationship(relationship.Id);
+                                anyWsPart2.AddHyperlinkRelationship(new Uri("#" + newRef + target[(separator + 1)..], UriKind.Relative), true, relationship.Id);
+                                wsChanged = true;
+                            }
                             if (wsChanged) wsRoot.Save();
                         }
 
