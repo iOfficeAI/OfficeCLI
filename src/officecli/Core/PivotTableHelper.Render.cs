@@ -34,10 +34,10 @@ internal static partial class PivotTableHelper
         List<int> rowFieldIndices, List<int> colFieldIndices,
         List<(int idx, string func, string showAs, string name)> valueFields,
         List<int>? filterFieldIndices = null,
-        uint?[]? columnStyleIds = null)
+        uint?[]? columnStyleIds = null, DataFields? dataFields = null)
     {
         RenderPivotIntoSheetCore(targetSheet, position, headers, columnData,
-            rowFieldIndices, colFieldIndices, valueFields, filterFieldIndices, columnStyleIds);
+            rowFieldIndices, colFieldIndices, valueFields, filterFieldIndices, columnStyleIds, dataFields);
         // Every specialized renderer appends fresh <row>/<c> elements without
         // probing for pre-existing ones. When the pivot's footprint lands on
         // rows/cells that already exist (e.g. the anchor overlaps the source
@@ -103,7 +103,7 @@ internal static partial class PivotTableHelper
         List<int> rowFieldIndices, List<int> colFieldIndices,
         List<(int idx, string func, string showAs, string name)> valueFields,
         List<int>? filterFieldIndices = null,
-        uint?[]? columnStyleIds = null)
+        uint?[]? columnStyleIds = null, DataFields? dataFields = null)
     {
         // Per-data-field style index: pivot value cells for data field d inherit
         // the source column's StyleIndex (number format). A null entry means the
@@ -133,10 +133,11 @@ internal static partial class PivotTableHelper
         // renderer because specialized renderers hardcode compact-mode column
         // placement (all row labels in one column). The general renderer handles
         // multi-column row labels for outline/tabular.
-        if (ActiveLayoutMode != "compact" && valueFields.Count >= 1)
+        if (valueFields.Any(v => ParseShowDataAs(v.showAs) == ShowDataAsValues.RunTotal)
+            || (ActiveLayoutMode != "compact" && valueFields.Count >= 1))
         {
             RenderGeneralPivot(targetSheet, position, headers, columnData,
-                rowFieldIndices, colFieldIndices, valueFields, filterFieldIndices, valueStyleIds);
+                rowFieldIndices, colFieldIndices, valueFields, filterFieldIndices, valueStyleIds, dataFields);
             return;
         }
 
@@ -150,7 +151,7 @@ internal static partial class PivotTableHelper
             && rowFieldIndices.Count >= 2 && valueFields.Count >= 1)
         {
             RenderGeneralPivot(targetSheet, position, headers, columnData,
-                rowFieldIndices, colFieldIndices, valueFields, filterFieldIndices, valueStyleIds);
+                rowFieldIndices, colFieldIndices, valueFields, filterFieldIndices, valueStyleIds, dataFields);
             return;
         }
 
@@ -161,7 +162,7 @@ internal static partial class PivotTableHelper
             && (rowFieldIndices.Count == 0 || (rowFieldIndices.Count == 2 && colFieldIndices.Count == 0)))
         {
             RenderGeneralPivot(targetSheet, position, headers, columnData,
-                rowFieldIndices, colFieldIndices, valueFields, filterFieldIndices, valueStyleIds);
+                rowFieldIndices, colFieldIndices, valueFields, filterFieldIndices, valueStyleIds, dataFields);
             return;
         }
 
@@ -181,7 +182,7 @@ internal static partial class PivotTableHelper
                 return;
             }
             RenderGeneralPivot(targetSheet, position, headers, columnData,
-                rowFieldIndices, colFieldIndices, valueFields, filterFieldIndices, valueStyleIds);
+                rowFieldIndices, colFieldIndices, valueFields, filterFieldIndices, valueStyleIds, dataFields);
             return;
         }
 
@@ -1757,7 +1758,7 @@ internal static partial class PivotTableHelper
         List<int> rowFieldIndices, List<int> colFieldIndices,
         List<(int idx, string func, string showAs, string name)> valueFields,
         List<int>? filterFieldIndices,
-        uint?[] valueStyleIds)
+        uint?[] valueStyleIds, DataFields? dataFields)
     {
         int K = Math.Max(1, valueFields.Count);
         var rowTree = BuildAxisTree(rowFieldIndices, columnData);
@@ -1857,23 +1858,7 @@ internal static partial class PivotTableHelper
             return Reduce(collected, valueFields[d].func);
         }
 
-        // showDataAs post-processing for the tree-based renderer. The inline
-        // 1×1×K path uses ApplyShowDataAs1x1 on a pre-computed matrix;
-        // RenderGeneralPivot computes cells on demand via ComputeCell, so the
-        // transformation has to wrap each per-cell value with division by the
-        // relevant total. Mirrors the same set of modes (Excel's "Show Values
-        // As" semantics):
-        //
-        //   normal             — passthrough
-        //   percent_of_total   — v / grandTotal[d]
-        //   percent_of_row     — v / rowTotal(rowNode, d)
-        //   percent_of_col     — v / colTotal(colNode, d)
-        //   running_total      — NOT YET (needs col ordering context; raw value
-        //                        is returned, callers add a TODO marker)
-        //
-        // Recomputes totals per call for simplicity. With small pivots the
-        // O(rowsXcols) per-row scan is fine; bigger pivots could memoize but
-        // we keep the wrapper simple to match Excel's correctness first.
+        // Use each data field's stored base field for running totals.
         var grandAxisNode = new AxisNode(string.Empty, 0, Array.Empty<string>());
         double TransformShowAs(double rawValue, AxisNode rowNode, AxisNode colNode, int d)
         {
@@ -1898,31 +1883,32 @@ internal static partial class PivotTableHelper
                     var ct = ComputeCell(grandAxisNode, colNode, d);
                     return ct == 0 ? rawValue : rawValue / ct;
                 }
-                case "running_total" or "runningtotal":
+                case "running_total" or "runningtotal" or "runtotal":
                 {
-                    // Cumulative sum across col positions. ONLY applied when
-                    // the aggregate is "sum" (the only case where running of
-                    // per-cell values equals Excel's "aggregate over the
-                    // cumulative set"). For var/varP/avg/count/etc., Excel
-                    // re-aggregates against the cumulative leaf set, which
-                    // we don't have machinery for; raw value is returned and
-                    // Refresh in Excel computes the correct cumulative.
-                    var func = (valueFields[d].func ?? "").ToLowerInvariant();
-                    if (func != "sum" && func != "") return rawValue;
-                    if (colPositions.Count == 0) return rawValue;
+                    var baseField = dataFields?.Elements<DataField>().ElementAtOrDefault(d)?.BaseField?.Value
+                        ?? ResolveRunningTotalBaseField(rowFieldIndices, colFieldIndices);
+                    bool onRows = rowFieldIndices.Contains(baseField);
+                    int level = (onRows ? rowFieldIndices : colFieldIndices).IndexOf(baseField);
+                    if (level < 0)
+                        throw new ArgumentException("runningTotal baseField must be a row or column field");
+                    var node = onRows ? rowNode : colNode;
+                    if (node.Path.Length <= level) return rawValue;
+
+                    var parent = onRows ? rowTree : colTree;
+                    for (int l = 0; l < level; l++)
+                        parent = parent.Children.First(n => n.Label == node.Path[l]);
                     double running = 0;
-                    bool found = false;
-                    foreach (var (pNode, pIsLeaf, pIsSubtotal) in colPositions)
+                    foreach (var item in parent.Children)
                     {
-                        if (pIsSubtotal) continue;
-                        running += ComputeCell(rowNode, pNode, d);
-                        if (object.ReferenceEquals(pNode, colNode))
-                        {
-                            found = true;
-                            break;
-                        }
+                        var path = (string[])node.Path.Clone();
+                        path[level] = item.Label;
+                        var cumulativeNode = new AxisNode(node.Label, node.Depth, path);
+                        running += onRows
+                            ? ComputeCell(cumulativeNode, colNode, d)
+                            : ComputeCell(rowNode, cumulativeNode, d);
+                        if (item.Label == node.Path[level]) break;
                     }
-                    return found ? running : rawValue;
+                    return running;
                 }
                 default:
                     return rawValue;

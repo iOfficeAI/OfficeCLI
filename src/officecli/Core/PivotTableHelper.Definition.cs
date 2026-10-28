@@ -467,6 +467,8 @@ internal static partial class PivotTableHelper
                 };
                 var sda = ParseShowDataAs(showAs);
                 if (sda.HasValue) dataField.ShowDataAs = sda.Value;
+                if (sda == ShowDataAsValues.RunTotal)
+                    dataField.BaseField = ResolveRunningTotalBaseField(rowFieldIndices, colFieldIndices);
                 // Inherit the source column's numFmtId so Excel displays
                 // pivot values using the same format as the source (currency,
                 // percent, etc.). DataField.NumberFormatId is the primary

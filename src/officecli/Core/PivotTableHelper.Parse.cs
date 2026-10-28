@@ -619,6 +619,17 @@ internal static partial class PivotTableHelper
         }
     }
 
+    private static int ResolveRunningTotalBaseField(
+        List<int> rowFields, List<int> colFields, int? previous = null)
+    {
+        var axes = rowFields.Concat(colFields).ToList();
+        if (previous.HasValue && axes.Contains(previous.Value)) return previous.Value;
+        // Keep source-field order, but do not select a value or filter field.
+        if (axes.Count == 0)
+            throw new ArgumentException("runningTotal requires a row or column field");
+        return axes.Min();
+    }
+
     /// <summary>
     /// Apply a showDataAs transform to a 1×1×K pivot matrix for data field d.
     /// Used by RenderPivotIntoSheet (the 1 row × 1 col × K data inline
@@ -631,8 +642,7 @@ internal static partial class PivotTableHelper
     ///   percent_of_total  — divide everything by grandTotals[d]
     ///   percent_of_row    — divide each (r,c) by rowTotals[r] (the whole row shares the divisor)
     ///   percent_of_col    — divide each (r,c) by colTotals[c]
-    ///   running_total     — in-row cumulative sum across cols, left→right;
-    ///                       rowTotals/grandTotals unchanged (cumulative ends at row total)
+    /// Running totals use the general renderer and the stored base field.
     /// Unknown modes are silently treated as "normal" so new modes added to
     /// ParseShowDataAs don't explode old renderers.
     /// </summary>
@@ -715,31 +725,6 @@ internal static partial class PivotTableHelper
                         rowTotals[r, d] = rowTotals[r, d] / grand;
                     grandTotals[d] = 1.0;
                 }
-                return;
-            }
-
-            case "running_total" or "runningtotal" or "runtotal":
-            {
-                // In-row cumulative sum across cols, left→right. Cells with
-                // null values count as 0 in the running sum but remain null
-                // in the output so Excel shows blank instead of the previous
-                // cumulative value (matches Excel's "(blank)" behavior).
-                for (int r = 0; r < rowCount; r++)
-                {
-                    double running = 0;
-                    for (int c = 0; c < colCount; c++)
-                    {
-                        if (matrix[r, c, d].HasValue)
-                        {
-                            running += matrix[r, c, d]!.Value;
-                            matrix[r, c, d] = running;
-                        }
-                    }
-                }
-                // Row / col / grand totals are left as-is: running total's
-                // final-column value already equals the row total, and col /
-                // grand totals don't have a natural running interpretation
-                // across rows in Excel's semantics.
                 return;
             }
 
