@@ -377,11 +377,15 @@ static partial class CommandBuilder
                 // SECURITY: random token in temp filename — same rationale as the html/--browser path.
                 var tmpHtml = Path.Combine(Path.GetTempPath(), $"officecli_preview_{Path.GetFileNameWithoutExtension(Path.GetFileName(filePath))}_{DateTime.Now:HHmmss}_{Guid.NewGuid():N}.html");
                 File.WriteAllText(tmpHtml, html!);
-                var r = clipArg != null
-                    ? OfficeCli.Core.HtmlScreenshot.CaptureClipped(tmpHtml, pngPath,
-                        OfficeCli.Core.HtmlScreenshot.ResolveClipDataPaths(clipArg))
-                    : OfficeCli.Core.HtmlScreenshot.Capture(tmpHtml, pngPath, screenshotWidth, screenshotHeight);
-                try { File.Delete(tmpHtml); } catch { /* ignore */ }
+                OfficeCli.Core.HtmlScreenshot.Result r;
+                try
+                {
+                    r = clipArg != null
+                        ? OfficeCli.Core.HtmlScreenshot.CaptureClipped(tmpHtml, pngPath,
+                            OfficeCli.Core.HtmlScreenshot.ResolveClipDataPaths(clipArg))
+                        : OfficeCli.Core.HtmlScreenshot.Capture(tmpHtml, pngPath, screenshotWidth, screenshotHeight);
+                }
+                finally { try { File.Delete(tmpHtml); } catch { /* ignore */ } }
                 if (!r.Ok && r.Error == "clip_target_not_found")
                 {
                     throw new OfficeCli.Core.CliException(
