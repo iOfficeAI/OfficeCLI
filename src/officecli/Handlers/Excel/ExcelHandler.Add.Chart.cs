@@ -586,8 +586,10 @@ public partial class ExcelHandler
         {
             yield return $"series{i}";
             yield return $"series{i}.values";
+            yield return $"series{i}.valuesRef";
             yield return $"series{i}.categories";
             yield return $"series{i}.bubbleSize";
+            yield return $"series{i}.bubbleSizeRef";
         }
     }
 }
