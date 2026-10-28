@@ -151,6 +151,12 @@ public partial class ExcelHandler
         // Extended chart types (cx:chart) — funnel, treemap, sunburst, boxWhisker, histogram
         if (ChartExBuilder.IsExtendedChartType(chartType))
         {
+            if (SchemaKeyNormalizer.Normalize(chartType) == "pareto" && string.IsNullOrEmpty(dataRangeStr)
+                && !properties.Keys.Any(key => (key.EndsWith(".valuesRef", StringComparison.OrdinalIgnoreCase)
+                    || key.EndsWith(".bubbleSizeRef", StringComparison.OrdinalIgnoreCase))
+                    && properties.TryGetValue(key, out var rangeValue) && ChartHelper.IsRangeReference(rangeValue))
+                && !EnumerateChartRangeKeys(properties).Any(key => properties.TryGetValue(key, out var value) && ChartHelper.IsRangeReference(value)))
+                (categories, seriesData) = ChartExBuilder.PreparePareto(categories, seriesData);
             // Excel chartEx pulls data directly from the host workbook via
             // cx:f references, not from an embedded xlsx. When the caller
             // provided inline categories+values (no dataRange), persist

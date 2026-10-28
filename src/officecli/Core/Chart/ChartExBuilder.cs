@@ -1098,7 +1098,7 @@ internal static partial class ChartExBuilder
     /// series is appended in BuildExtendedChartSpace via ownerIdx=0
     /// (Excel auto-computes cumulative from the bar data).
     /// </summary>
-    private static (string[]? categories, List<(string name, double[] values)> seriesData)
+    internal static (string[]? categories, List<(string name, double[] values)> seriesData)
         PreparePareto(string[]? categories, List<(string name, double[] values)> seriesData)
     {
         if (seriesData.Count == 0)
