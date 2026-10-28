@@ -535,7 +535,9 @@ internal static partial class ChartHelper
 
         // Find axis IDs
         uint catAxisId = plotArea.GetFirstChild<C.CategoryAxis>()?.GetFirstChild<C.AxisId>()?.Val?.Value ?? 1;
-        uint valAxisId = plotArea.GetFirstChild<C.ValueAxis>()?.GetFirstChild<C.AxisId>()?.Val?.Value ?? 2;
+        uint valAxisId = plotArea.Elements<C.ValueAxis>()
+            .FirstOrDefault(axis => axis.GetFirstChild<C.AxisId>()?.Val?.Value != catAxisId)
+            ?.GetFirstChild<C.AxisId>()?.Val?.Value ?? 2;
 
         // Remove existing chart type elements (but keep axes, layout, etc.)
         foreach (var ct in plotArea.ChildElements
