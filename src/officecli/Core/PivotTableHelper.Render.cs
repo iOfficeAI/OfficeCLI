@@ -450,7 +450,7 @@ internal static partial class PivotTableHelper
                     int colIdx = anchorColIdx + 1 + c * K + d;
                     var v = matrix[r, c, d];
                     if (v.HasValue)
-                        dataRow.AppendChild(MakeNumericCell(colIdx, rowIdx, v.Value, valueStyleIds[d]));
+                        dataRow.AppendChild(MakeAggregateCell(colIdx, rowIdx, v.Value, valueStyleIds[d]));
                 }
             }
             // Row totals — K cells (one per data field).
@@ -462,7 +462,7 @@ internal static partial class PivotTableHelper
             {
                 int rowTotalStart = anchorColIdx + 1 + uniqueCols.Count * K;
                 for (int d = 0; d < K; d++)
-                    dataRow.AppendChild(MakeNumericCell(rowTotalStart + d, rowIdx, rowTotals[r, d], valueStyleIds[d]));
+                    dataRow.AppendChild(MakeAggregateCell(rowTotalStart + d, rowIdx, rowTotals[r, d], valueStyleIds[d]));
             }
             sheetData.AppendChild(dataRow);
         }
@@ -483,14 +483,14 @@ internal static partial class PivotTableHelper
                 for (int d = 0; d < K; d++)
                 {
                     int colIdx = anchorColIdx + 1 + c * K + d;
-                    grandRow.AppendChild(MakeNumericCell(colIdx, grandRowIdx, colTotals[c, d], valueStyleIds[d]));
+                    grandRow.AppendChild(MakeAggregateCell(colIdx, grandRowIdx, colTotals[c, d], valueStyleIds[d]));
                 }
             }
             if (ActiveRowGrandTotals && !rowsOnly)
             {
                 int grandTotalStart = anchorColIdx + 1 + uniqueCols.Count * K;
                 for (int d = 0; d < K; d++)
-                    grandRow.AppendChild(MakeNumericCell(grandTotalStart + d, grandRowIdx, grandTotals[d], valueStyleIds[d]));
+                    grandRow.AppendChild(MakeAggregateCell(grandTotalStart + d, grandRowIdx, grandTotals[d], valueStyleIds[d]));
             }
             sheetData.AppendChild(grandRow);
         }
@@ -635,9 +635,9 @@ internal static partial class PivotTableHelper
         // The closures below compute the cell values per (row pos, col pos, d)
         // by reducing raw value lists. Each closure takes a data field index d
         // so each data field aggregates with its own function (sum/count/avg/...).
-        double LeafCell(string outer, string inner, string col, int d)
+        double? LeafCell(string outer, string inner, string col, int d)
             => leafBucket.TryGetValue((outer, inner, col, d), out var b) && b.Count > 0
-                ? Reduce(b, valueFields[d].func) : double.NaN;
+                ? Reduce(b, valueFields[d].func) : null;
 
         double OuterSubtotalForCol(string outer, string col, int d)
         {
@@ -780,13 +780,13 @@ internal static partial class PivotTableHelper
                     {
                         var v = OuterSubtotalForCol(outer, uniqueCols[c], d);
                         if (any || v != 0)
-                            subRow.AppendChild(MakeNumericCell(LeafColIdx(c, d), currentRow, v, valueStyleIds[d]));
+                            subRow.AppendChild(MakeAggregateCell(LeafColIdx(c, d), currentRow, v, valueStyleIds[d]));
                     }
                 }
                 if (emitRowGrand)
                 {
                     for (int d = 0; d < K; d++)
-                        subRow.AppendChild(MakeNumericCell(GrandTotalColIdx(d), currentRow, OuterRowTotal(outer, d), valueStyleIds[d]));
+                        subRow.AppendChild(MakeAggregateCell(GrandTotalColIdx(d), currentRow, OuterRowTotal(outer, d), valueStyleIds[d]));
                 }
                 sheetData.AppendChild(subRow);
                 currentRow++;
@@ -811,14 +811,14 @@ internal static partial class PivotTableHelper
                     for (int d = 0; d < K; d++)
                     {
                         var v = LeafCell(outer, inner, uniqueCols[c], d);
-                        if (!double.IsNaN(v))
-                            leafRow.AppendChild(MakeNumericCell(LeafColIdx(c, d), currentRow, v, valueStyleIds[d]));
+                        if (v.HasValue)
+                            leafRow.AppendChild(MakeAggregateCell(LeafColIdx(c, d), currentRow, v.Value, valueStyleIds[d]));
                     }
                 }
                 if (emitRowGrand)
                 {
                     for (int d = 0; d < K; d++)
-                        leafRow.AppendChild(MakeNumericCell(GrandTotalColIdx(d), currentRow, LeafRowTotal(outer, inner, d), valueStyleIds[d]));
+                        leafRow.AppendChild(MakeAggregateCell(GrandTotalColIdx(d), currentRow, LeafRowTotal(outer, inner, d), valueStyleIds[d]));
                 }
                 sheetData.AppendChild(leafRow);
                 currentRow++;
@@ -832,11 +832,11 @@ internal static partial class PivotTableHelper
             grandRow.AppendChild(MakeStringCell(anchorColIdx, currentRow, totalLabel));
             for (int c = 0; c < uniqueCols.Count; c++)
                 for (int d = 0; d < K; d++)
-                    grandRow.AppendChild(MakeNumericCell(LeafColIdx(c, d), currentRow, ColTotal(uniqueCols[c], d), valueStyleIds[d]));
+                    grandRow.AppendChild(MakeAggregateCell(LeafColIdx(c, d), currentRow, ColTotal(uniqueCols[c], d), valueStyleIds[d]));
             if (emitRowGrand)
             {
                 for (int d = 0; d < K; d++)
-                    grandRow.AppendChild(MakeNumericCell(GrandTotalColIdx(d), currentRow,
+                    grandRow.AppendChild(MakeAggregateCell(GrandTotalColIdx(d), currentRow,
                         Reduce(perDataField[d], valueFields[d].func), valueStyleIds[d]));
             }
             sheetData.AppendChild(grandRow);
@@ -956,9 +956,9 @@ internal static partial class PivotTableHelper
         double Reduce(IEnumerable<double> values, string func) => ReducePivotValues(values, func);
 
         // Per-(row, outerCol, innerCol, d) reductions over raw values.
-        double LeafCell(string row, string outerCol, string innerCol, int d)
+        double? LeafCell(string row, string outerCol, string innerCol, int d)
             => leafBucket.TryGetValue((row, outerCol, innerCol, d), out var b) && b.Count > 0
-                ? Reduce(b, valueFields[d].func) : double.NaN;
+                ? Reduce(b, valueFields[d].func) : null;
 
         double OuterColSubtotalForRow(string row, string outerCol, int d)
         {
@@ -1180,8 +1180,8 @@ internal static partial class PivotTableHelper
                     for (int d = 0; d < K; d++)
                     {
                         var v = LeafCell(uniqueRows[r], outer, inner, d);
-                        if (!double.IsNaN(v))
-                            dataRow.AppendChild(MakeNumericCell(leafColPositions[(outer, inner, d)], rowIdx, v, valueStyleIds[d]));
+                        if (v.HasValue)
+                            dataRow.AppendChild(MakeAggregateCell(leafColPositions[(outer, inner, d)], rowIdx, v.Value, valueStyleIds[d]));
                     }
                 }
                 if (emitSubtotals)
@@ -1192,7 +1192,7 @@ internal static partial class PivotTableHelper
                     {
                         var sub = OuterColSubtotalForRow(uniqueRows[r], outer, d);
                         if (sub != 0 || any)
-                            dataRow.AppendChild(MakeNumericCell(subtotalColPositions[(outer, d)], rowIdx, sub, valueStyleIds[d]));
+                            dataRow.AppendChild(MakeAggregateCell(subtotalColPositions[(outer, d)], rowIdx, sub, valueStyleIds[d]));
                     }
                 }
             }
@@ -1200,7 +1200,7 @@ internal static partial class PivotTableHelper
             if (emitRowGrand)
             {
                 for (int d = 0; d < K; d++)
-                    dataRow.AppendChild(MakeNumericCell(grandTotalColPositions[d], rowIdx, RowGrandTotal(uniqueRows[r], d), valueStyleIds[d]));
+                    dataRow.AppendChild(MakeAggregateCell(grandTotalColPositions[d], rowIdx, RowGrandTotal(uniqueRows[r], d), valueStyleIds[d]));
             }
             sheetData.AppendChild(dataRow);
         }
@@ -1215,18 +1215,18 @@ internal static partial class PivotTableHelper
             {
                 foreach (var inner in inners)
                     for (int d = 0; d < K; d++)
-                        grandRow.AppendChild(MakeNumericCell(leafColPositions[(outer, inner, d)], grandRowIdx,
+                        grandRow.AppendChild(MakeAggregateCell(leafColPositions[(outer, inner, d)], grandRowIdx,
                             LeafColTotal(outer, inner, d), valueStyleIds[d]));
                 if (emitSubtotals)
                 {
                     for (int d = 0; d < K; d++)
-                        grandRow.AppendChild(MakeNumericCell(subtotalColPositions[(outer, d)], grandRowIdx, OuterColTotal(outer, d), valueStyleIds[d]));
+                        grandRow.AppendChild(MakeAggregateCell(subtotalColPositions[(outer, d)], grandRowIdx, OuterColTotal(outer, d), valueStyleIds[d]));
                 }
             }
             if (emitRowGrand)
             {
                 for (int d = 0; d < K; d++)
-                    grandRow.AppendChild(MakeNumericCell(grandTotalColPositions[d], grandRowIdx,
+                    grandRow.AppendChild(MakeAggregateCell(grandTotalColPositions[d], grandRowIdx,
                         Reduce(perDataField[d], valueFields[d].func), valueStyleIds[d]));
             }
             sheetData.AppendChild(grandRow);
@@ -1350,9 +1350,9 @@ internal static partial class PivotTableHelper
 
         // The 9 cell-value closures from the K=1 path now each take a data
         // field index d so the right aggregator is applied per cell.
-        double LeafCell(string ro, string ri, string co, string ci, int d)
+        double? LeafCell(string ro, string ri, string co, string ci, int d)
             => bucket.TryGetValue((ro, ri, co, ci, d), out var b) && b.Count > 0
-                ? Reduce(b, valueFields[d].func) : double.NaN;
+                ? Reduce(b, valueFields[d].func) : null;
 
         double LeafRowColSub(string ro, string ri, string co, int d)
         {
@@ -1606,7 +1606,7 @@ internal static partial class PivotTableHelper
                         {
                             var v = OuterRowLeafCell(rowOuter, colOuter, colInner, d);
                             if (v != 0 || any)
-                                outerSubRow.AppendChild(MakeNumericCell(leafColPositions[(colOuter, colInner, d)], currentRowIdx, v, valueStyleIds[d]));
+                                outerSubRow.AppendChild(MakeAggregateCell(leafColPositions[(colOuter, colInner, d)], currentRowIdx, v, valueStyleIds[d]));
                         }
                     }
                     bool anyOuter = HasAnyValueInOuterRowOuterCol(rowOuter, colOuter, rowGroups, colGroups, bucket, K);
@@ -1614,13 +1614,13 @@ internal static partial class PivotTableHelper
                     {
                         var sub = OuterRowColSub(rowOuter, colOuter, d);
                         if (sub != 0 || anyOuter)
-                            outerSubRow.AppendChild(MakeNumericCell(subtotalColPositions[(colOuter, d)], currentRowIdx, sub, valueStyleIds[d]));
+                            outerSubRow.AppendChild(MakeAggregateCell(subtotalColPositions[(colOuter, d)], currentRowIdx, sub, valueStyleIds[d]));
                     }
                 }
                 if (emitRowGrand)
                 {
                     for (int d = 0; d < K; d++)
-                        outerSubRow.AppendChild(MakeNumericCell(grandTotalColPositions[d], currentRowIdx, OuterRowGrandTotal(rowOuter, d), valueStyleIds[d]));
+                        outerSubRow.AppendChild(MakeAggregateCell(grandTotalColPositions[d], currentRowIdx, OuterRowGrandTotal(rowOuter, d), valueStyleIds[d]));
                 }
                 sheetData.AppendChild(outerSubRow);
                 currentRowIdx++;
@@ -1645,8 +1645,8 @@ internal static partial class PivotTableHelper
                         for (int d = 0; d < K; d++)
                         {
                             var v = LeafCell(rowOuter, rowInner, colOuter, colInner, d);
-                            if (!double.IsNaN(v))
-                                leafRow.AppendChild(MakeNumericCell(leafColPositions[(colOuter, colInner, d)], currentRowIdx, v, valueStyleIds[d]));
+                            if (v.HasValue)
+                                leafRow.AppendChild(MakeAggregateCell(leafColPositions[(colOuter, colInner, d)], currentRowIdx, v.Value, valueStyleIds[d]));
                         }
                     }
                     if (emitSubtotals)
@@ -1656,14 +1656,14 @@ internal static partial class PivotTableHelper
                         {
                             var sub = LeafRowColSub(rowOuter, rowInner, colOuter, d);
                             if (sub != 0 || any)
-                                leafRow.AppendChild(MakeNumericCell(subtotalColPositions[(colOuter, d)], currentRowIdx, sub, valueStyleIds[d]));
+                                leafRow.AppendChild(MakeAggregateCell(subtotalColPositions[(colOuter, d)], currentRowIdx, sub, valueStyleIds[d]));
                         }
                     }
                 }
                 if (emitRowGrand)
                 {
                     for (int d = 0; d < K; d++)
-                        leafRow.AppendChild(MakeNumericCell(grandTotalColPositions[d], currentRowIdx, LeafRowGrandTotal(rowOuter, rowInner, d), valueStyleIds[d]));
+                        leafRow.AppendChild(MakeAggregateCell(grandTotalColPositions[d], currentRowIdx, LeafRowGrandTotal(rowOuter, rowInner, d), valueStyleIds[d]));
                 }
                 sheetData.AppendChild(leafRow);
                 currentRowIdx++;
@@ -1679,18 +1679,18 @@ internal static partial class PivotTableHelper
             {
                 foreach (var colInner in colInners)
                     for (int d = 0; d < K; d++)
-                        grandRow.AppendChild(MakeNumericCell(leafColPositions[(colOuter, colInner, d)], currentRowIdx,
+                        grandRow.AppendChild(MakeAggregateCell(leafColPositions[(colOuter, colInner, d)], currentRowIdx,
                             GrandRowLeafCol(colOuter, colInner, d), valueStyleIds[d]));
                 if (emitSubtotals)
                 {
                     for (int d = 0; d < K; d++)
-                        grandRow.AppendChild(MakeNumericCell(subtotalColPositions[(colOuter, d)], currentRowIdx, GrandRowColSub(colOuter, d), valueStyleIds[d]));
+                        grandRow.AppendChild(MakeAggregateCell(subtotalColPositions[(colOuter, d)], currentRowIdx, GrandRowColSub(colOuter, d), valueStyleIds[d]));
                 }
             }
             if (emitRowGrand)
             {
                 for (int d = 0; d < K; d++)
-                    grandRow.AppendChild(MakeNumericCell(grandTotalColPositions[d], currentRowIdx,
+                    grandRow.AppendChild(MakeAggregateCell(grandTotalColPositions[d], currentRowIdx,
                         Reduce(perDataField[d], valueFields[d].func), valueStyleIds[d]));
             }
             sheetData.AppendChild(grandRow);
@@ -2334,7 +2334,7 @@ internal static partial class PivotTableHelper
                             // Skip 0-value cells when there are no underlying values to
                             // mirror Excel's behavior of leaving sparse intersections blank.
                             if (any || v != 0)
-                                row.AppendChild(MakeNumericCell(colIdxByPosition[cp, d], rowIdx, v, valueStyleIds[d]));
+                                row.AppendChild(MakeAggregateCell(colIdxByPosition[cp, d], rowIdx, v, valueStyleIds[d]));
                         }
                     }
                 }
@@ -2347,7 +2347,7 @@ internal static partial class PivotTableHelper
                     for (int d = 0; d < K; d++)
                     {
                         var v = ComputeCellShowAs(rowNode, emptyColNode, d);
-                        row.AppendChild(MakeNumericCell(firstDataCol + d, rowIdx, v, valueStyleIds[d]));
+                        row.AppendChild(MakeAggregateCell(firstDataCol + d, rowIdx, v, valueStyleIds[d]));
                     }
                 }
             }
@@ -2359,7 +2359,7 @@ internal static partial class PivotTableHelper
             {
                 var grandRowNode = new AxisNode(string.Empty, 0, Array.Empty<string>());
                 for (int d = 0; d < K; d++)
-                    row.AppendChild(MakeNumericCell(grandTotalColStart + d, rowIdx,
+                    row.AppendChild(MakeAggregateCell(grandTotalColStart + d, rowIdx,
                         ComputeCellShowAs(rowNode, grandRowNode, d), valueStyleIds[d]));
             }
             sheetData.AppendChild(row);
@@ -2412,7 +2412,7 @@ internal static partial class PivotTableHelper
                     for (int d = 0; d < K; d++)
                     {
                         var v = ComputeCellShowAs(grandRowNodeFinal, colNode, d);
-                        grandRow.AppendChild(MakeNumericCell(colIdxByPosition[cp, d], grandRowIdx, v, valueStyleIds[d]));
+                        grandRow.AppendChild(MakeAggregateCell(colIdxByPosition[cp, d], grandRowIdx, v, valueStyleIds[d]));
                     }
                 }
             }
@@ -2423,13 +2423,13 @@ internal static partial class PivotTableHelper
                 for (int d = 0; d < K; d++)
                 {
                     var v = ComputeCellShowAs(grandRowNodeFinal, emptyColNode, d);
-                    grandRow.AppendChild(MakeNumericCell(firstDataCol + d, grandRowIdx, v, valueStyleIds[d]));
+                    grandRow.AppendChild(MakeAggregateCell(firstDataCol + d, grandRowIdx, v, valueStyleIds[d]));
                 }
             }
             if (emitRowGrand && colPositions.Count > 0)
             {
                 for (int d = 0; d < K; d++)
-                    grandRow.AppendChild(MakeNumericCell(grandTotalColStart + d, grandRowIdx,
+                    grandRow.AppendChild(MakeAggregateCell(grandTotalColStart + d, grandRowIdx,
                         ComputeCellShowAs(grandRowNodeFinal, grandRowNodeFinal, d), valueStyleIds[d]));
             }
             sheetData.AppendChild(grandRow);
@@ -2647,18 +2647,20 @@ internal static partial class PivotTableHelper
     }
 
     /// <summary>
-    /// Numeric cell with the value serialized using invariant culture.
+    /// Write an aggregate as a number or an Excel error cell.
     /// When <paramref name="styleIndex"/> is provided, the cell carries that
     /// styles.xml cellXfs index — used to inherit the source column's number
     /// format (currency, percentage, custom format) onto pivot value cells so
     /// the pivot displays "¥1,234.50" rather than the raw "1234.5".
     /// </summary>
-    private static Cell MakeNumericCell(int colIdx, int rowIdx, double value, uint? styleIndex = null)
+    private static Cell MakeAggregateCell(int colIdx, int rowIdx, double value, uint? styleIndex = null)
     {
         var cell = new Cell
         {
             CellReference = $"{IndexToCol(colIdx)}{rowIdx}",
-            CellValue = new CellValue(value.ToString("R", System.Globalization.CultureInfo.InvariantCulture))
+            DataType = double.IsNaN(value) ? CellValues.Error : CellValues.Number,
+            CellValue = new CellValue(double.IsNaN(value) ? "#DIV/0!"
+                : value.ToString("R", System.Globalization.CultureInfo.InvariantCulture))
         };
         if (styleIndex.HasValue)
             cell.StyleIndex = styleIndex.Value;
