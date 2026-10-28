@@ -388,9 +388,13 @@ internal static partial class PivotTableHelper
         string newRef;
         if (newSourceSpec.Contains('!'))
         {
-            var parts = newSourceSpec.Split('!', 2);
-            newSheetName = parts[0].Trim().Trim('\'', '"').Trim();
-            newRef = parts[1].Trim();
+            var bangIdx = newSourceSpec.LastIndexOf('!');
+            newSheetName = newSourceSpec[..bangIdx].Trim();
+            if (newSheetName.Length >= 2 && newSheetName[0] == '\'' && newSheetName[^1] == '\'')
+                newSheetName = newSheetName[1..^1].Replace("''", "'");
+            else if (newSheetName.Length >= 2 && newSheetName[0] == '"' && newSheetName[^1] == '"')
+                newSheetName = newSheetName[1..^1];
+            newRef = newSourceSpec[(bangIdx + 1)..].Trim();
         }
         else
         {
