@@ -16,7 +16,7 @@ public partial class ExcelHandler
     /// <param name="parentPath">Sheet path, e.g. "/Sheet1"</param>
     /// <param name="csvContent">Raw CSV/TSV string content</param>
     /// <param name="delimiter">Field delimiter: ',' for CSV, '\t' for TSV</param>
-    /// <param name="hasHeader">If true, set AutoFilter and freeze pane on first row</param>
+    /// <param name="hasHeader">If true, set AutoFilter, freeze pane and print titles on first row</param>
     /// <param name="startCell">Starting cell reference, e.g. "A1"</param>
     /// <param name="decimalSeparator">Decimal mark the SOURCE uses: '.' (default)
     /// or ',' for the de-DE / ru-RU spelling, where '.' becomes the thousands
@@ -270,6 +270,23 @@ public partial class ExcelHandler
                 ActivePane = PaneValues.BottomLeft
             };
             sheetView.InsertAt(pane, 0);
+
+            // Repeat the header row at the top of every printed page
+            // (_xlnm.Print_Titles, the name `set printTitleRows` writes). A
+            // sheet that already declares print titles keeps them.
+            var workbook = GetWorkbook();
+            var allSheets = workbook.GetFirstChild<Sheets>()?.Elements<Sheet>().ToList();
+            var sheetIdx = allSheets?.FindIndex(s =>
+                s.Name?.Value?.Equals(sheetName, StringComparison.OrdinalIgnoreCase) == true) ?? -1;
+            bool hasPrintTitles = workbook.GetFirstChild<DefinedNames>()?.Elements<DefinedName>()
+                .Any(d => d.Name == "_xlnm.Print_Titles" && d.LocalSheetId?.Value == (uint)sheetIdx) == true;
+            if (sheetIdx >= 0 && !hasPrintTitles)
+            {
+                var sheetRef = Core.ModernFunctionQualifier.QuoteSheetNameForRef(allSheets![sheetIdx].Name!.Value!);
+                GetOrCreateDefinedNames(workbook).AppendChild(
+                    new DefinedName($"{sheetRef}!${startRow}:${startRow}") { Name = "_xlnm.Print_Titles", LocalSheetId = (uint)sheetIdx });
+                workbook.Save();
+            }
         }
 
         // Mark the document modified so Dispose flushes it. Without this, an
