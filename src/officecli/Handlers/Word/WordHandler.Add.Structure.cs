@@ -177,7 +177,10 @@ public partial class WordHandler
             Top = srcMargin?.Top?.Value ?? 1440,
             Bottom = srcMargin?.Bottom?.Value ?? 1440,
             Left = srcMargin?.Left?.Value ?? 1800,
-            Right = srcMargin?.Right?.Value ?? 1800
+            Right = srcMargin?.Right?.Value ?? 1800,
+            Header = srcMargin?.Header?.Value ?? 720,
+            Footer = srcMargin?.Footer?.Value ?? 720,
+            Gutter = srcMargin?.Gutter?.Value ?? 0
         });
 
         // Allow per-section overrides
