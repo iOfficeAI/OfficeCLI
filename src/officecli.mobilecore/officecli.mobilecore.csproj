@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net10.0-android</TargetFrameworks>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' == 'net10.0-android'">24</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- officecli's net10.0-android target is opt-in (see officecli.csproj);
+         mobilecore always needs it, so request it explicitly here instead
+         of requiring every caller to remember to pass the property. -->
+    <ProjectReference Include="..\officecli\officecli.csproj">
+      <Properties>IncludeAndroidTarget=true</Properties>
+    </ProjectReference>
+  </ItemGroup>
+</Project>
