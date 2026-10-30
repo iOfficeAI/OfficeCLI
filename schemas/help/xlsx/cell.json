@@ -66,6 +66,22 @@
       "readback": "format string as stored",
       "enforcement": "report"
     },
+    "style": {
+      "type": "string",
+      "description": "apply one of the workbook's named cell styles (styles.xml -> cellStyles/cellStyle/@name — e.g. Header, Total, Input in a corporate template). The cell is pointed at a cellXfs entry that carries the style's master format (numFmtId/fontId/fillId/borderId plus the master's alignment/protection children) with xfId set to that style, so the cell stays linked: editing the style in Excel later still updates the cell. Other props in the same call (bold=, fill=, alignment.*) layer on top of the style. An unknown name is refused with the workbook's style names listed.",
+      "aliases": [
+        "cellstyle"
+      ],
+      "add": true,
+      "set": true,
+      "get": false,
+      "examples": [
+        "--prop style=Total",
+        "--prop style=\"Heading 1\""
+      ],
+      "readback": "n/a — Get reports the resolved formatting the style stands for (font.*, fill, border.*, numberformat)",
+      "enforcement": "report"
+    },
     "font.bold": {
       "type": "bool",
       "description": "bold font weight on the cell.",
