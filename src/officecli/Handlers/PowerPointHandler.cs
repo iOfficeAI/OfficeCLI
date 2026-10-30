@@ -128,6 +128,16 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
     // it in place. Null for read-only sessions (they never write). See
     // AtomicWriteBack / OfficeCli.Core.AtomicPackageWriter.
     private MemoryStream? _packageStream;
+    // Prolog content (comments / processing instructions between the XML
+    // declaration and the root element) of each part, captured from the package
+    // as opened. No SDK node models it, so any editable save serializes the part
+    // without it; XmlPrologPreserver.Restore puts it back into the written zip —
+    // AtomicWriteBack is this handler's only write path, and both `save` and
+    // close go through it, so one hook on each of its two call sites covers
+    // them. Null when no part had one — the overwhelmingly common case — which
+    // makes both the capture and the restore a no-op. Keyed by zip entry name
+    // (no leading slash), like _packageStream's siblings in the other handlers.
+    private readonly Dictionary<string, string>? _prologs;
 
     public PowerPointHandler(string filePath, bool editable)
     {
@@ -150,6 +160,11 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
                 _packageStream = new MemoryStream();
                 _backingStream.CopyTo(_packageStream);
                 _packageStream.Position = 0;
+                // Must run on the open-time bytes, before any save rewrites
+                // them: this is the only point where every part still carries
+                // the prolog the author wrote. Read-only sessions never write,
+                // so they skip the scan (they cannot lose a prolog).
+                _prologs = OfficeCli.Core.XmlPrologPreserver.Capture(_packageStream);
             }
             _doc = PresentationDocument.Open((Stream?)_packageStream ?? _backingStream, editable);
             if (editable)
@@ -2366,20 +2381,24 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
             catch { /* best-effort audit trail */ }
         }
         _doc.Save();
-        if (_packageStream != null) AtomicWriteBack();
+        // The prolog of every part that carried one is put back into the temp
+        // by this save path (`save` and close both come through here), before
+        // the atomic swap — see XmlPrologPreserver.
+        if (_packageStream != null) AtomicWriteBack(tmp => OfficeCli.Core.XmlPrologPreserver.Restore(tmp, _prologs));
         else _backingStream?.Flush();
     }
 
     // Crash-atomic flush of the in-memory package to disk (temp + File.Replace).
     // No-op for read-only sessions (_packageStream == null), which never write.
     // See OfficeCli.Core.AtomicPackageWriter.
-    private void AtomicWriteBack()
+    private void AtomicWriteBack(Action<string>? postProcessTemp = null)
     {
         if (_packageStream == null || _backingStream == null) return;
         OfficeCli.Core.AtomicPackageWriter.Flush(
             _packageStream, _filePath,
             releaseLock: () => { _backingStream!.Dispose(); _backingStream = null; },
-            reopenLock: () => { _backingStream = new FileStream(_filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read); });
+            reopenLock: () => { _backingStream = new FileStream(_filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read); },
+            postProcessTemp: postProcessTemp);
     }
 
     /// <summary>See <see cref="OfficeCli.Handlers.WordHandler.DiscardOnDispose"/> —
@@ -2442,9 +2461,12 @@ public partial class PowerPointHandler : IDocumentHandler, Rendering.IRenderMode
         {
             // Editable: read the in-memory package into the atomic temp BEFORE
             // _doc.Dispose() (the SDK may close the stream it was opened over on
-            // dispose), then swap it over the original in one File.Replace.
+            // dispose), then swap it over the original in one File.Replace. The
+            // prolog restore rides in the same swap: close is a persist path of
+            // its own, so hanging it only on `save` would leave it dropping the
+            // prolog.
             Exception? writeError = null;
-            try { AtomicWriteBack(); } catch (Exception ex) { writeError = ex; }
+            try { AtomicWriteBack(tmp => OfficeCli.Core.XmlPrologPreserver.Restore(tmp, _prologs)); } catch (Exception ex) { writeError = ex; }
             _doc.Dispose();
             _packageStream.Dispose();
             _packageStream = null;
