@@ -883,7 +883,8 @@ public partial class WordHandler
             filter = r => MatchesFilter(r, filterDict);
         }
 
-        var targets = EnumerateRevisions().Where(r => filter(r)).ToList();
+        var targets = (path == "/revision" ? EnumerateDocumentRevisions() : EnumerateRevisions())
+            .Where(r => filter(r)).ToList();
         // A filter naming a specific marker (`@id=N`) that matches nothing
         // is a typo or stale id — fail loudly instead of saving a silent
         // no-op. Bulk filters (`@author=`, `@type=`) can legitimately match
@@ -1045,13 +1046,31 @@ public partial class WordHandler
         return true;
     }
 
-    /// <summary>Walk the document body and emit a RevisionRef for every
+    // The bare bulk selector means the whole document. Keep targeted selectors
+    // in their existing body scope: w:id can repeat in a header or footer.
+    private List<RevisionRef> EnumerateDocumentRevisions()
+    {
+        var list = EnumerateRevisions();
+        var main = _doc.MainDocumentPart;
+        if (main == null) return list;
+        foreach (var part in main.HeaderParts)
+            list.AddRange(EnumerateRevisions(part.Header));
+        foreach (var part in main.FooterParts)
+            list.AddRange(EnumerateRevisions(part.Footer));
+        list.AddRange(EnumerateRevisions(main.FootnotesPart?.Footnotes));
+        list.AddRange(EnumerateRevisions(main.EndnotesPart?.Endnotes));
+        return list;
+    }
+
+    private List<RevisionRef> EnumerateRevisions() =>
+        EnumerateRevisions(_doc.MainDocumentPart?.Document?.Body);
+
+    /// <summary>Walk one document story and emit a RevisionRef for every
     /// tracked-change marker. Order is document order (Descendants is
     /// pre-order).</summary>
-    private List<RevisionRef> EnumerateRevisions()
+    private static List<RevisionRef> EnumerateRevisions(OpenXmlElement? body)
     {
         var list = new List<RevisionRef>();
-        var body = _doc.MainDocumentPart?.Document?.Body;
         if (body == null) return list;
 
         foreach (var ins in body.Descendants<InsertedRun>())
