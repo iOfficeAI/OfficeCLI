@@ -453,7 +453,7 @@ internal static class UpdateChecker
     /// surface a non-zero exit code).</summary>
     internal static int HandleConfigCommand(string[] args)
     {
-        const string available = "autoUpdate, log, log clear";
+        const string available = "autoUpdate, log, log clear, stamp";
         var key = args[0].ToLowerInvariant();
         var config = LoadConfig();
 
@@ -472,6 +472,7 @@ internal static class UpdateChecker
             {
                 "autoupdate" => config.AutoUpdate.ToString().ToLowerInvariant(),
                 "log" => config.Log.ToString().ToLowerInvariant(),
+                "stamp" => (config.Stamp ?? true).ToString().ToLowerInvariant(),
                 _ => null
             };
             if (value != null)
@@ -492,6 +493,17 @@ internal static class UpdateChecker
                 break;
             case "log":
                 config.Log = ParseHelpers.IsTruthy(newValue);
+                break;
+            case "stamp":
+                try { config.Stamp = ParseHelpers.IsTruthy(newValue); }
+                catch (ArgumentException ex)
+                {
+                    // A typo must not silently pick a value: `config stamp
+                    // offf` fails loudly instead of quietly turning stamping
+                    // on (or off) for every later document.
+                    Console.Error.WriteLine(ex.Message);
+                    return 1;
+                }
                 break;
             default:
                 Console.Error.WriteLine($"Unknown config key: {args[0]}. Available: {available}");
@@ -866,6 +878,12 @@ internal class AppConfig
     /// time to run the refresh — ApplyPendingUpdate fires it from the OLD
     /// process image, which would copy stale resources.</summary>
     public string? LastSkillRefreshVersion { get; set; }
+    /// <summary>Write the OfficeCLI identification / audit metadata into
+    /// <c>docProps/</c> (core.xml creator, app.xml Application, and the
+    /// OfficeCLI.Version / OfficeCLI.LastModified custom properties) when
+    /// editing a document. Nullable so that a config file written by an
+    /// earlier version keeps today's behaviour: unset means on.</summary>
+    public bool? Stamp { get; set; }
 }
 
 [JsonSerializable(typeof(AppConfig))]
