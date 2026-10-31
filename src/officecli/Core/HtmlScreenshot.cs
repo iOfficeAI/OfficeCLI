@@ -83,9 +83,16 @@ internal static class HtmlScreenshot
         var bin = FindChrome();
         if (bin == null) return false;
         outPath = Path.GetFullPath(outPath);
+        var output = new FileInfo(outPath);
+        if (output.LinkTarget != null)
+            outPath = output.ResolveLinkTarget(returnFinalTarget: true)!.FullName;
         var outDir = Path.GetDirectoryName(outPath);
         if (!string.IsNullOrEmpty(outDir)) Directory.CreateDirectory(outDir);
         var url = new Uri(Path.GetFullPath(htmlPath)).AbsoluteUri + "#screenshot";
+        var captureDir = Path.Combine(outDir!, $".officecli-capture-{Guid.NewGuid():N}");
+        if (OperatingSystem.IsWindows()) Directory.CreateDirectory(captureDir);
+        else Directory.CreateDirectory(captureDir, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var capturePath = Path.Combine(captureDir, "capture.png");
         var args = new[]
         {
             "--headless=new",
@@ -97,11 +104,17 @@ internal static class HtmlScreenshot
             "--virtual-time-budget=15000",
             "--timeout=20000",  // wall-clock backstop: a stalled resource is not rescued by virtual time (issue #181)
             "--default-background-color=00000000",
-            $"--screenshot={outPath}",
+            $"--screenshot={capturePath}",
             url,
         };
-        var (ok, _) = RunBinary(bin, args);
-        return ok && File.Exists(outPath) && new FileInfo(outPath).Length > 0;
+        try
+        {
+            var (ok, _) = RunBinary(bin, args);
+            if (!ok || !File.Exists(capturePath) || new FileInfo(capturePath).Length == 0) return false;
+            PublishPng(capturePath, outPath);
+            return true;
+        }
+        finally { try { Directory.Delete(captureDir, recursive: true); } catch { /* ignore */ } }
     }
 
     public static PaginationResult? GetPaginationFromDom(string htmlPath, int timeoutMs = 60000)
@@ -150,21 +163,50 @@ internal static class HtmlScreenshot
     {
         var url = new Uri(Path.GetFullPath(htmlPath)).AbsoluteUri + "#screenshot";
         outPath = Path.GetFullPath(outPath);
+        var output = new FileInfo(outPath);
+        if (output.LinkTarget != null)
+            outPath = output.ResolveLinkTarget(returnFinalTarget: true)!.FullName;
         var outDir = Path.GetDirectoryName(outPath);
         if (!string.IsNullOrEmpty(outDir)) Directory.CreateDirectory(outDir);
 
         // Cap to <= 1920px to stay within multi-image LLM limits.
         var (w, h) = CapDim(width, height, 1920);
 
-        string? lastError = null;
-        foreach (var (name, runner) in Backends())
+        var captureDir = Path.Combine(outDir!, $".officecli-capture-{Guid.NewGuid():N}");
+        if (OperatingSystem.IsWindows()) Directory.CreateDirectory(captureDir);
+        else Directory.CreateDirectory(captureDir, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var capturePath = Path.Combine(captureDir, "capture.png");
+        try
         {
-            var (ok, err) = runner(url, outPath, w, h);
-            if (ok && File.Exists(outPath) && new FileInfo(outPath).Length > 0)
-                return new Result(true, name, null);
-            if (err != null) lastError = $"{name}: {err}";
+            string? lastError = null;
+            foreach (var (name, runner) in Backends())
+            {
+                File.Delete(capturePath);
+                var (ok, err) = runner(url, capturePath, w, h);
+                if (ok && File.Exists(capturePath) && new FileInfo(capturePath).Length > 0)
+                {
+                    PublishPng(capturePath, outPath);
+                    return new Result(true, name, null);
+                }
+                if (err != null) lastError = $"{name}: {err}";
+            }
+            return new Result(false, "", lastError ?? "no headless backend available");
         }
-        return new Result(false, "", lastError ?? "no headless backend available");
+        finally { try { Directory.Delete(captureDir, recursive: true); } catch { /* ignore */ } }
+    }
+
+    private static void PublishPng(string capturePath, string outPath)
+    {
+        if (File.Exists(outPath))
+        {
+            // A rename must not bypass a read-only target or expose a private PNG.
+            using (File.Open(outPath, FileMode.Open, FileAccess.Write)) { }
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(capturePath, File.GetUnixFileMode(outPath));
+            File.Replace(capturePath, outPath, destinationBackupFileName: null);
+        }
+        else
+            File.Move(capturePath, outPath);
     }
 
     /// <summary>
