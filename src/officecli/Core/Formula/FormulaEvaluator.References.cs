@@ -3,6 +3,8 @@
 
 using System.Globalization;
 using System.Text.RegularExpressions;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Spreadsheet;
 
 namespace OfficeCli.Core;
 
@@ -230,5 +232,203 @@ internal partial class FormulaEvaluator
         var refArg = ParseRefString(s);
         if (refArg == null) return FormulaResult.Error("#REF!");
         return ResolveRef(refArg);
+    }
+
+    // ==================== Structured table references (B1) ====================
+    // `Table[Col]`, `Table[[Col1]:[Col2]]`, `Table[#Data]/[#All]/[#Headers]`
+    // fold to plain A1 range tokens at tokenize time from the workbook's
+    // CURRENT table definition — every evaluation re-folds, so rows inserted
+    // or deleted inside the table are picked up automatically (Excel recompute
+    // parity). Row-context forms (`[@Col]`, `[#This Row]`) and compound item
+    // strings (`[[#Data],[Col]]`) are explicitly rejected with #NAME? for v1.
+
+    /// <summary>One workbook table: owning sheet name, "A1:D10"-style
+    /// reference, ordered column names, header/totals row counts.</summary>
+    private sealed record TableDef(string? Sheet, int StartCol, int StartRow, int EndCol, int EndRow,
+        List<string> Columns, uint HeaderRows, uint TotalsRows);
+
+    /// <summary>
+    /// Scan the workbook's table definitions for <paramref name="displayName"/>
+    /// (matches the Table @name or @displayName attribute, case-insensitive —
+    /// Excel treats them as one namespace). Returns null when the workbook has
+    /// no such table or no workbook context at all.
+    /// </summary>
+    private TableDef? FindTableDef(string displayName)
+    {
+        if (_workbookPart == null) return null;
+        foreach (var sheet in _workbookPart.Workbook?.Descendants<Sheet>().ToList()
+                 ?? new List<Sheet>())
+        {
+            if (sheet.Id?.Value == null) continue;
+            WorksheetPart? wsPart;
+            try { wsPart = (WorksheetPart?)_workbookPart.GetPartById(sheet.Id.Value!); }
+            catch { continue; }
+            if (wsPart == null) continue;
+            foreach (var tdp in wsPart.TableDefinitionParts)
+            {
+                var t = tdp.Table;
+                var name = t.Name?.Value;
+                var display = t.DisplayName?.Value;
+                if (!string.Equals(name, displayName, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(display, displayName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var reference = t.Reference?.Value;
+                if (string.IsNullOrEmpty(reference) || !reference.Contains(':'))
+                    continue;
+                var parts = reference.Split(':');
+                var (startColLetter, startRow) = ParseRef(StripDollar(parts[0]));
+                var (endColLetter, endRow) = ParseRef(StripDollar(parts[1]));
+                var startCol = ColToIndex(startColLetter);
+                var endCol = ColToIndex(endColLetter);
+                var columns = t.TableColumns?.Elements<TableColumn>()
+                    .Select(c => c.Name?.Value ?? "").ToList() ?? new List<string>();
+                return new TableDef(sheet.Name?.Value,
+                    Math.Min(startCol, endCol), Math.Min(startRow, endRow),
+                    Math.Max(startCol, endCol), Math.Max(startRow, endRow),
+                    columns, t.HeaderRowCount?.Value ?? 1U, t.TotalsRowCount?.Value ?? 0U);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Fold a structured reference (cursor on the opening '[') into a Range /
+    /// SheetRange token over the table's current definition. Returns null when
+    /// no bracket follows; throws NameResolutionException for an unknown table,
+    /// an unknown column, or an unsupported form — surfacing #NAME? in the cell,
+    /// matching Excel's invalid-structured-ref behavior.
+    /// </summary>
+    private Token? TryFoldStructuredRef(string tableName, string formula, ref int i)
+    {
+        if (i >= formula.Length || formula[i] != '[') return null;
+        var def = FindTableDef(tableName)
+            ?? throw new NameResolutionException($"unknown table '{tableName}'");
+
+        var pos = i + 1; // past the outer '['
+        string? special = null;
+        var columns = new List<string>();
+        var isRowContext = false;
+        // Only the double-bracket forms (`[[Col]]`, `[[Col1]:[Col2]]`) wrap the
+        // item in an EXTRA bracket pair — the bare (`[Col]`) and special
+        // (`[#Data]`) forms end at their first ']'.
+        var expectOuterClose = false;
+
+        if (pos < formula.Length && formula[pos] == '@')
+        {
+            isRowContext = true;
+            ReadUntilClosingBracket(formula, ref pos, tableName);
+        }
+        else if (pos < formula.Length && formula[pos] == '#')
+        {
+            special = ReadUntilClosingBracket(formula, ref pos, tableName);
+            if (pos < formula.Length && formula[pos] == ',')
+                throw new NameResolutionException(
+                    $"unsupported compound structured reference on table '{tableName}' (supported: [Col], [[Col1]:[Col2]], [#Data]/[#All]/[#Headers])");
+        }
+        else if (pos < formula.Length && formula[pos] == '[')
+        {
+            pos++;
+            columns.Add(ReadUntilClosingBracket(formula, ref pos, tableName));
+            expectOuterClose = true;
+        }
+        else
+        {
+            columns.Add(ReadUntilClosingBracket(formula, ref pos, tableName));
+        }
+
+        // Span form: [[Col1]:[Col2]].
+        if (!isRowContext && special == null && expectOuterClose
+            && pos < formula.Length && formula[pos] == ':'
+            && pos + 1 < formula.Length && formula[pos + 1] == '[')
+        {
+            pos += 2;
+            columns.Add(ReadUntilClosingBracket(formula, ref pos, tableName));
+        }
+
+        if (expectOuterClose)
+        {
+            if (pos >= formula.Length || formula[pos] != ']')
+                throw new NameResolutionException($"unterminated structured reference on table '{tableName}'");
+            pos++;
+        }
+
+        if (isRowContext || (special is not null && special.Equals("#This Row", StringComparison.OrdinalIgnoreCase)))
+            throw new NameResolutionException(
+                $"row-context structured reference (Table[@Col] / [#This Row]) is unsupported: '{tableName}'");
+
+        // Data body excludes header and totals rows.
+        var dataFirstRow = def.StartRow + (int)def.HeaderRows;
+        var dataLastRow = def.EndRow - (int)def.TotalsRows;
+
+        int colMin, colMax, rowMin, rowMax;
+        if (special != null)
+        {
+            if (special.Equals("#Data", StringComparison.OrdinalIgnoreCase))
+                (colMin, colMax, rowMin, rowMax) = (def.StartCol, def.EndCol, dataFirstRow, dataLastRow);
+            else if (special.Equals("#All", StringComparison.OrdinalIgnoreCase))
+                (colMin, colMax, rowMin, rowMax) = (def.StartCol, def.EndCol, def.StartRow, def.EndRow);
+            else if (special.Equals("#Headers", StringComparison.OrdinalIgnoreCase))
+            {
+                if (def.HeaderRows == 0)
+                    throw new NameResolutionException($"table '{tableName}' has no header row");
+                (colMin, colMax, rowMin, rowMax) =
+                    (def.StartCol, def.EndCol, def.StartRow, def.StartRow + (int)def.HeaderRows - 1);
+            }
+            else if (special.Equals("#Totals", StringComparison.OrdinalIgnoreCase))
+            {
+                if (def.TotalsRows == 0)
+                    throw new NameResolutionException($"table '{tableName}' has no totals row");
+                (colMin, colMax, rowMin, rowMax) =
+                    (def.StartCol, def.EndCol, def.EndRow - (int)def.TotalsRows + 1, def.EndRow);
+            }
+            else
+                throw new NameResolutionException(
+                    $"unsupported special item '{special}' on table '{tableName}' (supported: #Data, #All, #Headers, #Totals)");
+        }
+        else
+        {
+            if (columns.Count == 0 || columns.Count > 2)
+                throw new NameResolutionException(
+                    $"unsupported structured reference form on table '{tableName}' (supported: [Col], [[Col1]:[Col2]], [#Data]/[#All]/[#Headers])");
+            var idx = ResolveTableColumn(def, columns[0], tableName);
+            var col1 = def.StartCol + idx;
+            var col2 = columns.Count == 2 ? def.StartCol + ResolveTableColumn(def, columns[1], tableName) : col1;
+            if (dataFirstRow > dataLastRow)
+                throw new NameResolutionException($"table '{tableName}' has no data rows");
+            (colMin, colMax) = (Math.Min(col1, col2), Math.Max(col1, col2));
+            (rowMin, rowMax) = (dataFirstRow, dataLastRow);
+        }
+
+        i = pos;
+        var rangeText = $"{IndexToCol(colMin)}{rowMin}:{IndexToCol(colMax)}{rowMax}";
+        var sameSheet = string.IsNullOrEmpty(def.Sheet)
+            || string.Equals(def.Sheet, _sheetKey, StringComparison.OrdinalIgnoreCase);
+        return sameSheet
+            ? new Token(TT.Range, rangeText)
+            : new Token(TT.SheetRange, $"{def.Sheet}!{rangeText}");
+    }
+
+    /// <summary>Resolve a column name against the table's ordered columns
+    /// (case-insensitive; the table's first column is offset 0).</summary>
+    private static int ResolveTableColumn(TableDef def, string name, string tableName)
+    {
+        for (var k = 0; k < def.Columns.Count; k++)
+            if (string.Equals(def.Columns[k], name, StringComparison.OrdinalIgnoreCase))
+                return k;
+        throw new NameResolutionException(
+            $"unknown column '{name}' in table '{tableName}' (valid: {string.Join(", ", def.Columns)})");
+    }
+
+    /// <summary>Consume characters up to (and past) the next ']' and return the
+    /// trimmed text. Escaped brackets inside column names are not supported in
+    /// v1 — a column named with ']' cannot be referenced.</summary>
+    private string ReadUntilClosingBracket(string formula, ref int pos, string tableName)
+    {
+        var end = formula.IndexOf(']', pos);
+        if (end < 0)
+            throw new NameResolutionException($"unterminated structured reference on table '{tableName}'");
+        var text = formula[pos..end].Trim();
+        pos = end + 1;
+        return text;
     }
 }
