@@ -1071,6 +1071,7 @@ public partial class ExcelHandler
         {
             dxfs = new DifferentialFormats { Count = 0 };
             stylesheet.Append(dxfs);
+            SchemaOrder.Place(stylesheet, dxfs);
         }
         var newDxf = new DifferentialFormat();
         dxfs.Append(newDxf);
