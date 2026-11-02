@@ -182,6 +182,37 @@ internal static class SlideComposition
         return (IsTitleFamily(a) && IsTitleFamily(b)) || (IsBodyFamily(a) && IsBodyFamily(b));
     }
 
+    /// <summary>
+    /// The layout→master edge of slot matching: BY TYPE, not idx. The master
+    /// numbers its placeholders independently of the layout, so idx never
+    /// correlates across that edge — a layout's sldNum idx=12 inherits from
+    /// the master's sldNum idx=4. Types map at the master level per
+    /// PowerPoint: ctrTitle→title, subTitle/obj/pic/chart/tbl→body; the
+    /// metadata types (dt/ftr/hdr/sldNum) keep their own.
+    /// </summary>
+    public static bool MatchesMasterSlot(PlaceholderShape ph, PlaceholderShape masterPh)
+    {
+        var a = ph.Type?.HasValue == true ? ph.Type.Value : PlaceholderValues.Object;
+        var b = masterPh.Type?.HasValue == true ? masterPh.Type.Value : PlaceholderValues.Object;
+        return MasterLevelType(a) == MasterLevelType(b);
+    }
+
+    // Master-level type mapping: the master's placeholder vocabulary is
+    // coarser than the layout's. A typeless <p:ph> is obj (ECMA-376 default)
+    // and lands on body. (PlaceholderValues is a struct of static properties
+    // in the SDK, not an enum — switch cases need constants, so == it is.)
+    private static PlaceholderValues MasterLevelType(PlaceholderValues t)
+    {
+        if (t == PlaceholderValues.CenteredTitle) return PlaceholderValues.Title;
+        if (t == PlaceholderValues.SubTitle
+            || t == PlaceholderValues.Object
+            || t == PlaceholderValues.Picture
+            || t == PlaceholderValues.Chart
+            || t == PlaceholderValues.Table)
+            return PlaceholderValues.Body;
+        return t;
+    }
+
     // ==================== Inherited Frame Resolution ====================
 
     /// <summary>
@@ -208,12 +239,30 @@ internal static class SlideComposition
     public static InheritedFrame? ResolveInheritedFrame(PlaceholderShape? ph, SlidePart slidePart)
     {
         if (ph == null) return null;
-
         var layoutShapeTree = slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.ShapeTree;
         var masterShapeTree = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.ShapeTree;
+        return ResolveInheritedFrame(ph, layoutShapeTree, masterShapeTree);
+    }
 
-        var fromMaster = false;
-        foreach (var tree in new[] { layoutShapeTree, masterShapeTree })
+    /// <summary>
+    /// Layout→master resolution: a layout placeholder with no own xfrm
+    /// inherits its frame from the master slot — matched by type, because the
+    /// master numbers its placeholders independently of the layout.
+    /// </summary>
+    public static InheritedFrame? ResolveInheritedFrame(PlaceholderShape? ph, SlideLayoutPart layoutPart)
+    {
+        if (ph == null) return null;
+        var masterShapeTree = layoutPart.SlideMasterPart?.SlideMaster?.CommonSlideData?.ShapeTree;
+        return ResolveInheritedFrame(ph, layoutTree: null, masterTree: masterShapeTree);
+    }
+
+    private static InheritedFrame? ResolveInheritedFrame(PlaceholderShape ph, ShapeTree? layoutTree, ShapeTree? masterTree)
+    {
+        // The two edges use different keys: slide→layout by idx (the shared
+        // layout numbering), layout→master by TYPE (MatchesMasterSlot — the
+        // master has its own numbering). Walk coarse to fine and take the
+        // FIRST slot that matches AND owns a complete frame.
+        foreach (var (tree, toMaster) in new[] { (layoutTree, false), (masterTree, true) })
         {
             if (tree == null) continue;
             foreach (var candidate in tree.Elements<Shape>())
@@ -222,7 +271,8 @@ internal static class SlideComposition
                     ?.GetFirstChild<PlaceholderShape>();
                 if (candidatePh == null) continue;
 
-                if (!PlaceholderMatches(ph, candidatePh)) continue;
+                if (!(toMaster ? MatchesMasterSlot(ph, candidatePh) : PlaceholderMatches(ph, candidatePh)))
+                    continue;
 
                 var cxfrm = candidate.ShapeProperties?.Transform2D;
                 if (cxfrm?.Offset != null && cxfrm?.Extents != null)
@@ -232,18 +282,18 @@ internal static class SlideComposition
                         cxfrm.Offset.Y?.Value ?? 0,
                         cxfrm.Extents.Cx?.Value ?? 0,
                         cxfrm.Extents.Cy?.Value ?? 0,
-                        candidate, candidatePh, fromMaster);
+                        candidate, candidatePh, toMaster);
                 }
             }
-            fromMaster = true;
         }
 
         return null;
     }
 
     /// <summary>
-    /// When a shape has no Transform2D, try to find position from matching placeholder
-    /// on the slide layout or slide master (OOXML placeholder inheritance chain).
+    /// When a shape has no Transform2D, try to find position from the matching
+    /// placeholder up the inheritance chain: a slide shape resolves through
+    /// its layout then the master; a layout shape resolves through the master.
     /// </summary>
     public static (long x, long y, long cx, long cy)? ResolveInheritedPosition(Shape shape, OpenXmlPart part)
     {
@@ -253,10 +303,12 @@ internal static class SlideComposition
         // Only placeholder shapes can inherit position from layout/master
         if (ph == null) return null;
 
-        var slidePart = part as SlidePart;
-        if (slidePart == null) return null;
-
-        var frame = ResolveInheritedFrame(ph, slidePart);
+        InheritedFrame? frame = part switch
+        {
+            SlidePart slidePart => ResolveInheritedFrame(ph, slidePart),
+            SlideLayoutPart layoutPart => ResolveInheritedFrame(ph, layoutPart),
+            _ => null,
+        };
         return frame == null ? null : (frame.X, frame.Y, frame.Cx, frame.Cy);
     }
 
