@@ -361,9 +361,9 @@ internal static partial class PivotTableHelper
     /// range spec ("Sheet1!A1:C4" or "A1:C4" — same sheet as the existing
     /// CacheSource). Replaces CacheFields, updates WorksheetSource.Reference
     /// (and Sheet if changed), rewrites the PivotTableCacheRecordsPart, and
-    /// resizes pivotDef.PivotFields to match the new column count. Existing
-    /// PivotField Axis/DataField assignments are reset because indices may no
-    /// longer line up — RebuildFieldAreas reapplies them after this returns.
+    /// resizes pivotDef.PivotFields to match the new column count.
+    /// Preserved field references follow their cache field names when columns
+    /// move. RebuildFieldAreas reapplies the assignments after this returns.
     /// </summary>
     private static void RefreshPivotCacheFromSource(PivotTablePart pivotPart, string newSourceSpec,
         Dictionary<string, string>? pendingFieldAreaProps = null)
@@ -417,39 +417,40 @@ internal static partial class PivotTableHelper
         if (columnData.Count == 0 || columnData[0].Length == 0)
             throw new ArgumentException("Source range has no data rows");
 
-        // R15-2: Before mutating any cache/pivot state, validate that existing
-        // row/col/value/filter field references still fit inside the new
-        // (possibly narrower) header list. A silent drop or index clamp here
-        // would leave the DataFields pointing past the rendered columnData,
-        // crashing RenderPivotIntoSheet with ArgumentOutOfRangeException.
-        // Prefer strict error over data loss: user must explicitly restate the
-        // affected axes in the same Set call if they intended to drop them.
-        var newFieldCount = headers.Length;
+        // Resolve retained fields before any mutation. An in-range old index
+        // can identify a different field after the source columns move.
+        var oldHeaders = cacheDef.GetFirstChild<CacheFields>()?.Elements<CacheField>()
+            .Select(cf => cf.Name?.Value ?? "").ToArray() ?? Array.Empty<string>();
+        var fieldRemaps = new List<Action>();
         var existingPivotDef = pivotPart.PivotTableDefinition;
         if (existingPivotDef != null)
         {
-            // Axes that the same Set call is explicitly overwriting are
-            // excluded from validation — their new values will be parsed
-            // against the fresh headers by RebuildFieldAreas.
             bool rowsOverwritten = pendingFieldAreaProps?.ContainsKey("rows") == true;
             bool colsOverwritten = pendingFieldAreaProps?.ContainsKey("cols") == true;
             bool valuesOverwritten = pendingFieldAreaProps?.ContainsKey("values") == true;
             bool filtersOverwritten = pendingFieldAreaProps?.ContainsKey("filters") == true;
 
-            void ValidateIndex(int idx, string axis, string fieldRef)
+            void PreserveField(int idx, string area, Action<int> assign)
             {
-                if (idx >= newFieldCount)
+                if (idx < 0 || idx >= oldHeaders.Length || string.IsNullOrWhiteSpace(oldHeaders[idx]))
+                    throw new ArgumentException($"Cannot preserve {area} field at cache index {idx}. Restate {area}= in the same Set call.");
+                var name = oldHeaders[idx];
+                var matches = Enumerable.Range(0, headers.Length)
+                    .Where(i => FieldNameMatches(headers[i], name)).ToArray();
+                if (oldHeaders.Count(h => FieldNameMatches(h, name)) != 1 || matches.Length != 1)
                     throw new ArgumentException(
-                        $"{axis} field '{fieldRef}' (index {idx}) is out of range " +
-                        $"after source narrowing to {newFieldCount} column(s). " +
-                        $"Restate {axis}= in the same Set call to drop or reassign it.");
+                        $"Cannot preserve {area} field '{name}': the field is missing or ambiguous. " +
+                        $"Restate {area}= in the same Set call to drop or reassign it.");
+                fieldRemaps.Add(() => assign(matches[0]));
             }
             if (!valuesOverwritten && existingPivotDef.DataFields != null)
             {
                 foreach (var df in existingPivotDef.DataFields.Elements<DataField>())
                 {
                     var fi = (int)(df.Field?.Value ?? 0);
-                    ValidateIndex(fi, "value", df.Name?.Value ?? fi.ToString());
+                    PreserveField(fi, "values", i => df.Field = (uint)i);
+                    if (df.ShowDataAs?.Value == ShowDataAsValues.RunTotal && df.BaseField?.Value is int baseField)
+                        PreserveField(baseField, "values", i => df.BaseField = i);
                 }
             }
             if (!rowsOverwritten && existingPivotDef.RowFields != null)
@@ -457,7 +458,7 @@ internal static partial class PivotTableHelper
                 foreach (var f in existingPivotDef.RowFields.Elements<Field>())
                 {
                     var fi = f.Index?.Value ?? -1;
-                    if (fi >= 0) ValidateIndex(fi, "row", fi.ToString());
+                    if (fi >= 0) PreserveField(fi, "rows", i => f.Index = i);
                 }
             }
             if (!colsOverwritten && existingPivotDef.ColumnFields != null)
@@ -466,7 +467,7 @@ internal static partial class PivotTableHelper
                 {
                     var fi = f.Index?.Value ?? -1;
                     // -2 sentinel is the values pseudo-field; it is not a cache index.
-                    if (fi >= 0) ValidateIndex(fi, "col", fi.ToString());
+                    if (fi >= 0) PreserveField(fi, "cols", i => f.Index = i);
                 }
             }
             if (!filtersOverwritten && existingPivotDef.PageFields != null)
@@ -474,9 +475,19 @@ internal static partial class PivotTableHelper
                 foreach (var f in existingPivotDef.PageFields.Elements<PageField>())
                 {
                     var fi = f.Field?.Value ?? -1;
-                    if (fi >= 0) ValidateIndex(fi, "filter", fi.ToString());
+                    if (fi >= 0) PreserveField(fi, "filters", i => f.Field = i);
                 }
             }
+        }
+
+        // Check explicit replacements against the new source before cache CoW.
+        if (pendingFieldAreaProps != null)
+        {
+            foreach (var area in new[] { "rows", "cols", "filters" })
+                if (pendingFieldAreaProps.ContainsKey(area))
+                    ParseFieldList(pendingFieldAreaProps, area, headers);
+            if (pendingFieldAreaProps.ContainsKey("values"))
+                ParseValueFields(pendingFieldAreaProps, "values", headers);
         }
 
         // Build a fresh cache definition (just to harvest its CacheFields,
@@ -486,6 +497,8 @@ internal static partial class PivotTableHelper
         // stay intact (single-referrer path).
         var (freshDef, fieldNumeric, fieldValueIndex) =
             BuildCacheDefinition(newSheetName, newRef, headers, columnData, axisFieldIndices: null, dateGroups: null);
+
+        foreach (var remap in fieldRemaps) remap();
 
         // Cache sharing (design): if cachePart currently has more than one
         // referrer, mutating it in place would silently change the source on
