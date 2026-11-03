@@ -2570,7 +2570,8 @@ internal static partial class ChartHelper
                 serText.AppendChild(new C.NumericValue(sName));
             }
 
-            var valEl = ser.GetFirstChild<C.Values>();
+            OpenXmlCompositeElement? valEl = ser.GetFirstChild<C.Values>()
+                ?? (OpenXmlCompositeElement?)ser.GetFirstChild<C.YValues>();
             if (valEl != null)
             {
                 valEl.RemoveAllChildren();
@@ -2609,7 +2610,8 @@ internal static partial class ChartHelper
                 }
 
                 // Update values
-                var valEl = newSer.GetFirstChild<C.Values>();
+                OpenXmlCompositeElement? valEl = newSer.GetFirstChild<C.Values>()
+                    ?? (OpenXmlCompositeElement?)newSer.GetFirstChild<C.YValues>();
                 if (valEl != null)
                 {
                     valEl.RemoveAllChildren();
