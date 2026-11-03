@@ -190,8 +190,8 @@ internal partial class FormulaEvaluator
         int colOffset = (int)CoerceToNumber(args[2] as FormulaResult);
         int height = baseRef.Height;
         int width = baseRef.Width;
-        if (args.Count >= 4 && args[3] is FormulaResult hArg) height = (int)CoerceToNumber(hArg);
-        if (args.Count >= 5 && args[4] is FormulaResult wArg) width = (int)CoerceToNumber(wArg);
+        if (args.Count >= 4 && !IsOmittedArg(args[3]) && args[3] is FormulaResult hArg) height = (int)CoerceToNumber(hArg);
+        if (args.Count >= 5 && !IsOmittedArg(args[4]) && args[4] is FormulaResult wArg) width = (int)CoerceToNumber(wArg);
         if (height == 0 || width == 0) return FormulaResult.Error("#REF!");
 
         var newRow = baseRef.Row + rowOffset;

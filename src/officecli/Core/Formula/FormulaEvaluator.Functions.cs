@@ -629,23 +629,135 @@ internal partial class FormulaEvaluator
 
     // ==================== Logical ====================
 
+    // Evaluate a single captured argument token slice (omitted slot -> 0).
+    private FormulaResult? EvalCapturedArg(List<Token> tokens)
+        => tokens.Count == 0 ? FormulaResult.Number(0) : EvalTokens(tokens);
+
+    // Fall back to eager evaluation when a condition/selector argument has array
+    // shape (so TryLiftOverArrays can broadcast over every branch). Already-
+    // evaluated prefix arguments are reused without re-evaluating their tokens.
+    private FormulaResult? EvalEagerFromCapturedParts(
+        string name,
+        List<List<Token>> parts,
+        Dictionary<int, FormulaResult> evaluated)
+    {
+        var args = new List<object>(parts.Count);
+        for (int i = 0; i < parts.Count; i++)
+        {
+            if (evaluated.TryGetValue(i, out var existing))
+            {
+                args.Add(existing);
+                continue;
+            }
+            var v = EvalCapturedArg(parts[i]);
+            if (v == null) return null;
+            args.Add(v);
+        }
+        return EvalFunction(name, args);
+    }
+
+    private static bool TryCoerceCondition(FormulaResult c, out bool isTrue)
+    {
+        isTrue = false;
+        if (c.IsNumeric) { isTrue = c.NumericValue != 0; return true; }
+        if (c.IsBool) { isTrue = c.BoolValue == true; return true; }
+        if (c.IsBlank) { isTrue = false; return true; }
+        // A text condition coerces only for the literal words TRUE/FALSE;
+        // any other text (including numeric-looking "1" or "") is #VALUE!.
+        var sv = c.AsString();
+        if (sv.Equals("TRUE", StringComparison.OrdinalIgnoreCase)) { isTrue = true; return true; }
+        if (sv.Equals("FALSE", StringComparison.OrdinalIgnoreCase)) { isTrue = false; return true; }
+        return false;
+    }
+
+    // Short-circuit evaluation for branching functions: only the branch selected
+    // by the condition/selector is evaluated, matching Excel's lazy semantics so
+    // untaken branches (e.g. a circuit-breaker switch guarding a circular loop or
+    // an error-producing expression) are never walked.
+    private FormulaResult? EvalLazyBranchFunction(string name, List<Token> t, ref int p)
+    {
+        var parts = CaptureAllArgs(t, ref p);
+        switch (name)
+        {
+            case "IF":
+            {
+                if (parts.Count == 0) return null;
+                var c = EvalCapturedArg(parts[0]);
+                if (c == null) return null;
+                if (HasArrayShape(c))
+                    return EvalEagerFromCapturedParts(name, parts, new() { [0] = c });
+                if (c.IsError) return c;
+                if (!TryCoerceCondition(c, out var isTrue)) return FormulaResult.Error("#VALUE!");
+                if (isTrue) return parts.Count > 1 ? EvalCapturedArg(parts[1]) : FR(0);
+                return parts.Count > 2 ? EvalCapturedArg(parts[2]) : FR_B(false);
+            }
+            case "IFERROR":
+            case "IFNA":
+            {
+                if (parts.Count < 2) return null;
+                var v = EvalCapturedArg(parts[0]);
+                if (v == null) return null;
+                if (HasArrayShape(v))
+                    return EvalEagerFromCapturedParts(name, parts, new() { [0] = v });
+                bool takeFallback = name == "IFERROR" ? v.IsError : v.ErrorValue == "#N/A";
+                return takeFallback ? EvalCapturedArg(parts[1]) : v;
+            }
+            case "IFS":
+            {
+                var evaluated = new Dictionary<int, FormulaResult>();
+                for (int i = 0; i + 1 < parts.Count; i += 2)
+                {
+                    var c = EvalCapturedArg(parts[i]);
+                    if (c == null) return null;
+                    evaluated[i] = c;
+                    if (HasArrayShape(c))
+                        return EvalEagerFromCapturedParts(name, parts, evaluated);
+                    if (c.IsError) return c;
+                    if (!TryCoerceCondition(c, out var isTrue)) return FormulaResult.Error("#VALUE!");
+                    if (isTrue) return EvalCapturedArg(parts[i + 1]);
+                }
+                return FormulaResult.Error("#N/A");
+            }
+            case "CHOOSE":
+            {
+                if (parts.Count < 2) return null;
+                var idxRes = EvalCapturedArg(parts[0]);
+                if (idxRes == null) return null;
+                if (HasArrayShape(idxRes))
+                    return EvalEagerFromCapturedParts(name, parts, new() { [0] = idxRes });
+                if (idxRes.IsError) return idxRes;
+                if (!TryCoerceArithmetic(idxRes, out var idxNum)) return FormulaResult.Error("#VALUE!");
+                var idx = (int)idxNum;
+                return idx >= 1 && idx < parts.Count ? EvalCapturedArg(parts[idx]) : FormulaResult.Error("#VALUE!");
+            }
+            case "SWITCH":
+            {
+                if (parts.Count < 2) return null;
+                var val = EvalCapturedArg(parts[0]);
+                if (val == null) return null;
+                var evaluated = new Dictionary<int, FormulaResult> { [0] = val };
+                if (HasArrayShape(val))
+                    return EvalEagerFromCapturedParts(name, parts, evaluated);
+                if (val.IsError) return val;
+                for (int i = 1; i + 1 < parts.Count; i += 2)
+                {
+                    var cv = EvalCapturedArg(parts[i]);
+                    if (cv != null) evaluated[i] = cv;
+                    if (cv != null && CompareValues(val, cv) == 0)
+                        return EvalCapturedArg(parts[i + 1]);
+                }
+                return parts.Count % 2 == 0 ? EvalCapturedArg(parts[^1]) : FormulaResult.Error("#N/A");
+            }
+            default:
+                return null;
+        }
+    }
+
     private FormulaResult? EvalIf(List<object> args)
     {
         var c = args.Count > 0 && args[0] is FormulaResult r ? r : null; if (c == null) return null;
         if (c.IsError) return c;
-        bool isTrue;
-        if (c.IsNumeric) isTrue = c.NumericValue != 0;
-        else if (c.IsBool) isTrue = c.BoolValue == true;
-        else if (c.IsBlank) isTrue = false;
-        else
-        {
-            // A text condition coerces only for the literal words TRUE/FALSE;
-            // any other text (including numeric-looking "1" or "") is #VALUE!.
-            var sv = c.AsString();
-            if (sv.Equals("TRUE", StringComparison.OrdinalIgnoreCase)) isTrue = true;
-            else if (sv.Equals("FALSE", StringComparison.OrdinalIgnoreCase)) isTrue = false;
-            else return FormulaResult.Error("#VALUE!");
-        }
+        if (!TryCoerceCondition(c, out var isTrue)) return FormulaResult.Error("#VALUE!");
         if (isTrue) return args.Count > 1 && args[1] is FormulaResult t ? t : FR(0);
         return args.Count > 2 && args[2] is FormulaResult f ? f : FR_B(false);
     }
