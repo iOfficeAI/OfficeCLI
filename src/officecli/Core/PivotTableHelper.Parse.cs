@@ -565,8 +565,7 @@ internal static partial class PivotTableHelper
     ///   stdDevp : population std-dev (sqrt(Σ(x-μ)²/n)), requires n≥1
     ///   var     : sample variance (Σ(x-μ)²/(n-1)), requires n≥2
     ///   varp    : population variance (Σ(x-μ)²/n), requires n≥1
-    /// Returns 0 for empty input and for stdDev/var when n&lt;2, matching the
-    /// existing 0-on-empty convention that the rest of the renderer assumes.
+    /// Sample statistics require two observations; NaN renders as an Excel error.
     /// </summary>
     private static double ReducePivotValues(IEnumerable<double> values, string func)
     {
@@ -589,7 +588,7 @@ internal static partial class PivotTableHelper
             case "stddev":
             case "std":
             {
-                if (arr.Length < 2) return 0;
+                if (arr.Length < 2) return double.NaN;
                 var mean = arr.Average();
                 var sq = arr.Sum(x => (x - mean) * (x - mean));
                 return Math.Sqrt(sq / (arr.Length - 1));
@@ -604,7 +603,7 @@ internal static partial class PivotTableHelper
             case "var":
             case "variance":
             {
-                if (arr.Length < 2) return 0;
+                if (arr.Length < 2) return double.NaN;
                 var mean = arr.Average();
                 var sq = arr.Sum(x => (x - mean) * (x - mean));
                 return sq / (arr.Length - 1);
@@ -660,7 +659,7 @@ internal static partial class PivotTableHelper
                 }
                 for (int c = 0; c < colCount; c++)
                     colTotals[c, d] = colTotals[c, d] / gt;
-                grandTotals[d] = 1.0;
+                grandTotals[d] = double.IsNaN(grandTotals[d]) ? double.NaN : 1.0;
                 return;
             }
 
@@ -675,7 +674,7 @@ internal static partial class PivotTableHelper
                         if (matrix[r, c, d].HasValue)
                             matrix[r, c, d] = matrix[r, c, d]!.Value / rt;
                     }
-                    rowTotals[r, d] = 1.0;
+                    rowTotals[r, d] = double.IsNaN(rt) ? rt : 1.0;
                 }
                 // Col totals and grand lose their direct interpretation under
                 // "percent of row" (they're sums of ratios across heterogeneous
@@ -690,7 +689,7 @@ internal static partial class PivotTableHelper
                 {
                     for (int c = 0; c < colCount; c++)
                         colTotals[c, d] = colTotals[c, d] / grand;
-                    grandTotals[d] = 1.0;
+                    grandTotals[d] = double.IsNaN(grandTotals[d]) ? double.NaN : 1.0;
                 }
                 return;
             }
@@ -706,14 +705,14 @@ internal static partial class PivotTableHelper
                         if (matrix[r, c, d].HasValue)
                             matrix[r, c, d] = matrix[r, c, d]!.Value / ct;
                     }
-                    colTotals[c, d] = 1.0;
+                    colTotals[c, d] = double.IsNaN(ct) ? ct : 1.0;
                 }
                 var grand = grandTotals[d];
                 if (grand != 0)
                 {
                     for (int r = 0; r < rowCount; r++)
                         rowTotals[r, d] = rowTotals[r, d] / grand;
-                    grandTotals[d] = 1.0;
+                    grandTotals[d] = double.IsNaN(grandTotals[d]) ? double.NaN : 1.0;
                 }
                 return;
             }
