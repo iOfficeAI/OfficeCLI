@@ -12,6 +12,325 @@
     window._watchEs = es;
 
     var _scrollTimer = null;
+    var _viewportRestoreId = 0;
+    var _pendingViewportAnchor = null;
+    var _manualViewportRevision = 0;
+
+    function _noteManualViewportIntent(e) {
+        if (e && e.isTrusted === false) return;
+        _manualViewportRevision++;
+        // A real user movement after a mutation always wins over a queued
+        // restoration from that mutation.
+        _pendingViewportAnchor = null;
+        _viewportRestoreId++;
+    }
+
+    window.addEventListener('wheel', _noteManualViewportIntent, { passive: true, capture: true });
+    window.addEventListener('touchstart', _noteManualViewportIntent, { passive: true, capture: true });
+    window.addEventListener('touchmove', _noteManualViewportIntent, { passive: true, capture: true });
+    window.addEventListener('pointerdown', _noteManualViewportIntent, { passive: true, capture: true });
+    window.addEventListener('pointermove', function(e) {
+        if (e.buttons) _noteManualViewportIntent(e);
+    }, { passive: true, capture: true });
+    window.addEventListener('keydown', function(e) {
+        if (!e || e.isTrusted === false) return;
+        if ([
+            'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+            'PageUp', 'PageDown', 'Home', 'End', ' ',
+        ].indexOf(e.key) >= 0) {
+            _noteManualViewportIntent(e);
+        }
+    }, true);
+
+    function _isScrollable(el) {
+        if (!el) return false;
+        var style = getComputedStyle(el);
+        return /(auto|scroll|overlay)/.test(style.overflowY + ' ' + style.overflowX)
+            && (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth);
+    }
+
+    function _activeViewportScroller() {
+        var pptMain = document.querySelector('.main');
+        if (_isScrollable(pptMain)) return pptMain;
+        var activeSheet = document.querySelector('.sheet-content.active');
+        var tableWrapper = activeSheet && activeSheet.querySelector('.table-wrapper');
+        if (_isScrollable(tableWrapper)) return tableWrapper;
+        return document.scrollingElement || document.documentElement;
+    }
+
+    function _viewportRect(scroller) {
+        if (scroller === document.scrollingElement
+            || scroller === document.documentElement
+            || scroller === document.body) {
+            return { top: 0, left: 0, right: innerWidth, bottom: innerHeight };
+        }
+        return scroller.getBoundingClientRect();
+    }
+
+    function _scrollerPosition(scroller) {
+        if (scroller === document.scrollingElement
+            || scroller === document.documentElement
+            || scroller === document.body) {
+            return { top: window.scrollY, left: window.scrollX };
+        }
+        return { top: scroller.scrollTop, left: scroller.scrollLeft };
+    }
+
+    function _setScrollerPosition(scroller, top, left) {
+        if (scroller === document.scrollingElement
+            || scroller === document.documentElement
+            || scroller === document.body) {
+            window.scrollTo(left, top);
+            return;
+        }
+        scroller.scrollTop = top;
+        scroller.scrollLeft = left;
+    }
+
+    function _visiblePathElements(scroller, viewport) {
+        var scope = scroller === document.scrollingElement
+            || scroller === document.documentElement
+            || scroller === document.body
+            ? document
+            : scroller;
+        return Array.prototype.filter.call(
+            scope.querySelectorAll('[data-path]'),
+            function(el) {
+                if (el.closest('.sidebar,.thumb,.sheet-tabs')) return false;
+                var rect = el.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0
+                    && rect.bottom > viewport.top && rect.top < viewport.bottom
+                    && rect.right > viewport.left && rect.left < viewport.right;
+            });
+    }
+
+    function _captureViewportAnchor() {
+        var scroller = _activeViewportScroller();
+        if (!scroller) return null;
+        var viewport = _viewportRect(scroller);
+        var centerY = (viewport.top + viewport.bottom) / 2;
+        var centerX = (viewport.left + viewport.right) / 2;
+        var candidates = _visiblePathElements(scroller, viewport);
+        var best = null;
+        var bestScore = Infinity;
+        for (var i = 0; i < candidates.length; i++) {
+            var rect = candidates[i].getBoundingClientRect();
+            var score = Math.abs((rect.top + rect.bottom) / 2 - centerY)
+                + Math.abs((rect.left + rect.right) / 2 - centerX) * 0.2;
+            // Prefer the more specific nested data-path when two candidates
+            // occupy the same visual region.
+            score -= (candidates[i].getAttribute('data-path') || '').split('/').length * 0.01;
+            if (score < bestScore) {
+                best = candidates[i];
+                bestScore = score;
+            }
+        }
+        var position = _scrollerPosition(scroller);
+        var rect = best && best.getBoundingClientRect();
+        var slide = best && best.closest('.slide-container');
+        var slideRect = slide && slide.getBoundingClientRect();
+        var sheet = document.querySelector('.sheet-content.active');
+        var siblings = candidates;
+        var bestIndex = best ? siblings.indexOf(best) : -1;
+        return {
+            element: best,
+            path: best && best.getAttribute('data-path'),
+            before: bestIndex > 0 ? siblings[bestIndex - 1] : null,
+            beforePath: bestIndex > 0
+                ? siblings[bestIndex - 1].getAttribute('data-path') : null,
+            after: bestIndex >= 0 && bestIndex + 1 < siblings.length
+                ? siblings[bestIndex + 1] : null,
+            afterPath: bestIndex >= 0 && bestIndex + 1 < siblings.length
+                ? siblings[bestIndex + 1].getAttribute('data-path') : null,
+            offsetTop: rect ? rect.top - viewport.top : null,
+            offsetLeft: rect ? rect.left - viewport.left : null,
+            scrollTop: position.top,
+            scrollLeft: position.left,
+            slideElement: slide,
+            slideNumber: slide ? parseInt(slide.getAttribute('data-slide')) || 0 : 0,
+            slideOffsetTop: slideRect ? slideRect.top - viewport.top : null,
+            sheetIndex: sheet ? parseInt(sheet.getAttribute('data-sheet')) : null,
+            manualRevision: _manualViewportRevision,
+        };
+    }
+
+    function _preferScrollTarget(candidates) {
+        if (!candidates.length) return null;
+        // PowerPoint thumbnails clone marked/selected slide content. Prefer the
+        // real slide in .main so explicit goto/focus never navigates the
+        // sidebar clone. Excel similarly prefers the currently active sheet.
+        for (var i = 0; i < candidates.length; i++) {
+            if (candidates[i].closest('.main')
+                && !candidates[i].closest('.sidebar,.thumb')) {
+                return candidates[i];
+            }
+        }
+        for (var i = 0; i < candidates.length; i++) {
+            if (candidates[i].closest('.sheet-content.active')) {
+                return candidates[i];
+            }
+        }
+        for (var i = 0; i < candidates.length; i++) {
+            if (!candidates[i].closest('.sidebar,.thumb,.sheet-tabs')) {
+                return candidates[i];
+            }
+        }
+        return candidates[0];
+    }
+
+    function _findPathElement(path) {
+        if (!path) return null;
+        var elements = document.querySelectorAll('[data-path]');
+        var candidates = [];
+        for (var i = 0; i < elements.length; i++) {
+            if (elements[i].getAttribute('data-path') === path) {
+                candidates.push(elements[i]);
+            }
+        }
+        if (!candidates.length) {
+            var parentPath = path;
+            while (parentPath.lastIndexOf('/') > 0 && !candidates.length) {
+                parentPath = parentPath.substring(0, parentPath.lastIndexOf('/'));
+                for (var j = 0; j < elements.length; j++) {
+                    if (elements[j].getAttribute('data-path') === parentPath) {
+                        candidates.push(elements[j]);
+                    }
+                }
+            }
+        }
+        return _preferScrollTarget(candidates);
+    }
+
+    function _queryScrollTarget(selector) {
+        var candidates = Array.prototype.slice.call(
+            document.querySelectorAll(selector));
+        return _preferScrollTarget(candidates);
+    }
+
+    function _scrollExplicitTarget(target) {
+        if (!target) return;
+        var sheet = target.closest('.sheet-content');
+        if (sheet && !sheet.classList.contains('active')) {
+            var sheetIndex = parseInt(sheet.getAttribute('data-sheet'));
+            document.querySelectorAll('.sheet-content').forEach(function(item) {
+                item.classList.toggle(
+                    'active',
+                    parseInt(item.getAttribute('data-sheet')) === sheetIndex);
+            });
+            document.querySelectorAll('.sheet-tab').forEach(function(item) {
+                item.classList.toggle(
+                    'active',
+                    parseInt(item.getAttribute('data-sheet')) === sheetIndex);
+            });
+        }
+        target.scrollIntoView({
+            behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+                ? 'auto' : 'smooth',
+            block: 'center',
+            inline: 'center',
+        });
+    }
+
+    function _closestSurvivingSlide(num) {
+        var slides = Array.prototype.slice.call(
+            document.querySelectorAll('.main > .slide-container'));
+        if (!slides.length) return null;
+        var best = slides[0], bestDistance = Infinity;
+        for (var i = 0; i < slides.length; i++) {
+            var current = parseInt(slides[i].getAttribute('data-slide')) || (i + 1);
+            var distance = Math.abs(current - num);
+            if (distance < bestDistance) {
+                best = slides[i];
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
+    function _restoreViewportAnchor(anchor) {
+        if (!anchor || anchor.manualRevision !== _manualViewportRevision) return;
+
+        if (Number.isInteger(anchor.sheetIndex)) {
+            document.querySelectorAll('.sheet-content').forEach(function(sheet) {
+                sheet.classList.toggle(
+                    'active',
+                    parseInt(sheet.getAttribute('data-sheet')) === anchor.sheetIndex);
+            });
+            document.querySelectorAll('.sheet-tab').forEach(function(tab) {
+                tab.classList.toggle(
+                    'active',
+                    parseInt(tab.getAttribute('data-sheet')) === anchor.sheetIndex);
+            });
+        }
+
+        var scroller = _activeViewportScroller();
+        if (!scroller) return;
+        var viewport = _viewportRect(scroller);
+        var target = anchor.element && anchor.element.isConnected
+            ? anchor.element
+            : _findPathElement(anchor.path);
+        if (!target) {
+            target = anchor.before && anchor.before.isConnected
+                ? anchor.before : _findPathElement(anchor.beforePath);
+        }
+        if (!target) {
+            target = anchor.after && anchor.after.isConnected
+                ? anchor.after : _findPathElement(anchor.afterPath);
+        }
+
+        if (target && anchor.offsetTop !== null && anchor.offsetLeft !== null) {
+            var targetRect = target.getBoundingClientRect();
+            var current = _scrollerPosition(scroller);
+            _setScrollerPosition(
+                scroller,
+                current.top + (targetRect.top - viewport.top - anchor.offsetTop),
+                current.left + (targetRect.left - viewport.left - anchor.offsetLeft));
+            return;
+        }
+
+        var slide = anchor.slideElement && anchor.slideElement.isConnected
+            ? anchor.slideElement
+            : _closestSurvivingSlide(anchor.slideNumber);
+        if (slide && anchor.slideOffsetTop !== null) {
+            var slideRect = slide.getBoundingClientRect();
+            var current = _scrollerPosition(scroller);
+            _setScrollerPosition(
+                scroller,
+                current.top + (slideRect.top - viewport.top - anchor.slideOffsetTop),
+                anchor.scrollLeft);
+            return;
+        }
+
+        _setScrollerPosition(scroller, anchor.scrollTop, anchor.scrollLeft);
+    }
+
+    function _cancelViewportRestore() {
+        _pendingViewportAnchor = null;
+        _viewportRestoreId++;
+    }
+
+    function _queueViewportRestore(anchor, rendererWillSignal) {
+        if (!anchor) return;
+        var id = ++_viewportRestoreId;
+        _pendingViewportAnchor = anchor;
+        if (rendererWillSignal) return;
+        requestAnimationFrame(function() {
+            if (id !== _viewportRestoreId || _pendingViewportAnchor !== anchor) return;
+            _pendingViewportAnchor = null;
+            _restoreViewportAnchor(anchor);
+        });
+    }
+
+    window._watchRestorePendingViewport = function() {
+        var anchor = _pendingViewportAnchor;
+        if (!anchor) return;
+        var id = _viewportRestoreId;
+        requestAnimationFrame(function() {
+            if (id !== _viewportRestoreId || _pendingViewportAnchor !== anchor) return;
+            _pendingViewportAnchor = null;
+            _restoreViewportAnchor(anchor);
+        });
+    };
 
     function _callReapplyHook() {
         if (typeof window._watchReapplyHook === 'function') window._watchReapplyHook();
@@ -69,10 +388,11 @@
                     else t.classList.remove('active');
                 });
             }
-            var savedScrollY = window.scrollY;
+            // Capture immediately before the DOM swap so a manual scroll made
+            // while fetch('/') was in flight wins over older state.
+            var viewportAnchor = _captureViewportAnchor();
             document.body.innerHTML = doc.body.innerHTML;
             if (sseScript) document.body.appendChild(sseScript);
-            window.scrollTo(0, savedScrollY);
             doc.body.querySelectorAll('script').forEach(function(s) {
                 if (s.textContent.indexOf('EventSource') >= 0) return;
                 var ns = document.createElement('script');
@@ -84,20 +404,24 @@
                 else ns.textContent = s.textContent;
                 document.body.appendChild(ns);
             });
-            if (msg.scrollTo && targetSheetIdx < 0) {
-                window._pendingScrollTo = msg.scrollTo;
-            }
             // Re-apply selection + marks after the body swap
             _callReapplyHook();
+            _queueViewportRestore(viewportAnchor, false);
         });
     }
 
     function scrollToSlide(num) {
-        clearTimeout(_scrollTimer);
-        _scrollTimer = setTimeout(function() {
+        _cancelViewportRestore();
+        if (_scrollTimer !== null) cancelAnimationFrame(_scrollTimer);
+        _scrollTimer = requestAnimationFrame(function() {
+            _scrollTimer = null;
             var target = document.querySelector('.slide-container[data-slide="' + num + '"]');
-            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 300);
+            if (target) target.scrollIntoView({
+                behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+                    ? 'auto' : 'smooth',
+                block: 'center',
+            });
+        });
     }
 
     function syncThumbs() {
@@ -136,15 +460,8 @@
 
     // Word diff-update: de-paginate, diff children, re-paginate (no full innerHTML swap)
     function wordDiffUpdate(msg) {
-        var visiblePageNum = 0;
-        document.querySelectorAll('.page-wrapper').forEach(function(w) {
-            var rect = w.getBoundingClientRect();
-            if (rect.top < window.innerHeight / 2) {
-                var p = w.querySelector('.page');
-                if (p) visiblePageNum = parseInt(p.getAttribute('data-page')) || 0;
-            }
-        });
         fetch('/').then(function(r) { return r.text(); }).then(function(html) {
+            var viewportAnchor = _captureViewportAnchor();
             var doc = new DOMParser().parseFromString(html, 'text/html');
             // Update styles
             var oldStyles = document.querySelectorAll('head style');
@@ -198,18 +515,19 @@
                 for (var j = pi; j <= ni; j++) oldB.insertBefore(newK[j].cloneNode(true), before);
                 if (newK.length > oldK.length) contentAdded = true;
             }
-            // Set scroll target
-            if (contentAdded) {
-                window._pendingScrollTo = '_last_page';
-            } else if (msg.scrollTo) {
-                window._pendingScrollTo = msg.scrollTo;
-            } else if (visiblePageNum > 0) {
-                window._pendingScrollTo = '.page[data-page="' + visiblePageNum + '"]';
-                window._pendingScrollBehavior = 'instant';
-            }
+            // Normal document updates preserve the latest semantic viewport
+            // anchor. Explicit navigation arrives as action="scroll", never as
+            // a mutation's legacy scrollTo hint.
+            window._pendingScrollTo = null;
+            window._pendingScrollBehavior = null;
+            _queueViewportRestore(viewportAnchor, true);
             // Re-paginate (will also re-scale and remove freeze)
             if (typeof window._wordPaginate === 'function') window._wordPaginate();
-            else { var f=document.getElementById('_sse_freeze'); if(f)f.remove(); }
+            else {
+                var f=document.getElementById('_sse_freeze');
+                if(f)f.remove();
+                window._watchRestorePendingViewport();
+            }
             // Re-apply selection + marks after DOM swap
             _callReapplyHook();
         });
@@ -220,6 +538,7 @@
 
     // Apply server-side block patches directly to DOM
     function wordPatchUpdate(msg) {
+        var viewportAnchor = _captureViewportAnchor();
         // De-paginate: merge pagination-created pages back into section wrappers
         var allW = Array.from(document.querySelectorAll('.page-wrapper'));
         var curSec = null;
@@ -290,16 +609,17 @@
                 }
             }
         });
-        // Set scroll target
-        if (contentAdded) {
-            window._pendingScrollTo = '_last_page';
-            window._pendingScrollBehavior = 'instant';
-        } else if (msg.scrollTo) {
-            window._pendingScrollTo = msg.scrollTo;
-        }
+        window._pendingScrollTo = null;
+        window._pendingScrollBehavior = null;
+        _queueViewportRestore(viewportAnchor, true);
         _clientVersion = msg.version;
         // Re-paginate + render new KaTeX/CJK
         if (typeof window._wordPaginate === 'function') window._wordPaginate();
+        else {
+            var f=document.getElementById('_sse_freeze');
+            if(f)f.remove();
+            window._watchRestorePendingViewport();
+        }
         // Re-apply selection + marks after block-level DOM mutations
         _callReapplyHook();
     }
@@ -320,13 +640,17 @@
         // Scroll-only: navigate the viewer without mutating DOM/styles.
         // Sent by the `goto` command. Word path is selector-based; for
         // PPT use scrollToSlide if scrollTo matches /slide\[N\]/.
-        if (msg.action === 'scroll' && msg.scrollTo) {
+        if (msg.action === 'scroll' && (msg.scrollTo || msg.scrollPath)) {
+            _cancelViewportRestore();
+            if (msg.scrollPath) {
+                _scrollExplicitTarget(_findPathElement(msg.scrollPath));
+                return;
+            }
             var sel = msg.scrollTo;
             var slideMatch = sel.match(/data-slide="(\d+)"/);
             if (slideMatch) { scrollToSlide(parseInt(slideMatch[1])); return; }
             try {
-                var t = document.querySelector(sel);
-                if (t) t.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                _scrollExplicitTarget(_queryScrollTarget(sel));
             } catch (e) { /* invalid selector — silent */ }
             return;
         }
@@ -345,6 +669,7 @@
             return;
         }
         if (msg.action === 'excel-patch') {
+            var viewportAnchor = _captureViewportAnchor();
             // Version gap check: if we missed messages, fallback to full reload
             // Skip when prevVersion===0 (fresh client — no messages seen yet)
             if (prevVersion > 0 && msg.baseVersion !== 0 && msg.baseVersion !== prevVersion) {
@@ -399,9 +724,9 @@
                     }
                 }
             });
-            if (msg.scrollTo) window._pendingScrollTo = msg.scrollTo;
             if (msg.version !== undefined) _clientVersion = msg.version;
             _callReapplyHook();
+            _queueViewportRestore(viewportAnchor, false);
             return;
         }
         if (msg.action === 'full') {
@@ -426,6 +751,7 @@
         }
         var slideNum = msg.slide;
         if (msg.action === 'replace') {
+            var viewportAnchor = _captureViewportAnchor();
             var el = document.querySelector('.slide-container[data-slide="' + slideNum + '"]');
             if (el) {
                 var tmp = document.createElement('div');
@@ -435,12 +761,13 @@
                 _executeScripts(newEl);
                 if (typeof scaleSlides === 'function') scaleSlides();
                 syncThumbs();
-                scrollToSlide(slideNum);
             } else {
                 location.reload();
             }
             _callReapplyHook();
+            _queueViewportRestore(viewportAnchor, false);
         } else if (msg.action === 'remove') {
+            var viewportAnchor = _captureViewportAnchor();
             var el = document.querySelector('.slide-container[data-slide="' + slideNum + '"]');
             if (el) el.remove();
             // renumber remaining slides
@@ -449,7 +776,9 @@
             });
             syncThumbs();
             _callReapplyHook();
+            _queueViewportRestore(viewportAnchor, false);
         } else if (msg.action === 'add') {
+            var viewportAnchor = _captureViewportAnchor();
             var main = document.querySelector('.main');
             if (main) {
                 var tmp = document.createElement('div');
@@ -460,8 +789,8 @@
                 if (typeof scaleSlides === 'function') scaleSlides();
             }
             syncThumbs();
-            scrollToSlide(slideNum);
             _callReapplyHook();
+            _queueViewportRestore(viewportAnchor, false);
         }
     });
 })();

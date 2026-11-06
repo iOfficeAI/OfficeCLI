@@ -97,6 +97,75 @@ internal static class WatchNotifier
     }
 
     /// <summary>
+    /// Send a validated document data-path to the watch server. The path is
+    /// base64-wrapped for the one-line pipe protocol and is never interpreted
+    /// as CSS. The server resolves it against its cached HTML snapshot.
+    /// </summary>
+    public static ScrollResult TryScrollPath(string filePath, string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)
+            || path.Length > 4096
+            || !path.StartsWith("/", StringComparison.Ordinal)
+            || path.Any(char.IsControl))
+            return ScrollResult.NotFound("invalid document path");
+
+        var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(path));
+        return TryRuntimeScroll(filePath, "scroll-path " + encoded);
+    }
+
+    /// <summary>
+    /// Navigate to a server-issued viewer mark without accepting a selector
+    /// from the caller.
+    /// </summary>
+    public static ScrollResult TryScrollMark(string filePath, string markId)
+    {
+        if (string.IsNullOrWhiteSpace(markId)
+            || markId.Length > 20
+            || !markId.All(char.IsDigit))
+            return ScrollResult.NotFound("invalid mark id");
+        return TryRuntimeScroll(filePath, "scroll-mark " + markId);
+    }
+
+    private static ScrollResult TryRuntimeScroll(string filePath, string message)
+    {
+        try
+        {
+            ScrollResult result = ScrollResult.NoWatch();
+            RunWithTimeout(() =>
+            {
+                var pipeName = WatchServer.GetWatchPipeName(filePath);
+                using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut);
+                client.Connect(200);
+
+                var noBom = new UTF8Encoding(false);
+                using var writer = new StreamWriter(client, noBom, leaveOpen: true) { AutoFlush = true };
+                writer.WriteLine(message);
+                writer.Flush();
+
+                using var reader = new StreamReader(
+                    client,
+                    noBom,
+                    detectEncodingFromByteOrderMarks: false,
+                    leaveOpen: true);
+                var resp = reader.ReadLine();
+                if (string.IsNullOrEmpty(resp)) { result = ScrollResult.NoWatch(); return; }
+                if (resp == "ok") { result = ScrollResult.Ok(); return; }
+                if (resp.StartsWith("err:", StringComparison.Ordinal))
+                {
+                    result = ScrollResult.NotFound(resp.Substring(4));
+                    return;
+                }
+                result = ScrollResult.NoWatch();
+            }, PipeTimeout);
+            return result;
+        }
+        catch
+        {
+            return ScrollResult.NoWatch();
+        }
+    }
+
+    /// <summary>
     /// Query the running watch process for the current selection.
     /// Returns:
     ///   null  → no watch running for this file (or pipe failure)
