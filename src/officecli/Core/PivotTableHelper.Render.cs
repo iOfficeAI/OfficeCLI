@@ -250,9 +250,9 @@ internal static partial class PivotTableHelper
         // Two data fields on the same source column are common (e.g. sum + count
         // of 金额) and produce two independent buckets keyed by their dataFieldIdx
         // in valueFields.
-        var perBucket = new Dictionary<(string r, string c, int d), List<double>>();
-        var perDataField = new List<List<double>>();
-        for (int d = 0; d < K; d++) perDataField.Add(new List<double>());
+        var perBucket = new Dictionary<(string r, string c, int d), List<string>>();
+        var perDataField = new List<List<string>>();
+        for (int d = 0; d < K; d++) perDataField.Add(new List<string>());
 
         for (int i = 0; i < rowValues.Length; i++)
         {
@@ -265,21 +265,20 @@ internal static partial class PivotTableHelper
                 var dataIdx = valueFields[d].idx;
                 var dataValues = columnData[dataIdx];
                 if (i >= dataValues.Length) continue;
-                if (!double.TryParse(dataValues[i], System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out var num)) continue;
+                var raw = dataValues[i];
 
                 var key = (rv, cv, d);
                 if (!perBucket.TryGetValue(key, out var list))
                 {
-                    list = new List<double>();
+                    list = new List<string>();
                     perBucket[key] = list;
                 }
-                list.Add(num);
-                perDataField[d].Add(num);
+                list.Add(raw);
+                perDataField[d].Add(raw);
             }
         }
 
-        double Reduce(IEnumerable<double> values, string func) => ReducePivotValues(values, func);
+        double Reduce(IEnumerable<string> values, string func) => ReducePivotValues(values, func);
 
         // Compute the K-deep cell matrix + row/col/grand totals per data field.
         // matrix[r, c, d] = reduce(values for row r, col c, data field d)
@@ -293,7 +292,7 @@ internal static partial class PivotTableHelper
             var func = valueFields[d].func;
             for (int r = 0; r < uniqueRows.Count; r++)
             {
-                var rowAll = new List<double>();
+                var rowAll = new List<string>();
                 for (int c = 0; c < uniqueCols.Count; c++)
                 {
                     if (perBucket.TryGetValue((uniqueRows[r], uniqueCols[c], d), out var bucket) && bucket.Count > 0)
@@ -306,7 +305,7 @@ internal static partial class PivotTableHelper
             }
             for (int c = 0; c < uniqueCols.Count; c++)
             {
-                var colAll = new List<double>();
+                var colAll = new List<string>();
                 for (int r = 0; r < uniqueRows.Count; r++)
                 {
                     if (perBucket.TryGetValue((uniqueRows[r], uniqueCols[c], d), out var bucket))
@@ -600,9 +599,9 @@ internal static partial class PivotTableHelper
 
         // Aggregate per (outer, inner, col, dataFieldIdx). For K=1 the d
         // dimension is degenerate but the same data structure works uniformly.
-        var leafBucket = new Dictionary<(string o, string i, string c, int d), List<double>>();
-        var perDataField = new List<List<double>>();
-        for (int d = 0; d < K; d++) perDataField.Add(new List<double>());
+        var leafBucket = new Dictionary<(string o, string i, string c, int d), List<string>>();
+        var perDataField = new List<List<string>>();
+        for (int d = 0; d < K; d++) perDataField.Add(new List<string>());
 
         for (int i = 0; i < outerVals.Length; i++)
         {
@@ -616,21 +615,20 @@ internal static partial class PivotTableHelper
                 var dataIdx = valueFields[d].idx;
                 var dataValues = columnData[dataIdx];
                 if (i >= dataValues.Length) continue;
-                if (!double.TryParse(dataValues[i], System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out var num)) continue;
+                var raw = dataValues[i];
 
                 var key = (ov, iv, cv, d);
                 if (!leafBucket.TryGetValue(key, out var list))
                 {
-                    list = new List<double>();
+                    list = new List<string>();
                     leafBucket[key] = list;
                 }
-                list.Add(num);
-                perDataField[d].Add(num);
+                list.Add(raw);
+                perDataField[d].Add(raw);
             }
         }
 
-        double Reduce(IEnumerable<double> values, string func) => ReducePivotValues(values, func);
+        double Reduce(IEnumerable<string> values, string func) => ReducePivotValues(values, func);
 
         // The closures below compute the cell values per (row pos, col pos, d)
         // by reducing raw value lists. Each closure takes a data field index d
@@ -641,7 +639,7 @@ internal static partial class PivotTableHelper
 
         double OuterSubtotalForCol(string outer, string col, int d)
         {
-            var all = new List<double>();
+            var all = new List<string>();
             foreach (var (o, inners) in groups)
                 if (o == outer)
                     foreach (var inner in inners)
@@ -652,7 +650,7 @@ internal static partial class PivotTableHelper
 
         double LeafRowTotal(string outer, string inner, int d)
         {
-            var all = new List<double>();
+            var all = new List<string>();
             foreach (var col in uniqueCols)
                 if (leafBucket.TryGetValue((outer, inner, col, d), out var b))
                     all.AddRange(b);
@@ -661,7 +659,7 @@ internal static partial class PivotTableHelper
 
         double OuterRowTotal(string outer, int d)
         {
-            var all = new List<double>();
+            var all = new List<string>();
             foreach (var (o, inners) in groups)
                 if (o == outer)
                     foreach (var inner in inners)
@@ -673,7 +671,7 @@ internal static partial class PivotTableHelper
 
         double ColTotal(string col, int d)
         {
-            var all = new List<double>();
+            var all = new List<string>();
             foreach (var (outer, inners) in groups)
                 foreach (var inner in inners)
                     if (leafBucket.TryGetValue((outer, inner, col, d), out var b))
@@ -923,9 +921,9 @@ internal static partial class PivotTableHelper
 
         // Aggregate per (row, outerCol, innerCol, dataFieldIdx). For K=1 the d
         // dimension is degenerate but the same data structure works uniformly.
-        var leafBucket = new Dictionary<(string r, string oc, string ic, int d), List<double>>();
-        var perDataField = new List<List<double>>();
-        for (int d = 0; d < K; d++) perDataField.Add(new List<double>());
+        var leafBucket = new Dictionary<(string r, string oc, string ic, int d), List<string>>();
+        var perDataField = new List<List<string>>();
+        for (int d = 0; d < K; d++) perDataField.Add(new List<string>());
 
         for (int i = 0; i < rowVals.Length; i++)
         {
@@ -939,21 +937,20 @@ internal static partial class PivotTableHelper
                 var dataIdx = valueFields[d].idx;
                 var dataValues = columnData[dataIdx];
                 if (i >= dataValues.Length) continue;
-                if (!double.TryParse(dataValues[i], System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out var num)) continue;
+                var raw = dataValues[i];
 
                 var key = (rv, ocv, icv, d);
                 if (!leafBucket.TryGetValue(key, out var list))
                 {
-                    list = new List<double>();
+                    list = new List<string>();
                     leafBucket[key] = list;
                 }
-                list.Add(num);
-                perDataField[d].Add(num);
+                list.Add(raw);
+                perDataField[d].Add(raw);
             }
         }
 
-        double Reduce(IEnumerable<double> values, string func) => ReducePivotValues(values, func);
+        double Reduce(IEnumerable<string> values, string func) => ReducePivotValues(values, func);
 
         // Per-(row, outerCol, innerCol, d) reductions over raw values.
         double LeafCell(string row, string outerCol, string innerCol, int d)
@@ -962,7 +959,7 @@ internal static partial class PivotTableHelper
 
         double OuterColSubtotalForRow(string row, string outerCol, int d)
         {
-            var all = new List<double>();
+            var all = new List<string>();
             foreach (var (oc, inners) in colGroups)
                 if (oc == outerCol)
                     foreach (var inner in inners)
@@ -973,7 +970,7 @@ internal static partial class PivotTableHelper
 
         double RowGrandTotal(string row, int d)
         {
-            var all = new List<double>();
+            var all = new List<string>();
             foreach (var (oc, inners) in colGroups)
                 foreach (var inner in inners)
                     if (leafBucket.TryGetValue((row, oc, inner, d), out var b))
@@ -983,7 +980,7 @@ internal static partial class PivotTableHelper
 
         double LeafColTotal(string outerCol, string innerCol, int d)
         {
-            var all = new List<double>();
+            var all = new List<string>();
             foreach (var row in uniqueRows)
                 if (leafBucket.TryGetValue((row, outerCol, innerCol, d), out var b))
                     all.AddRange(b);
@@ -992,7 +989,7 @@ internal static partial class PivotTableHelper
 
         double OuterColTotal(string outerCol, int d)
         {
-            var all = new List<double>();
+            var all = new List<string>();
             foreach (var (oc, inners) in colGroups)
                 if (oc == outerCol)
                     foreach (var inner in inners)
@@ -1314,9 +1311,9 @@ internal static partial class PivotTableHelper
 
         // Aggregate per (rowOuter, rowInner, colOuter, colInner, dataFieldIdx).
         // 5-tuple bucket — combines the 4-tuple matrix bucket with K data fields.
-        var bucket = new Dictionary<(string ro, string ri, string co, string ci, int d), List<double>>();
-        var perDataField = new List<List<double>>();
-        for (int d = 0; d < K; d++) perDataField.Add(new List<double>());
+        var bucket = new Dictionary<(string ro, string ri, string co, string ci, int d), List<string>>();
+        var perDataField = new List<List<string>>();
+        for (int d = 0; d < K; d++) perDataField.Add(new List<string>());
 
         for (int i = 0; i < rowOuterVals.Length; i++)
         {
@@ -1332,21 +1329,20 @@ internal static partial class PivotTableHelper
                 var dataIdx = valueFields[d].idx;
                 var dataValues = columnData[dataIdx];
                 if (i >= dataValues.Length) continue;
-                if (!double.TryParse(dataValues[i], System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out var num)) continue;
+                var raw = dataValues[i];
 
                 var key = (ro, ri, co, ci, d);
                 if (!bucket.TryGetValue(key, out var list))
                 {
-                    list = new List<double>();
+                    list = new List<string>();
                     bucket[key] = list;
                 }
-                list.Add(num);
-                perDataField[d].Add(num);
+                list.Add(raw);
+                perDataField[d].Add(raw);
             }
         }
 
-        double Reduce(IEnumerable<double> values, string func) => ReducePivotValues(values, func);
+        double Reduce(IEnumerable<string> values, string func) => ReducePivotValues(values, func);
 
         // The 9 cell-value closures from the K=1 path now each take a data
         // field index d so the right aggregator is applied per cell.
@@ -1356,7 +1352,7 @@ internal static partial class PivotTableHelper
 
         double LeafRowColSub(string ro, string ri, string co, int d)
         {
-            var all = new List<double>();
+            var all = new List<string>();
             foreach (var (oc, inners) in colGroups)
                 if (oc == co)
                     foreach (var inner in inners)
@@ -1367,7 +1363,7 @@ internal static partial class PivotTableHelper
 
         double LeafRowGrandTotal(string ro, string ri, int d)
         {
-            var all = new List<double>();
+            var all = new List<string>();
             foreach (var (oc, inners) in colGroups)
                 foreach (var inner in inners)
                     if (bucket.TryGetValue((ro, ri, oc, inner, d), out var b))
@@ -1377,7 +1373,7 @@ internal static partial class PivotTableHelper
 
         double OuterRowLeafCell(string ro, string co, string ci, int d)
         {
-            var all = new List<double>();
+            var all = new List<string>();
             foreach (var (g, inners) in rowGroups)
                 if (g == ro)
                     foreach (var inner in inners)
@@ -1388,7 +1384,7 @@ internal static partial class PivotTableHelper
 
         double OuterRowColSub(string ro, string co, int d)
         {
-            var all = new List<double>();
+            var all = new List<string>();
             foreach (var (g, rinners) in rowGroups)
                 if (g == ro)
                     foreach (var rinner in rinners)
@@ -1402,7 +1398,7 @@ internal static partial class PivotTableHelper
 
         double OuterRowGrandTotal(string ro, int d)
         {
-            var all = new List<double>();
+            var all = new List<string>();
             foreach (var (g, rinners) in rowGroups)
                 if (g == ro)
                     foreach (var rinner in rinners)
@@ -1415,7 +1411,7 @@ internal static partial class PivotTableHelper
 
         double GrandRowLeafCol(string co, string ci, int d)
         {
-            var all = new List<double>();
+            var all = new List<string>();
             foreach (var (g, rinners) in rowGroups)
                 foreach (var rinner in rinners)
                     if (bucket.TryGetValue((g, rinner, co, ci, d), out var b))
@@ -1425,7 +1421,7 @@ internal static partial class PivotTableHelper
 
         double GrandRowColSub(string co, int d)
         {
-            var all = new List<double>();
+            var all = new List<string>();
             foreach (var (g, rinners) in rowGroups)
                 foreach (var rinner in rinners)
                     foreach (var (oc, cinners) in colGroups)
@@ -1805,26 +1801,9 @@ internal static partial class PivotTableHelper
             }
         }
 
-        // Numeric value cache per data field. Pre-parse so we don't double_parse
-        // every cell access. NaN encodes "not a number / skip".
-        var dataNums = new double[K][];
-        for (int d = 0; d < K; d++)
-        {
-            var dataIdx = valueFields[d].idx;
-            var values = (dataIdx >= 0 && dataIdx < columnData.Count) ? columnData[dataIdx] : Array.Empty<string>();
-            dataNums[d] = new double[srcRowCount];
-            for (int r = 0; r < srcRowCount; r++)
-            {
-                if (r >= values.Length || string.IsNullOrEmpty(values[r])
-                    || !double.TryParse(values[r], System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out var n))
-                    dataNums[d][r] = double.NaN;
-                else
-                    dataNums[d][r] = n;
-            }
-        }
+        var dataValues = valueFields.Select(field => columnData[field.idx]).ToArray();
 
-        double Reduce(IEnumerable<double> values, string func) => ReducePivotValues(values, func);
+        double Reduce(IEnumerable<string> values, string func) => ReducePivotValues(values, func);
 
         // Compute the value at (rowNode, colNode, dataFieldIdx).
         // Subtotal nodes have shorter Path arrays than leaves; the prefix match
@@ -1833,7 +1812,7 @@ internal static partial class PivotTableHelper
         {
             var rPath = rowNode.Path;
             var cPath = colNode.Path;
-            var collected = new List<double>();
+            var collected = new List<string>();
             for (int r = 0; r < srcRowCount; r++)
             {
                 bool match = true;
@@ -1851,8 +1830,7 @@ internal static partial class PivotTableHelper
                     if (string.IsNullOrEmpty(colFieldVals[r][l])) match = false;
                 if (!match) continue;
 
-                var v = dataNums[d][r];
-                if (!double.IsNaN(v)) collected.Add(v);
+                if (r < dataValues[d].Length) collected.Add(dataValues[d][r]);
             }
             return Reduce(collected, valueFields[d].func);
         }
@@ -1945,7 +1923,7 @@ internal static partial class PivotTableHelper
                     if (colFieldVals[r][l] != cPath[l]) match = false;
                 if (!match) continue;
                 for (int d = 0; d < K; d++)
-                    if (!double.IsNaN(dataNums[d][r])) return true;
+                    if (r < dataValues[d].Length && !string.IsNullOrEmpty(dataValues[d][r])) return true;
             }
             return false;
         }
@@ -2470,7 +2448,7 @@ internal static partial class PivotTableHelper
     /// </summary>
     private static bool HasAnyValueInOuterRowCol(string rowOuter, string colOuter, string colInner,
         List<(string outer, List<string> inners)> rowGroups,
-        Dictionary<(string ro, string ri, string co, string ci, int d), List<double>> bucket,
+        Dictionary<(string ro, string ri, string co, string ci, int d), List<string>> bucket,
         int dataFieldCount)
     {
         foreach (var (g, inners) in rowGroups)
@@ -2491,7 +2469,7 @@ internal static partial class PivotTableHelper
     private static bool HasAnyValueInOuterRowOuterCol(string rowOuter, string colOuter,
         List<(string outer, List<string> inners)> rowGroups,
         List<(string outer, List<string> inners)> colGroups,
-        Dictionary<(string ro, string ri, string co, string ci, int d), List<double>> bucket,
+        Dictionary<(string ro, string ri, string co, string ci, int d), List<string>> bucket,
         int dataFieldCount)
     {
         foreach (var (g, rinners) in rowGroups)
@@ -2514,7 +2492,7 @@ internal static partial class PivotTableHelper
     /// </summary>
     private static bool HasAnyValueInLeafRowCol(string rowOuter, string rowInner, string colOuter,
         List<(string outer, List<string> inners)> colGroups,
-        Dictionary<(string ro, string ri, string co, string ci, int d), List<double>> bucket,
+        Dictionary<(string ro, string ri, string co, string ci, int d), List<string>> bucket,
         int dataFieldCount)
     {
         foreach (var (oc, cinners) in colGroups)
@@ -2536,7 +2514,7 @@ internal static partial class PivotTableHelper
     /// </summary>
     private static bool HasAnyValueInRowOuter(string row, string outerCol,
         List<(string outer, List<string> inners)> colGroups,
-        Dictionary<(string r, string oc, string ic, int d), List<double>> leafBucket,
+        Dictionary<(string r, string oc, string ic, int d), List<string>> leafBucket,
         int dataFieldCount)
     {
         foreach (var (oc, inners) in colGroups)
@@ -2559,7 +2537,7 @@ internal static partial class PivotTableHelper
     /// </summary>
     private static bool HasAnyValueInOuterCol(string outer, string col,
         List<(string outer, List<string> inners)> groups,
-        Dictionary<(string o, string i, string c, int d), List<double>> leafBucket,
+        Dictionary<(string o, string i, string c, int d), List<string>> leafBucket,
         int dataFieldCount)
     {
         foreach (var (o, inners) in groups)
