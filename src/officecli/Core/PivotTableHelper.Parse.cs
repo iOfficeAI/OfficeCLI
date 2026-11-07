@@ -474,7 +474,7 @@ internal static partial class PivotTableHelper
     private static bool IsKnownAggregateToken(string token) => token switch
     {
         "sum" or "count" or "countnums" or "countnum" or "average" or "avg" or
-        "max" or "min" or "product" or "stddev" or "std" or "stddevp" or "stdp" or
+        "max" or "min" or "product" or "stddev" or "stdev" or "std" or "stddevp" or "stdevp" or "stdp" or
         "var" or "variance" or "varp" => true,
         _ => false,
     };
@@ -587,6 +587,7 @@ internal static partial class PivotTableHelper
                 foreach (var v in arr) p *= v;
                 return p;
             case "stddev":
+            case "stdev":
             case "std":
             {
                 if (arr.Length < 2) return 0;
@@ -595,6 +596,7 @@ internal static partial class PivotTableHelper
                 return Math.Sqrt(sq / (arr.Length - 1));
             }
             case "stddevp":
+            case "stdevp":
             case "stdp":
             {
                 var mean = arr.Average();
