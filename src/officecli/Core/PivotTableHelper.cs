@@ -1385,7 +1385,7 @@ internal static partial class PivotTableHelper
         // Those configs are tracked as a v2 expansion.
         RenderPivotIntoSheet(
             targetSheet, position, headers, columnData,
-            rowFields, colFields, valueFields, filterFields, columnStyleIds);
+            rowFields, colFields, valueFields, filterFields, columnStyleIds, pivotDef.DataFields);
 
         // After rendering, collapse any duplicate <row r="N"> elements the
         // renderer may have appended if this sheet already had pivot-rendered
@@ -1701,7 +1701,8 @@ internal static partial class PivotTableHelper
         // naturally (zero leaves, zero subtotals).
         // N≤2 with both axes non-empty: keep the existing specialized formulas
         // (regression-tested via pivot_baselines).
-        if (rowFieldIndices.Count >= 3 || colFieldIndices.Count >= 3
+        if (valueFields.Any(v => ParseShowDataAs(v.showAs) == ShowDataAsValues.RunTotal)
+            || rowFieldIndices.Count >= 3 || colFieldIndices.Count >= 3
             || rowFieldIndices.Count == 0
             || (rowFieldIndices.Count == 2 && colFieldIndices.Count == 0))
         {
@@ -2198,7 +2199,7 @@ internal static partial class PivotTableHelper
                     RenderPivotIntoSheet(
                         worksheetPart, anchorRef, cacheHeaders, cacheColumnData,
                         rowFieldIndices, colFieldIndices, valueFields, filterFieldIndices,
-                        sourceColumnStyleIds);
+                        sourceColumnStyleIds, pivotDef.DataFields);
 
                     DedupeSheetDataRows(sheetData);
                 }
