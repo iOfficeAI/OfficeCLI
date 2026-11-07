@@ -1147,12 +1147,12 @@ internal static partial class PivotTableHelper
         // 1. Explicit Sheet!Range
         if (spec.Contains('!'))
         {
-            var parts = spec.Split('!', 2);
-            var sheet = parts[0].Trim();
+            var bangIdx = spec.LastIndexOf('!');
+            var sheet = spec[..bangIdx].Trim();
             if (sheet.Length >= 2 && ((sheet[0] == '\'' && sheet[^1] == '\'')
                                     || (sheet[0] == '"' && sheet[^1] == '"')))
-                sheet = sheet.Substring(1, sheet.Length - 2);
-            var rangePart = parts[1].Trim();
+                sheet = sheet[0] == '\'' ? sheet[1..^1].Replace("''", "'") : sheet[1..^1];
+            var rangePart = spec[(bangIdx + 1)..].Trim();
 
             // A "Sheet1!SalesData"-style sheet-qualified defined name —
             // rangePart is a single identifier, not an A1 reference.
@@ -1320,12 +1320,12 @@ internal static partial class PivotTableHelper
 
         // Body should look like "Sheet1!$A$1:$C$5" or "'Sheet 1'!A1:C5".
         if (!body.Contains('!')) return null;
-        var parts = body.Split('!', 2);
-        var sheet = parts[0].Trim();
+        var bangIdx = body.LastIndexOf('!');
+        var sheet = body[..bangIdx].Trim();
         if (sheet.Length >= 2 && ((sheet[0] == '\'' && sheet[^1] == '\'')
                                 || (sheet[0] == '"' && sheet[^1] == '"')))
-            sheet = sheet.Substring(1, sheet.Length - 2);
-        var rangePart = parts[1].Trim();
+            sheet = sheet[0] == '\'' ? sheet[1..^1].Replace("''", "'") : sheet[1..^1];
+        var rangePart = body[(bangIdx + 1)..].Trim();
         if (!LooksLikeRangeRef(rangePart)) return null;
         return (sheet, rangePart.Replace("$", "").ToUpperInvariant());
     }
