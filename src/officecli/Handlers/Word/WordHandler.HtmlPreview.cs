@@ -762,6 +762,7 @@ public partial class WordHandler
     // Reflow tall headers BEFORE measuring body overflow so the pushed-down
     // body height is accounted for when picking split points.
     document.querySelectorAll('.page').forEach(adjustHeaderPadding);
+    syncFootnotes();
     var pages=document.querySelectorAll('.page');
     // Sync mode + page filter: bail once pages beyond max-requested exist
     // and pages 1..maxReq are stable. Avoids paginating 100-page docs to
@@ -792,6 +793,9 @@ public partial class WordHandler
       var page=pages[pi];
       var body=page.querySelector('.page-body');
       if(!body)continue;
+      // Earlier splits in this pass may have carried references onto this
+      // page (or off the previous one); re-home their notes before measuring.
+      syncFootnotes();
       // Reserve space for footnotes at page bottom (like Word does)
       var fnEl=body.querySelector('.footnotes');
       var fnH=fnEl?fnEl.offsetHeight:0;
@@ -1047,6 +1051,7 @@ public partial class WordHandler
     // another split when it has more than one visible child — otherwise the
     // single element is irreducible and we would recurse forever.
     var again=false;
+    syncFootnotes();
     var rcAll=document.querySelectorAll('.page');
     var rcLim=rcAll.length;
     if(window._wpSync&&window._requestedPages&&window._requestedPages.length){
@@ -1197,6 +1202,40 @@ public partial class WordHandler
         body.appendChild(marker);
       }
       runningNum=current+lineTops.length;
+    });
+  }
+  // Footnotes belong at the bottom of the page that holds their reference.
+  // The server emits every entry in one .footnotes block on the first page
+  // with a reference; re-home each #fnN next to its #fnrefN before every
+  // pagination measure, so a page reserves room only for its own notes.
+  function syncFootnotes(){
+    var blocks=Array.from(document.querySelectorAll('.page-body > .footnotes'));
+    if(!blocks.length)return;
+    var tmpl=blocks[0].cloneNode(false);
+    var sep=blocks[0].querySelector(':scope > hr');
+    var entries=[];
+    blocks.forEach(function(b){Array.from(b.children).forEach(function(c){
+      if(c.id&&c.id.indexOf('fn')===0&&c.id.indexOf('fnref')!==0)entries.push(c);});});
+    var byBody=new Map();
+    entries.forEach(function(e){
+      var ref=document.getElementById('fnref'+e.id.substring(2));
+      var host=ref&&!ref.closest('.footnotes')?ref.closest('.page-body'):null;
+      if(!host)host=e.closest('.page-body');
+      if(!host)return;
+      if(!byBody.has(host))byBody.set(host,[]);
+      byBody.get(host).push(e);
+    });
+    blocks.forEach(function(b){if(!byBody.has(b.parentNode))b.remove();});
+    byBody.forEach(function(list,body){
+      var blk=body.querySelector(':scope > .footnotes');
+      if(!blk){
+        blk=tmpl.cloneNode(false);blk.style.marginTop='';
+        if(sep)blk.appendChild(sep.cloneNode(true));
+        var en=body.querySelector(':scope > .endnotes');
+        if(en)body.insertBefore(blk,en);else body.appendChild(blk);
+      }
+      list.forEach(function(e){blk.appendChild(e);});
+      blk.style.marginTop='';
     });
   }
   function positionFootnotes(){
