@@ -260,8 +260,27 @@ public partial class PowerPointHandler
         // shape <div> must NOT also paint the solidFill background (or for an all-fill="none"
         // path, must paint nothing at all).
         bool custGeomSvgRouted = false;
+        // Wedge callouts route through the same overlay; their tail sits outside
+        // the box, so the filled-shape overflow:hidden must not clip it.
+        bool calloutTailOutside = false;
         var presetGeom = shape.ShapeProperties?.GetFirstChild<Drawing.PresetGeometry>();
-        if (presetGeom?.Preset?.HasValue == true)
+        if (presetGeom?.Preset?.HasValue == true && IsWedgeCallout(presetGeom.Preset!.InnerText!) && cx > 0 && cy > 0)
+        {
+            // The callout tail usually lies OUTSIDE the shape box (PowerPoint's
+            // default tip is below the frame), which a clip-path can never paint.
+            // Route it through the SVG overlay (overflow:visible) instead.
+            var calloutD = WedgeCalloutSvgPath(presetGeom.Preset!.InnerText!, cx, cy, presetGeom);
+            if (calloutD != null)
+            {
+                custGeomSvgRouted = true;
+                calloutTailOutside = true;
+                custGeomSvgFillD = calloutD;
+                custGeomSvgStrokeD = calloutD;
+                custGeomSvgW = cx;
+                custGeomSvgH = cy;
+            }
+        }
+        else if (presetGeom?.Preset?.HasValue == true)
         {
             var geomCss = PresetGeometryToCss(presetGeom.Preset!.InnerText!, cx, cy, presetGeom);
             if (!string.IsNullOrEmpty(geomCss))
@@ -560,6 +579,7 @@ public partial class PowerPointHandler
                     outerStyles.Add(s);
             }
             if (!string.IsNullOrEmpty(shapeHrefUrl)) outerStyles.Add("cursor:pointer");
+            if (calloutTailOutside) outerStyles.Add("overflow:visible");
             sb.Append($"    <div class=\"{shapeClass}\"{dataPathAttr}{textWarpAttr} style=\"{string.Join(";", outerStyles)}\">");
 
             // A gradient fill can't be expressed as a single SVG `fill` color

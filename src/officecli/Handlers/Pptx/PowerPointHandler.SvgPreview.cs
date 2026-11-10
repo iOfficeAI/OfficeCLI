@@ -1478,6 +1478,9 @@ public partial class PowerPointHandler
     /// </summary>
     private static string? GetPresetPolygonPoints(string preset, double w, double h, Drawing.PresetGeometry? presetGeom = null)
     {
+        var callout = WedgeCalloutOutline(preset, w, h, presetGeom);
+        if (callout != null)
+            return string.Join(" ", callout.Select(p => $"{p.X:0.##},{p.Y:0.##}"));
         return preset switch
         {
             // Triangles
@@ -1567,9 +1570,6 @@ public partial class PowerPointHandler
             "cloud" or "cloudCallout" => BuildCloudPath(w, h),
 
             // Callout shapes with tail
-            "wedgeRectCallout" => $"0,0 {w:0.##},0 {w:0.##},{h * 0.75:0.##} {w * 0.55:0.##},{h * 0.75:0.##} {w * 0.35:0.##},{h:0.##} {w * 0.4:0.##},{h * 0.75:0.##} 0,{h * 0.75:0.##}",
-            "wedgeRoundRectCallout" => $"{w * 0.08:0.##},0 {w * 0.92:0.##},0 {w:0.##},{h * 0.08:0.##} {w:0.##},{h * 0.67:0.##} {w * 0.92:0.##},{h * 0.75:0.##} {w * 0.55:0.##},{h * 0.75:0.##} {w * 0.35:0.##},{h:0.##} {w * 0.4:0.##},{h * 0.75:0.##} {w * 0.08:0.##},{h * 0.75:0.##} 0,{h * 0.67:0.##} 0,{h * 0.08:0.##}",
-            "wedgeEllipseCallout" => BuildEllipseCalloutPath(w, h),
 
             _ => null
         };
@@ -1710,29 +1710,6 @@ public partial class PowerPointHandler
         }
         points.Add($"{w * 0.15:0.##},{h:0.##}");
         points.Add($"0,{h / 2:0.##}");
-        return string.Join(" ", points);
-    }
-
-    private static string BuildEllipseCalloutPath(double w, double h)
-    {
-        var points = new List<string>();
-        // Main ellipse (75% height)
-        int n = 24;
-        double eh = h * 0.75;
-        for (int i = 0; i <= n; i++)
-        {
-            var angle = 2 * Math.PI * i / n;
-            // Insert tail at bottom (~6 o'clock position)
-            if (i == n * 3 / 8) // ~135 degrees
-            {
-                points.Add($"{w * 0.55:0.##},{eh / 2 + eh / 2 * Math.Sin(angle):0.##}");
-                points.Add($"{w * 0.35:0.##},{h:0.##}"); // tail tip
-                points.Add($"{w * 0.4:0.##},{eh / 2 + eh / 2 * Math.Sin(angle):0.##}");
-            }
-            var px = w / 2 + w / 2 * Math.Cos(angle);
-            var py = eh / 2 + eh / 2 * Math.Sin(angle);
-            points.Add($"{px:0.##},{py:0.##}");
-        }
         return string.Join(" ", points);
     }
 

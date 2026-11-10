@@ -2384,6 +2384,8 @@ public partial class PowerPointHandler
     private static string PresetGeometryToCss(string preset, long widthEmu, long heightEmu,
         Drawing.PresetGeometry? presetGeom)
     {
+        // Wedge callouts: tail tip follows adj1/adj2 (ECMA preset formulas).
+        if (IsWedgeCallout(preset)) return WedgeCalloutClipPath(preset, widthEmu, heightEmu, presetGeom) ?? "";
         // R18: sector / ring / segment presets honoring avLst angles
         if (preset == "pie") return PieSectorPolygon(presetGeom);
         if (preset == "arc") return ArcWedgePolygon(presetGeom);
@@ -2663,9 +2665,6 @@ public partial class PowerPointHandler
             "stripedRightArrow" => "clip-path:polygon(10% 20%,12% 20%,12% 80%,10% 80%,10% 20%,15% 20%,70% 20%,70% 0,100% 50%,70% 100%,70% 80%,15% 80%)",
 
             // Callouts — rectangle/rounded-rect/ellipse body with a wedge tail pointing down-left
-            "wedgeRectCallout" => "clip-path:polygon(0 0,100% 0,100% 75%,40% 75%,10% 100%,30% 75%,0 75%)",
-            "wedgeRoundRectCallout" => "clip-path:polygon(8% 0%,92% 0%,95% 1%,98% 3%,100% 5%,100% 8%,100% 67%,100% 70%,98% 73%,95% 75%,92% 75%,40% 75%,10% 100%,30% 75%,8% 75%,5% 75%,2% 73%,1% 70%,0% 67%,0% 8%,0% 5%,1% 3%,2% 1%,5% 0%)",
-            "wedgeEllipseCallout" => "clip-path:polygon(50% 0%,60% 1%,70% 3%,78% 7%,85% 13%,90% 20%,94% 28%,97% 37%,98% 47%,97% 56%,95% 64%,91% 71%,40% 75%,10% 100%,35% 72%,27% 76%,19% 72%,12% 65%,7% 57%,3% 48%,2% 38%,3% 29%,6% 20%,11% 13%,18% 7%,26% 3%,35% 1%,42% 0%)",
 
             // Crosses and plus — arm width scales with aspect ratio
             "plus" or "cross" => PlusPolygon(presetGeom),
