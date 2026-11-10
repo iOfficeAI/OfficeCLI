@@ -1484,6 +1484,90 @@ public partial class ExcelHandler
     private const long EmuPerRowApprox = 190500;
 
     /// <summary>
+    /// Real column widths / row heights of one sheet, in EMU. A drawing whose
+    /// size is given as width/height must end where that many EMU of the
+    /// sheet's ACTUAL columns and rows run out; splitting by the default cell
+    /// size drew pictures too large and out of proportion on any sheet with a
+    /// resized column or row in the span. Defaults stay at the historical
+    /// 609600 / 190500 EMU (64 px / 15 pt) unless sheetFormatPr overrides them,
+    /// so default-size sheets produce the same anchors as before.
+    /// </summary>
+    private sealed class SheetCellMetrics
+    {
+        private readonly Dictionary<int, long> _cols = new();
+        private readonly Dictionary<int, long> _rows = new();
+        private readonly long _defCol, _defRow;
+        private const int MaxCol = 16384, MaxRow = 1048576;
+
+        public SheetCellMetrics(Worksheet? ws)
+        {
+            var fmt = ws?.GetFirstChild<SheetFormatProperties>();
+            _defCol = fmt?.DefaultColumnWidth?.Value is double dcw && dcw > 0
+                ? ColumnCharsToEmu(dcw) : EmuPerColApprox;
+            _defRow = fmt?.DefaultRowHeight?.Value is double drh && drh > 0
+                ? (long)Math.Round(drh * 12700) : EmuPerRowApprox;
+            var cols = ws?.GetFirstChild<Columns>();
+            if (cols != null)
+                foreach (var c in cols.Elements<Column>())
+                {
+                    if (c.Width?.Value == null && c.Hidden?.Value != true) continue;
+                    long emu = c.Hidden?.Value == true ? 0 : ColumnCharsToEmu(c.Width!.Value);
+                    int min = (int)(c.Min?.Value ?? 1u), max = (int)(c.Max?.Value ?? (uint)min);
+                    for (int i = Math.Max(1, min); i <= Math.Min(max, MaxCol); i++) _cols[i - 1] = emu;
+                }
+            var sd = ws?.GetFirstChild<SheetData>();
+            if (sd != null)
+                foreach (var r in sd.Elements<Row>())
+                {
+                    if (r.RowIndex?.Value is not uint ri) continue;
+                    if (r.Hidden?.Value == true) _rows[(int)ri - 1] = 0;
+                    else if (r.Height?.Value is double ht && (r.CustomHeight?.Value == true || ht > 0))
+                        _rows[(int)ri - 1] = (long)Math.Round(ht * 12700);
+                }
+        }
+
+        /// <summary>Excel's character-width → pixel rule for the default
+        /// Calibri 11 maximum digit width (7 px): trunc(((256w + trunc(128/7)) / 256) × 7).</summary>
+        private static long ColumnCharsToEmu(double chars)
+        {
+            if (chars <= 0) return 0;
+            var px = Math.Truncate((256 * chars + Math.Truncate(128.0 / 7)) / 256 * 7);
+            return (long)px * 9525;
+        }
+
+        public long Col(int index0) => _cols.TryGetValue(index0, out var v) ? v : _defCol;
+        public long Row(int index0) => _rows.TryGetValue(index0, out var v) ? v : _defRow;
+
+        /// <summary>End marker for an extent that starts at (from, 0).</summary>
+        public (int To, long Off) AdvanceCols(int from, long extent) => Advance(Col, from, extent, MaxCol);
+        public (int To, long Off) AdvanceRows(int from, long extent) => Advance(Row, from, extent, MaxRow);
+
+        private static (int, long) Advance(Func<int, long> size, int from, long extent, int max)
+        {
+            int i = from; long rem = Math.Max(0, extent);
+            while (i < max - 1)
+            {
+                var s = size(i);
+                if (s <= 0) { i++; continue; }      // hidden column/row: zero width
+                if (rem < s) break;
+                rem -= s; i++;
+            }
+            return (i, rem);
+        }
+
+        /// <summary>EMU spanned between two markers (inverse of Advance).</summary>
+        public long SpanCols(int from, long fromOff, int to, long toOff) => Span(Col, from, fromOff, to, toOff);
+        public long SpanRows(int from, long fromOff, int to, long toOff) => Span(Row, from, fromOff, to, toOff);
+
+        private static long Span(Func<int, long> size, int from, long fromOff, int to, long toOff)
+        {
+            long sum = 0;
+            for (int i = from; i < to; i++) sum += size(i);
+            return sum - fromOff + toOff;
+        }
+    }
+
+    /// <summary>
     /// Parse a width/height anchor value into EMU. Plain integers are treated
     /// as cell counts and multiplied by the default column/row EMU width.
     /// Unit-qualified values (e.g. "6cm", "2in") are parsed via EmuConverter.

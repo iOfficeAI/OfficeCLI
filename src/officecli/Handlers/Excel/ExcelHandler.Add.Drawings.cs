@@ -167,16 +167,11 @@ public partial class ExcelHandler
             var (ax, ay, awEmu, ahEmu) = ParseAnchorBoundsEmu(properties, "1", "1", "3", "4");
             oleFromCol = ax;
             oleFromRow = ay;
-            // Split the EMU extent into (whole cells, sub-cell offset).
-            // EmuPerCol/Row constants live in ExcelHandler.Helpers.cs.
-            long wholeCols = awEmu / EmuPerColApprox;
-            long remCols = awEmu % EmuPerColApprox;
-            long wholeRows = ahEmu / EmuPerRowApprox;
-            long remRows = ahEmu % EmuPerRowApprox;
-            oleToCol = ax + (int)wholeCols;
-            oleToRow = ay + (int)wholeRows;
-            oleToColOff = remCols;
-            oleToRowOff = remRows;
+            // Walk the sheet's real column widths / row heights to find
+            // where the EMU extent ends.
+            var oleMetrics = new SheetCellMetrics(GetSheet(oleWorksheet));
+            (oleToCol, oleToColOff) = oleMetrics.AdvanceCols(ax, awEmu);
+            (oleToRow, oleToRowOff) = oleMetrics.AdvanceRows(ay, ahEmu);
             (oleToCol, oleToRow) = ClampAnchorSpan(oleFromCol, oleFromRow, oleToCol, oleToRow,
                 $"x={ax},y={ay},width/height");
         }
@@ -306,8 +301,19 @@ public partial class ExcelHandler
             if (!TryParseCellRangeAnchor(picAnchorRaw, out picRangeFromCol, out picRangeFromRow, out picRangeToCol, out picRangeToRow))
                 throw new ArgumentException($"Invalid anchor: '{picAnchorRaw}'. Expected e.g. 'B2', 'B2:E6', or one of 'oneCell'/'twoCell'/'absolute'.");
             picHasRange = true;
-            if (properties.ContainsKey("width") | properties.ContainsKey("height")
-                | properties.ContainsKey("x") | properties.ContainsKey("y"))
+            if (picRangeToCol >= 0 && (picRangeToCol == picRangeFromCol || picRangeToRow == picRangeFromRow))
+            {
+                var startCell = $"{IndexToColumnName(picRangeFromCol + 1)}{picRangeFromRow + 1}";
+                var oneCellRange = $"{startCell}:{IndexToColumnName(picRangeFromCol + 2)}{picRangeFromRow + 2}";
+                throw new ArgumentException(
+                    $"Invalid anchor: '{picAnchorRaw}' has zero width or height — the end cell of an anchor range is exclusive. " +
+                    $"Use '{oneCellRange}' to cover exactly {startCell}, or anchor={startCell} with width/height.");
+            }
+            // A single-cell anchor takes its size from width/height; only a real
+            // range (B2:E6) defines the whole rectangle and overrides them.
+            if (picRangeToCol >= 0
+                && (properties.ContainsKey("width") | properties.ContainsKey("height")
+                    | properties.ContainsKey("x") | properties.ContainsKey("y")))
                 Console.Error.WriteLine(
                     "Warning: 'x'/'y'/'width'/'height' are ignored when 'anchor' is a cell range (anchor defines the full rectangle).");
         }
@@ -367,12 +373,9 @@ public partial class ExcelHandler
 
         var picId = picDrawingsPart.WorksheetDrawing.Descendants<XDR.NonVisualDrawingProperties>()
             .Select(p => (uint?)p.Id?.Value ?? 0u).DefaultIfEmpty(0u).Max() + 1;
-        // CONSISTENCY(picture-emu): split EMU extent into whole-cell
-        // count + sub-cell offset, matching the OLE anchor path.
-        long picWholeCols = pwEmu / EmuPerColApprox;
-        long picRemCols = pwEmu % EmuPerColApprox;
-        long picWholeRows = phEmu / EmuPerRowApprox;
-        long picRemRows = phEmu % EmuPerRowApprox;
+        // CONSISTENCY(picture-emu): the EMU extent ends where the sheet's
+        // real column widths / row heights run out, matching the OLE path.
+        var picMetrics = new SheetCellMetrics(GetSheet(picWorksheet));
 
         // DEFERRED(xlsx/picture-anchor-mode) P12: honor `anchorMode=`
         // oneCell|absolute|twoCell. Default remains twoCell for back-compat.
@@ -467,21 +470,17 @@ public partial class ExcelHandler
                     }
                     else
                     {
-                        // Single-cell range in twoCell mode: fall back to width/height extent.
-                        twoToCol = twoFromCol + (int)picWholeCols;
-                        twoToRow = twoFromRow + (int)picWholeRows;
-                        twoToColOff = picRemCols;
-                        twoToRowOff = picRemRows;
+                        // Single-cell anchor in twoCell mode: size comes from width/height.
+                        (twoToCol, twoToColOff) = picMetrics.AdvanceCols(twoFromCol, pwEmu);
+                        (twoToRow, twoToRowOff) = picMetrics.AdvanceRows(twoFromRow, phEmu);
                     }
                 }
                 else
                 {
                     twoFromCol = px;
                     twoFromRow = py;
-                    twoToCol = px + (int)picWholeCols;
-                    twoToRow = py + (int)picWholeRows;
-                    twoToColOff = picRemCols;
-                    twoToRowOff = picRemRows;
+                    (twoToCol, twoToColOff) = picMetrics.AdvanceCols(px, pwEmu);
+                    (twoToRow, twoToRowOff) = picMetrics.AdvanceRows(py, phEmu);
                 }
                 (twoToCol, twoToRow) = ClampAnchorSpan(twoFromCol, twoFromRow, twoToCol, twoToRow,
                     $"picture anchor (to col {twoToCol}, row {twoToRow})");

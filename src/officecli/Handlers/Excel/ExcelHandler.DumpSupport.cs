@@ -702,7 +702,7 @@ public partial class ExcelHandler
         if (wsDrawing == null) return null;
         var picAnchors = EnumeratePictureAnchors(wsDrawing).ToList();
         if (index < 1 || index > picAnchors.Count) return null;
-        return AnchorToEmuRect(picAnchors[index - 1]);
+        return AnchorToEmuRect(picAnchors[index - 1], new SheetCellMetrics(FindWorksheet(sheetName) is { } wp ? GetSheet(wp) : null));
     }
 
     public DumpAnchorEmu? GetDumpShapeAnchorEmu(string sheetName, int index)
@@ -711,10 +711,10 @@ public partial class ExcelHandler
         if (wsDrawing == null) return null;
         var shapes = EnumerateLeafShapes(wsDrawing).ToList();
         if (index < 1 || index > shapes.Count) return null;
-        return AnchorToEmuRect(shapes[index - 1].anchor);
+        return AnchorToEmuRect(shapes[index - 1].anchor, new SheetCellMetrics(FindWorksheet(sheetName) is { } wp ? GetSheet(wp) : null));
     }
 
-    private static DumpAnchorEmu? AnchorToEmuRect(OpenXmlCompositeElement anchorEl)
+    private static DumpAnchorEmu? AnchorToEmuRect(OpenXmlCompositeElement anchorEl, SheetCellMetrics metrics)
     {
         // oneCell / absolute anchors carry size in <xdr:ext> (EMU) instead of
         // a To marker; absolute additionally carries position as EMU <xdr:pos>.
@@ -746,8 +746,10 @@ public partial class ExcelHandler
         static long PL(string? s) => long.TryParse(s, out var v) ? v : 0;
         int fc = P(from.ColumnId?.Text), fr = P(from.RowId?.Text);
         long fcOff = PL(from.ColumnOffset?.Text), frOff = PL(from.RowOffset?.Text);
-        long wEmu = (P(to.ColumnId?.Text) - fc) * EmuPerColApprox + PL(to.ColumnOffset?.Text) - fcOff;
-        long hEmu = (P(to.RowId?.Text) - fr) * EmuPerRowApprox + PL(to.RowOffset?.Text) - frOff;
+        // Inverse of the Add path: sum the sheet's real column widths / row
+        // heights between the markers, so replay reproduces the To marker.
+        long wEmu = metrics.SpanCols(fc, fcOff, P(to.ColumnId?.Text), PL(to.ColumnOffset?.Text));
+        long hEmu = metrics.SpanRows(fr, frOff, P(to.RowId?.Text), PL(to.RowOffset?.Text));
         if (wEmu <= 0 || hEmu <= 0) return null;
         return new DumpAnchorEmu(fc, fr, wEmu, hEmu, fcOff != 0 || frOff != 0);
     }
