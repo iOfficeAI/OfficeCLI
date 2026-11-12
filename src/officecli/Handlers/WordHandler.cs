@@ -424,11 +424,27 @@ public partial class WordHandler : IDocumentHandler, Rendering.IRenderModelHost
         var segments = ParsePath(runPath);
         var element = NavigateToElement(segments);
         if (element is not Run run) return false;
-        var drawing = run.GetFirstChild<DocumentFormat.OpenXml.Wordprocessing.Drawing>();
+        return IsChartDrawing(run.GetFirstChild<DocumentFormat.OpenXml.Wordprocessing.Drawing>());
+    }
+
+    /// <summary>
+    /// True when a drawing hosts a chart — either the classic DrawingML chart
+    /// (<c>&lt;c:chart r:id&gt;</c>) or the Office 2016 extended chartEx form
+    /// (<c>&lt;cx:chart r:id&gt;</c> under the 2014/chartex uri: funnel, treemap,
+    /// sunburst, boxWhisker, histogram). The two are different elements, and
+    /// this predicate has to recognise both: <c>Query("chart")</c> counts both,
+    /// so a chart detector that saw only the classic form consumed one spec per
+    /// classic chart and then handed an extended chart's spec to the next
+    /// classic chart in document order — emitting properties that belonged to a
+    /// different chart.
+    /// </summary>
+    internal static bool IsChartDrawing(DocumentFormat.OpenXml.Wordprocessing.Drawing? drawing)
+    {
         if (drawing == null) return false;
-        return drawing
-            .Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>()
-            .Any();
+        if (drawing.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().Any())
+            return true;
+        return drawing.Descendants<DocumentFormat.OpenXml.Drawing.GraphicData>()
+            .Any(g => g.Uri == WordChartExUri);
     }
 
     /// <summary>
@@ -1228,6 +1244,18 @@ public partial class WordHandler : IDocumentHandler, Rendering.IRenderModelHost
         if (element is not Run run) return null;
         var drawing = run.GetFirstChild<DocumentFormat.OpenXml.Wordprocessing.Drawing>();
         if (drawing == null) return null;
+        // Extended (chartEx) charts carry the part verbatim. The typed `add
+        // chart` path rebuilds a chart from `data=` alone, which cannot express
+        // a chartEx chart's sidecars (its own chartex style + colour parts) or
+        // the hierarchy of treemap / sunburst, and whose data is a live
+        // <cx:externalData> link into the embedded workbook rather than literal
+        // values. Excel and PowerPoint already round-trip chartEx through a
+        // verbatim part carrier; the generic `add inlinedparts` carrier is
+        // Word's equivalent, shipping the chart part and its children
+        // (embedded workbook + style + colours) byte-for-byte.
+        if (drawing.Descendants<DocumentFormat.OpenXml.Drawing.GraphicData>()
+                .Any(g => g.Uri == WordChartExUri))
+            return CollectInlinedPartsEmitData(run, drawing);
         if (!drawing.Descendants<DocumentFormat.OpenXml.Drawing.Charts.ChartReference>().Any())
             return null;
         // GATE (editability vs fidelity): only supersede the typed `add chart`
