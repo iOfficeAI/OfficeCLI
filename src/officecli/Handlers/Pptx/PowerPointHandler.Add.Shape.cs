@@ -898,6 +898,12 @@ public partial class PowerPointHandler
                       // so OOXML attributes actually get emitted.
                       "linecap", "lineCap", "line.cap",
                       "linejoin", "lineJoin", "line.join",
+                      // miterLimit (<a:miter lim="N"/>) — the connector add path
+                      // (Add.Misc) and the Set case both accept the four aliases;
+                      // without them here `add --type shape|textbox --prop
+                      // miterLimit=…` was rejected as UNSUPPORTED even though
+                      // `help pptx shape` documents them as add-time props.
+                      "miterLimit", "miterlimit", "miter.limit", "line.miterlimit",
                       "cmpd", "compoundline", "compoundLine", "line.compound",
                       "linealign", "lineAlign", "line.align",
                       "headend", "headEnd", "arrowstart", "arrowStart",
