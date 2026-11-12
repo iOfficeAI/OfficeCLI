@@ -234,10 +234,18 @@ public partial class ExcelHandler
 
     /// <summary>
     /// Physically reorder rows in the given range by the given sort keys, then
-    /// write sortState metadata. Rejects ranges that intersect merged cells.
+    /// write sortState metadata. Rejects merged cells and formula-bearing rows.
     /// sortSpec format: "A asc, B desc" (direction optional, defaults to asc).
     /// Column addressing is column letters only (A, B, AA); column names are not supported.
     /// </summary>
+    /// <param name="worksheet">Worksheet whose rows are sorted.</param>
+    /// <param name="col1">First column in the sort range.</param>
+    /// <param name="row1">First row in the sort range.</param>
+    /// <param name="col2">Last column in the sort range.</param>
+    /// <param name="row2">Last row in the sort range.</param>
+    /// <param name="sortSpec">Comma-separated sort columns and directions.</param>
+    /// <param name="sortHeader">Whether the first row is a header and must not move.</param>
+    /// <returns>Applies the sort, or leaves the worksheet unchanged when the range has no sortable rows.</returns>
     private void SortRangeRows(WorksheetPart worksheet, int col1, int row1, int col2, int row2,
         string sortSpec, bool sortHeader)
     {
@@ -389,45 +397,23 @@ public partial class ExcelHandler
             return;
         }
 
-        // CONSISTENCY(sort-scope): formula rejection only applies to cells INSIDE the sort
-        // column range. A formula in a cell outside [col1..col2] is untouched by sort
-        // (its row may be reordered, but the formula text and its refs stay intact).
-        // Helper: test whether a cell's column lies within the sort column range.
-        // Name is column-specific: row containment is implied by caller (we iterate
-        // only rowsInRange).
-        bool CellColumnInSortRange(Cell c)
-        {
-            var cref = c.CellReference?.Value;
-            if (cref == null) return false;
-            var (cc, _) = ParseCellReference(cref);
-            int ci = ColumnNameToIndex(cc);
-            return ci >= col1 && ci <= col2;
-        }
-
-        // Reject if any cell in the sort column range carries a shared formula group —
-        // sort would corrupt the ref anchor.
+        // Sorting reorders complete row elements, so formulas in columns outside the
+        // selected range move too. Reject formula groups anywhere in rows that move.
         foreach (var r in rowsInRange)
             foreach (var c in r.Elements<Cell>())
-                if (CellColumnInSortRange(c) && c.CellFormula?.FormulaType?.Value == CellFormulaValues.Shared)
+                if (c.CellFormula?.FormulaType?.Value == CellFormulaValues.Shared)
                     throw new InvalidOperationException(
-                        "Cannot sort range containing shared formulas. Rewrite them as per-cell formulas first.");
+                        "Cannot sort rows containing shared formulas. Rewrite them as per-cell formulas first.");
 
-        // CONSISTENCY(sort-rejects-formulas): same shape as the shared-formula reject above.
-        // Sort rewrites each cell's CellReference to the new row index, but the formula text
-        // (e.g. "=A2+1000") still encodes the *old* relative addresses. After sort, Excel
-        // recalculates against the rewritten ref and silently produces wrong values — a
-        // data-corruption bug. A full fix would require parsing every formula and rewriting
-        // relative row numbers per the row's new position (handling A1 / $A$1 / A$1 / $A1 /
-        // A:B / Sheet!A1 / named ranges), which is high risk for partial-correctness
-        // regressions. Until that lands, refuse sort when any data row carries a formula.
-        // Known limitation: this does NOT catch formulas *outside* the sort range that
-        // reference cells *inside* it; those will also go stale on sort. Same scope as the
-        // shared-formula check above (per-row scan only).
+        // Sorting rewrites each moved cell reference but does not rewrite formula text.
+        // A formula outside the selected columns can therefore become stale when its row
+        // moves. Until formula-reference rewriting is supported, refuse any moved row that
+        // contains a formula instead of silently corrupting the workbook.
         foreach (var r in rowsInRange)
             foreach (var c in r.Elements<Cell>())
-                if (CellColumnInSortRange(c) && c.CellFormula != null)
+                if (c.CellFormula != null)
                     throw new InvalidOperationException(
-                        $"Cannot sort range containing formulas (cell {c.CellReference?.Value}). " +
+                        $"Cannot sort rows containing formulas (cell {c.CellReference?.Value}). " +
                         "Sort would rewrite cell references but leave formula text encoding the old row " +
                         "numbers, silently corrupting results. Rewrite formulas as literal values first " +
                         "(or evaluate and paste-as-values) before sorting.");
