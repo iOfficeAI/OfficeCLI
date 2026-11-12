@@ -2,6 +2,9 @@
 
 Comprehensive examples demonstrating OfficeCLI capabilities for Word, Excel, and PowerPoint automation.
 
+For a standalone web-to-document pipeline, see [Web research to a Word report](mcp/).
+It uses Parallel Search MCP to collect source excerpts, then writes them with OfficeCLI.
+
 ## 📂 Directory Structure
 
 Every example below ships all four files — `.{md,sh,py,<ext>}` — even where the
