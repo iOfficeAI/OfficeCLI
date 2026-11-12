@@ -479,6 +479,7 @@ public partial class ExcelHandler
         {
             dxfs = new DifferentialFormats { Count = 0 };
             stylesheet.Append(dxfs);
+            SchemaOrder.Place(stylesheet, dxfs);
         }
         dxfs.Append(dxf);
         dxfs.Count = (uint)dxfs.Elements<DifferentialFormat>().Count();
@@ -592,6 +593,7 @@ public partial class ExcelHandler
         {
             cisDxfs = new DifferentialFormats { Count = 0 };
             cisStylesheet.Append(cisDxfs);
+            SchemaOrder.Place(cisStylesheet, cisDxfs);
         }
         cisDxfs.Append(cisDxf);
         cisDxfs.Count = (uint)cisDxfs.Elements<DifferentialFormat>().Count();
@@ -944,6 +946,7 @@ public partial class ExcelHandler
             {
                 cfNewDxfs = new DifferentialFormats { Count = 0 };
                 cfNewStylesheet.Append(cfNewDxfs);
+                SchemaOrder.Place(cfNewStylesheet, cfNewDxfs);
             }
             cfNewDxfs.Append(cfNewDxf);
             cfNewDxfs.Count = (uint)cfNewDxfs.Elements<DifferentialFormat>().Count();
