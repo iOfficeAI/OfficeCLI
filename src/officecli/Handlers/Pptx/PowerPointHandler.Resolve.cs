@@ -352,6 +352,7 @@ public partial class PowerPointHandler
             {
                 // Clone from layout and add to slide
                 var newShape = (Shape)layoutShape.CloneNode(true);
+                newShape.NonVisualShapeProperties!.NonVisualDrawingProperties!.Id = GenerateUniqueShapeId(shapeTree);
                 // Clear any text content from layout placeholder
                 if (newShape.TextBody != null)
                 {
