@@ -86,6 +86,29 @@ internal class ExcelStyleManager
             ? (CellFormat)cellFormats.Elements<CellFormat>().ElementAt((int)currentStyleIndex)
             : new CellFormat();
 
+        // --- named cell style (style=<name>, alias cellstyle) ---
+        // A workbook's own styles live in cellStyles (name → xfId) and their
+        // formats in cellStyleXfs. Applying one means the cell points at a
+        // cellXfs entry whose components are the style's master and whose xfId
+        // is that style's — so the cell stays LINKED to the style: editing the
+        // style in Excel later still updates the cell. Direct props passed in
+        // the same call (bold=, fill=, …) layer on top of the style's master,
+        // which is how Excel treats direct formatting over a cell style.
+        uint? namedStyleXfId = null;
+        if (styleProps.TryGetValue("style", out var namedStyle)
+            || styleProps.TryGetValue("cellstyle", out namedStyle))
+        {
+            var master = ResolveCellStyleMaster(stylesheet, namedStyle);
+            if (master == null)
+            {
+                unsupportedOut?.Add(
+                    $"style ('{namedStyle}' is not a cell style in this workbook; available: {DescribeCellStyles(stylesheet)})");
+                return currentStyleIndex;
+            }
+            namedStyleXfId = master.Value.XfId;
+            baseXf = master.Value.Master;
+        }
+
         // --- numFmt ---
         uint numFmtId = baseXf.NumberFormatId?.Value ?? 0;
         bool applyNumFmt = baseXf.ApplyNumberFormat?.Value ?? false;
@@ -438,7 +461,7 @@ internal class ExcelStyleManager
         uint xfIndex = FindOrCreateCellFormat(cellFormats,
             numFmtId, fontId, fillId, borderId, alignment, protection,
             applyNumFmt, applyFont, applyFill, applyBorder, applyAlignment, applyProtection,
-            quotePrefix);
+            quotePrefix, namedStyleXfId);
 
         // Caller (ExcelHandler) is responsible for saving via _dirtyStylesheet flag.
         return xfIndex;
@@ -597,12 +620,57 @@ internal class ExcelStyleManager
     }
 
     /// <summary>
+    /// Resolve a workbook cell style name to its master format.
+    /// cellStyles holds (name → xfId); cellStyleXfs[xfId] is the style's
+    /// master format, which is what a cell becomes when the style is applied.
+    /// Returns null when the name is unknown or the stylesheet is inconsistent.
+    /// </summary>
+    private static (uint XfId, CellFormat Master)? ResolveCellStyleMaster(Stylesheet stylesheet, string name)
+    {
+        var cellStyles = stylesheet.CellStyles;
+        var masters = stylesheet.CellStyleFormats;
+        if (cellStyles == null || masters == null) return null;
+
+        // OOXML style names are case-sensitive, but a CLI prop should not fail
+        // on a shell-typed casing difference — try the exact name first, then
+        // fall back to a case-insensitive match.
+        var match = cellStyles.Elements<CellStyle>()
+            .FirstOrDefault(cs => cs.Name?.Value == name)
+            ?? cellStyles.Elements<CellStyle>()
+                .FirstOrDefault(cs => string.Equals(cs.Name?.Value, name, StringComparison.OrdinalIgnoreCase));
+        if (match?.FormatId?.Value is not uint xfId) return null;
+
+        var master = masters.Elements<CellFormat>().ElementAtOrDefault((int)xfId);
+        if (master == null) return null;
+
+        return (xfId, (CellFormat)master.CloneNode(true));
+    }
+
+    /// <summary>
+    /// The workbook's cell style names, for the unknown-name error message
+    /// (mirrors pptx's "Available layouts" hint).
+    /// </summary>
+    private static string DescribeCellStyles(Stylesheet stylesheet)
+    {
+        const int Max = 25;
+        var names = stylesheet.CellStyles?.Elements<CellStyle>()
+            .Select(cs => cs.Name?.Value)
+            .Where(n => !string.IsNullOrEmpty(n))
+            .Select(n => n!)
+            .ToList() ?? new List<string>();
+        if (names.Count == 0) return "(the workbook declares no cell styles)";
+        var shown = string.Join(", ", names.Take(Max));
+        return names.Count > Max ? $"{shown}, … (+{names.Count - Max} more)" : shown;
+    }
+
+    /// <summary>
     /// Identify which keys in a dictionary are style properties.
     /// </summary>
     public static bool IsStyleKey(string key)
     {
         var lower = key.ToLowerInvariant();
         return lower is "numfmt" or "fill" or "fillpattern" or "fillbg" or "bgcolor" or "bg" or "font" or "border"
+            or "style" or "cellstyle"
             or "bold" or "italic" or "strike" or "strikethrough" or "underline"
             or "superscript" or "subscript" or "size" or "fontsize"
             or "wrap" or "wraptext" or "numberformat" or "format" or "halign" or "align" or "valign"
@@ -1683,9 +1751,12 @@ internal class ExcelStyleManager
     private static uint FindOrCreateCellFormat(CellFormats cellFormats,
         uint numFmtId, uint fontId, uint fillId, uint borderId, Alignment? alignment, Protection? protection,
         bool applyNumFmt, bool applyFont, bool applyFill, bool applyBorder, bool applyAlignment, bool applyProtection,
-        bool? quotePrefix = null)
+        bool? quotePrefix = null, uint? styleXfId = null)
     {
-        // Search for existing match
+        // Search for existing match. `styleXfId` is only constrained when a
+        // named cell style is being applied: an entry that merely carries the
+        // same components but no xfId (or a different one) is NOT the style, so
+        // reusing it would silently drop the style link.
         int idx = 0;
         foreach (var xf in cellFormats.Elements<CellFormat>())
         {
@@ -1693,6 +1764,7 @@ internal class ExcelStyleManager
                 (xf.FontId?.Value ?? 0) == fontId &&
                 (xf.FillId?.Value ?? 0) == fillId &&
                 (xf.BorderId?.Value ?? 0) == borderId &&
+                (styleXfId == null || (xf.FormatId?.Value ?? 0) == styleXfId.Value) &&
                 AlignmentMatches(xf.Alignment, alignment) &&
                 ProtectionMatches(xf.Protection, protection) &&
                 (xf.QuotePrefix?.Value ?? false) == (quotePrefix ?? false))
@@ -1708,18 +1780,27 @@ internal class ExcelStyleManager
             FillId = fillId,
             BorderId = borderId
         };
+        if (styleXfId != null) newXf.FormatId = styleXfId.Value;
         if (applyNumFmt) newXf.ApplyNumberFormat = true;
         if (applyFont) newXf.ApplyFont = true;
         if (applyFill) newXf.ApplyFill = true;
         if (applyBorder) newXf.ApplyBorder = true;
-        if (applyAlignment && alignment != null)
+        // The child is written whenever it exists; applyAlignment/applyProtection
+        // only record whether the caller asked for it. A style master may carry
+        // an <alignment>/<protection> child under applyX="0" (the WPS-authored
+        // masters in the corpus all do), and the cell xf mirrors its style — so
+        // suppressing the child here both drops what the caller derived from the
+        // master AND makes this entry unmatchable for the next cell of a range
+        // (the reuse test above compares the child), growing one duplicate xf
+        // per cell.
+        if (alignment != null)
         {
-            newXf.ApplyAlignment = true;
+            if (applyAlignment) newXf.ApplyAlignment = true;
             newXf.Append(alignment);
         }
-        if (applyProtection && protection != null)
+        if (protection != null)
         {
-            newXf.ApplyProtection = true;
+            if (applyProtection) newXf.ApplyProtection = true;
             newXf.Append(protection);
         }
         if (quotePrefix == true) newXf.QuotePrefix = true;
