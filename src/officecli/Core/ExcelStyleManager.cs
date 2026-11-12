@@ -270,9 +270,41 @@ internal class ExcelStyleManager
         // --- alignment ---
         Alignment? alignment = baseXf.Alignment?.CloneNode(true) as Alignment;
         bool applyAlignment = baseXf.ApplyAlignment?.Value ?? false;
+        // CT_CellAlignment declares a fixed attribute set: the curated keys
+        // switched on below plus justifyLastLine and relativeIndent. A key
+        // outside it cannot be written, and a long-tail value outside its
+        // declared type must not be either — both are reported up front, before
+        // anything is built, so a fully rejected `set` leaves the document
+        // untouched. The raw walk this replaces wrote whatever it was handed
+        // (`<x:alignment bogus="1">`, `<x:alignment JUSTIFYLASTLINE="1">` —
+        // OOXML attribute names are case-sensitive) and returned 0 while the
+        // document failed `validate`.
+        var alignLongTail = new List<(string Attr, string Value)>();
+        foreach (var (origKey, value) in styleProps)
+        {
+            if (!origKey.StartsWith("alignment.", StringComparison.OrdinalIgnoreCase)) continue;
+            var subKey = origKey.Substring(10);
+            if (CuratedAlignmentSubKeysLower.Contains(subKey.ToLowerInvariant())) continue;
+            if (!AlignmentLongTailAttrs.TryGetValue(subKey, out var alignAttr))
+            {
+                unsupportedOut?.Add(origKey);
+                continue;
+            }
+            if (!IsValidAlignmentLongTailValue(alignAttr.Attr, value))
+            {
+                unsupportedOut?.Add($"{origKey} (value '{value}' is not valid for OOXML alignment/{alignAttr.Attr} type)");
+                continue;
+            }
+            // Written under the spelling the schema uses, whatever case the
+            // caller gave.
+            alignLongTail.Add((alignAttr.Attr, value));
+        }
+        // Curated keys only — the long-tail ones ride along in alignLongTail.
         var alignProps = styleProps
             .Where(kv => kv.Key.StartsWith("alignment.", StringComparison.OrdinalIgnoreCase))
-            .ToDictionary(kv => kv.Key[10..].ToLowerInvariant(), kv => kv.Value);
+            .Select(kv => (Key: kv.Key[10..].ToLowerInvariant(), kv.Value))
+            .Where(kv => CuratedAlignmentSubKeysLower.Contains(kv.Key))
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
         // Handle shorthands: "wrap" → "wraptext", "halign" → "horizontal", "valign" → "vertical"
         if (styleProps.TryGetValue("wrap", out var wrapVal))
             alignProps["wraptext"] = wrapVal;
@@ -302,7 +334,7 @@ internal class ExcelStyleManager
             alignProps["readingorder"] = dirVal;
         if (styleProps.TryGetValue("dir", out var dirVal2))
             alignProps["readingorder"] = dirVal2;
-        if (alignProps.Count > 0)
+        if (alignProps.Count > 0 || alignLongTail.Count > 0)
         {
             alignment ??= new Alignment();
             foreach (var (key, value) in alignProps)
@@ -366,25 +398,9 @@ internal class ExcelStyleManager
                     // switch to avoid double-write.
                 }
             }
-            // Long-tail Alignment attributes (e.g. justifyLastLine,
-            // relativeIndent). Walk styleProps directly to preserve original
-            // case — OOXML attribute names are case-sensitive (Excel rejects
-            // `justifylastline`, only accepts `justifyLastLine`). Validate
-            // value against the schema type so garbage like
-            // `alignment.justifyLastLine=GARBAGE` is rejected, not silently
-            // written as invalid OOXML.
-            foreach (var (origKey, value) in styleProps)
-            {
-                if (!origKey.StartsWith("alignment.", StringComparison.OrdinalIgnoreCase)) continue;
-                var subKey = origKey.Substring(10); // preserve case after "alignment."
-                if (CuratedAlignmentSubKeysLower.Contains(subKey.ToLowerInvariant())) continue;
-                if (!IsValidAlignmentLongTailValue(subKey, value))
-                {
-                    unsupportedOut?.Add($"{origKey} (value '{value}' is not valid for OOXML alignment/{subKey} type)");
-                    continue;
-                }
-                alignment.SetAttribute(new DocumentFormat.OpenXml.OpenXmlAttribute("", subKey, "", value));
-            }
+            // Long-tail Alignment attributes, name- and value-checked above.
+            foreach (var (attr, value) in alignLongTail)
+                alignment.SetAttribute(new DocumentFormat.OpenXml.OpenXmlAttribute("", attr, "", value));
             applyAlignment = true;
         }
 
@@ -403,9 +419,24 @@ internal class ExcelStyleManager
         var protectionLongTail = styleProps
             .Where(kv => kv.Key.StartsWith("protection.", StringComparison.OrdinalIgnoreCase))
             .ToDictionary(kv => kv.Key[11..].ToLowerInvariant(), kv => kv.Value);
-        if (styleProps.TryGetValue("locked", out var lockedVal) ||
-            styleProps.TryGetValue("formulahidden", out var fhVal) ||
-            protectionLongTail.Count > 0)
+        // CT_CellProtection declares exactly two attributes, both boolean:
+        // locked and hidden. Anything else under `protection.` names an
+        // attribute the schema does not declare, so it is reported rather than
+        // written, and it does not by itself bring the Protection element into
+        // existence — a fully rejected `set` leaves the document untouched. The
+        // passthrough this replaces wrote the caller's name and value verbatim
+        // (`<x:protection bogus="1">`, `SECRET="1"` — attribute names are
+        // case-sensitive) and returned 0 while the document failed `validate`.
+        foreach (var (origKey, _) in styleProps)
+        {
+            if (!origKey.StartsWith("protection.", StringComparison.OrdinalIgnoreCase)) continue;
+            var subKey = origKey.Substring(11);
+            if (subKey.Equals("locked", StringComparison.OrdinalIgnoreCase)) continue;
+            if (subKey.Equals("hidden", StringComparison.OrdinalIgnoreCase)) continue;
+            unsupportedOut?.Add(origKey);
+        }
+        if (styleProps.ContainsKey("locked") || styleProps.ContainsKey("formulahidden")
+            || protectionLongTail.ContainsKey("locked") || protectionLongTail.ContainsKey("hidden"))
         {
             protection ??= new Protection();
             if (styleProps.TryGetValue("locked", out var lv))
@@ -418,19 +449,6 @@ internal class ExcelStyleManager
                 protection.Locked = IsTruthy(pLocked);
             if (protectionLongTail.TryGetValue("hidden", out var pHidden))
                 protection.Hidden = IsTruthy(pHidden);
-            // Anything else under protection.* is a raw long-tail attribute on
-            // the Protection element. CT_CellProtection only has locked/hidden
-            // today, but stay symmetric with Get's fallback if the schema grows.
-            // Walk styleProps directly to preserve original case — OOXML
-            // attributes are case-sensitive.
-            foreach (var (origKey, value) in styleProps)
-            {
-                if (!origKey.StartsWith("protection.", StringComparison.OrdinalIgnoreCase)) continue;
-                var subKey = origKey.Substring(11);
-                if (subKey.Equals("locked", StringComparison.OrdinalIgnoreCase)) continue;
-                if (subKey.Equals("hidden", StringComparison.OrdinalIgnoreCase)) continue;
-                protection.SetAttribute(new DocumentFormat.OpenXml.OpenXmlAttribute("", subKey, "", value));
-            }
             applyProtection = true;
         }
 
@@ -875,23 +893,33 @@ internal class ExcelStyleManager
         "diagonalup", "diagonaldown",
     };
 
-    // CT_CellAlignment long-tail attributes (i.e. those NOT in
-    // CuratedAlignmentSubKeysLower) and their schema types per ECMA-376
-    // §18.8.1. Used to reject e.g. `alignment.justifyLastLine=GARBAGE`
-    // before it gets serialized as invalid OOXML.
-    private static readonly HashSet<string> AlignmentLongTailBoolAttrs =
-        new(StringComparer.Ordinal) { "justifyLastLine" };
-    private static readonly HashSet<string> AlignmentLongTailIntAttrs =
-        new(StringComparer.Ordinal) { "relativeIndent" };
+    // Declared type of a CT_CellAlignment long-tail attribute, used to check
+    // the value against the lexical space before it is written verbatim.
+    private enum AlignmentLongTailType { Boolean, Int }
 
-    private static bool IsValidAlignmentLongTailValue(string key, string value)
+    // CT_CellAlignment long-tail attributes — everything the element declares
+    // that CuratedAlignmentSubKeysLower does not already handle — mapped from
+    // the lower-cased input key to the spelling the schema actually uses and
+    // the type it declares (ECMA-376 §18.8.1). Keyed case-insensitively so a
+    // caller's casing is normalized to the schema spelling; OOXML attribute
+    // names are case-sensitive, so `justifylastline` must not reach the file.
+    private static readonly Dictionary<string, (string Attr, AlignmentLongTailType Type)> AlignmentLongTailAttrs =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["justifylastline"] = ("justifyLastLine", AlignmentLongTailType.Boolean),
+            ["relativeindent"] = ("relativeIndent", AlignmentLongTailType.Int),
+        };
+
+    // The value must be in the lexical space of the attribute's declared type;
+    // it is then written verbatim. xsd:boolean admits only true/false/1/0 —
+    // deliberately narrower than IsTruthy, which also accepts yes/no/on/off and
+    // would serialize text Excel and `validate` both reject.
+    private static bool IsValidAlignmentLongTailValue(string attr, string value) => attr switch
     {
-        if (AlignmentLongTailBoolAttrs.Contains(key))
-            return value is "0" or "1" or "true" or "false" or "True" or "False";
-        if (AlignmentLongTailIntAttrs.Contains(key))
-            return int.TryParse(value, out _);
-        return true; // unknown attrs: pass through (forward-compat)
-    }
+        "justifyLastLine" => value is "0" or "1" or "true" or "false" or "True" or "False",
+        "relativeIndent" => int.TryParse(value, out _),
+        _ => false,
+    };
 
     // Underline enum canonicalization. OOXML CT_UnderlineProperty allows
     // single / double / singleAccounting / doubleAccounting / none. The four
