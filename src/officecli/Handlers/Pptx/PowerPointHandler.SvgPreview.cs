@@ -519,13 +519,19 @@ public partial class PowerPointHandler
                 };
             }
 
-            // PowerPoint mirrors text along with the shape on flipH/flipV. The
-            // shape-level flip transform (lines ~267-271) already applies to the
-            // inner text, so do not counter-flip here. An earlier implementation
-            // counter-flipped to keep text upright; that diverged from real
-            // PowerPoint output (e.g. flipH renders "AI" as "IA").
+            // Match PowerPoint: flipH keeps text readable, while flipV rotates
+            // it 180 degrees. Cancel odd reflection parity about the shape center,
+            // outside the text insets, without cancelling the shape's rotation.
+            var flipText = (xfrm?.HorizontalFlip?.Value == true)
+                != (xfrm?.VerticalFlip?.Value == true);
+            if (flipText)
+                sb.Append($"<g transform=\"translate({w:0.##},0) scale(-1,1)\">");
+
             RenderTextBodyFO(sb, shape.TextBody, themeColors, w, h,
                 lIns, tIns, rIns, bIns, valign, shape, part);
+
+            if (flipText)
+                sb.Append("</g>");
         }
 
         sb.AppendLine("</g>");
