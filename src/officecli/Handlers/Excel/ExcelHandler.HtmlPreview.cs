@@ -4087,7 +4087,8 @@ public partial class ExcelHandler
             text-overflow: ellipsis;
             vertical-align: bottom;
             max-width: 500px;
-            word-break: break-all; /* CJK text wrapping support */
+            word-break: normal;
+            overflow-wrap: anywhere;
         }
         table:not(.no-grid) td { box-shadow: inset -1px -1px 0 #e0e0e0; }
         /* Text spill: a left/general text cell with empty right-neighbours paints
