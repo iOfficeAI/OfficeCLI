@@ -435,7 +435,6 @@
                 _executeScripts(newEl);
                 if (typeof scaleSlides === 'function') scaleSlides();
                 syncThumbs();
-                scrollToSlide(slideNum);
             } else {
                 location.reload();
             }
@@ -460,7 +459,6 @@
                 if (typeof scaleSlides === 'function') scaleSlides();
             }
             syncThumbs();
-            scrollToSlide(slideNum);
             _callReapplyHook();
         }
     });
