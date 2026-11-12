@@ -1486,6 +1486,31 @@ public partial class PowerPointHandler
                         => (8506463L, 6356350L, 2847338L, 365125L),
                 _ => (838200L, 1825625L, 10515600L, 4351338L), // body/header/picture/chart/...
             };
+            // Those rectangles are authored for a 13.33in x 7.5in slide (the
+            // Office default), so on any other deck they place the placeholder
+            // wrong: on a 10in (720pt) deck the 11.5in-wide title/body ran
+            // 2.42in past the right edge, and a deck larger than 13.33in got a
+            // frame that was too small. Scale them to THIS deck by the same
+            // rule FitAddedTextShapeToLayout applies to the title/text shapes
+            // of `add --type slide` — the two commands must not disagree about
+            // where a placeholder goes on the same deck. A 13.33in x 7.5in deck
+            // keeps its rectangle byte for byte.
+            if (resolvedLayoutGeom == null)
+            {
+                var (slideW, slideH) = GetSlideSize();
+                if (slideW != SlideSizeDefaults.Widescreen16x9Cx
+                    || slideH != SlideSizeDefaults.Widescreen16x9Cy)
+                {
+                    var sx = slideW / (double)SlideSizeDefaults.Widescreen16x9Cx;
+                    var sy = slideH / (double)SlideSizeDefaults.Widescreen16x9Cy;
+                    // Keep the result pt-exact (multiples of 12700 EMU) so Get
+                    // reads back unit-qualified values rather than raw EMU.
+                    static long Scale(long emu, double f)
+                        => (long)Math.Round(emu * f / 12700.0) * 12700L;
+                    geom = (Scale(geom.x, sx), Scale(geom.y, sy),
+                            Scale(geom.cx, sx), Scale(geom.cy, sy));
+                }
+            }
             shape.ShapeProperties.AppendChild(new Drawing.Transform2D(
                 new Drawing.Offset { X = geom.x, Y = geom.y },
                 new Drawing.Extents { Cx = geom.cx, Cy = geom.cy }
