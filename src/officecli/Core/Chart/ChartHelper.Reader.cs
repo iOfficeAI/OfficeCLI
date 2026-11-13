@@ -2588,7 +2588,6 @@ internal static partial class ChartHelper
         if (newData.Count > allSer.Count && allSer.Count > 0)
         {
             var lastSer = allSer[^1];
-            var parent = lastSer.Parent!;
             for (int i = allSer.Count; i < newData.Count; i++)
             {
                 var (sName, sVals) = newData[i];
@@ -2622,7 +2621,8 @@ internal static partial class ChartHelper
                 var spPr = newSer.GetFirstChild<C.ChartShapeProperties>();
                 if (spPr != null) spPr.Remove();
 
-                parent.AppendChild(newSer);
+                lastSer.InsertAfterSelf(newSer);
+                lastSer = newSer;
             }
         }
     }
