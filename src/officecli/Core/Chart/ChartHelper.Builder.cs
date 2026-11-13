@@ -1424,14 +1424,16 @@ internal static partial class ChartHelper
                 BuildSeriesText(seriesData[i].name)
             );
 
-            // Hide individual series lines — stock chart visuals come from
-            // hiLowLines + upDownBars, not from the series lines themselves
+            // Stock charts use high-low lines, close markers, or up-down bars.
             var spPr = new C.ChartShapeProperties();
             spPr.AppendChild(new Drawing.Outline(new Drawing.NoFill()));
             series.AppendChild(spPr);
 
-            // No markers on stock series
-            series.AppendChild(new C.Marker(new C.Symbol { Val = C.MarkerStyleValues.None }));
+            // HLC has no up-down bars, so the last series needs a close marker.
+            var markerStyle = seriesData.Count == 3 && i == 2
+                ? C.MarkerStyleValues.Dash
+                : C.MarkerStyleValues.None;
+            series.AppendChild(new C.Marker(new C.Symbol { Val = markerStyle }));
 
             if (categories != null) series.AppendChild(BuildCategoryData(categories));
             series.AppendChild(BuildValues(seriesData[i].values));
