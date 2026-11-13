@@ -112,6 +112,7 @@ internal static partial class ChartHelper
                 // Total bar = last DataPoint override on Increase series.
                 var dpts = wfSeries[1].Elements<C.DataPoint>().ToList();
                 var lastDpt = dpts.LastOrDefault();
+                node.Format["waterfallTotal"] = lastDpt != null;
                 var totFill = lastDpt?.GetFirstChild<C.ChartShapeProperties>()
                     ?.GetFirstChild<Drawing.SolidFill>();
                 var totClr = totFill != null ? ReadColorFromFill(totFill) : null;
