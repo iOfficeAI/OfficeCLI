@@ -97,7 +97,7 @@ public partial class ExcelHandler
         List<(string Name, WorksheetPart Part)> worksheets,
         Dictionary<string, (SheetData sd, Core.FormulaEvaluator ev, Dictionary<string, Cell> idx)> sheetCtx)
     {
-        var bang = formula.IndexOf('!');
+        var bang = formula.LastIndexOf('!');
         if (bang <= 0) return null;
         var sheetPart = formula[..bang].Trim();
         if (sheetPart.StartsWith('\'') && sheetPart.EndsWith('\''))

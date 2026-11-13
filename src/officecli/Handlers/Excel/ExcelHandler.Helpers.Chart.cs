@@ -423,10 +423,10 @@ public partial class ExcelHandler
         // Parse sheet name and range
         string rangeSheetName = defaultSheetName;
         string rangePart = dataRange.Trim();
-        var bangIdx = rangePart.IndexOf('!');
+        var bangIdx = rangePart.LastIndexOf('!');
         if (bangIdx >= 0)
         {
-            rangeSheetName = rangePart[..bangIdx].Trim('\'');
+            rangeSheetName = UnquoteSheetName(rangePart[..bangIdx]);
             rangePart = rangePart[(bangIdx + 1)..];
         }
 
@@ -640,10 +640,10 @@ public partial class ExcelHandler
         // Cell range form. Strip a leading 'Sheet'! prefix (same approach as dataRange).
         string catSheetName = defaultSheetName;
         string rangePart = trimmed;
-        var bangIdx = rangePart.IndexOf('!');
+        var bangIdx = rangePart.LastIndexOf('!');
         if (bangIdx >= 0)
         {
-            catSheetName = rangePart[..bangIdx].Trim('\'');
+            catSheetName = UnquoteSheetName(rangePart[..bangIdx]);
             rangePart = rangePart[(bangIdx + 1)..];
         }
 
@@ -763,10 +763,10 @@ public partial class ExcelHandler
     {
         string sheetName = defaultSheetName;
         string rangePart = rangeRef.Trim();
-        var bangIdx = rangePart.IndexOf('!');
+        var bangIdx = rangePart.LastIndexOf('!');
         if (bangIdx >= 0)
         {
-            sheetName = rangePart[..bangIdx].Trim('\'');
+            sheetName = UnquoteSheetName(rangePart[..bangIdx]);
             rangePart = rangePart[(bangIdx + 1)..];
         }
 
