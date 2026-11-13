@@ -131,7 +131,7 @@ public partial class ExcelHandler
                 ? workbookPart.GetPartById(sheetIdForCheck) as WorksheetPart
                 : null;
             var refToken = sheetName + "!";
-            var quotedRefToken = "'" + sheetName + "'!";
+            var quotedRefToken = "'" + sheetName.Replace("'", "''") + "'!";
             foreach (var otherWsPart in workbookPart.WorksheetParts)
             {
                 if (sheetWsPartForCheck != null && ReferenceEquals(otherWsPart, sheetWsPartForCheck)) continue;
