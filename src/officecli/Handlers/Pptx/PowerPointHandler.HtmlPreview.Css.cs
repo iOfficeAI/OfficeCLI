@@ -1463,36 +1463,55 @@ public partial class PowerPointHandler
         return $"clip-path:polygon({string.Join(",", pts)})";
     }
 
-    /// <summary>R19 BUG A: parallelogram honoring adj1 (top-left x offset fraction
-    /// of width, ×100000; default 25000). polygon (a,0)(100,0)(100-a,100)(0,100).</summary>
-    private static string ParallelogramPolygon(Drawing.PresetGeometry? presetGeom)
+    /// <summary>
+    /// Resolve an ECMA-376 adjust value that its preset measures against the shape's
+    /// shorter side ("ss", as in the spec guide chain ss * adj / 100000) into a
+    /// percentage of the shape's WIDTH - the axis the emitted clip-path polygons
+    /// express their x coordinates in. Mirrors the sibling helpers that already scale
+    /// by Math.Min(w, h) (rightArrow, upDownArrow, notchedRightArrow, the callouts).
+    /// Falls back to reading the adjust value against width when the frame is unknown.
+    /// </summary>
+    private static double ShortSidePercentOfWidth(long adj, long widthEmu, long heightEmu, double maxPercent)
     {
-        var a = Math.Clamp(ReadAdjValueCss(presetGeom, 0, 25000) / 100000.0 * 100.0, 0, 100);
+        var pct = widthEmu > 0 && heightEmu > 0
+            ? (double)adj / 100000.0 * Math.Min(widthEmu, heightEmu) / widthEmu * 100.0
+            : adj / 100000.0 * 100.0;
+        return Math.Clamp(pct, 0, maxPercent);
+    }
+
+    /// <summary>R19 BUG A: parallelogram honoring adj1 (top-left x offset, measured
+    /// against the shorter side and shown as a fraction of width; default 25000).
+    /// polygon (a,0)(100,0)(100-a,100)(0,100).</summary>
+    private static string ParallelogramPolygon(long widthEmu, long heightEmu, Drawing.PresetGeometry? presetGeom)
+    {
+        var a = ShortSidePercentOfWidth(ReadAdjValueCss(presetGeom, 0, 25000), widthEmu, heightEmu, 100);
         return $"clip-path:polygon({a:0.##}% 0,100% 0,{100 - a:0.##}% 100%,0 100%)";
     }
 
     /// <summary>R19 BUG A: trapezoid honoring adj1 (top-edge inset from each side,
-    /// ×100000; default 25000). polygon (a,0)(100-a,0)(100,100)(0,100).</summary>
-    private static string TrapezoidPolygon(Drawing.PresetGeometry? presetGeom)
+    /// measured against the shorter side and shown as a fraction of width; default
+    /// 25000). polygon (a,0)(100-a,0)(100,100)(0,100).</summary>
+    private static string TrapezoidPolygon(long widthEmu, long heightEmu, Drawing.PresetGeometry? presetGeom)
     {
-        var a = Math.Clamp(ReadAdjValueCss(presetGeom, 0, 25000) / 100000.0 * 100.0, 0, 50);
+        var a = ShortSidePercentOfWidth(ReadAdjValueCss(presetGeom, 0, 25000), widthEmu, heightEmu, 50);
         return $"clip-path:polygon({a:0.##}% 0,{100 - a:0.##}% 0,100% 100%,0 100%)";
     }
 
-    /// <summary>R19 BUG A: chevron (right-pointing) honoring adj1 (notch depth
-    /// fraction, ×100000; default 50000).
-    /// polygon (0,0)(100-a,0)(100,50)(100-a,100)(0,100)(a,50).</summary>
-    private static string ChevronPolygon(Drawing.PresetGeometry? presetGeom)
+    /// <summary>R19 BUG A: chevron (right-pointing) honoring adj1 (notch depth,
+    /// measured against the shorter side and shown as a fraction of width; default
+    /// 50000). polygon (0,0)(100-a,0)(100,50)(100-a,100)(0,100)(a,50).</summary>
+    private static string ChevronPolygon(long widthEmu, long heightEmu, Drawing.PresetGeometry? presetGeom)
     {
-        var a = Math.Clamp(ReadAdjValueCss(presetGeom, 0, 50000) / 100000.0 * 100.0, 0, 100);
+        var a = ShortSidePercentOfWidth(ReadAdjValueCss(presetGeom, 0, 50000), widthEmu, heightEmu, 100);
         return $"clip-path:polygon(0 0,{100 - a:0.##}% 0,100% 50%,{100 - a:0.##}% 100%,0 100%,{a:0.##}% 50%)";
     }
 
-    /// <summary>R19 BUG A: hexagon honoring adj1 (corner inset fraction, ×100000;
-    /// default 25000). polygon (a,0)(100-a,0)(100,50)(100-a,100)(a,100)(0,50).</summary>
-    private static string HexagonPolygon(Drawing.PresetGeometry? presetGeom)
+    /// <summary>R19 BUG A: hexagon honoring adj1 (corner inset, measured against the
+    /// shorter side and shown as a fraction of width; default 25000).
+    /// polygon (a,0)(100-a,0)(100,50)(100-a,100)(a,100)(0,50).</summary>
+    private static string HexagonPolygon(long widthEmu, long heightEmu, Drawing.PresetGeometry? presetGeom)
     {
-        var a = Math.Clamp(ReadAdjValueCss(presetGeom, 0, 25000) / 100000.0 * 100.0, 0, 100);
+        var a = ShortSidePercentOfWidth(ReadAdjValueCss(presetGeom, 0, 25000), widthEmu, heightEmu, 100);
         return $"clip-path:polygon({a:0.##}% 0,{100 - a:0.##}% 0,100% 50%,{100 - a:0.##}% 100%,{a:0.##}% 100%,0 50%)";
     }
 
@@ -2425,10 +2444,10 @@ public partial class PowerPointHandler
             return "clip-path:polygon(53.06% 20.1%,68.47% 0%,67.25% 26.75%,83.37% 14.69%,75.83% 30.24%,100% 30.76%,78.63% 43.53%,84.58% 52.27%,75.83% 56.99%,87.39% 72.37%,67.78% 66.44%,69.18% 80.42%,56.39% 73.77%,53.76% 87.23%,45.7% 80.42%,40.28% 91.26%,34.85% 83.91%,22.76% 100%,22.25% 84.44%,5.95% 82.52%,15.42% 71.16%,0% 59.62%,18.22% 53.67%,5.43% 38.29%,24.87% 36.19%,20.84% 16.78%,39.58% 29.55%,45.01% 8.74%)";
 
         // R19 BUG A: parametric quads/polys honoring avLst (slant/notch/inset)
-        if (preset == "parallelogram") return ParallelogramPolygon(presetGeom);
-        if (preset == "trapezoid") return TrapezoidPolygon(presetGeom);
-        if (preset == "chevron") return ChevronPolygon(presetGeom);
-        if (preset == "hexagon") return HexagonPolygon(presetGeom);
+        if (preset == "parallelogram") return ParallelogramPolygon(widthEmu, heightEmu, presetGeom);
+        if (preset == "trapezoid") return TrapezoidPolygon(widthEmu, heightEmu, presetGeom);
+        if (preset == "chevron") return ChevronPolygon(widthEmu, heightEmu, presetGeom);
+        if (preset == "hexagon") return HexagonPolygon(widthEmu, heightEmu, presetGeom);
         // triangle/isosTriangle: adj = apex horizontal position (fraction*100000,
         // default 50000 = centered). A non-default adj shifts the apex, making a
         // scalene triangle; the old hardcoded 50% ignored it.
@@ -2507,12 +2526,13 @@ public partial class PowerPointHandler
         // corner (L-shape): adj1 = bottom (horizontal) arm height %, adj2 = left
         // (vertical) arm width %; both default 50000. Inner corner at (adj2, 100-adj1).
         // The old hardcoded 50/50 ignored both, so a thin-armed L looked fat.
-        // homePlate (pentagon arrow): adj = point depth as a fraction of width
-        // (default 25000 = 25%). The body occupies (100-adj)%, the triangular point
-        // the rest. The old hardcoded 75%/25% ignored adj.
+        // homePlate (pentagon arrow): adj = point depth, measured against the shape's
+        // shorter side like the other ECMA preset guides, so it is shown here as a
+        // fraction of width (default 25000 = 25% of ss). The body occupies
+        // (100-depth)%, the triangular point the rest.
         if (preset == "homePlate")
         {
-            var ptPct = Math.Clamp(ReadAdjValueCss(presetGeom, 0, 25000) / 1000.0, 0, 100);
+            var ptPct = ShortSidePercentOfWidth(ReadAdjValueCss(presetGeom, 0, 25000), widthEmu, heightEmu, 100);
             var bodyPct = 100 - ptPct;
             string P(double d) => d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
             return $"clip-path:polygon(0 0,{P(bodyPct)}% 0,100% 50%,{P(bodyPct)}% 100%,0 100%)";
