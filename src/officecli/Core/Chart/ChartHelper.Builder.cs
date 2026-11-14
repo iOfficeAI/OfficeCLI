@@ -389,7 +389,7 @@ internal static partial class ChartHelper
 
         if (needsAxes)
         {
-            if (kind == "scatter")
+            if (kind is "scatter" or "bubble")
             {
                 plotArea.AppendChild(BuildValueAxis(catAxisId, valAxisId, C.AxisPositionValues.Bottom));
                 plotArea.AppendChild(BuildValueAxis(valAxisId, catAxisId, C.AxisPositionValues.Left));
