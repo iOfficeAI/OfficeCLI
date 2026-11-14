@@ -745,6 +745,8 @@ public partial class PowerPointHandler
                 // Extended chart types (cx:chart) — funnel, treemap, sunburst, boxWhisker, histogram
                 if (ChartExBuilder.IsExtendedChartType(chartType))
                 {
+                    if (SchemaKeyNormalizer.Normalize(chartType) == "pareto")
+                        (categories, seriesData) = ChartExBuilder.PreparePareto(categories, seriesData);
                     var cxChartSpace = ChartExBuilder.BuildExtendedChartSpace(
                         chartType, chartTitle, categories, seriesData, properties);
                     var extChartPart = chartSlidePart.AddNewPart<ExtendedChartPart>();
