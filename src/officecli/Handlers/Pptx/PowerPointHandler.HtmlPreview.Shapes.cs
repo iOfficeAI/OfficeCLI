@@ -306,8 +306,13 @@ public partial class PowerPointHandler
                 // route those through an inline SVG <path> overlay (set below).
                 var pathLst = custGeom.GetFirstChild<Drawing.PathList>();
                 var subPaths = pathLst?.Elements<Drawing.Path>().ToList() ?? new List<Drawing.Path>();
+                // A single <a:path> can still hold several subpaths (a second moveTo —
+                // e.g. a glyph with a hole) or an open one (no <a:close/> — a polyline).
+                // One polygon would join the contours with a seam and close the open
+                // stroke, so those take the SVG route as well.
                 var needsSvg = subPaths.Count > 1
-                    || subPaths.Any(p => p.Fill?.Value == Drawing.PathFillModeValues.None);
+                    || subPaths.Any(p => p.Fill?.Value == Drawing.PathFillModeValues.None)
+                    || subPaths.Any(HasOpenOrMultipleSubpaths);
 
                 if (needsSvg)
                 {

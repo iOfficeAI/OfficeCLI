@@ -208,6 +208,27 @@ public partial class PowerPointHandler
 
     // ==================== CSS Helper: Custom Geometry ====================
 
+    /// <summary>True when one &lt;a:path&gt; holds more than one subpath (a second
+    /// moveTo) or a subpath that draws something and is not ended by &lt;a:close/&gt;.
+    /// Neither can be expressed as a single closed clip-path polygon.</summary>
+    private static bool HasOpenOrMultipleSubpaths(Drawing.Path path)
+    {
+        int moves = 0;
+        bool drew = false, closed = false;
+        foreach (var child in path.ChildElements)
+        {
+            if (child is Drawing.MoveTo)
+            {
+                if (drew && !closed) return true;
+                if (++moves > 1) return true;
+                drew = closed = false;
+            }
+            else if (child is Drawing.CloseShapePath) closed = true;
+            else { drew = true; closed = false; }
+        }
+        return drew && !closed;
+    }
+
     /// <summary>
     /// Convert OOXML CustomGeometry (a:custGeom) path data to CSS clip-path.
     /// Supports moveTo, lineTo, cubicBezTo, quadBezTo, close.
