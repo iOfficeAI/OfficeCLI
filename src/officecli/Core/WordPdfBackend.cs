@@ -358,7 +358,12 @@ internal static class WordPdfBackend
             }
             else if (int.TryParse(t, out var n) && n >= 1 && n <= total) set.Add(n);
         }
-        if (set.Count == 0) set.Add(1);
+        // The caller checks --page against the HTML preview's page count, and
+        // Word can lay the same document out in fewer pages. Rendering page 1
+        // instead would hand back the wrong page with exit 0; failing lets
+        // --render auto fall back to the preview and --render native report it.
+        if (set.Count == 0)
+            throw new InvalidOperationException($"--page {filter} is past the last page of Word's layout ({total} pages)");
         return set.ToArray();
     }
 
