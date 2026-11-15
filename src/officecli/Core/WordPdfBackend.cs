@@ -358,7 +358,9 @@ internal static class WordPdfBackend
             }
             else if (int.TryParse(t, out var n) && n >= 1 && n <= total) set.Add(n);
         }
-        if (set.Count == 0) set.Add(1);
+        // A filter that names only pages past the end selects nothing. It must
+        // not fall back to page 1: the caller would hand back another page's
+        // image as if it were the requested one.
         return set.ToArray();
     }
 
@@ -535,7 +537,7 @@ internal static class WordPdfBackend
 
     // Render the requested PDF pages to one PNG each (native page pixels), in
     // page order. Shared by Render (vertical stitch) and RenderGrid (downscale +
-    // tile). Returns an empty list if the filter selects nothing.
+    // tile). Throws when the filter selects no page of the exported PDF.
     static List<byte[]> PdfToPngList(string pdf, string pageFilter, int timeoutMs)
     {
         var fileFact = Factory("Windows.Storage.StorageFile", G_FileStatics);
@@ -560,6 +562,9 @@ internal static class WordPdfBackend
             {
                 VT<F_OutU32>(doc, 7)(doc, out var pageCount);
                 var pages = ParsePages(pageFilter, (int)pageCount);
+                if (pages.Length == 0)
+                    throw new InvalidOperationException(
+                        $"page {pageFilter.Trim()} is past the last page Word produced ({pageCount}).");
                 var pngs = new List<byte[]>();
                 foreach (var p in pages) pngs.Add(RenderOne(doc, (uint)(p - 1), drFact, timeoutMs));
                 return pngs;
