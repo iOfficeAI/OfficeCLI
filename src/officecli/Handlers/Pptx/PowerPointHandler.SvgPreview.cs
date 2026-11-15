@@ -1491,12 +1491,12 @@ public partial class PowerPointHandler
             "diamond" => $"{w / 2:0.##},0 {w:0.##},{h / 2:0.##} {w / 2:0.##},{h:0.##} 0,{h / 2:0.##}",
 
             // Parallelogram
-            "parallelogram" => $"{w * 0.25:0.##},0 {w:0.##},0 {w * 0.75:0.##},{h:0.##} 0,{h:0.##}",
-            "trapezoid" => $"{w * 0.2:0.##},0 {w * 0.8:0.##},0 {w:0.##},{h:0.##} 0,{h:0.##}",
+            "parallelogram" => ShortSideInset(presetGeom, 25000, 1.0, w, h) is var pa ? $"{pa:0.##},0 {w:0.##},0 {w - pa:0.##},{h:0.##} 0,{h:0.##}" : null,
+            "trapezoid" => ShortSideInset(presetGeom, 25000, 0.5, w, h) is var ta ? $"{ta:0.##},0 {w - ta:0.##},0 {w:0.##},{h:0.##} 0,{h:0.##}" : null,
 
             // Pentagon, Hexagon, etc.
             "pentagon" => BuildRegularPolygon(5, w, h),
-            "hexagon" => BuildRegularPolygon(6, w, h),
+            "hexagon" => ShortSideInset(presetGeom, 25000, 0.5, w, h) is var ha ? $"{ha:0.##},0 {w - ha:0.##},0 {w:0.##},{h / 2:0.##} {w - ha:0.##},{h:0.##} {ha:0.##},{h:0.##} 0,{h / 2:0.##}" : null,
             "heptagon" => BuildRegularPolygon(7, w, h),
             "octagon" => BuildRegularPolygon(8, w, h),
             "decagon" => BuildRegularPolygon(10, w, h),
@@ -1519,9 +1519,9 @@ public partial class PowerPointHandler
             "downArrow" => $"{w * 0.25:0.##},0 {w * 0.75:0.##},0 {w * 0.75:0.##},{h * 0.7:0.##} {w:0.##},{h * 0.7:0.##} {w / 2:0.##},{h:0.##} 0,{h * 0.7:0.##} {w * 0.25:0.##},{h * 0.7:0.##}",
 
             // Chevron
-            "chevron" => $"0,0 {w * 0.8:0.##},0 {w:0.##},{h / 2:0.##} {w * 0.8:0.##},{h:0.##} 0,{h:0.##} {w * 0.2:0.##},{h / 2:0.##}",
+            "chevron" => ShortSideInset(presetGeom, 50000, 1.0, w, h) is var ca ? $"0,0 {w - ca:0.##},0 {w:0.##},{h / 2:0.##} {w - ca:0.##},{h:0.##} 0,{h:0.##} {ca:0.##},{h / 2:0.##}" : null,
             // adj = point depth fraction of width (default 25000 = 25%); body = (1-adj)*w.
-            "homePlate" => $"0,0 {w * (1 - ReadAdjValue(presetGeom, 0, 25000) / 100000.0):0.##},0 {w:0.##},{h / 2:0.##} {w * (1 - ReadAdjValue(presetGeom, 0, 25000) / 100000.0):0.##},{h:0.##} 0,{h:0.##}",
+            "homePlate" => ShortSideInset(presetGeom, 50000, 1.0, w, h) is var hp ? $"0,0 {w - hp:0.##},0 {w:0.##},{h / 2:0.##} {w - hp:0.##},{h:0.##} 0,{h:0.##}" : null,
 
             // Cross / Plus
             "plus" or "cross" => $"{w * 0.33:0.##},0 {w * 0.67:0.##},0 {w * 0.67:0.##},{h * 0.33:0.##} {w:0.##},{h * 0.33:0.##} {w:0.##},{h * 0.67:0.##} {w * 0.67:0.##},{h * 0.67:0.##} {w * 0.67:0.##},{h:0.##} {w * 0.33:0.##},{h:0.##} {w * 0.33:0.##},{h * 0.67:0.##} 0,{h * 0.67:0.##} 0,{h * 0.33:0.##} {w * 0.33:0.##},{h * 0.33:0.##}",
