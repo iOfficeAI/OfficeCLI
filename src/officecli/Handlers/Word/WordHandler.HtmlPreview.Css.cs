@@ -1162,6 +1162,24 @@ public partial class WordHandler
             currentStyleId = style.BasedOn?.Val?.Value;
         }
 
+        // Inside a table, the table style's pPr sits between docDefaults and
+        // the paragraph style (ECMA-376 §17.7.2): it fills what the paragraph
+        // style chain left unset, ahead of docDefaults. Word's stock "Table
+        // Grid" relies on this (spacing after=0, line=240); without it every
+        // cell paragraph takes the document's body spacing and rows come out
+        // far taller than Word draws them, which pushes content onto pages
+        // Word does not have.
+        var tableVisited = new HashSet<string>();
+        var tableStyleId = _tableStyleIdInScope;
+        while (tableStyleId != null && tableVisited.Add(tableStyleId))
+        {
+            var tableStyle = styles.Elements<Style>()
+                .FirstOrDefault(s => s.StyleId?.Value == tableStyleId && s.Type?.Value == StyleValues.Table);
+            if (tableStyle == null) break;
+            MergeFrom(tableStyle.StyleParagraphProperties?.SpacingBetweenLines);
+            tableStyleId = tableStyle.BasedOn?.Val?.Value;
+        }
+
         // Final fallback: docDefaults pPrDefault — fills any attribute the
         // style chain left unset. Without this, a doc whose only spacing
         // declaration is in <w:pPrDefault> emits zero margin and the
@@ -1388,13 +1406,14 @@ public partial class WordHandler
         // pPrDefault (typical of synthetic / cli-authored docs) emits zero
         // margin-bottom and the next paragraph's spaceBefore-vs-prev.spaceAfter
         // collapse computes incorrectly.
-        var defPPr = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
-            ?.DocDefaults?.ParagraphPropertiesDefault?.ParagraphPropertiesBaseStyle;
-        if (defPPr != null)
+        // Emit margins / line-height from one cascade layer, for whatever the
+        // layers above it left unset. zeroBeforeCounts: an explicit before=0 in
+        // this layer is a value (it must stop a lower layer's non-zero before),
+        // not an absence.
+        void EmitSpacingLayer(SpacingBetweenLines? spacing, bool zeroBeforeCounts)
         {
+            if (spacing == null) return;
             const double LineUnitPt = 12.0;
-            var spacing = defPPr.SpacingBetweenLines;
-            if (spacing != null)
             {
                 if (!parts.Any(p => p.StartsWith("margin-top")))
                 {
@@ -1402,6 +1421,8 @@ public partial class WordHandler
                         parts.Add($"margin-top:{bl / 100.0 * LineUnitPt:0.##}pt");
                     else if (spacing.Before?.Value is string b && b != "0")
                         parts.Add($"margin-top:{Units.TwipsToPt(b):0.##}pt");
+                    else if (zeroBeforeCounts && spacing.Before?.Value == "0")
+                        parts.Add("margin-top:0pt");
                 }
                 if (!parts.Any(p => p.StartsWith("margin-bottom")))
                 {
@@ -1434,6 +1455,28 @@ public partial class WordHandler
                     }
                 }
             }
+        }
+
+        // Inside a table, the table style's pPr sits between the paragraph
+        // style and docDefaults (ECMA-376 §17.7.2). Word's stock "Table Grid"
+        // relies on it (spacing after=0, line=240); skipping it gave every cell
+        // paragraph the document's body spacing, so rows came out far taller
+        // than Word draws them and content spilled onto pages Word does not have.
+        var tblVisited = new HashSet<string>();
+        var tblStyleId = _tableStyleIdInScope;
+        while (tblStyleId != null && tblVisited.Add(tblStyleId))
+        {
+            var tblStyle = FindStyleById(tblStyleId);
+            if (tblStyle == null || tblStyle.Type?.Value != StyleValues.Table) break;
+            EmitSpacingLayer(tblStyle.StyleParagraphProperties?.SpacingBetweenLines, zeroBeforeCounts: true);
+            tblStyleId = tblStyle.BasedOn?.Val?.Value;
+        }
+
+        var defPPr = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles
+            ?.DocDefaults?.ParagraphPropertiesDefault?.ParagraphPropertiesBaseStyle;
+        if (defPPr != null)
+        {
+            EmitSpacingLayer(defPPr.SpacingBetweenLines, zeroBeforeCounts: false);
             var ind = defPPr.Indentation;
             if (ind != null)
             {

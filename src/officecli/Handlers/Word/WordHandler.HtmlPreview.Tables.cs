@@ -31,6 +31,27 @@ public partial class WordHandler
         // (uncatchable crash) during `view html`. See DocumentLimits.
         DocumentLimits.EnsureDepth(depth);
 
+        // Paragraphs inside this table inherit the table style's pPr spacing
+        // (see ResolveSpacingFromStyle). Scoped to the table being rendered and
+        // restored afterwards so a nested table's style does not leak outwards.
+        var outerTableStyleId = _tableStyleIdInScope;
+        _tableStyleIdInScope = table.GetFirstChild<TableProperties>()?.TableStyle?.Val?.Value
+            ?? DefaultTableStyleId();
+        try { RenderTableHtmlCore(sb, table, dataPath, depth, olState); }
+        finally { _tableStyleIdInScope = outerTableStyleId; }
+    }
+
+    // Style id of the table whose cells are currently being rendered; null
+    // outside any table.
+    private string? _tableStyleIdInScope;
+
+    private string? DefaultTableStyleId() =>
+        _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles?.Elements<Style>()
+            .FirstOrDefault(s => s.Type?.Value == StyleValues.Table && s.Default?.Value == true)
+            ?.StyleId?.Value;
+
+    private void RenderTableHtmlCore(StringBuilder sb, Table table, string? dataPath, int depth, OrderedListNumberingState olState)
+    {
         // Check table-level borders to determine if this is a borderless layout table
         // First try direct table borders, then fall back to table style borders
         var tblPr = table.GetFirstChild<TableProperties>();
