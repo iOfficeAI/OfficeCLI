@@ -395,6 +395,12 @@ public partial class WordHandler
             foreach (var col in tblGrid.Elements<GridColumn>())
             {
                 var w = col.Width?.Value;
+                // w:gridCol/@w:w is a StringValue the SDK does not validate, and it
+                // is echoed into the <col> markup below. Anything that is not a
+                // plain number is treated as "no width".
+                if (w != null && !double.TryParse(w, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out _))
+                    w = null;
                 if (colIdx < colCount && pctByCol[colIdx] is double explicitPct)
                 {
                     // Explicit per-cell percentage drives the column width; this

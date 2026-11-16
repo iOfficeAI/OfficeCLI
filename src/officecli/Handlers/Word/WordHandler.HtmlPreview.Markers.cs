@@ -87,12 +87,15 @@ public partial class WordHandler
         if (rpr == null) return "";
         var parts = new List<string>();
         var clr = rpr.GetFirstChild<Color>();
-        if (clr?.Val?.Value != null && !string.IsNullOrEmpty(clr.Val.Value) && clr.Val.Value != "auto")
+        // w:color/@w:val and the font names are document-controlled strings that
+        // end up inside a <style> block; a value like "</style><img onerror=…>"
+        // would close the block. Only a hex colour / a sanitized font name pass.
+        if (clr?.Val?.Value != null && clr.Val.Value != "auto" && IsHexColor(clr.Val.Value))
             parts.Add($"color:#{clr.Val.Value}");
         var rf = rpr.GetFirstChild<RunFonts>();
         var fontName = rf?.Ascii?.Value ?? rf?.HighAnsi?.Value ?? rf?.EastAsia?.Value;
         if (includeFontFamily && !string.IsNullOrEmpty(fontName))
-            parts.Add($"font-family:'{fontName}'");
+            parts.Add($"font-family:'{CssSanitize(fontName)}'");
         var fs = rpr.GetFirstChild<FontSize>();
         if (fs?.Val?.Value != null && int.TryParse(fs.Val.Value, out var halfPt))
         {
@@ -383,9 +386,31 @@ public partial class WordHandler
         // Symbol 0x2D minus → en-dash bullet). Otherwise the raw PUA char
         // lands in the CSS string literal and renders as tofu (□).
         text = TranslateSymbolPuaGlyph(text!);
-        // Escape ' and \ for CSS string literal.
-        var escaped = text!.Replace("\\", "\\\\").Replace("'", "\\'");
-        return $"'{escaped} '";
+        return $"'{CssStringEscape(text!)} '";
+    }
+
+    /// <summary>
+    /// Body of a CSS string literal for a document-controlled glyph string.
+    /// The literal is emitted both in a &lt;style&gt; block and in a style=""
+    /// attribute, so escaping only ' and \ is not enough: a lvlText of
+    /// "&lt;/style&gt;…" closed the block and a '"' closed the attribute. Every
+    /// character significant to one of those three contexts — &lt; &gt; " ' \ &amp; /
+    /// and control characters — becomes a CSS hex escape ("\3C "), which
+    /// renders the same glyph; everything else (the bullet glyphs themselves)
+    /// passes through unchanged.
+    /// </summary>
+    private static string CssStringEscape(string text)
+    {
+        var sb = new StringBuilder(text.Length * 2);
+        foreach (var rune in text.EnumerateRunes())
+        {
+            var v = rune.Value;
+            if (v < 0x20 || v == 0x7F || v is '<' or '>' or '"' or '\'' or '\\' or '&' or '/')
+                sb.Append('\\').Append(v.ToString("X")).Append(' ');
+            else
+                sb.Append(rune.ToString());
+        }
+        return sb.ToString();
     }
 
     /// <summary>

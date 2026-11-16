@@ -604,7 +604,10 @@ public partial class WordHandler
                 var solidFill = ln.Elements().FirstOrDefault(e => e.LocalName == "solidFill");
                 var srgb = solidFill?.Elements().FirstOrDefault(e => e.LocalName == "srgbClr");
                 var colorHex = srgb?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
-                var borderColor = !string.IsNullOrEmpty(colorHex) ? $"#{colorHex}" : "#000";
+                // The raw a:srgbClr/@val is document-controlled; it is not a typed
+                // SDK value, so nothing has validated it. Only a hex colour may
+                // reach the style attribute — anything else falls back to black.
+                var borderColor = !string.IsNullOrEmpty(colorHex) && IsHexColor(colorHex) ? $"#{colorHex}" : "#000";
                 parts.Add($"border:{borderPx:0.##}px solid {borderColor}");
             }
         }
@@ -638,6 +641,8 @@ public partial class WordHandler
         var offY = distPx * Math.Sin(dirDeg * Math.PI / 180);
         var shdwFill = outerShdw.Elements().FirstOrDefault(e => e.LocalName == "srgbClr");
         var shdwHex = shdwFill?.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value ?? "000000";
+        // Document-controlled raw attribute: only a hex colour may reach CSS.
+        if (!IsHexColor(shdwHex)) shdwHex = "000000";
         return $"box-shadow:{offX:0.#}px {offY:0.#}px {blurPx:0.#}px #{shdwHex}";
     }
 

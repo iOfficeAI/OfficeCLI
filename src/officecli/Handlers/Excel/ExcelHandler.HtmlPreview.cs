@@ -3021,7 +3021,7 @@ public partial class ExcelHandler
                     style.Append($"font-size:{fs:0.##}pt;");
                 var fontName = rPr.GetFirstChild<RunFont>()?.Val?.Value;
                 if (!string.IsNullOrEmpty(fontName))
-                    style.Append($"font-family:'{fontName}';");
+                    style.Append($"font-family:'{CssSanitize(fontName)}';");
             }
             var text = HtmlEncode(run.Text?.Text ?? "");
             var span = style.Length > 0 ? $"<span style=\"{style}\">{text}</span>" : $"<span>{text}</span>";
@@ -4288,8 +4288,17 @@ public partial class ExcelHandler
 
     private static string CssSanitize(string value)
     {
-        // Strip characters that could break CSS context
-        return Regex.Replace(value, @"[;:{}()\\""']", "");
+        // Allowlist, not a block-list: the value lands both inside a style=""
+        // attribute and inside a <style> block, and a block-list of CSS
+        // metacharacters still let "</style>" through and closed the block.
+        // Font names need only letters, digits, space and - _ . (same rule as
+        // the Word preview's CssSanitize).
+        if (string.IsNullOrEmpty(value)) return value;
+        var sb = new StringBuilder(value.Length);
+        foreach (var c in value)
+            if (char.IsLetterOrDigit(c) || c == ' ' || c == '-' || c == '_' || c == '.')
+                sb.Append(c);
+        return sb.ToString();
     }
 
 }

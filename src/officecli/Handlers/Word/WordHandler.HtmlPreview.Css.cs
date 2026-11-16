@@ -170,7 +170,12 @@ public partial class WordHandler
                     string? color = null;
                     var gsRgb = gs.Elements().FirstOrDefault(e => e.LocalName == "srgbClr");
                     if (gsRgb != null)
-                        color = "#" + gsRgb.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+                    {
+                        // Document-controlled raw attribute: a stop whose colour
+                        // is not hex is dropped rather than written into CSS.
+                        var gsHex = gsRgb.GetAttributes().FirstOrDefault(a => a.LocalName == "val").Value;
+                        if (!string.IsNullOrEmpty(gsHex) && IsHexColor(gsHex)) color = "#" + gsHex;
+                    }
                     var gsScheme = gs.Elements().FirstOrDefault(e => e.LocalName == "schemeClr");
                     if (gsScheme != null) color = ResolveSchemeColor(gsScheme);
                     if (color != null)
