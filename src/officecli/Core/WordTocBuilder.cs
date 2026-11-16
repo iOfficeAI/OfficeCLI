@@ -237,6 +237,26 @@ internal static class WordTocBuilder
         }
         if (endPara == null) return;
 
+        // A section break is stored in the properties of the last paragraph of
+        // its section (w:pPr/w:sectPr). A contents page that is its own section
+        // therefore carries one on the paragraph holding the field's end mark,
+        // which is replaced below: that break moves to the new end paragraph.
+        // A break on a paragraph in the middle of the old result has no place
+        // in the regenerated entries, so such a TOC is left as it is rather
+        // than merging two sections.
+        var stale = new List<Paragraph>();
+        if (endPara != tocFieldPara)
+        {
+            for (var q = tocFieldPara.NextSibling<Paragraph>(); q != null; q = q.NextSibling<Paragraph>())
+            {
+                stale.Add(q);
+                if (q == endPara) break;
+            }
+            if (stale.Any(q => q != endPara && q.ParagraphProperties?.SectionProperties != null)) return;
+        }
+        var endParaProps = endPara != tocFieldPara ? endPara.ParagraphProperties?.CloneNode(true) : null;
+        var ownSectionBreak = endPara == tocFieldPara ? tocFieldPara.ParagraphProperties?.SectionProperties : null;
+
         // 1) Remove everything in tocFieldPara strictly after sepRun's outermost
         //    ancestor inside the paragraph. (sep is usually a direct child Run,
         //    but be defensive about wrapping containers.)
@@ -247,18 +267,7 @@ internal static class WordTocBuilder
 
         // 2) Remove paragraphs from after tocFieldPara up to and including
         //    endPara (we'll synthesize a fresh end run in its own paragraph).
-        if (endPara != tocFieldPara)
-        {
-            var p = tocFieldPara.NextSibling<Paragraph>();
-            while (p != null)
-            {
-                var n = p.NextSibling<Paragraph>();
-                bool wasEnd = (p == endPara);
-                p.Remove();
-                if (wasEnd) break;
-                p = n;
-            }
-        }
+        foreach (var q in stale) q.Remove();
 
         // 3) Insert generated entry paragraphs.
         OpenXmlElement insertAfter = tocFieldPara;
@@ -269,7 +278,17 @@ internal static class WordTocBuilder
         }
 
         // 4) Append a synthetic end-fldChar paragraph closing the outer field.
+        //    It keeps the old end paragraph's properties, and with them the
+        //    section break when the contents end their section. When the whole
+        //    field was in one paragraph, that paragraph's break moves here so
+        //    the entries stay in the section they belong to.
         var endParaNew = new Paragraph(new Run(new FieldChar { FieldCharType = FieldCharValues.End }));
+        if (endParaProps != null) endParaNew.PrependChild(endParaProps);
+        else if (ownSectionBreak != null)
+        {
+            ownSectionBreak.Remove();
+            endParaNew.PrependChild(new ParagraphProperties(ownSectionBreak));
+        }
         insertAfter.InsertAfterSelf(endParaNew);
     }
 
