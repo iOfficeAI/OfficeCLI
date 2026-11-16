@@ -495,19 +495,18 @@ public partial class PowerPointHandler
 
         // Vertical alignment class.
         //
-        // Default (no explicit anchor, nothing inherited) is shape-kind
-        // dependent in real PowerPoint:
-        //   - text box (<p:cNvSpPr txBox="1">)  → top
-        //   - placeholder (<p:ph>)              → inherits from layout/master
-        //                                          (resolved below via
-        //                                          ResolveInheritedAnchor)
-        //   - autoshape (prstGeom/custGeom, no txBox) → center
+        // Default (no explicit anchor, nothing inherited) is top — the schema
+        // default of <a:bodyPr anchor>, and what PowerPoint renders for an
+        // autoshape written with a bare <a:bodyPr/>. Shapes drawn in the
+        // PowerPoint UI look centred only because the UI writes anchor="ctr"
+        // on them explicitly; assuming centre for every autoshape moved the
+        // text of shapes that carry no anchor.
+        //   - placeholder (<p:ph>) → inherits from layout/master (resolved
+        //     below via ResolveInheritedAnchor)
         // An explicit <a:bodyPr anchor="t|ctr|b"> always wins.
         var isPlaceholder = shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
             ?.GetFirstChild<PlaceholderShape>() != null;
-        var isTextBox = shape.NonVisualShapeProperties?.NonVisualShapeDrawingProperties
-            ?.TextBox?.Value == true;
-        var valign = (!isPlaceholder && !isTextBox) ? "center" : "top";
+        var valign = "top";
         if (bodyPr?.Anchor?.HasValue == true)
         {
             valign = bodyPr.Anchor.InnerText switch
