@@ -34,6 +34,7 @@ internal static class WatchNotifier
                 using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut);
                 client.Connect(100); // fast fail if no watch
 
+                message.Nonce ??= PreviewCsp.Nonce;
                 var json = JsonSerializer.Serialize(message, WatchMessageJsonContext.Default.WatchMessage);
 
                 // Write first, then read. Creating StreamReader before writing
@@ -330,6 +331,14 @@ internal class WatchMessage
 
     /// <summary>Full HTML of the entire presentation (for caching by watch server)</summary>
     public string? FullHtml { get; set; }
+
+    /// <summary>
+    /// The sender's preview script nonce (PreviewCsp.Nonce). The watch server
+    /// re-stamps <see cref="Html"/> / <see cref="FullHtml"/> from this to its
+    /// own nonce, so scripts rendered by a different process still satisfy the
+    /// Content-Security-Policy of the already-open browser tab.
+    /// </summary>
+    public string? Nonce { get; set; }
 
     /// <summary>CSS selector for the element to scroll to after full refresh (Word/Excel)</summary>
     public string? ScrollTo { get; set; }

@@ -21,19 +21,36 @@
     // preserving the type attribute breaks ES modules (e.g. model3d / three.js).
     // Walks the subtree, replaces each <script> with a fresh element that copies
     // every attribute + textContent (or src) so the browser actually runs it.
+    //
+    // SECURITY: only scripts the renderer emitted may be re-run. The page's
+    // Content-Security-Policy runs a script only if it carries the page nonce;
+    // re-creating a script from pushed HTML is the one place that could hand
+    // that nonce to markup that came out of the document. So a script is
+    // re-run only if the pushed HTML already carried the nonce (the server
+    // stamps it on renderer output; document content cannot know it), and
+    // anything else is dropped instead of executed.
+    var _pageNonce = (document.currentScript && document.currentScript.nonce) || '';
+    function _scriptNonce(s) { return s.nonce || s.getAttribute('nonce') || ''; }
+    function _trustedClone(s) {
+        if (_scriptNonce(s) !== _pageNonce) return null;
+        var ns = document.createElement('script');
+        for (var j = 0; j < s.attributes.length; j++) {
+            var a = s.attributes[j];
+            if (a.name !== 'nonce') ns.setAttribute(a.name, a.value);
+        }
+        if (_pageNonce) ns.nonce = _pageNonce;
+        if (s.src) ns.src = s.src;
+        else ns.textContent = s.textContent;
+        return ns;
+    }
     function _executeScripts(root) {
         if (!root) return;
         var scripts = root.querySelectorAll ? root.querySelectorAll('script') : [];
         for (var i = 0; i < scripts.length; i++) {
             var s = scripts[i];
-            var ns = document.createElement('script');
-            for (var j = 0; j < s.attributes.length; j++) {
-                var a = s.attributes[j];
-                ns.setAttribute(a.name, a.value);
-            }
-            if (s.src) ns.src = s.src;
-            else ns.textContent = s.textContent;
-            s.parentNode.replaceChild(ns, s);
+            var ns = _trustedClone(s);
+            if (ns) s.parentNode.replaceChild(ns, s);
+            else s.parentNode.removeChild(s);
         }
     }
 
@@ -75,14 +92,8 @@
             window.scrollTo(0, savedScrollY);
             doc.body.querySelectorAll('script').forEach(function(s) {
                 if (s.textContent.indexOf('EventSource') >= 0) return;
-                var ns = document.createElement('script');
-                for (var j = 0; j < s.attributes.length; j++) {
-                    var a = s.attributes[j];
-                    ns.setAttribute(a.name, a.value);
-                }
-                if (s.src) ns.src = s.src;
-                else ns.textContent = s.textContent;
-                document.body.appendChild(ns);
+                var ns = _trustedClone(s);
+                if (ns) document.body.appendChild(ns);
             });
             if (msg.scrollTo && targetSheetIdx < 0) {
                 window._pendingScrollTo = msg.scrollTo;

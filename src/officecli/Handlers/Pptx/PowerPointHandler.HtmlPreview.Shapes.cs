@@ -2772,7 +2772,7 @@ public partial class PowerPointHandler
             if (!_glbDataCache.TryGetValue(hash, out glbVarName!))
             {
                 glbVarName = $"_glb{_glbDataCache.Count}";
-                sb.AppendLine($"<script>window.{glbVarName}='{Convert.ToBase64String(bytes)}';</script>");
+                sb.AppendLine($"<script{Core.PreviewCsp.NonceAttr}>window.{glbVarName}='{Convert.ToBase64String(bytes)}';</script>");
                 _glbDataCache[hash] = glbVarName;
             }
         }
@@ -2841,7 +2841,7 @@ public partial class PowerPointHandler
             sb.AppendLine($"      <img class=\"m3d-fallback\" src=\"{fallbackImgSrc}\" style=\"width:100%;height:100%;object-fit:contain;display:none;\" />");
         sb.AppendLine("    </div>");
 
-        sb.AppendLine($@"    <script type=""module"">
+        sb.AppendLine($@"    <script type=""module""{Core.PreviewCsp.NonceAttr}>
     let THREE, GLTFLoader;
     try {{
       // Mirror-first via the importmap (CONSISTENCY(katex-mirror), see Core/ThreeAssets)

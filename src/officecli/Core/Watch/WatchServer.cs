@@ -96,7 +96,7 @@ internal class WatchServer : IDisposable
     {
         var core = LoadWatchResource("Resources.watch-sse-core.js");
         var overlay = LoadWatchResource("Resources.watch-overlay.js");
-        return $"<script>\n{core}\n</script>\n<script>\n{overlay}\n</script>";
+        return $"<script{PreviewCsp.NonceAttr}>\n{core}\n</script>\n<script{PreviewCsp.NonceAttr}>\n{overlay}\n</script>";
     });
 
     // Test access: allows tests to verify SSE script content without reflection on a const field.
@@ -136,7 +136,7 @@ internal class WatchServer : IDisposable
         _idleTimeout = idleTimeout ?? ResolveIdleTimeout();
         _tcpListener = new TcpListener(IPAddress.Loopback, _port);
         if (!string.IsNullOrEmpty(initialHtml))
-            _currentHtml = initialHtml;
+            _currentHtml = PreviewCsp.Rebind(initialHtml, PreviewCsp.ExtractNonce(initialHtml), PreviewCsp.Nonce);
     }
 
     public static string GetWatchPipeName(string filePath)
@@ -669,6 +669,13 @@ internal class WatchServer : IDisposable
         {
             var msg = JsonSerializer.Deserialize(json, WatchMessageJsonContext.Default.WatchMessage);
             if (msg == null) return;
+
+            // The HTML was rendered by another process under ITS script nonce.
+            // The browser tab enforces this server's nonce, so re-stamp before
+            // the HTML is cached, diffed or pushed to clients.
+            var senderNonce = msg.Nonce ?? PreviewCsp.ExtractNonce(msg.FullHtml);
+            if (msg.FullHtml != null) msg.FullHtml = PreviewCsp.Rebind(msg.FullHtml, senderNonce, PreviewCsp.Nonce);
+            if (msg.Html != null) msg.Html = PreviewCsp.Rebind(msg.Html, senderNonce, PreviewCsp.Nonce);
 
             // Scroll-only event: broadcast a CSS selector to all SSE clients
             // without touching the cached HTML, version, or marks. Used by the
@@ -2037,7 +2044,10 @@ internal class WatchServer : IDisposable
 
             // Default: serve current HTML (GET / and everything else)
             var html = string.IsNullOrEmpty(_currentHtml)
-                ? InjectSseScript(WaitingHtml)
+                // The waiting page gets the policy too: the tab never reloads when
+                // the first real render arrives (the body is swapped in place), so
+                // whatever policy this first response carries is the tab's policy.
+                ? InjectSseScript(WaitingHtml.Replace("<meta charset=\"utf-8\">", "<meta charset=\"utf-8\">" + PreviewCsp.MetaTag))
                 : InjectSseScript(_currentHtml);
             var bodyBytes = Encoding.UTF8.GetBytes(html);
             var header = Encoding.UTF8.GetBytes(
@@ -2697,6 +2707,8 @@ internal class WatchServer : IDisposable
                     throw new InvalidOperationException(reason);
                 }
                 html = await File.ReadAllTextAsync(tmpOut, token);
+                // Rendered by a child process under its own script nonce.
+                html = PreviewCsp.Rebind(html, PreviewCsp.ExtractNonce(html), PreviewCsp.Nonce);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

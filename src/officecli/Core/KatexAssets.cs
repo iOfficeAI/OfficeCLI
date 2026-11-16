@@ -31,20 +31,32 @@ internal static class KatexAssets
     public static string CdnCssUrl => CdnBase + "/katex.min.css";
     public static string CdnJsUrl => CdnBase + "/katex.min.js";
 
-    /// <summary>
-    /// onerror body for the stylesheet &lt;link&gt;: first failure retries the
-    /// public CDN, second failure removes the tag (KaTeX js falls back to the
-    /// caller-provided plain-text rendering, so a missing css is cosmetic).
-    /// </summary>
-    public static string CssOnErrorJs =>
-        $"if(!this.dataset.f){{this.dataset.f=1;this.href='{CdnCssUrl}'}}else{{this.remove()}}";
+    // The mirror-first / CDN-retry / final-fallback chain used to live in
+    // onload="" / onerror="" attributes on the two tags. The preview pages now
+    // ship a Content-Security-Policy that refuses inline handler attributes
+    // (see PreviewCsp), so the same chain is attached by a nonced script
+    // instead. It listens in the capture phase on the document and is emitted
+    // BEFORE the tags, so an error that fires immediately (cached failure)
+    // cannot slip past it. The tags themselves stay parser-inserted — the
+    // deferred script must still run before DOMContentLoaded, which the
+    // renderers' init code relies on.
+    private const string CssId = "ocli-katex-css";
+    private const string JsId = "ocli-katex-js";
 
     /// <summary>
-    /// onerror body for the &lt;script&gt; tag: first failure injects a CDN
-    /// copy whose own failure runs <paramref name="finalFallbackJs"/> (each
-    /// call site keeps its existing degraded-rendering behavior).
+    /// The &lt;link&gt; + &lt;script&gt; pair that loads KaTeX, with its fallback
+    /// chain. <paramref name="finalFallbackJs"/> runs when both the mirror and
+    /// the CDN script fail.
     /// </summary>
-    public static string JsOnErrorJs(string finalFallbackJs) =>
-        "var s=document.createElement('script');s.src='" + CdnJsUrl + "';"
-        + "s.onerror=function(){" + finalFallbackJs + "};document.head.appendChild(s)";
+    public static string HeadTags(string finalFallbackJs) =>
+        $"<script{PreviewCsp.NonceAttr}>(function(){{"
+        + "document.addEventListener('load',function(e){var t=e.target;"
+        + $"if(t&&t.id==='{CssId}')t.media='all';}},true);"
+        + "document.addEventListener('error',function(e){var t=e.target;if(!t)return;"
+        + $"if(t.id==='{CssId}'){{if(!t.dataset.f){{t.dataset.f=1;t.href='{CdnCssUrl}'}}else{{t.remove()}}}}"
+        + $"else if(t.id==='{JsId}'){{var s=document.createElement('script');s.src='{CdnJsUrl}';"
+        + "s.onerror=function(){" + finalFallbackJs + "};document.head.appendChild(s)}"
+        + "},true);})();</script>\n"
+        + $"<link id=\"{CssId}\" rel=\"stylesheet\" href=\"{CssUrl}\" media=\"print\">\n"
+        + $"<script id=\"{JsId}\" defer src=\"{JsUrl}\"{PreviewCsp.NonceAttr}></script>";
 }

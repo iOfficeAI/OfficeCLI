@@ -207,6 +207,8 @@ public partial class ExcelHandler
         sb.AppendLine("<html>");
         sb.AppendLine("<head>");
         sb.AppendLine("<meta charset=\"UTF-8\">");
+        // First thing after the charset: a meta policy only governs what follows.
+        sb.AppendLine(OfficeCli.Core.PreviewCsp.MetaTag);
         sb.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
         sb.AppendLine($"<title>{HtmlEncode(Path.GetFileName(_filePath))}</title>");
         sb.AppendLine("<style>");
@@ -271,12 +273,12 @@ public partial class ExcelHandler
                     && rgb.All(c => (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')))
                     tabColorStyle = $" style=\"--tab-color:#{rgb}\"";
             }
-            sb.AppendLine($"  <div class=\"sheet-tab{activeClass}\"{tabColorStyle} data-sheet=\"{i}\" role=\"tab\" tabindex=\"0\" onclick=\"switchSheet({i})\" onkeydown=\"if(event.key==='Enter'||event.key===' ')switchSheet({i})\">{HtmlEncode(sheets[i].Name)}</div>");
+            sb.AppendLine($"  <div class=\"sheet-tab{activeClass}\"{tabColorStyle} data-sheet=\"{i}\" role=\"tab\" tabindex=\"0\">{HtmlEncode(sheets[i].Name)}</div>");
         }
         sb.AppendLine("</div>");
 
         // Sheet switching JavaScript
-        sb.AppendLine("<script>");
+        sb.AppendLine($"<script{OfficeCli.Core.PreviewCsp.NonceAttr}>");
         sb.AppendLine(GenerateExcelJs());
         sb.AppendLine("</script>");
         // CONSISTENCY(excel-virt): private virt script injected after standard overlay.
@@ -284,7 +286,7 @@ public partial class ExcelHandler
         var virtScript = GetVirtScript();
         if (virtScript.Length > 0)
         {
-            sb.AppendLine("<script>");
+            sb.AppendLine($"<script{OfficeCli.Core.PreviewCsp.NonceAttr}>");
             sb.AppendLine(virtScript);
             sb.AppendLine("</script>");
         }
@@ -4162,6 +4164,21 @@ public partial class ExcelHandler
     // ==================== JavaScript ====================
 
     private static string GenerateExcelJs() => """
+        // Sheet tabs are wired here, not with onclick="" attributes: the page's
+        // Content-Security-Policy refuses inline handlers (see PreviewCsp).
+        // Delegated + guarded so a watch refresh that re-runs this script does
+        // not stack listeners.
+        if (!window._ocliSheetTabsWired) {
+            window._ocliSheetTabsWired = true;
+            var _tabOf = function(e) { return e.target && e.target.closest ? e.target.closest('.sheet-tab') : null; };
+            document.addEventListener('click', function(e) {
+                var t = _tabOf(e); if (t) switchSheet(parseInt(t.getAttribute('data-sheet')));
+            });
+            document.addEventListener('keydown', function(e) {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                var t = _tabOf(e); if (t) switchSheet(parseInt(t.getAttribute('data-sheet')));
+            });
+        }
         function switchSheet(idx) {
             document.querySelectorAll('.sheet-tab').forEach(function(t) {
                 t.classList.toggle('active', parseInt(t.getAttribute('data-sheet')) === idx);

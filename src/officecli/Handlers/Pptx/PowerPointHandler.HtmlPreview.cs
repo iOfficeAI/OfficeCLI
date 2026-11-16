@@ -109,6 +109,8 @@ public partial class PowerPointHandler
         sb.AppendLine($"<html lang=\"{HtmlEncode(presLang)}\">");
         sb.AppendLine("<head>");
         sb.AppendLine("<meta charset=\"UTF-8\">");
+        // First thing after the charset: a meta policy only governs what follows.
+        sb.AppendLine(Core.PreviewCsp.MetaTag);
         sb.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
         sb.AppendLine($"<title>{HtmlEncode(Path.GetFileName(_filePath))}</title>");
         // KaTeX for math rendering — only include when any slide actually has formulas.
@@ -117,13 +119,12 @@ public partial class PowerPointHandler
         if (hasMathFormulas)
         {
             // CONSISTENCY(katex-mirror): mirror-first with CDN fallback chain — see Core/KatexAssets.
-            sb.AppendLine($"<link rel=\"stylesheet\" href=\"{Core.KatexAssets.CssUrl}\" media=\"print\" onload=\"this.media='all'\" onerror=\"{Core.KatexAssets.CssOnErrorJs}\">");
-            sb.AppendLine($"<script defer src=\"{Core.KatexAssets.JsUrl}\" onerror=\"{Core.KatexAssets.JsOnErrorJs("document.querySelectorAll('.katex-formula').forEach(function(el){el.textContent=el.dataset.formula;el.style.fontFamily='monospace';el.style.color='#666'})")}\"></script>");
+            sb.AppendLine(Core.KatexAssets.HeadTags("document.querySelectorAll('.katex-formula').forEach(function(el){el.textContent=el.dataset.formula;el.style.fontFamily='monospace';el.style.color='#666'})"));
         }
         // Three.js for 3D model rendering (graceful degradation: shows placeholder when offline).
         // CONSISTENCY(katex-mirror): mirror-first importmap; CDN fallback lives at the
         // dynamic import() site in HtmlPreview.Shapes.cs — see Core/ThreeAssets.
-        sb.AppendLine($"<script type=\"importmap\">{Core.ThreeAssets.ImportMapJson}</script>");
+        sb.AppendLine($"<script type=\"importmap\"{Core.PreviewCsp.NonceAttr}>{Core.ThreeAssets.ImportMapJson}</script>");
         sb.AppendLine("<style>");
         sb.AppendLine(GenerateCss(slideWidthPt, slideHeightPt));
         sb.AppendLine("</style>");
@@ -158,10 +159,10 @@ public partial class PowerPointHandler
         // (deterministic, we control it); fall back to webdriver/UA sniffing so
         // external headless tools (html-screenshot.py, visual-regression) flush too.
         // Same trigger as the docx preview's SCREENSHOT flag.
-        sb.AppendLine("<script>if(location.hash.indexOf('screenshot')>=0||navigator.webdriver||/HeadlessChrome/.test(navigator.userAgent))document.documentElement.classList.add('headless')</script>");
+        sb.AppendLine($"<script{Core.PreviewCsp.NonceAttr}>" + "if(location.hash.indexOf('screenshot')>=0||navigator.webdriver||/HeadlessChrome/.test(navigator.userAgent))document.documentElement.classList.add('headless')</script>");
         sb.AppendLine("</head>");
         sb.AppendLine("<body>");
-        sb.AppendLine("<div class=\"toggle-zone\"></div><button class=\"sidebar-toggle\" onclick=\"toggleSidebar()\">\u2630</button>");
+        sb.AppendLine("<div class=\"toggle-zone\"></div><button class=\"sidebar-toggle\">\u2630</button>");
 
         // ===== Sidebar (thumbnails populated by JS cloneNode to avoid duplicating base64 images) =====
         sb.AppendLine("<div class=\"sidebar\">");
@@ -228,10 +229,13 @@ public partial class PowerPointHandler
         sb.AppendLine($"<div class=\"page-counter\">1 / {slideParts.Count}</div>");
 
         // Navigation script
-        sb.AppendLine("<script>");
+        sb.AppendLine($"<script{Core.PreviewCsp.NonceAttr}>");
         sb.AppendLine(GenerateScript());
+        // The sidebar button is wired here rather than with onclick="": the
+        // page's Content-Security-Policy refuses inline handlers (PreviewCsp).
+        sb.AppendLine("if(!window._ocliSidebarWired){window._ocliSidebarWired=true;document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('.sidebar-toggle')&&window.toggleSidebar)window.toggleSidebar();});}");
         sb.AppendLine("</script>");
-        sb.AppendLine("<script>");
+        sb.AppendLine($"<script{Core.PreviewCsp.NonceAttr}>");
         sb.AppendLine(@"(function() {
     var _katexRetries = 0;
     function fallbackKatex() {

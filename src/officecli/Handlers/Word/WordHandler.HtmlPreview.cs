@@ -183,6 +183,8 @@ public partial class WordHandler
         sb.AppendLine($"<html lang=\"{HtmlEncode(htmlLang)}\"{dirAttr}>");
         sb.AppendLine("<head>");
         sb.AppendLine("<meta charset=\"UTF-8\">");
+        // First thing after the charset: a meta policy only governs what follows.
+        sb.AppendLine(Core.PreviewCsp.MetaTag);
         sb.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
         sb.AppendLine($"<title>{HtmlEncode(Path.GetFileName(_filePath))}</title>");
         var pgLayout = GetPageLayout();
@@ -257,7 +259,7 @@ public partial class WordHandler
                 // Sanitized names contain only letters/digits/space/.-_ so plain
                 // quote-wrapping is JSON-safe (no escapable characters survive).
                 var famJson = "[" + string.Join(",", webFontCandidates.Select(f => $"\"{f}\"")) + "]";
-                sb.AppendLine("<script>(function(){");
+                sb.AppendLine($"<script{Core.PreviewCsp.NonceAttr}>(function(){{");
                 sb.AppendLine($"var fams={famJson};");
                 sb.AppendLine("function w(f,fb){var c=w.c||(w.c=document.createElement('canvas').getContext('2d'));c.font='72px '+(f?'\"'+f+'\",':'')+fb;return c.measureText('mmmmmmmmmmlliWW@#\\u5e05\\u6c38\\u306e\\ud55c').width;}");
                 sb.AppendLine("function has(f){try{return w(f,'monospace')!==w(null,'monospace')||w(f,'serif')!==w(null,'serif');}catch(e){return true;}}");
@@ -276,8 +278,7 @@ public partial class WordHandler
         if (hasMathFormulas)
         {
             // CONSISTENCY(katex-mirror): mirror-first with CDN fallback chain — see Core/KatexAssets.
-            sb.AppendLine($"<link rel=\"stylesheet\" href=\"{Core.KatexAssets.CssUrl}\" media=\"print\" onload=\"this.media='all'\" onerror=\"{Core.KatexAssets.CssOnErrorJs}\">");
-            sb.AppendLine($"<script defer src=\"{Core.KatexAssets.JsUrl}\" onerror=\"{Core.KatexAssets.JsOnErrorJs("document.querySelectorAll('.katex-formula').forEach(function(el){el.textContent=el.dataset.formula;el.style.fontFamily='monospace';el.style.color='#666'})")}\"></script>");
+            sb.AppendLine(Core.KatexAssets.HeadTags("document.querySelectorAll('.katex-formula').forEach(function(el){el.textContent=el.dataset.formula;el.style.fontFamily='monospace';el.style.color='#666'})"));
         }
         sb.AppendLine("</head>");
         sb.AppendLine("<body>");
@@ -616,7 +617,7 @@ public partial class WordHandler
 
         // Auto-pagination script: split overflowing pages and KaTeX rendering
         var bodyHeightPt = pgLayout.HeightPt - pgLayout.MarginTopPt - pgLayout.MarginBottomPt;
-        sb.AppendLine("<script>");
+        sb.AppendLine($"<script{Core.PreviewCsp.NonceAttr}>");
         sb.AppendLine("function _wordInit(){");
         sb.AppendLine("  if(typeof katex!=='undefined'){");
         sb.AppendLine("    document.querySelectorAll('.katex-formula:not(.katex-rendered)').forEach(function(el){");

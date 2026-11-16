@@ -237,7 +237,15 @@ internal static class HtmlScreenshot
             "function _clipArm(){setTimeout(function(){_clipEls();},800);setTimeout(_clipRun,12000);}" +
             "if(document.readyState==='complete')_clipArm();else window.addEventListener('load',_clipArm);</script>";
 
-        string Inject(string doc, string script) =>
+        // The preview carries a Content-Security-Policy that only runs scripts
+        // bearing its nonce; give the measuring script the document's own.
+        string Inject(string doc, string script)
+        {
+            var nonce = PreviewCsp.ExtractNonce(doc);
+            if (nonce != null) script = script.Replace("<script>", $"<script nonce=\"{nonce}\">");
+            return InjectRaw(doc, script);
+        }
+        string InjectRaw(string doc, string script) =>
             doc.Contains("</body>", StringComparison.OrdinalIgnoreCase)
                 ? doc.Replace("</body>", script + "</body>")
                 : doc + script;
