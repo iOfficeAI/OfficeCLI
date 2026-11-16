@@ -507,6 +507,11 @@ public partial class PowerPointHandler
             double tIns = EmuToPx(bodyPr?.TopInset?.Value ?? 45720);
             double rIns = EmuToPx(bodyPr?.RightInset?.Value ?? 91440);
             double bIns = EmuToPx(bodyPr?.BottomInset?.Value ?? 45720);
+            // Same preset text rectangle as the HTML preview (see PresetTextRectInsets).
+            if (PresetTextRectInsets(presetGeom, w, h) is { } textRect)
+            {
+                lIns += textRect.L; tIns += textRect.T; rIns += textRect.R; bIns += textRect.B;
+            }
 
             var valign = "top";
             if (bodyPr?.Anchor?.HasValue == true)

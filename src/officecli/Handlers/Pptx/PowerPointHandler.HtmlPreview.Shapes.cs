@@ -458,7 +458,18 @@ public partial class PowerPointHandler
 
         // For non-rectangular shapes (clip-path or border-radius), add extra inner padding
         // so text doesn't appear outside the visible shape area.
-        if ((!string.IsNullOrEmpty(clipPathCss) || !string.IsNullOrEmpty(borderRadiusCss)) && presetGeom?.Preset?.HasValue == true)
+        // Presets whose text rectangle the spec defines exactly: the bodyPr insets
+        // apply inside it, so the two add up (PowerPoint places a chevron's text
+        // between the notch and the point, not at the box edge).
+        var presetTextRect = PresetTextRectInsets(presetGeom, cx, cy);
+        if (presetTextRect is { } tr)
+        {
+            lIns += (long)tr.L;
+            tIns += (long)tr.T;
+            rIns += (long)tr.R;
+            bIns += (long)tr.B;
+        }
+        else if ((!string.IsNullOrEmpty(clipPathCss) || !string.IsNullOrEmpty(borderRadiusCss)) && presetGeom?.Preset?.HasValue == true)
         {
             var (pctL, pctT, pctR, pctB) = GetShapeTextInsetPercent(presetGeom.Preset!.InnerText!);
             if (pctL > 0 || pctT > 0 || pctR > 0 || pctB > 0)
@@ -1021,16 +1032,12 @@ public partial class PowerPointHandler
         "star5" => (0.28, 0.28, 0.28, 0.28),
         "star6" => (0.25, 0.25, 0.25, 0.25),
         "star8" or "star10" or "star12" => (0.20, 0.20, 0.20, 0.20),
-        "hexagon" => (0.25, 0.10, 0.25, 0.10),
         "pentagon" => (0.12, 0.12, 0.12, 0),
         "heptagon" or "octagon" or "decagon" or "dodecagon" => (0.08, 0.08, 0.08, 0.08),
-        "parallelogram" => (0.15, 0, 0.15, 0),
-        "trapezoid" => (0.12, 0, 0.12, 0),
         "rightArrow" or "notchedRightArrow" => (0, 0.20, 0.25, 0.20),
         "leftArrow" => (0.25, 0.20, 0, 0.20),
         "upArrow" => (0.20, 0.25, 0.20, 0),
         "downArrow" => (0.20, 0, 0.20, 0.25),
-        "chevron" or "homePlate" => (0, 0, 0.15, 0),
         "heart" => (0.15, 0.15, 0.15, 0.15),
         "plus" or "cross" => (0.10, 0.10, 0.10, 0.10),
         "cloud" or "cloudCallout" => (0.12, 0.12, 0.12, 0.12),

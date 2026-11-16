@@ -1501,6 +1501,61 @@ public partial class PowerPointHandler
         return Math.Clamp(inset, 0, w * maxOfWidth);
     }
 
+    /// <summary>
+    /// Text rectangle of the parallelogram / trapezoid / chevron / hexagon /
+    /// homePlate presets, as insets from the shape's box (same units as
+    /// <paramref name="w"/> / <paramref name="h"/>). These follow the
+    /// <c>&lt;a:rect&gt;</c> each preset declares in ECMA-376 (presetShapeDefinitions),
+    /// which moves with adj — a chevron's text sits between its notch and its
+    /// point, a hexagon's between the slanted corners. The bodyPr insets apply
+    /// INSIDE this rectangle. Null for any other preset.
+    /// </summary>
+    internal static (double L, double T, double R, double B)? PresetTextRectInsets(
+        Drawing.PresetGeometry? presetGeom, double w, double h)
+    {
+        var preset = presetGeom?.Preset?.InnerText;
+        if (preset == null || w <= 0 || h <= 0) return null;
+        var ss = Math.Min(w, h);
+        switch (preset)
+        {
+            case "chevron":
+            {
+                var x1 = ShortSideInset(presetGeom, 50000, 1.0, w, h);
+                // Once the notch passes the point's base there is no clear band
+                // left; the spec falls back to the full width.
+                return w - 2 * x1 > 0 ? (x1, 0, x1, 0) : (0, 0, 0, 0);
+            }
+            case "homePlate":
+                // Right edge halfway between the point's base and its tip.
+                return (0, 0, ShortSideInset(presetGeom, 50000, 1.0, w, h) / 2, 0);
+            case "parallelogram":
+            {
+                var maxAdj = 100000.0 * w / ss;
+                var a = Math.Clamp(ReadAdjValueCss(presetGeom, 0, 25000), 0, maxAdj);
+                var q = (1 + 5 * a / maxAdj) / 12;
+                return (q * w, q * h, q * w, q * h);
+            }
+            case "trapezoid":
+            {
+                var maxAdj = 50000.0 * w / ss;
+                var a = Math.Clamp(ReadAdjValueCss(presetGeom, 0, 25000), 0, maxAdj);
+                var il = w / 3 * a / maxAdj;
+                return (il, h / 3 * a / maxAdj, il, 0);
+            }
+            case "hexagon":
+            {
+                var maxAdj = 50000.0 * w / ss;
+                var a = Math.Clamp(ReadAdjValueCss(presetGeom, 0, 25000), 0, maxAdj);
+                var half = maxAdj / 2;
+                // Piecewise in adj, split at half of its range.
+                var q = a > half ? 4 + 3 * (a - half) / half : 2 + 2 * a / half;
+                return (w * q / 24, h * q / 24, w * q / 24, h * q / 24);
+            }
+            default:
+                return null;
+        }
+    }
+
     private static double ShortSideInsetPct(Drawing.PresetGeometry? presetGeom, long defaultAdj,
         double maxOfWidth, long widthEmu, long heightEmu)
     {
