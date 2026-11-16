@@ -279,6 +279,9 @@ static partial class CommandBuilder
                         if (nativeLock != null) { handler = nativeLock.Reopen(); wordHandlerGrid = (OfficeCli.Handlers.WordHandler)handler; }
                     }
                 }
+                // Word's own page count wins over the preview's: a page Word does
+                // not have is out of range in every render mode, never an HTML fallback.
+                OfficeCli.Core.NativeRenderFailure.ThrowIfPageOutOfRange(nativeFailure, pageFilter ?? sheet.NativePageSpec);
                 if (renderMode == "native" && directPng == null)
                     throw OfficeCli.Core.NativeRenderFailure.ToCliException("Word", nativeFailure);
                 if (directPng == null)
@@ -329,6 +332,9 @@ static partial class CommandBuilder
                         if (nativeLock != null) { handler = nativeLock.Reopen(); wordHandler = (OfficeCli.Handlers.WordHandler)handler; }
                     }
                 }
+                // Word's own page count wins over the preview's: a page Word does
+                // not have is out of range in every render mode, never an HTML fallback.
+                OfficeCli.Core.NativeRenderFailure.ThrowIfPageOutOfRange(nativeFailure, effectiveFilter);
                 if (renderMode == "native" && directPng == null)
                     throw OfficeCli.Core.NativeRenderFailure.ToCliException("Word", nativeFailure);
                 if (directPng == null)

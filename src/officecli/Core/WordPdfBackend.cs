@@ -563,8 +563,7 @@ internal static class WordPdfBackend
                 VT<F_OutU32>(doc, 7)(doc, out var pageCount);
                 var pages = ParsePages(pageFilter, (int)pageCount);
                 if (pages.Length == 0)
-                    throw new InvalidOperationException(
-                        $"page {pageFilter.Trim()} is past the last page Word produced ({pageCount}).");
+                    throw new NativePageOutOfRangeException((int)pageCount);
                 var pngs = new List<byte[]>();
                 foreach (var p in pages) pngs.Add(RenderOne(doc, (uint)(p - 1), drFact, timeoutMs));
                 return pngs;
