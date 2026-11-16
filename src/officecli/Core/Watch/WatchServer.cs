@@ -2102,18 +2102,44 @@ internal class WatchServer : IDisposable
         return _allowedHosts.Contains(ExtractHostname(host));
     }
 
+    private static readonly HashSet<string> _builtinLoopbackHosts =
+        new(StringComparer.OrdinalIgnoreCase) { "localhost", "127.0.0.1", "[::1]", "::1" };
+
     /// <summary>
-    /// True if a state-changing request's Origin is absent or names a loopback host.
-    /// Absent Origin (server-side proxy hop, or a same-origin navigation that omits
-    /// it) is allowed; a present cross-origin Origin is rejected (CSRF defense).
+    /// True if a state-changing request may proceed given its Origin.
+    /// Absent Origin (a non-browser client, or a same-origin navigation that
+    /// omits it) is allowed. A present Origin must be the SAME ORIGIN the
+    /// request was addressed to — same host and same port as the Host header.
+    /// Comparing the hostname alone treated every local web server as this
+    /// one: a page served from http://localhost:9999 is a different origin
+    /// from the preview on http://localhost:26315, yet it could POST to
+    /// /api/batch. The one exception is a host the user configured through
+    /// OFFICECLI_WATCH_ALLOWED_HOSTS (a reverse proxy, where the browser's
+    /// Origin is the proxy and Host may be rewritten); built-in loopback
+    /// names never take that exception. Scheme is not compared, so a
+    /// TLS-terminating proxy keeps working.
     /// </summary>
     internal static bool IsOriginAllowed(Dictionary<string, string> headers)
     {
         if (!headers.TryGetValue("Origin", out var origin) || string.IsNullOrWhiteSpace(origin))
             return true;
-        if (Uri.TryCreate(origin.Trim(), UriKind.Absolute, out var u))
-            return _allowedHosts.Contains(u.Host) || _allowedHosts.Contains($"[{u.Host}]");
-        return false;
+        if (!Uri.TryCreate(origin.Trim(), UriKind.Absolute, out var u) || string.IsNullOrEmpty(u.Host))
+            return false;
+
+        var originHost = u.HostNameType == UriHostNameType.IPv6 && !u.Host.StartsWith('[') ? $"[{u.Host}]" : u.Host;
+        if (!_allowedHosts.Contains(originHost)) return false;
+
+        if (headers.TryGetValue("Host", out var hostHeader) && !string.IsNullOrWhiteSpace(hostHeader))
+        {
+            var reqHost = ExtractHostname(hostHeader);
+            var rest = hostHeader.Trim()[reqHost.Length..];
+            var reqPort = rest.StartsWith(':') && int.TryParse(rest[1..], out var hp) ? hp : 80;
+            if (string.Equals(originHost, reqHost, StringComparison.OrdinalIgnoreCase) && u.Port == reqPort)
+                return true;
+        }
+
+        // Not the same origin: only an explicitly configured proxy host passes.
+        return !_builtinLoopbackHosts.Contains(originHost);
     }
 
     private static string ForbiddenHostMessage(Dictionary<string, string> headers)
