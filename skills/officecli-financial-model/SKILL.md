@@ -1,13 +1,13 @@
 ---
 name: officecli-financial-model
-description: "Use this skill when the user wants to build a financial model — 3-statement model, DCF valuation, LBO, SaaS unit economics, sensitivity / scenario analysis, debt schedule, or fundraising projections — in Excel. Trigger on: 'financial model', '3-statement model', 'P&L + BS + CF', 'DCF', 'WACC', 'NPV', 'terminal value', 'LBO', 'debt schedule', 'cash sweep', 'MOIC', 'IRR / XIRR', 'sensitivity table', 'scenario analysis', 'ARR model', 'unit economics', 'CAC / LTV', 'cap table forecast'. Output is a single formula-driven .xlsx. This skill is a scene layer on top of officecli-xlsx — it inherits every xlsx v2 rule (4-color code, visual floor, number formats, cache-drift, Known Issues, Delivery Gate minimum cycle). DO NOT invoke for a simple budget tracker, CSV dump, or operational KPI sheet — route those to officecli-xlsx base."
+description: "Use this skill when the user wants to build a financial model — 3-statement model, DCF valuation, LBO, SaaS unit economics, sensitivity / scenario analysis, debt schedule, or fundraising projections — in Excel. Trigger on: 'financial model', '3-statement model', 'P&L + BS + CF', 'DCF', 'WACC', 'NPV', 'terminal value', 'LBO', 'debt schedule', 'cash sweep', 'MOIC', 'IRR / XIRR', 'sensitivity table', 'scenario analysis', 'ARR model', 'unit economics', 'CAC / LTV', 'cap table forecast'. Output is a single formula-driven .xlsx. This skill is a scene layer on top of officecli-xlsx — it inherits every officecli-xlsx rule (4-color code, visual floor, number formats, Known Issues, QA minimum cycle). DO NOT invoke for a simple budget tracker, CSV dump, or operational KPI sheet — route those to officecli-xlsx base."
 ---
 
 # OfficeCLI Financial-Model Skill
 
-**This skill is a scene layer on top of `officecli-xlsx`.** Every xlsx hard rule — shell quoting, incremental execution, Help-First Rule, visual delivery floor, CFO 4-color code (blue input / black formula / green cross-sheet / yellow-fill assumption), number-format standards (years as text, zero as `-`, `%` one decimal, negatives in parens), assumption-cell discipline, CSV batch import, chart data-feed forms (a/b/c), the 5-gate Delivery cycle, cache-drift guidance, Known Issues (the cross-sheet `!` trap, batch + resident for formulas, renderer caveats) — is **inherited, not re-taught**. This file adds only what a **financial model** requires on top: three-zone architecture, 3 model-type recipes (3-statement / DCF / LBO), sensitivity + scenario protocols, financial-function patterns, circular-reference discipline, and model-specific Delivery Gates 4–6.
+**This skill is a scene layer on top of `officecli-xlsx`.** Every xlsx hard rule — shell quoting, incremental execution, Help-First Rule, visual delivery floor, CFO 4-color code (blue input / black formula / green cross-sheet / yellow-fill assumption), number-format standards (years as text, zero as `-`, `%` one decimal, negatives in parens), assumption-cell discipline, CSV batch import, chart data-feed forms (a/b/c), the QA minimum cycle, Known Issues (the cross-sheet `!` trap, batch + resident for formulas, renderer caveats) — is **inherited, not re-taught**. This file adds only what a **financial model** requires on top: three-zone architecture, 3 model-type recipes (3-statement / DCF / LBO), sensitivity + scenario protocols, the build-order & cache-drift rule, financial-function patterns, circular-reference discipline, and model-specific Delivery Gates 4–6.
 
-When the xlsx base rules cover it, the text here says `→ see xlsx v2 §X`. Read `skills/officecli-xlsx/SKILL.md` first if you have not.
+When the xlsx base rules cover it, the text here says `→ see officecli-xlsx §X`. Read `skills/officecli-xlsx/SKILL.md` first if you have not.
 
 ## Setup
 
@@ -24,11 +24,11 @@ This skill teaches what a financial model requires, not every CLI flag. When a p
 
 ## Mental Model & Inheritance
 
-**Inherits xlsx v2.** Read `skills/officecli-xlsx/SKILL.md` first. This skill assumes you know `create` / `open` / `close`, `set` values/formulas, `batch` heredocs for cross-sheet formulas, `/SheetName/A1` paths, named ranges, the 5-gate Delivery cycle, the cross-sheet `!` trap, and that **cross-sheet formulas go non-resident (single batch OR individual `set`), never batch-while-resident**.
+**Inherits officecli-xlsx.** Read `skills/officecli-xlsx/SKILL.md` first. This skill assumes you know `create` / `open` / `close`, `set` values/formulas, `batch` heredocs for cross-sheet formulas, `/SheetName/A1` paths, named ranges, the xlsx QA minimum cycle, the cross-sheet `!` trap, and that **cross-sheet formulas go non-resident (single batch OR individual `set`), never batch-while-resident**.
 
 ## Shell & Execution Discipline
 
-Shell quoting, incremental execution, `$FILE` convention → see xlsx v2 §Shell & Execution Discipline. Same rules: quote every `[N]` path, single-quote any prop containing `$` (every number format here — `$#,##0;($#,##0);"-"` — needs single quotes), no hand-written `\$`/`\t`/`\n`, one command at a time. Examples below use `$FILE` (`FILE="model.xlsx"`).
+Shell quoting, incremental execution, `$FILE` convention → see officecli-xlsx §Shell & Execution Discipline. Same rules: quote every `[N]` path, single-quote any prop containing `$` (every number format here — `$#,##0;($#,##0);"-"` — needs single quotes), no hand-written `\$`/`\t`/`\n`, one command at a time. Examples below use `$FILE` (`FILE="model.xlsx"`).
 
 ## Core Principles (identity)
 
@@ -160,7 +160,7 @@ EOF
 
 Replicate across columns C/D/E. Apply red fill (`fill=FFC7CE`) conditionally via `type=containsText --prop text=IMBALANCED` or `text="CF !="`. Gate 4 queries these rows and refuses delivery on any `IMBALANCED`.
 
-**Step 7 — cache refresh + format pass.** Re-set every summary cell on `Summary`, every balance-check / recon cell, and every cross-sheet reference on BS / CF (non-resident, single batch per sheet). Apply column widths (`col[A]=28`, `col[B:E]=15`), `numberformat='$#,##0;($#,##0);"-"'` on all dollar rows, header fills (`fill=1F3864`, `font.color=FFFFFF`, `bold=true`) on section-header rows (REVENUE / COGS / ASSETS / LIABILITIES). Header fill must cover A:E, not just the label cell (→ xlsx v2 §visual floor).
+**Step 7 — cache refresh + format pass.** Re-set every summary cell on `Summary`, every balance-check / recon cell, and every cross-sheet reference on BS / CF (non-resident, single batch per sheet). Apply column widths (`col[A]=28`, `col[B:E]=15`), `numberformat='$#,##0;($#,##0);"-"'` on all dollar rows, header fills (`fill=1F3864`, `font.color=FFFFFF`, `bold=true`) on section-header rows (REVENUE / COGS / ASSETS / LIABILITIES). Header fill must cover A:E, not just the label cell (→ officecli-xlsx §Visual delivery floor).
 
 **Step 8 — Summary / Dashboard KPIs + charts.** Minimum 4 KPIs: `Revenue 27E`, `EBITDA Margin 27E`, `Ending Cash 27E`, `Net Income CAGR` — each a formula referencing a statement cell, green font.
 
@@ -451,9 +451,9 @@ V2=$(officecli get "$FILE" /Debt/C9 --json | jq '.data.results[0].format.cachedV
 
 **Assume there are problems.** First build is almost never correct. Run every gate below; every check must print its success line. `validate` passing is not delivery — the model can pass schema and still be wrong by a factor of 10.
 
-### Gates 1–3 — inherited from xlsx v2 verbatim
+### Base QA — the officecli-xlsx minimum cycle, verbatim
 
-→ see xlsx v2 §QA minimum cycle (Gates 1–3 cover `view issues`, error-cell query, `validate` after close). Run them first, exactly as written in xlsx v2. No financial-model-specific tweaks.
+→ see officecli-xlsx §QA (Required) → Minimum cycle before "done" (`view issues`, `view annotated`, error-cell queries, `validate`, HTML visual pass, print layout, rerun on failure). Run it first, exactly as written there. No financial-model-specific tweaks. The gates below are numbered 4–6 because they come after it.
 
 ### Gate 4 — statement integrity (3-statement & LBO)
 
@@ -514,7 +514,7 @@ done
 
 ### Gate 5b — visual audit via HTML preview (mandatory)
 
-Gates 1–4/6 are grep defenses — they cannot see a rendered sheet. Run `officecli view "$FILE" html` and Read the returned HTML. Walk every sheet (inherits xlsx v2 visual floor):
+The base cycle's queries and Gates 4 and 6 are grep defenses — they cannot see a rendered sheet. Run `officecli view "$FILE" html` and Read the returned HTML. Walk every sheet (inherits the officecli-xlsx visual delivery floor):
 
 - No `###` in any numeric cell (widen column).
 - No truncated labels / section headers (widen column or `alignment.wrapText=true`).
@@ -539,7 +539,7 @@ LEAK=$(officecli view "$FILE" text | grep -niE 'TBD|\(fill in\)|xxxx|lorem|\{\{|
 
 ## Known Issues & Pitfalls
 
-→ Base pitfalls (cross-sheet `!` trap, batch JSON dotted-name rule, renderer caveats): see xlsx v2 §Known Issues & Pitfalls — all apply.
+→ Base pitfalls (cross-sheet `!` trap, batch JSON dotted-name rule, renderer caveats): see officecli-xlsx §Known Issues & Pitfalls — all apply.
 
 Financial-model-specific:
 
