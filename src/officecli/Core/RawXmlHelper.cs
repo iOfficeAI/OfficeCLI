@@ -568,6 +568,9 @@ internal static class RawXmlHelper
     /// <summary>
     /// Validate an OpenXmlPackage and return structured errors.
     /// </summary>
+    /// <param name="package">Open XML package to validate.</param>
+    /// <param name="filePath">Path to the source package, when available.</param>
+    /// <returns>Validation errors found in the package.</returns>
     public static List<ValidationError> ValidateDocument(OpenXmlPackage package, string? filePath = null)
     {
         // Validate against a throwaway clone, never the live package.
@@ -627,6 +630,7 @@ internal static class RawXmlHelper
         // original package on disk (the in-memory clone re-serializes a healthy
         // Content_Types, so the defect is only visible in the source file).
         errors.AddRange(DetectMissingDefaultRelsContentType(package, filePath));
+        errors.AddRange(DetectMissingContentTypeOverrideParts(filePath));
         // Spreadsheet-only: a ref/sqref shifted past row 1048576 / column XFD is
         // schema-legal but makes Excel refuse the workbook (0x800A03EC).
         errors.AddRange(DetectOutOfGridSheetRefs(clone));
@@ -933,6 +937,55 @@ internal static class RawXmlHelper
                 + "entry to [Content_Types].xml to make the package openable.",
                 null, "/[Content_Types].xml"));
         }
+        return result;
+    }
+
+    /// <summary>
+    /// Detect content-type overrides that name parts missing from the source ZIP package.
+    /// </summary>
+    /// <param name="filePath">Path to the source package, or null when it is not on disk.</param>
+    /// <returns>Package-structure errors for missing overridden parts.</returns>
+    private static List<ValidationError> DetectMissingContentTypeOverrideParts(string? filePath)
+    {
+        var result = new List<ValidationError>();
+        if (filePath == null) return result;
+
+        try
+        {
+            using var archive = ZipFile.OpenRead(filePath);
+            var partNames = archive.Entries
+                .Where(entry => !string.IsNullOrEmpty(entry.Name))
+                .Select(entry => Uri.UnescapeDataString(entry.FullName.TrimStart('/')))
+                .ToHashSet(StringComparer.Ordinal);
+            var manifestEntry = archive.GetEntry("[Content_Types].xml");
+            if (manifestEntry == null) return result;
+
+            using var manifestStream = manifestEntry.Open();
+            var manifest = XDocument.Load(manifestStream);
+            XNamespace contentTypes = "http://schemas.openxmlformats.org/package/2006/content-types";
+            var checkedParts = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (var item in manifest.Descendants(contentTypes + "Override"))
+            {
+                var partName = (string?)item.Attribute("PartName");
+                if (string.IsNullOrWhiteSpace(partName)) continue;
+
+                var normalizedPartName = Uri.UnescapeDataString(partName.TrimStart('/'));
+                if (!checkedParts.Add(normalizedPartName) || partNames.Contains(normalizedPartName)) continue;
+
+                result.Add(new ValidationError(
+                    "PackageStructure",
+                    $"[Content_Types].xml declares part '{partName}', but it is missing from the package archive. "
+                    + "Restore the part or remove its override and any relationships that target it.",
+                    "/ct:Types/ct:Override",
+                    "/" + normalizedPartName));
+            }
+        }
+        catch
+        {
+            // Unreadable package or manifest: leave diagnostics to the existing validation checks.
+        }
+
         return result;
     }
 
