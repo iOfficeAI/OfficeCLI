@@ -28,11 +28,14 @@ internal static class WordTocBuilder
         if (body == null) return;
 
         var headings = EnumerateHeadings(doc, body);
-        EnsureHeadingBookmarks(body, headings);
 
         foreach (var (tocPara, spec) in FindTocFields(body))
         {
-            var entries = GenerateEntries(headings, spec);
+            // A TOC whose switches are not all understood keeps its existing entries.
+            if (spec == null) continue;
+            var selected = SelectHeadings(headings, spec);
+            EnsureHeadingBookmarks(body, selected.Select(s => s.Heading).ToList());
+            var entries = GenerateEntries(selected, spec);
             ReplaceTocFieldContent(body, tocPara, entries);
         }
     }
@@ -42,15 +45,24 @@ internal static class WordTocBuilder
     public sealed class HeadingInfo
     {
         public Paragraph Para { get; }
-        public int Level { get; }
         public string Text { get; }
+        /// <summary>Style name as the TOC \t switch spells it ("Heading 3"), or "".</summary>
+        public string StyleName { get; }
+        /// <summary>N for a paragraph in built-in style HeadingN (style ID), else 0.</summary>
+        public int HeadingNumber { get; }
+        /// <summary>Applied outline level 1-9 (direct or from style), else -1.</summary>
+        public int OutlineLevel { get; }
         public string BookmarkName { get; set; } = "";
-        public HeadingInfo(Paragraph p, int level, string text) { Para = p; Level = level; Text = text; }
+        public HeadingInfo(Paragraph p, string text, string styleName, int headingNumber, int outlineLevel)
+        {
+            Para = p; Text = text; StyleName = styleName; HeadingNumber = headingNumber; OutlineLevel = outlineLevel;
+        }
     }
 
     static List<HeadingInfo> EnumerateHeadings(WordprocessingDocument doc, Body body)
     {
         var styleLevels = ResolveHeadingStyleLevels(doc);
+        var styleNames = ResolveStyleNames(doc);
         var list = new List<HeadingInfo>();
         foreach (var p in body.Descendants<Paragraph>())
         {
@@ -58,13 +70,32 @@ internal static class WordTocBuilder
             // body-level headings should drive TOC generation, matching Word.
             if (p.Ancestors<TextBoxContent>().Any()) continue;
 
-            var level = ResolveOutlineLevel(p, styleLevels);
-            if (level < 1 || level > 9) continue;
+            var styleId = p.ParagraphProperties?.ParagraphStyleId?.Val?.Value ?? "";
+            var outline = ResolveOutlineLevel(p, styleLevels);
+            // A paragraph can still be listed by \t through its style name, so keep any styled paragraph.
+            if (outline < 1 && styleId == "") continue;
             var text = ExtractHeadingText(p);
             if (string.IsNullOrWhiteSpace(text)) continue;
-            list.Add(new HeadingInfo(p, level, text));
+            var headingMatch = Regex.Match(styleId, @"^Heading([1-9])$");
+            var headingNumber = headingMatch.Success ? int.Parse(headingMatch.Groups[1].Value) : 0;
+            styleNames.TryGetValue(styleId, out var styleName);
+            list.Add(new HeadingInfo(p, text, styleName ?? "", headingNumber, outline));
         }
         return list;
+    }
+
+    static Dictionary<string, string> ResolveStyleNames(WordprocessingDocument doc)
+    {
+        var map = new Dictionary<string, string>();
+        var styles = doc.MainDocumentPart?.StyleDefinitionsPart?.Styles;
+        if (styles == null) return map;
+        foreach (var s in styles.Elements<Style>())
+        {
+            var id = s.StyleId?.Value;
+            var name = s.StyleName?.Val?.Value;
+            if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(name)) map[id] = name;
+        }
+        return map;
     }
 
     static Dictionary<string, int> ResolveHeadingStyleLevels(WordprocessingDocument doc)
@@ -140,11 +171,18 @@ internal static class WordTocBuilder
 
     // ==================== Phase 3: Entry generation ====================
 
-    public sealed record TocSpec(int MinLevel, int MaxLevel, bool Hyperlinks, bool NoPageNum);
+    /// <summary>
+    /// The switches of one TOC field, as ECMA-376 defines them (the TOC field):
+    /// HeadingMin/HeadingMax is the \o range (1-9 when absent or without a range); HeadingStyles is set by \o;
+    /// OutlineLevels by \u; StyleLevels maps a style name from \t to its TOC level; NoPageMin/NoPageMax is the
+    /// level range that \n omits page numbers for (an empty range when \n is absent).
+    /// </summary>
+    public sealed record TocSpec(int HeadingMin, int HeadingMax, bool HeadingStyles, bool OutlineLevels,
+        IReadOnlyDictionary<string, int> StyleLevels, bool Hyperlinks, int NoPageMin, int NoPageMax);
 
-    static List<(Paragraph TocPara, TocSpec Spec)> FindTocFields(Body body)
+    static List<(Paragraph TocPara, TocSpec? Spec)> FindTocFields(Body body)
     {
-        var list = new List<(Paragraph, TocSpec)>();
+        var list = new List<(Paragraph, TocSpec?)>();
         foreach (var p in body.Elements<Paragraph>())
         {
             var instrText = p.Descendants<FieldCode>()
@@ -155,30 +193,92 @@ internal static class WordTocBuilder
         return list;
     }
 
-    static TocSpec ParseTocSwitches(string instr)
+    // Switches this builder implements. Any other switch can change which entries appear (\b, \c, \f, \l, ...),
+    // so a TOC that uses one is left as it is rather than rebuilt wrongly.
+    static readonly HashSet<string> HandledTocSwitches = new() { "o", "u", "t", "h", "z", "n" };
+
+    /// <summary>Returns null when the TOC cannot be rebuilt faithfully.</summary>
+    static TocSpec? ParseTocSwitches(string instr)
     {
-        var min = 1; var max = 3;
-        var m = Regex.Match(instr, @"\\o\s+""\s*(\d+)\s*-\s*(\d+)\s*""");
-        if (m.Success) { min = int.Parse(m.Groups[1].Value); max = int.Parse(m.Groups[2].Value); }
-        var hyperlinks = Regex.IsMatch(instr, @"\\h\b");
-        var noPageNum = Regex.IsMatch(instr, @"\\z\b") || Regex.IsMatch(instr, @"\\n\b");
-        return new TocSpec(min, max, hyperlinks, noPageNum);
+        foreach (Match sw in Regex.Matches(instr, @"\\([a-zA-Z])(?![a-zA-Z])"))
+            if (!HandledTocSwitches.Contains(sw.Groups[1].Value)) return null;
+
+        // \o "a-b": built-in heading styles HeadingN. With no range, all levels are used.
+        var headingMin = 1; var headingMax = 9;
+        var o = Regex.Match(instr, @"\\o(?![a-zA-Z])(?:\s+""([^""]*)"")?");
+        var headingStyles = o.Success;
+        if (o.Groups[1].Success && !TryParseLevelRange(o.Groups[1].Value, out headingMin, out headingMax)) return null;
+
+        // \u: paragraphs with an applied outline level.
+        var outlineLevels = Regex.IsMatch(instr, @"\\u(?![a-zA-Z])");
+
+        // \t "Style name,level,Style name,level": custom styles by name. The separator is a comma.
+        var styleLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var t = Regex.Match(instr, @"\\t(?![a-zA-Z])(?:\s+""([^""]*)"")?");
+        if (t.Success)
+        {
+            if (!t.Groups[1].Success) return null;
+            var parts = t.Groups[1].Value.Split(',');
+            if (parts.Length % 2 != 0) return null;
+            for (var i = 0; i < parts.Length; i += 2)
+            {
+                var name = parts[i].Trim();
+                if (name == "" || !int.TryParse(parts[i + 1].Trim(), out var lvl) || lvl < 1 || lvl > 9) return null;
+                styleLevels[name] = lvl;
+            }
+        }
+
+        // \n omits page numbers; with a range only for those levels. \z only hides them in Web layout.
+        var noPageMin = 1; var noPageMax = 0;
+        var n = Regex.Match(instr, @"\\n(?![a-zA-Z])(?:\s+""([^""]*)"")?");
+        if (n.Success)
+        {
+            noPageMin = 1; noPageMax = 9;
+            if (n.Groups[1].Success && !TryParseLevelRange(n.Groups[1].Value, out noPageMin, out noPageMax)) return null;
+        }
+
+        if (!headingStyles && !outlineLevels && styleLevels.Count == 0) return null;
+        var hyperlinks = Regex.IsMatch(instr, @"\\h(?![a-zA-Z])");
+        return new TocSpec(headingMin, headingMax, headingStyles, outlineLevels, styleLevels, hyperlinks, noPageMin, noPageMax);
     }
 
-    static List<Paragraph> GenerateEntries(List<HeadingInfo> headings, TocSpec spec)
+    static bool TryParseLevelRange(string text, out int min, out int max)
     {
-        var paras = new List<Paragraph>();
+        var m = Regex.Match(text, @"^\s*(\d)\s*-\s*(\d)\s*$");
+        min = 0; max = 0;
+        if (!m.Success) return false;
+        min = int.Parse(m.Groups[1].Value); max = int.Parse(m.Groups[2].Value);
+        return min >= 1 && min <= max && max <= 9;
+    }
+
+    sealed record SelectedHeading(HeadingInfo Heading, int TocLevel);
+
+    static List<SelectedHeading> SelectHeadings(List<HeadingInfo> headings, TocSpec spec)
+    {
+        var selected = new List<SelectedHeading>();
         foreach (var h in headings)
         {
-            if (h.Level < spec.MinLevel || h.Level > spec.MaxLevel) continue;
-            paras.Add(BuildEntryParagraph(h, spec));
+            var level = 0;
+            if (spec.StyleLevels.TryGetValue(h.StyleName, out var styleLevel)) level = styleLevel;
+            else if (spec.HeadingStyles && InLevelRange(h.HeadingNumber, spec)) level = h.HeadingNumber;
+            // Taking the \o range as also limiting \u is an inference (not stated in ECMA-376).
+            else if (spec.OutlineLevels && InLevelRange(h.OutlineLevel, spec)) level = h.OutlineLevel;
+            if (level > 0) selected.Add(new SelectedHeading(h, level));
         }
-        return paras;
+        return selected;
     }
 
-    static Paragraph BuildEntryParagraph(HeadingInfo h, TocSpec spec)
+    static bool InLevelRange(int level, TocSpec spec) => level >= spec.HeadingMin && level <= spec.HeadingMax;
+
+    static List<Paragraph> GenerateEntries(List<SelectedHeading> selected, TocSpec spec)
     {
-        var styleId = $"TOC{h.Level}";
+        return selected.Select(s => BuildEntryParagraph(s.Heading, s.TocLevel, spec)).ToList();
+    }
+
+    static Paragraph BuildEntryParagraph(HeadingInfo h, int tocLevel, TocSpec spec)
+    {
+        var styleId = $"TOC{tocLevel}";
+        var noPageNum = tocLevel >= spec.NoPageMin && tocLevel <= spec.NoPageMax;
         var pPr = new ParagraphProperties(new ParagraphStyleId { Val = styleId });
         var p = new Paragraph(pPr);
 
@@ -195,7 +295,7 @@ internal static class WordTocBuilder
         }
         entryHost.AppendChild(textRun);
 
-        if (!spec.NoPageNum)
+        if (!noPageNum)
         {
             entryHost.AppendChild(tabRun);
             // PAGEREF field: { PAGEREF _TocXXX \h }. Result run starts as "0";
