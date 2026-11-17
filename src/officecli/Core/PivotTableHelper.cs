@@ -738,20 +738,18 @@ internal static partial class PivotTableHelper
         if (rowCount == 0) return;
 
         // Aggregate per outer-key using the first value field's function.
-        var buckets = new Dictionary<string, List<double>>(StringComparer.Ordinal);
+        var buckets = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         for (int r = 0; r < rowCount; r++)
         {
             var key = outerCol[r];
             if (string.IsNullOrEmpty(key)) continue;
             if (r >= valueCol.Length) continue;
-            if (!NumericText.TryParse(valueCol[r], out var v))
-                continue;
             if (!buckets.TryGetValue(key, out var list))
             {
-                list = new List<double>();
+                list = new List<string>();
                 buckets[key] = list;
             }
-            list.Add(v);
+            list.Add(valueCol[r]);
         }
 
         if (buckets.Count <= topN) return; // keeps everything — no-op
