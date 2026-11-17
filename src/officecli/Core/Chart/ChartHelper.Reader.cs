@@ -109,9 +109,10 @@ internal static partial class ChartHelper
                 var decClr = decFill != null ? ReadColorFromFill(decFill) : null;
                 if (decClr != null) node.Format["decreaseColor"] = decClr;
 
-                // Total bar = last DataPoint override on Increase series.
-                var dpts = wfSeries[1].Elements<C.DataPoint>().ToList();
-                var lastDpt = dpts.LastOrDefault();
+                // Total bar = the DataPoint override on the last Increase point,
+                // when that point holds the running total. A per-point colour
+                // also writes a DataPoint, so its presence alone is not a total.
+                var lastDpt = WaterfallTotalDataPoint(wfSeries);
                 node.Format["waterfallTotal"] = lastDpt != null;
                 var totFill = lastDpt?.GetFirstChild<C.ChartShapeProperties>()
                     ?.GetFirstChild<Drawing.SolidFill>();
@@ -1928,6 +1929,34 @@ internal static partial class ChartHelper
             }
         }
         return result;
+    }
+
+    /// <summary>
+    /// Return the DataPoint that marks the total bar of a waterfall built by
+    /// BuildWaterfallChart, or null when the chart has no total. The total is
+    /// the last point of the Increase series, standing on a zero Base with no
+    /// Decrease, and its height equals the running total of the earlier points
+    /// (Base + Increase of the point before it).
+    /// </summary>
+    private static C.DataPoint? WaterfallTotalDataPoint(List<C.BarChartSeries> wfSeries)
+    {
+        var baseVals = ReadNumericData(wfSeries[0].GetFirstChild<C.Values>());
+        var incVals = ReadNumericData(wfSeries[1].GetFirstChild<C.Values>());
+        var decVals = ReadNumericData(wfSeries[2].GetFirstChild<C.Values>());
+        if (baseVals == null || incVals == null || decVals == null) return null;
+        var n = incVals.Length;
+        if (n == 0 || baseVals.Length != n || decVals.Length != n) return null;
+
+        var last = n - 1;
+        var dpt = wfSeries[1].Elements<C.DataPoint>()
+            .FirstOrDefault(p => p.Index?.Val?.Value == (uint)last);
+        if (dpt == null) return null;
+
+        var running = last == 0 ? 0 : baseVals[last - 1] + incVals[last - 1];
+        static bool Same(double a, double b) => Math.Abs(a - b) <= 1e-9 * Math.Max(1, Math.Abs(b));
+        return Same(baseVals[last], 0) && Same(decVals[last], 0) && Same(incVals[last], running)
+            ? dpt
+            : null;
     }
 
     /// <summary>
