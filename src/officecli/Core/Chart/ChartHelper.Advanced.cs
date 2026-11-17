@@ -139,12 +139,7 @@ internal static partial class ChartHelper
         if (lineChart == null)
         {
             // Create a new line chart overlay — shares axes with existing chart
-            uint catAxisId = 1, valAxisId = 2;
-            // Try to find existing axis IDs
-            var existingCatAx = plotArea.GetFirstChild<C.CategoryAxis>()?.GetFirstChild<C.AxisId>()?.Val?.Value;
-            var existingValAx = plotArea.GetFirstChild<C.ValueAxis>()?.GetFirstChild<C.AxisId>()?.Val?.Value;
-            if (existingCatAx != null) catAxisId = existingCatAx.Value;
-            if (existingValAx != null) valAxisId = existingValAx.Value;
+            var (catAxisId, valAxisId) = PrimaryAxisIds(plotArea);
 
             lineChart = new C.LineChart(
                 new C.Grouping { Val = C.GroupingValues.Standard },
@@ -204,6 +199,24 @@ internal static partial class ChartHelper
             lineChart.InsertBefore(refSer, insertBeforeEl);
         else
             lineChart.AppendChild(refSer);
+    }
+
+    /// <summary>
+    /// Return the two primary axis ids a new chart group should reference: the
+    /// category axis and the first value axis whose id differs from it. A
+    /// scatter chart has no category axis and declares two value axes, so its
+    /// first value axis takes the category slot and the pair names both axes
+    /// instead of one axis twice.
+    /// </summary>
+    private static (uint catAxisId, uint valAxisId) PrimaryAxisIds(C.PlotArea plotArea)
+    {
+        uint catAxisId = plotArea.GetFirstChild<C.CategoryAxis>()?.GetFirstChild<C.AxisId>()?.Val?.Value
+            ?? plotArea.GetFirstChild<C.ValueAxis>()?.GetFirstChild<C.AxisId>()?.Val?.Value
+            ?? 1;
+        uint valAxisId = plotArea.Elements<C.ValueAxis>()
+            .FirstOrDefault(axis => axis.GetFirstChild<C.AxisId>()?.Val?.Value != catAxisId)
+            ?.GetFirstChild<C.AxisId>()?.Val?.Value ?? (catAxisId == 2 ? 1u : 2u);
+        return (catAxisId, valAxisId);
     }
 
     /// <summary>
@@ -534,10 +547,7 @@ internal static partial class ChartHelper
         }
 
         // Find axis IDs
-        uint catAxisId = plotArea.GetFirstChild<C.CategoryAxis>()?.GetFirstChild<C.AxisId>()?.Val?.Value ?? 1;
-        uint valAxisId = plotArea.Elements<C.ValueAxis>()
-            .FirstOrDefault(axis => axis.GetFirstChild<C.AxisId>()?.Val?.Value != catAxisId)
-            ?.GetFirstChild<C.AxisId>()?.Val?.Value ?? 2;
+        var (catAxisId, valAxisId) = PrimaryAxisIds(plotArea);
 
         // Remove existing chart type elements (but keep axes, layout, etc.)
         foreach (var ct in plotArea.ChildElements
