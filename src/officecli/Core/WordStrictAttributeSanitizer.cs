@@ -3,6 +3,7 @@
 
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
+using System.Text.RegularExpressions;
 
 namespace OfficeCli.Core;
 
@@ -60,31 +61,79 @@ internal static class WordStrictAttributeSanitizer
         var main = doc.MainDocumentPart;
         if (main == null) return;
 
-        // Wrap each part access: `main.Document` getter throws if the file
-        // isn't actually WordML (e.g. xlsx opened as docx). Existing tests
-        // document that WordHandler silently tolerates wrong-format opens,
-        // so we mirror that by skipping parts we can't load.
-        TrySanitize(() => main.Document);
-        TrySanitize(() => main.StyleDefinitionsPart?.Styles);
-        TrySanitize(() => main.NumberingDefinitionsPart?.Numbering);
-        TrySanitize(() => main.FootnotesPart?.Footnotes);
-        TrySanitize(() => main.EndnotesPart?.Endnotes);
-        TrySanitize(() => main.DocumentSettingsPart?.Settings);
-        foreach (var h in main.HeaderParts) TrySanitize(() => h.Header);
-        foreach (var f in main.FooterParts) TrySanitize(() => f.Footer);
+        // PERF(sanitize-fast-path): each entry probes the part's RAW XML —
+        // read straight from the backing stream, BEFORE the SDK materializes
+        // the DOM — and only falls through to the full typed walk when the
+        // probe actually finds an invalid attribute value (rare; real files
+        // are clean). The probe is a pure filter: a false positive (pattern
+        // matched inside a comment or innocent text) merely triggers the
+        // original full walk, so behavior is unchanged; a false negative is
+        // impossible because the DOM is parsed from exactly these bytes, so
+        // any real offending attribute exists in the raw text.
+        TrySanitize(() => main.Document, main);
+        TrySanitize(() => main.StyleDefinitionsPart?.Styles, main.StyleDefinitionsPart);
+        TrySanitize(() => main.NumberingDefinitionsPart?.Numbering, main.NumberingDefinitionsPart);
+        TrySanitize(() => main.FootnotesPart?.Footnotes, main.FootnotesPart);
+        TrySanitize(() => main.EndnotesPart?.Endnotes, main.EndnotesPart);
+        TrySanitize(() => main.DocumentSettingsPart?.Settings, main.DocumentSettingsPart);
+        foreach (var h in main.HeaderParts) TrySanitize(() => h.Header, h);
+        foreach (var f in main.FooterParts) TrySanitize(() => f.Footer, f);
     }
 
-    private static void TrySanitize(Func<OpenXmlPartRootElement?> getRoot)
+    private static void TrySanitize(Func<OpenXmlPartRootElement?> getRoot, OpenXmlPart? part)
     {
+        if (part != null && !PartNeedsSanitize(part)) return;
         OpenXmlPartRootElement? root;
         try { root = getRoot(); }
         catch { return; }
         if (root != null) SanitizePart(root);
     }
 
+    private static bool PartNeedsSanitize(OpenXmlPart part)
+    {
+        // One alternation regex for the shared OnOff whitelist, one per enum
+        // element name (each has its own valid set). Tag can be `<w:b/>`
+        // (attribute absent — untouched by the DOM pass anyway), or carry
+        // w:val in any attribute position.
+        try
+        {
+            using var stream = part.GetStream(FileMode.Open, FileAccess.Read);
+            using var reader = new StreamReader(stream);
+            var raw = reader.ReadToEnd();
+            foreach (Match m in OnOffBadValProbe.Matches(raw))
+                if (!OnOffValid.Contains(m.Groups[1].Value))
+                    return true;
+            foreach (var kv in EnumElements)
+            {
+                var probe = s_enumProbes[kv.Key];
+                foreach (Match m in probe.Matches(raw))
+                    if (!kv.Value.Contains(m.Groups[1].Value))
+                        return true;
+            }
+            return false;
+        }
+        catch
+        {
+            return true; // can't probe → do the safe full walk
+        }
+    }
+
+    private static readonly Regex OnOffBadValProbe = NamesRegex(string.Join("|", OnOffElements));
+    private static readonly Dictionary<string, Regex> s_enumProbes =
+        EnumElements.ToDictionary(kv => kv.Key, kv => NamesRegex(kv.Key), StringComparer.Ordinal);
+
+    private static Regex NamesRegex(string names)
+    {
+        // Any `<w:name>` tag carrying a w:val attribute (any attribute order,
+        // covers self-closing and plain forms). Group 1 = the val literal.
+        return new Regex(
+            $"<w:(?:{string.Join('|', names)})" +
+            "(?:\\s[^>]*?)?\\s+[^>]*?\\bw:val=\"([^\"]*)\"",
+            RegexOptions.Compiled | RegexOptions.ExplicitCapture);
+    }
+
     private static void SanitizePart(OpenXmlPartRootElement root)
     {
-        // Snapshot first — we may mutate (remove elements) during sanitize.
         var nodes = root.Descendants<OpenXmlElement>().ToList();
         var toRemove = new List<OpenXmlElement>();
 

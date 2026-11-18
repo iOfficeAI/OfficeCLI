@@ -75,6 +75,35 @@ public partial class WordHandler : IDocumentHandler, Rendering.IRenderModelHost
         return _styleByIdCache.TryGetValue(styleId, out var found) ? found : null;
     }
 
+    /// <summary>
+    /// The document's default paragraph style (w:default="1" w:type="paragraph") —
+    /// the one implicitly inherited by paragraphs without an explicit w:pStyle.
+    /// Previously found via a linear Elements&lt;Style&gt;().FirstOrDefault scan
+    /// per call site (per paragraph in ResolveSpacingFromStyle etc.). Mirrors
+    /// the reference-identity own-validation of the StyleId index.
+    /// </summary>
+    private Style? FindDefaultParagraphStyle()
+    {
+        var styles = _doc.MainDocumentPart?.StyleDefinitionsPart?.Styles;
+        if (styles == null) return null;
+        if (_defaultParaStyleCache == null || !ReferenceEquals(styles, _defaultParaStyleCacheOwner))
+        {
+            Style? found = null;
+            foreach (var s in styles.Elements<Style>())
+                if (s.Type?.Value == StyleValues.Paragraph && s.Default?.Value == true)
+                {
+                    found = s;
+                    break;
+                }
+            _defaultParaStyleCache = found;
+            _defaultParaStyleCacheOwner = styles;
+        }
+        return _defaultParaStyleCache;
+    }
+
+    private Style? _defaultParaStyleCache;
+    private Styles? _defaultParaStyleCacheOwner;
+
     // Number of elements a no-slash selector Set matched and mutated (Sheet1!row[...]).
     // Read by the CLI/resident to echo the multi-element change count.
     public int LastSelectorSetCount { get; internal set; }
