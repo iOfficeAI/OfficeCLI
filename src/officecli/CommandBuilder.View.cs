@@ -365,6 +365,20 @@ static partial class CommandBuilder
     }
 
     /// <summary>
+    /// Pages exist only after the preview's script has laid the document out,
+    /// so <see cref="DocxPreviewPageCount"/> needs a chrome-family headless
+    /// browser. Without one a --page past the end cannot be rejected here, and
+    /// refusing would also refuse pages that do exist. The preview is produced
+    /// anyway — it shows an out-of-range notice itself when none of the
+    /// requested pages exists — and the caller is told the check was skipped.
+    /// </summary>
+    internal static void WarnDocxPageNotChecked(string? pageFilter) =>
+        Console.Error.WriteLine(
+            $"Warning: --page {pageFilter?.Trim()} could not be checked against the page count " +
+            "(no Chrome/Chromium/Edge available to count pages). " +
+            "If the page does not exist, the preview shows an out-of-range notice instead of content.");
+
+    /// <summary>
     /// Expand a docx --page filter ("1", "2-5", "1,3,5", "2-4,7") into the
     /// sorted distinct pages within 1..total. Unparsable parts are ignored,
     /// matching the preview's own lenient filter.

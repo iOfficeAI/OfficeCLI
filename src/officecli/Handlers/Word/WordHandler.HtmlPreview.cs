@@ -1302,9 +1302,25 @@ public partial class WordHandler
     var rf=window._requestedPages;
     if(!rf||rf.length===0)return;
     var rSet=new Set(rf);
-    document.querySelectorAll('.page').forEach(function(p,i){
+    var pgs=document.querySelectorAll('.page');
+    var shown=0;
+    pgs.forEach(function(p,i){
       if(!rSet.has(i+1))p.style.display='none';
+      else shown++;
     });
+    // None of the requested pages exists. The CLI rejects this up front when
+    // it can count the pages, but that needs a headless browser on the host;
+    // without one this file is the only place the count is known. Say so
+    // instead of leaving a blank preview.
+    var old=document.getElementById('page-filter-notice');
+    if(old)old.remove();
+    if(shown===0&&pgs.length>0){
+      var n=document.createElement('div');
+      n.id='page-filter-notice';
+      n.textContent='--page '+rf.join(',')+' is out of range: this document has '+pgs.length+(pgs.length===1?' page.':' pages.');
+      n.style.cssText='margin:48px auto;max-width:480px;padding:16px 20px;font:14px/1.5 system-ui,sans-serif;color:#7a2e0e;background:#fff4e5;border:1px solid #f0c48a;border-radius:6px;text-align:center';
+      document.body.insertBefore(n,document.body.firstChild);
+    }
   }
   // Single-page screenshot: clip the one visible page to its page box and drop
   // the chrome (gray body padding, drop-shadow, rounded corners, wrapper margin)

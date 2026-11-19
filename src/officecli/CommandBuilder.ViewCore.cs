@@ -103,6 +103,7 @@ static partial class CommandBuilder
                         var total = DocxPreviewPageCount(docxHtmlHandler);
                         if (total.HasValue && firstPage > total.Value)
                             throw new OfficeCli.Core.CliException($"--page {firstPage} out of range (total pages: {total.Value}).") { Code = "out_of_range" };
+                        if (!total.HasValue) WarnDocxPageNotChecked(pageFilter);
                     }
                 }
                 html = RenderViaRegistry(handler, "docx",
@@ -313,6 +314,7 @@ static partial class CommandBuilder
                     var total = DocxPreviewPageCount(wordHandler);
                     if (total.HasValue && singleSel[0] > total.Value)
                         throw new OfficeCli.Core.CliException($"--page {singleSel[0]} out of range (total pages: {total.Value}).") { Code = "out_of_range" };
+                    if (!total.HasValue) WarnDocxPageNotChecked(effectiveFilter);
                 }
                 OfficeCli.Core.NativeRenderFailure? nativeFailure = null;
                 if (renderMode != "html" && OperatingSystem.IsWindows())
