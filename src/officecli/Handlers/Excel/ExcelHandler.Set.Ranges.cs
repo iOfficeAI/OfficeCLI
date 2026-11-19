@@ -233,8 +233,11 @@ public partial class ExcelHandler
     // ==================== Range Sort (region action) ====================
 
     /// <summary>
-    /// Physically reorder rows in the given range by the given sort keys, then
-    /// write sortState metadata. Rejects ranges that intersect merged cells.
+    /// Physically reorder the cells of the given range, row by row, by the given
+    /// sort keys, then write sortState metadata. Only cells inside the range
+    /// move; a cell beside the range stays in its row, as it does when Excel
+    /// sorts a selection. Rejects ranges that intersect merged cells, contain
+    /// formulas, or overlap part of an array formula's spill range.
     /// sortSpec format: "A asc, B desc" (direction optional, defaults to asc).
     /// Column addressing is column letters only (A, B, AA); column names are not supported.
     /// </summary>
@@ -390,8 +393,8 @@ public partial class ExcelHandler
         }
 
         // CONSISTENCY(sort-scope): formula rejection only applies to cells INSIDE the sort
-        // column range. A formula in a cell outside [col1..col2] is untouched by sort
-        // (its row may be reordered, but the formula text and its refs stay intact).
+        // column range. A cell outside [col1..col2] is not moved by the sort at all, so a
+        // formula there keeps its place, its text and its refs.
         // Helper: test whether a cell's column lies within the sort column range.
         // Name is column-specific: row containment is implied by caller (we iterate
         // only rowsInRange).
@@ -431,6 +434,24 @@ public partial class ExcelHandler
                         "Sort would rewrite cell references but leave formula text encoding the old row " +
                         "numbers, silently corrupting results. Rewrite formulas as literal values first " +
                         "(or evaluate and paste-as-values) before sorting.");
+
+        // An array formula anchored outside the range can still spill into it. Sorting
+        // would shuffle part of the spill while the formula's ref= stays as written;
+        // Excel refuses the same operation ("You can't change part of an array").
+        foreach (var f in sd.Descendants<CellFormula>())
+        {
+            if (f.FormulaType?.Value != CellFormulaValues.Array) continue;
+            var aref = f.Reference?.Value;
+            if (string.IsNullOrEmpty(aref) || !aref.Contains(':')) continue;
+            var aparts = aref.Split(':');
+            var (aac, aar) = ParseCellReference(aparts[0]);
+            var (abc, abr) = ParseCellReference(aparts[1]);
+            int aaci = ColumnNameToIndex(aac), abci = ColumnNameToIndex(abc);
+            if (abr < dataStartRow || aar > row2 || abci < col1 || aaci > col2) continue;
+            throw new InvalidOperationException(
+                $"Cannot sort range overlapping an array formula (spill range {aref}). " +
+                "Exclude the array formula's range from the sort, or replace it with values first.");
+        }
 
         // Materialize sort keys once (O(rows × keys × cells) → O(rows × keys))
         var keyed = rowsInRange.Select(r =>
@@ -483,6 +504,44 @@ public partial class ExcelHandler
             var oldIdx = sortedRows[i].RowIndex!.Value;
             var newIdx = originalIndices[i];
             oldToNewRow[oldIdx] = newIdx;
+        }
+
+        // Cells beside the range stay where they are: when any sorted row has one,
+        // move only the range's cells from row to row and leave the <row> elements
+        // (and everything else in them) in place. Moving whole rows carried those
+        // cells along — a formula next to the range ended up on another row with
+        // its text unchanged, and a moved array formula kept its old ref=, which
+        // Excel cannot open.
+        if (rowsInRange.Any(r => r.Elements<Cell>().Any(c => !CellColumnInSortRange(c))))
+        {
+            var rowAt = rowsInRange.ToDictionary(r => r.RowIndex!.Value);
+            var moving = sortedRows.Select(r => r.Elements<Cell>().Where(CellColumnInSortRange).ToList()).ToList();
+            foreach (var cells in moving)
+                foreach (var c in cells) c.Remove();
+            for (int i = 0; i < moving.Count; i++)
+            {
+                var newIdx = originalIndices[i];
+                var target = rowAt[newIdx];
+                // Keep the row's cells in column order: the range's cells go after
+                // the last remaining cell that sits left of the range.
+                OpenXmlElement? after = target.Elements<Cell>().LastOrDefault(c =>
+                    c.CellReference?.Value is { } stay
+                    && ColumnNameToIndex(ParseCellReference(stay).Column) < col1);
+                foreach (var cell in moving[i])
+                {
+                    var (cc, _) = ParseCellReference(cell.CellReference!.Value!);
+                    cell.CellReference = $"{cc}{newIdx}";
+                    if (after == null) target.InsertAt(cell, 0);
+                    else after.InsertAfterSelf(cell);
+                    after = cell;
+                }
+                // spans is an optional hint and may no longer cover the row's cells.
+                target.Spans = null;
+            }
+            InvalidateRowIndex(sd);
+            RewriteSidecarRefsAfterSort(worksheet, col1, row1, col2, row2, oldToNewRow);
+            WriteSortState(ws, col1, row1, col2, row2, sortKeys);
+            return;
         }
 
         // Detach from SheetData, invalidate row-index cache
