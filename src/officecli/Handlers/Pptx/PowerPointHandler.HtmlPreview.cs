@@ -768,10 +768,12 @@ public partial class PowerPointHandler
             }
         }
 
-        // <p:hf> gates (issue #466, symptom 2): a metadata slot the layout/master
-        // turns off is skipped by both inherited passes, same mechanism as a
-        // slot the slide supplies itself.
-        foreach (var key in SlideComposition.HiddenMetadataSlotKeys(slidePart))
+        // Metadata slots (dt/ftr/hdr/sldNum) are never painted from the
+        // layout/master: PowerPoint draws them only where the slide carries the
+        // placeholder itself, so the layout's copy is a template, not a shape on
+        // the slide (issue #600). Skipping the four unconditionally also covers
+        // the <p:hf ftr="0"/> case (issue #466, symptom 2).
+        foreach (var key in SlideComposition.MetadataSlotSkipKeys())
             slidePlaceholders.Add(key);
 
         // CONSISTENCY(layer-paint-order): the two inherited passes are emitted
