@@ -296,7 +296,7 @@ static partial class CommandBuilder
             Console.WriteLine();
             Console.WriteLine("Tip: most shells expand [brackets] — quote paths: officecli get doc.docx \"/body/p[1]\"");
             Console.WriteLine();
-            Console.WriteLine("Exit codes: 0 = landed · 1 = failed (envelope carries error) · 2 = ran with caveats (warnings[]; read `success` — it may be false when every prop was refused)");
+            Console.WriteLine("Exit codes: 0 = landed · 1 = failed (envelope carries error) · 2 = ran with caveats (warnings[]; read `success` — it may be false when every prop was refused) · 3 = resident busy (command not delivered — it never ran; retry, or close the file first)");
             return 0;
         }
 
