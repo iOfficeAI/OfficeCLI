@@ -640,6 +640,12 @@ public static class MarkdownParser
         // char — a stray '*' must not close a '_'-opened run (and vice versa),
         // which used to break the outer run and leak its real closer as literal.
         char boldDelim = '\0', italicDelim = '\0';
+        // Where the open single-char emphasis run started, and the state just
+        // before it, so an opener that never finds its closer can be undone.
+        int italicOpenAt = -1, italicOpenSpans = 0;
+        bool boldAtOpen = false, strikeAtOpen = false;
+        char boldDelimAtOpen = '\0';
+        HashSet<int>? literalOpeners = null;
 
         void Flush()
         {
@@ -665,6 +671,7 @@ public static class MarkdownParser
                 && runEnd < text.Length && char.IsLetterOrDigit(text[runEnd]);
         }
 
+    rescan:
         while (pos < text.Length)
         {
             char c = text[pos];
@@ -870,16 +877,37 @@ public static class MarkdownParser
                 bool canOpen = pos + 1 < text.Length
                                && !char.IsWhiteSpace(text[pos + 1])
                                && text.IndexOf(c, pos + 1) >= 0
-                               && !IntrawordUnderscore(c, pos, 1);
+                               && !IntrawordUnderscore(c, pos, 1)
+                               && literalOpeners?.Contains(pos) != true;
                 if (canOpen)
                 {
-                    Flush(); italic = true; italicDelim = c; pos++; continue;
+                    Flush();
+                    italicOpenAt = pos; italicOpenSpans = spans.Count;
+                    boldAtOpen = bold; boldDelimAtOpen = boldDelim; strikeAtOpen = strike;
+                    italic = true; italicDelim = c; pos++; continue;
                 }
                 buf.Append(c); pos++; continue;
             }
 
             buf.Append(c);
             pos++;
+        }
+        if (italic)
+        {
+            // The single-char opener reached the end of the text unclosed — the
+            // IndexOf guard above only proves SOME later '*' exists, and a later
+            // '**' is taken by the strong branch, not this run. Such an opener is
+            // literal text (CommonMark), so rewind to it, keep the character, and
+            // rescan the rest with the state it had there. Otherwise the opener
+            // was dropped and the tail italicised: "3*4=12 and **bold**" came
+            // out as "34=12 and bold".
+            buf.Clear();
+            spans.RemoveRange(italicOpenSpans, spans.Count - italicOpenSpans);
+            bold = boldAtOpen; boldDelim = boldDelimAtOpen; strike = strikeAtOpen;
+            italic = false;
+            (literalOpeners ??= new HashSet<int>()).Add(italicOpenAt);
+            pos = italicOpenAt;
+            goto rescan;
         }
         Flush();
         return spans;
