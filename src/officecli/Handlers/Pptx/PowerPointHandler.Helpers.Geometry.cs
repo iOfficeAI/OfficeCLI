@@ -457,6 +457,37 @@ public partial class PowerPointHandler
                 avLst.AppendChild(new Drawing.ShapeGuide { Name = n, Formula = f });
     }
 
+    /// <summary>
+    /// Say why PowerPoint will refuse the file over this geometry's avLst, or
+    /// return null when it will not. PowerPoint opens a preset geometry only
+    /// when its avLst is empty or holds exactly the guides the preset declares,
+    /// in the declared order; anything else — a name the preset does not
+    /// declare, a partial set, the full set reordered — fails the whole file
+    /// with 0x80070570, while the schema (and so <c>validate</c>) accepts it.
+    /// <c>rect</c> is the one preset whose avLst PowerPoint does not check.
+    /// Presets absent from <see cref="PresetAdjustGuideNames"/> are not judged.
+    /// </summary>
+    internal static string? DescribeRefusedAdjustGuides(Drawing.PresetGeometry geom)
+    {
+        if (geom.Preset?.Value is not { } preset) return null;
+        var prst = PresetName(preset);
+        if (prst == "rect") return null;
+        if (!PresetAdjustGuideNames.TryGetValue(prst, out var declared)) return null;
+        var avLst = geom.GetFirstChild<Drawing.AdjustValueList>();
+        if (avLst == null) return null;
+        var present = avLst.Elements<Drawing.ShapeGuide>().Select(g => g.Name?.Value ?? "").ToList();
+        if (present.Count == 0 || present.SequenceEqual(declared, StringComparer.Ordinal)) return null;
+
+        var undeclared = present.Where(n => System.Array.IndexOf(declared, n) < 0).Distinct().ToList();
+        if (undeclared.Count > 0)
+            return $"Preset '{prst}' carries adjust value(s) {string.Join(", ", undeclared.Select(n => $"'{n}'"))} it does not declare"
+                + (declared.Length == 0 ? " (the preset has no adjust handles)" : $" (it declares {string.Join(", ", declared)})");
+        var missing = declared.Where(n => !present.Contains(n)).ToList();
+        if (missing.Count > 0)
+            return $"Preset '{prst}' carries only part of its adjust values (missing {string.Join(", ", missing)})";
+        return $"Preset '{prst}' carries its adjust values out of order or repeated (expected {string.Join(", ", declared)})";
+    }
+
     // SDK v3 enum structs render as "ShapeTypeValues { }" under ToString();
     // IEnumValue.Value is the OOXML token (prstGeom/@prst).
     private static string PresetName(Drawing.ShapeTypeValues preset)

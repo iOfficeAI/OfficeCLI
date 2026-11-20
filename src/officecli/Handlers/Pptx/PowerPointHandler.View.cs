@@ -981,6 +981,45 @@ public partial class PowerPointHandler
                 }
             }
 
+            // A preset geometry whose avLst PowerPoint refuses (issue #235).
+            // `add`/`set` no longer write one, but a file from an older build
+            // or another tool can carry it, and the schema is satisfied, so
+            // nothing else reports a deck PowerPoint cannot open. Members of a
+            // group are reported on the group, the addressable element.
+            {
+                int spN = 0, picN = 0, cxN = 0, grpN = 0;
+                foreach (var el in shapeTree.ChildElements)
+                {
+                    string kind; int n;
+                    switch (el)
+                    {
+                        case Shape: kind = "shape"; n = ++spN; break;
+                        case Picture: kind = "picture"; n = ++picN; break;
+                        case ConnectionShape: kind = "connector"; n = ++cxN; break;
+                        case GroupShape: kind = "group"; n = ++grpN; break;
+                        default: continue;
+                    }
+                    foreach (var geom in el.Descendants<Drawing.PresetGeometry>())
+                    {
+                        var why = DescribeRefusedAdjustGuides(geom);
+                        if (why == null) continue;
+                        var names = geom.GetFirstChild<Drawing.AdjustValueList>()!
+                            .Elements<Drawing.ShapeGuide>().Select(g => g.Name?.Value);
+                        issues.Add(new DocumentIssue
+                        {
+                            Id = $"R{++issueNum}",
+                            Type = IssueType.Structure,
+                            Subtype = Core.IssueSubtypes.PresetAdjustRefused,
+                            Severity = IssueSeverity.Error,
+                            Path = $"/slide[{slideNum}]/{BuildElementPathSegment(kind, el, n)}",
+                            Message = why + " — PowerPoint refuses to open the file",
+                            Context = $"<a:prstGeom prst=\"{geom.Preset?.InnerText}\"> avLst: {string.Join(", ", names)}",
+                            Suggestion = "Remove the adjust values, or set the preset's full set in its declared order (set --prop geometry=<preset> rewrites them)."
+                        });
+                    }
+                }
+            }
+
             // A picture whose box does not keep its source's aspect ratio is
             // being stretched (issue #301). The crop (<a:srcRect>) and the
             // stretch inset (<a:fillRect>) are folded in first, so a crop that
