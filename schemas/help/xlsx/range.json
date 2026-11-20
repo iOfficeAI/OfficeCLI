@@ -49,6 +49,15 @@
       "readback": "n/a (broadcast)",
       "enforcement": "report"
     },
+    "style": {
+      "type": "string",
+      "description": "broadcast a named cell style to every cell of the range (see the xlsx cell `style` prop).",
+      "aliases": ["cellstyle"],
+      "add": false, "set": true, "get": false,
+      "examples": ["--prop style=Total"],
+      "readback": "n/a (broadcast)",
+      "enforcement": "report"
+    },
     "alignment.horizontal": {
       "type": "enum",
       "values": ["left", "center", "right", "justify", "general", "fill", "centerContinuous"],
