@@ -248,6 +248,8 @@ officecli            # bare invocation also triggers install
 
 Updates are checked automatically in the background. Disable with `officecli config autoUpdate false` or skip per-invocation with `OFFICECLI_SKIP_UPDATE=1`. Configuration lives under `~/.officecli/config.json`.
 
+Documents are stamped with identification metadata (`OfficeCLI.Version` / `OfficeCLI.LastModified` custom properties, and on a newly created file also `creator`, `lastModifiedBy` and `Application`). Turn that off with `officecli config stamp false`, or per-invocation with `OFFICECLI_NO_STAMP=1`.
+
 ## Key Features
 
 ### Built-in Engines & Generation Primitives

@@ -144,6 +144,34 @@ internal static class OfficeCliMetadata
     }
 
     /// <summary>
+    /// Whether this invocation may write the identification / audit metadata
+    /// at all. Off via <c>officecli config stamp false</c>, or for a single
+    /// invocation via <c>OFFICECLI_NO_STAMP=1</c>; the environment variable
+    /// wins, so a caller can opt out without mutating the user's config file.
+    /// Default is on — a missing config file or an unreadable one never
+    /// changes what earlier versions wrote.
+    ///
+    /// Deliberately re-read per call instead of cached in a static: a resident
+    /// server outlives the config it loaded, and <c>officecli config stamp
+    /// false</c> in another terminal has to apply to the resident's next save,
+    /// not to its next restart. The read is one small file, the same cost
+    /// <see cref="CliLogger.Enabled"/> pays per log line.
+    /// </summary>
+    internal static bool StampingEnabled
+    {
+        get
+        {
+            // IsTruthySafe and not `== "1"`: an unrecognized value must leave
+            // stamping on rather than throw from a save path, and the accepted
+            // spellings (1/true/yes/on) are a superset of the sibling flags'.
+            if (ParseHelpers.IsTruthySafe(Environment.GetEnvironmentVariable("OFFICECLI_NO_STAMP")))
+                return false;
+            try { return UpdateChecker.LoadConfig().Stamp ?? true; }
+            catch { return true; }
+        }
+    }
+
+    /// <summary>
     /// Stamp a freshly-created document as authored by OfficeCLI. Writes
     /// <c>docProps/core.xml</c> (Creator, Created, LastModifiedBy, Modified),
     /// <c>docProps/app.xml</c> (Application = "OfficeCLI/&lt;version&gt;", no AppVersion),
@@ -153,9 +181,15 @@ internal static class OfficeCliMetadata
     /// For edits to existing documents, use <see cref="StampOnSave"/> which
     /// only updates the audit trail in <c>custom.xml</c> and leaves
     /// <c>app.xml</c>'s &lt;Application&gt; untouched.
+    ///
+    /// A no-op when <see cref="StampingEnabled"/> is off: nothing is written,
+    /// and no core/app/custom part, relationship or content-type override is
+    /// created either.
     /// </summary>
     public static void StampOnCreate(OpenXmlPackage doc)
     {
+        if (!StampingEnabled) return;
+
         var nowUtc = DateTime.UtcNow;
         WriteCoreProperties(doc, nowUtc);
 
@@ -176,9 +210,14 @@ internal static class OfficeCliMetadata
     /// OfficeCLI.LastModified. Does NOT touch &lt;Application&gt; in app.xml
     /// (preserving the original authoring tool's identity) nor core.xml
     /// (avoiding LastModifiedBy clobbering of the real human author).
+    ///
+    /// A no-op when <see cref="StampingEnabled"/> is off. Properties an
+    /// earlier run already wrote are left in place — the switch stops new
+    /// writes, it does not strip existing metadata.
     /// </summary>
     public static void StampOnSave(OpenXmlPackage doc)
     {
+        if (!StampingEnabled) return;
         WriteCustomProperties(doc, DateTime.UtcNow);
     }
 
