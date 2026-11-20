@@ -61,9 +61,27 @@ public static class ChartEmbeddedDataSync
         if (embedded == null) return;
 
         var series = AllSeries(chartPart);
-        // A Set that added or removed a series shifts the indices the snapshot
-        // is keyed by — leave that chart alone rather than guess.
-        if (series.Count != snap.SeriesCount) return;
+        bool changedSeries = series.Count != snap.SeriesCount;
+        if (changedSeries)
+        {
+            // Only literals need new backing; preserve the current cell references.
+            using var source = embedded.GetStream(FileMode.Open, FileAccess.Read);
+            using var workbook = SpreadsheetDocument.Open(source, false);
+            if (workbook.WorkbookPart is not { } workbookPart) return;
+            var sheet = workbookPart.Workbook?.Sheets?.Elements<Sheet>().FirstOrDefault();
+            if (sheet?.Id?.Value is not { } sheetId || sheet.Name?.Value is not { } sheetName
+                || workbookPart.GetPartById(sheetId) is not WorksheetPart worksheet
+                || worksheet.Worksheet is not { } sheetRoot) return;
+            int column = sheetRoot.Descendants<Cell>()
+                .Select(cell => ColIndex(new string((cell.CellReference?.Value ?? "").TakeWhile(char.IsLetter).ToArray())))
+                .DefaultIfEmpty(0).Max() + 1;
+            snap = new Snapshot { SeriesCount = series.Count };
+            for (int i = 0; i < series.Count; i++)
+                foreach (var kind in Kinds)
+                    if (Slot(series[i], kind) is { } slot && !slot.Descendants<C.Formula>().Any()
+                        && ReadLiteral(slot, kind).Values is { Count: > 0 })
+                        snap.Formulas[(i, kind)] = $"{ModernFunctionQualifier.QuoteSheetNameForRef(sheetName)}!${ColName(column++)}$1";
+        }
         var writes = new List<(string Sheet, int Col, int Row, string Value, bool IsNumber)>();
         foreach (var ((si, kind), oldFormula) in snap.Formulas)
         {
