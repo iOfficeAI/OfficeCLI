@@ -79,8 +79,20 @@ public partial class PowerPointHandler
                 // behavior as WordHandler.AddPicture.
                 bool hasWidth = properties.TryGetValue("width", out var widthStr);
                 bool hasHeight = properties.TryGetValue("height", out var heightStr);
-                long cxEmu = hasWidth ? ParseEmu(widthStr!) : 5486400;  // 6 inches fallback
-                long cyEmu = hasHeight ? ParseEmu(heightStr!) : 3657600; // 4 inches fallback
+                // The default frame is authored for the 13.33in × 7.5in slide, so it
+                // scales with the deck (#460 class — same rule as chart, shape, table
+                // and placeholder). A picture is the one member of that family whose
+                // height comes from the image's own ratio, so `fx` alone is not
+                // enough: on a 7.5in × 1in banner the 6in default is taller than the
+                // slide is high, and centering it leaves the picture above the top
+                // edge (y < 0). The fit-to-slide pass below closes that half.
+                var (slideW, slideH) = GetSlideSize();
+                double fx = slideW / (double)SlideSizeDefaults.Widescreen16x9Cx;
+                double fy = slideH / (double)SlideSizeDefaults.Widescreen16x9Cy;
+                static long ScaleEmu(long emu, double f) =>
+                    f == 1.0 ? emu : (long)Math.Round(emu * f / 12700.0) * 12700L;
+                long cxEmu = hasWidth ? ParseEmu(widthStr!) : ScaleEmu(5486400, fx);  // 6 inches fallback
+                long cyEmu = hasHeight ? ParseEmu(heightStr!) : ScaleEmu(3657600, fy); // 4 inches fallback
                 // CONSISTENCY(positive-size): symmetric with Add.Shape negative-size guard
                 // so picture / chart / connector / media all reject inverted dimensions.
                 if (cxEmu < 0) throw new ArgumentException($"Negative width is not allowed: '{widthStr}'.");
@@ -101,10 +113,25 @@ public partial class PowerPointHandler
                     }
                 }
 
-                // Position (default: centered on slide)
-                var (slideW, slideH) = GetSlideSize();
-                long xEmu = (slideW - cxEmu) / 2;
-                long yEmu = (slideH - cyEmu) / 2;
+                // A default frame must land inside the deck. On a banner the
+                // proportional height above is taller than the slide itself, so the
+                // aspect-preserving width scaling leaves an oversized picture; fit
+                // it to the page (ratio kept), the way PowerPoint does for a picture
+                // inserted on a page it does not fit. An explicit width/height is
+                // never resized — the caller asked for that size.
+                if (!hasWidth && !hasHeight && (cxEmu > slideW || cyEmu > slideH))
+                {
+                    double fit = Math.Min(slideW / (double)cxEmu, slideH / (double)cyEmu);
+                    cxEmu = Math.Min(ScaleEmu(cxEmu, fit), slideW);
+                    cyEmu = Math.Min(ScaleEmu(cyEmu, fit), slideH);
+                }
+
+                // Position (default: centered on slide). Clamped to the slide so a
+                // picture still larger than the page (explicit size) starts at the
+                // edge instead of hanging off it — the negative offset is the
+                // symptom the default frame used to show.
+                long xEmu = Math.Clamp((slideW - cxEmu) / 2, 0, Math.Max(0, slideW - cxEmu));
+                long yEmu = Math.Clamp((slideH - cyEmu) / 2, 0, Math.Max(0, slideH - cyEmu));
                 if (properties.TryGetValue("x", out var xStr) || properties.TryGetValue("left", out xStr))
                     xEmu = ParseEmu(xStr);
                 if (properties.TryGetValue("y", out var yStr) || properties.TryGetValue("top", out yStr))
