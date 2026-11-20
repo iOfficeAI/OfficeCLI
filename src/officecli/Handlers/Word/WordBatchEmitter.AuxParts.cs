@@ -77,6 +77,9 @@ public static partial class WordBatchEmitter
                                    // picture data-URI carrier; warning was a
                                    // false alarm (source/replay MD5 identical)
         "/word/charts/",           // chart XML + embedded xlsx — chart run emit
+        "/word/extendedCharts/",   // chartEx XML + embedded xlsx + its chartex
+                                   // style/colour sidecars — run inlined-parts
+                                   // carrier (chart run emit)
         "/word/embeddings/",       // OLE payloads — warning already raised per-run
         "/word/diagrams/",         // SmartArt — partial coverage via shape emit
         "/word/activeX/",          // ActiveX controls — `add activex` inlined-parts carrier

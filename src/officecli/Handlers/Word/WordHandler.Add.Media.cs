@@ -1133,6 +1133,16 @@ public partial class WordHandler
         // children (when present) ride part{N}.child{M} via CreateInlinedChildPart.
         "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"
             => hostPart.AddNewPart<ChartPart>(ct, null),
+        // chartEx (cx: extension chart) — funnel / treemap / sunburst /
+        // boxWhisker / histogram, referenced from a drawing by <cx:chart r:id>.
+        // This is a DIFFERENT part and content type from the classic chart
+        // above; without this arm the carrier rejected the content type and
+        // aborted the whole inlined-parts step, so a chartEx chart was dropped
+        // on dump (and the batch replay rolled the document back). Its own
+        // children — the embedded workbook plus the chartex style and colour
+        // parts — ride part{N}.child{M} via CreateInlinedChildPart.
+        "application/vnd.ms-office.chartex+xml"
+            => hostPart.AddNewPart<ExtendedChartPart>(ct, null),
         "application/vnd.ms-office.chartcolorstyle+xml"
             => hostPart.AddNewPart<ChartColorStylePart>(ct, null),
         "application/vnd.ms-office.chartstyle+xml"
