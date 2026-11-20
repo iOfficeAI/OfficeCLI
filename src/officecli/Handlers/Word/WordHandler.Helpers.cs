@@ -145,6 +145,30 @@ public partial class WordHandler
     }
 
     /// <summary>
+    /// CONSISTENCY(format-inherit): true when <paramref name="value"/> is one of
+    /// the removal spellings — "none" / "clear" / "remove" / "unset" / "inherit",
+    /// case-insensitive — meaning "drop the explicit setting so style /
+    /// docDefaults inheritance applies again".
+    ///
+    /// Rationale (issue #274): <c>set --prop size=11pt</c> writes an explicit
+    /// <c>w:rPr/w:sz</c> that masks every style-level value, and there was no
+    /// inverse — redefining the style afterwards had no visible effect on the
+    /// paragraphs that carried explicit formatting. The vocabulary mirrors the
+    /// removal synonyms <c>vmerge</c> already accepts (see Set.Element.cs) and is
+    /// applied by ApplyRunFormatting (run properties) and
+    /// ApplyParagraphLevelProperty (paragraph properties).
+    ///
+    /// Spellings that are themselves a legal value for a key keep their old
+    /// meaning and are excluded from the removal tables — see the per-applier
+    /// comments for the full exclusion list.
+    /// </summary>
+    internal static bool IsFormatRemovalToken(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return false;
+        return value.Trim().ToLowerInvariant() is "none" or "clear" or "remove" or "unset" or "inherit";
+    }
+
+    /// <summary>
     /// Read a w:val OnOff attribute defensively. Returns null when the
     /// attribute is absent OR when the stored text is not a valid OnOff
     /// token (e.g. <c>&lt;w:bidi w:val="garbage"/&gt;</c>). Default-on

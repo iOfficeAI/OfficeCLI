@@ -563,6 +563,146 @@ public partial class WordHandler
     }
 
     /// <summary>
+    /// CONSISTENCY(format-inherit): drop one explicit run property so it falls
+    /// back to style / docDefaults inheritance (issue #274). Returns true when the
+    /// key has a removal mapping — the caller must then skip its own parse of the
+    /// token — and false when the key has no mapping, so the caller parses
+    /// normally.
+    ///
+    /// A key that carries no explicit value is a no-op, never an error, and only
+    /// the rPr child is touched: the run itself (and any w:ins / w:del wrapper
+    /// around it) is left exactly as it was.
+    ///
+    /// Deliberately excluded, because the token is a legal value for that key
+    /// (verified against the released binary):
+    ///   * highlight=none — <c>&lt;w:highlight w:val="none"/&gt;</c> is an
+    ///     explicit "no highlight", which is the opposite of inheriting one;
+    ///   * underline=none — <c>&lt;w:u w:val="none"/&gt;</c> likewise;
+    ///   * color=none — writes <c>w:val="auto" w:themeColor="none"</c>;
+    ///   * the font.* slots — an empty value already clears those slots, so
+    ///     <c>font=None</c> keeps meaning "a typeface named None";
+    ///   * bdr — its STYLE;SIZE;COLOR parser already treats none/false/empty as
+    ///     a wipe.
+    ///
+    /// The on/off toggles are mapped too, where the removal spelling is new
+    /// behavior rather than a restatement: <c>bold=false</c> keeps writing
+    /// <c>&lt;w:b w:val="0"/&gt;</c> (explicit off) and <c>bold=clear</c> used to
+    /// fail with "Invalid boolean value" — it now removes the element, which is
+    /// what lets a style-level bold show through again.
+    ///
+    /// Scope: this only applies where the key is already routed to
+    /// ApplyRunFormatting. A target that owns the key in its own cascade (e.g.
+    /// paragraph-level <c>rtl</c>, which the paragraph path sends through the
+    /// direction cascade) keeps its current handling.
+    /// </summary>
+    private static bool TryRemoveRunFormatting(OpenXmlCompositeElement props, string key, string value)
+    {
+        var token = value.Trim().ToLowerInvariant();
+        switch (key.ToLowerInvariant())
+        {
+            case "size" or "fontsize" or "font.size":
+                // <w:sz w:val="half-points"/> — the explicit size that made a
+                // redefined Normal style invisible in #274.
+                props.RemoveAllChildren<FontSize>();
+                return true;
+            case "size.cs" or "font.size.cs" or "sizecs":
+                props.RemoveAllChildren<FontSizeComplexScript>();
+                return true;
+            case "color" or "font.color":
+                if (token == "none") return false;   // themeColor="none" is legal
+                props.RemoveAllChildren<Color>();
+                return true;
+            case "highlight":
+                if (token == "none") return false;   // <w:highlight w:val="none"/>
+                props.RemoveAllChildren<Highlight>();
+                return true;
+            case "underline" or "font.underline":
+                if (token == "none") return false;   // <w:u w:val="none"/>
+                props.RemoveAllChildren<Underline>();
+                return true;
+            case "bold" or "font.bold":
+                props.RemoveAllChildren<Bold>();
+                return true;
+            case "bold.cs" or "font.bold.cs" or "boldcs":
+                props.RemoveAllChildren<BoldComplexScript>();
+                return true;
+            case "italic" or "font.italic":
+                props.RemoveAllChildren<Italic>();
+                return true;
+            case "italic.cs" or "font.italic.cs" or "italiccs":
+                props.RemoveAllChildren<ItalicComplexScript>();
+                return true;
+            case "strike" or "strikethrough" or "font.strike" or "font.strikethrough":
+                props.RemoveAllChildren<Strike>();
+                return true;
+            case "dstrike":
+                props.RemoveAllChildren<DoubleStrike>();
+                return true;
+            case "caps" or "allcaps":
+                props.RemoveAllChildren<Caps>();
+                return true;
+            case "smallcaps":
+                props.RemoveAllChildren<SmallCaps>();
+                return true;
+            case "vanish":
+                props.RemoveAllChildren<Vanish>();
+                return true;
+            case "specvanish":
+                props.RemoveAllChildren<SpecVanish>();
+                return true;
+            case "outline":
+                props.RemoveAllChildren<Outline>();
+                return true;
+            case "shadow":
+                props.RemoveAllChildren<Shadow>();
+                return true;
+            case "emboss":
+                props.RemoveAllChildren<Emboss>();
+                return true;
+            case "imprint":
+                props.RemoveAllChildren<Imprint>();
+                return true;
+            case "noproof":
+                props.RemoveAllChildren<NoProof>();
+                return true;
+            case "rtl":
+            case "direction" or "dir":
+                // rtl=false / direction=ltr keep writing the explicit val="0"
+                // override; only the removal spellings drop the element.
+                props.RemoveAllChildren<RightToLeftText>();
+                return true;
+            case "superscript":
+            case "subscript":
+            case "vertalign":
+                props.RemoveAllChildren<VerticalTextAlignment>();
+                return true;
+            case "charspacing" or "letterspacing" or "spacing":
+                props.RemoveAllChildren<Spacing>();
+                return true;
+            case "w" or "charscale":
+                props.RemoveAllChildren<CharacterScale>();
+                return true;
+            case "kern":
+                props.RemoveAllChildren<Kern>();
+                return true;
+            case "position":
+                props.RemoveAllChildren<Position>();
+                return true;
+            case "shading" or "shd" or "fill":
+                if (token == "clear") return false;  // ST_Shd pattern is a value
+                props.RemoveAllChildren<Shading>();
+                return true;
+            case "rstyle":
+                // <w:rStyle w:val="..."/> — drop the character-style binding so
+                // the paragraph style's character formatting applies again.
+                props.RemoveAllChildren<RunStyle>();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
     /// Apply a run-level (rPr-style) property to any container that holds rPr children:
     /// <c>RunProperties</c>, <c>ParagraphMarkRunProperties</c>, or <c>StyleRunProperties</c>.
     /// Uses <see cref="OpenXmlCompositeElement"/> + RemoveAllChildren+InsertRunPropInSchemaOrder
@@ -572,6 +712,10 @@ public partial class WordHandler
     private static bool ApplyRunFormatting(OpenXmlCompositeElement props, string key, string? value)
     {
         if (value is null) return false;
+        // CONSISTENCY(format-inherit): an explicit removal spelling drops the
+        // rPr child that carries the setting instead of being parsed as a value,
+        // so the run inherits it from the style / docDefaults again (issue #274).
+        if (IsFormatRemovalToken(value) && TryRemoveRunFormatting(props, key, value)) return true;
         switch (key.ToLowerInvariant())
         {
             case "size":
