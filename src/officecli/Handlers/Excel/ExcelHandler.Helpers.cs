@@ -274,7 +274,7 @@ public partial class ExcelHandler
     // The location string is what gets written to the OOXML @location attribute.
     private static readonly System.Text.RegularExpressions.Regex s_internalLinkPattern =
         new System.Text.RegularExpressions.Regex(
-            @"^#?(?:'(?:[^']|'')+'|[A-Za-z_][\w\.]*)![A-Za-z]{1,3}\d+(?::[A-Za-z]{1,3}\d+)?$",
+            @"^#?(?:'(?:[^']|'')+'|[A-Za-z_][\w\.]*)!\$?[A-Za-z]{1,3}\$?\d+(?::\$?[A-Za-z]{1,3}\$?\d+)?$",
             System.Text.RegularExpressions.RegexOptions.Compiled);
 
     internal static string? TryParseInternalHyperlinkLocation(string value)
