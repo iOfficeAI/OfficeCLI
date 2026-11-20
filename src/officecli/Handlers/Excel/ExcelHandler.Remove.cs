@@ -204,6 +204,15 @@ public partial class ExcelHandler
                         throw new ArgumentException(
                             $"Cannot remove sheet '{sheetName}': it is referenced by a hyperlink in this workbook. " +
                             $"Remove or repoint the hyperlink first.");
+                foreach (var relationship in otherWsPart.HyperlinkRelationships)
+                {
+                    var target = relationship.Uri.OriginalString;
+                    var separator = target.LastIndexOf('!');
+                    if (target.StartsWith('#') && separator > 1 && UnquoteSheetName(target[1..separator]).Equals(sheetName, StringComparison.OrdinalIgnoreCase))
+                        throw new ArgumentException(
+                            $"Cannot remove sheet '{sheetName}': it is referenced by a hyperlink in this workbook. " +
+                            $"Remove or repoint the hyperlink first.");
+                }
             }
 
             // CONSISTENCY(remove-sheet-refs): pivotCacheDefinition parts live
