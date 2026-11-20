@@ -84,24 +84,26 @@ internal static class SlideComposition
     // ==================== Header/Footer Gates ====================
 
     /// <summary>
-    /// The metadata slots (<c>dt</c>, <c>ftr</c>, <c>hdr</c>, <c>sldNum</c>) a slide
-    /// does NOT display, as <c>type:&lt;ph type&gt;</c> skip keys for the inherited
-    /// passes. &lt;p:hf&gt; on the layout overrides the master's; an absent flag
-    /// means shown. The master's footer placeholder holds the footer TEXT, but
-    /// &lt;p:hf ftr="0"/&gt; means "do not display it" — without this gate every
-    /// slide inherited the text. A slide's own metadata shape is not gated: it
-    /// was placed on that slide deliberately.
+    /// The metadata slot skip keys for the inherited passes — <c>dt</c>, <c>ftr</c>,
+    /// <c>hdr</c> and <c>sldNum</c>, always.
+    ///
+    /// PowerPoint draws a slide's footer, date, header and slide number only where
+    /// the SLIDE carries that placeholder. The layout/master copy is the template
+    /// the slot inherits its position and style from, never a shape painted onto the
+    /// slide. Both inherited passes used to paint every metadata placeholder they
+    /// found in the layout/master tree, so a layout that carried a footer drew that
+    /// footer on every slide using it (issue #600).
+    ///
+    /// Skipping all four unconditionally also covers the &lt;p:hf ftr="0"/&gt; case
+    /// this method used to resolve (issue #466, symptom 2): a slot the deck switched
+    /// off is not painted either way.
     /// </summary>
-    public static IEnumerable<string> HiddenMetadataSlotKeys(SlidePart slidePart)
+    public static IEnumerable<string> MetadataSlotSkipKeys()
     {
-        var layoutHf = slidePart.SlideLayoutPart?.SlideLayout?.GetFirstChild<HeaderFooter>();
-        var masterHf = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.GetFirstChild<HeaderFooter>();
-        static bool Shown(BooleanValue? layout, BooleanValue? master)
-            => layout?.HasValue == true ? layout.Value : master?.HasValue != true || master.Value;
-        if (!Shown(layoutHf?.DateTime, masterHf?.DateTime)) yield return "type:dt";
-        if (!Shown(layoutHf?.Footer, masterHf?.Footer)) yield return "type:ftr";
-        if (!Shown(layoutHf?.Header, masterHf?.Header)) yield return "type:hdr";
-        if (!Shown(layoutHf?.SlideNumber, masterHf?.SlideNumber)) yield return "type:sldNum";
+        yield return "type:dt";
+        yield return "type:ftr";
+        yield return "type:hdr";
+        yield return "type:sldNum";
     }
 
     // ==================== Placeholder Slot Matching ====================

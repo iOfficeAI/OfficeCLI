@@ -201,7 +201,10 @@ public partial class PowerPointHandler
             }
         }
 
-        foreach (var key in SlideComposition.HiddenMetadataSlotKeys(slidePart))
+        // Same rule as the HTML twin: the four metadata slots are never painted
+        // from the layout/master (issue #600), which also covers the
+        // <p:hf ftr="0"/> case (issue #466, symptom 2).
+        foreach (var key in SlideComposition.MetadataSlotSkipKeys())
             slidePlaceholders.Add(key);
 
         // CONSISTENCY(layer-paint-order): master first, layout second — SVG paints
