@@ -79,9 +79,28 @@ public static class MermaidParser
             if (Header.IsMatch(s) || Directive.IsMatch(s))
                 continue; // header / subgraph / style → no garbage nodes
 
-            s = MidText.Replace(s, "$3|$2|");
+            // Link operators are matched on a copy with node-label text masked
+            // out, so `--` / `==` inside `A{count == 0}` or `A[Phase 1 -- draft]`
+            // stays label text instead of splitting the node in two (which
+            // dropped the node, its label and its edge). Indices are identical
+            // in both strings, so every substring is taken from the original.
+            var masked = MaskBracketText(s);
+            var folded = new System.Text.StringBuilder();
+            int at = 0;
+            foreach (Match m in MidText.Matches(masked))
+            {
+                folded.Append(s, at, m.Index - at)
+                      .Append(m.Groups[3].Value).Append('|')
+                      .Append(s, m.Groups[2].Index, m.Groups[2].Length).Append('|');
+                at = m.Index + m.Length;
+            }
+            if (at > 0)
+            {
+                s = folded.Append(s, at, s.Length - at).ToString();
+                masked = MaskBracketText(s);
+            }
 
-            var links = Link.Matches(s);
+            var links = Link.Matches(masked);
             if (links.Count == 0)
             {
                 ParseNodeToken(s, g); // standalone node declaration
@@ -94,7 +113,7 @@ public static class MermaidParser
             foreach (Match m in links)
             {
                 parts.Add(s.Substring(prev, m.Index - prev));
-                labels.Add(m.Groups[2].Success ? m.Groups[2].Value : "");
+                labels.Add(m.Groups[2].Success ? s.Substring(m.Groups[2].Index, m.Groups[2].Length) : "");
                 prev = m.Index + m.Length;
             }
             parts.Add(s.Substring(prev));
@@ -166,6 +185,26 @@ public static class MermaidParser
                 ids.Add(id);
         }
         return ids;
+    }
+
+    /// <summary>
+    /// Same-length copy of <paramref name="s"/> with the text inside node-label
+    /// brackets replaced by '_', so the link regexes only see depth-0 text
+    /// (same bracket-depth rule as <see cref="SplitTop"/>). An unclosed
+    /// bracket returns <paramref name="s"/> unchanged (the previous behaviour).
+    /// </summary>
+    private static string MaskBracketText(string s)
+    {
+        var chars = s.ToCharArray();
+        int depth = 0;
+        for (int i = 0; i < chars.Length; i++)
+        {
+            var ch = chars[i];
+            if (ch is '[' or '(' or '{') { depth++; continue; }
+            if (ch is ']' or ')' or '}') { depth = depth > 0 ? depth - 1 : 0; continue; }
+            if (depth > 0) chars[i] = '_';
+        }
+        return depth == 0 ? new string(chars) : s;
     }
 
     /// <summary>Split on <paramref name="sep"/> only at bracket depth 0.</summary>
