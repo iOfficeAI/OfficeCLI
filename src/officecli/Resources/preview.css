@@ -245,6 +245,22 @@ html.headless .page-counter { display: none !important; }
 .shape-text.valign-top { justify-content: flex-start; }
 .shape-text.valign-center { justify-content: center; }
 .shape-text.valign-bottom { justify-content: flex-end; }
+/* spAutoFit (HtmlPreview.Shapes.cs) emits min-height + height:auto so the box
+   grows with the text. height:100% on this flex column does not resolve against
+   height:auto, so the column shrinks to the text and justify-content
+   (valign-center / valign-bottom) collapses to the top. Stretch the text box
+   to the shape's content box (inside padding, which is the body insets under
+   border-box) and do not shrink it, so text taller than the original frame
+   still grows the shape. Fixed-height shapes (no height:auto) are unchanged.
+   The marker is the inline ";height:auto" token, written with no space. */
+.shape[style*=";height:auto"] {
+    display: flex;
+    flex-direction: column;
+}
+.shape[style*=";height:auto"] > .shape-text {
+    flex: 1 0 auto;
+    height: auto;
+}
 /* anchorCtr="1": shrink-wrap paragraphs so align-items:center can center the
    text block horizontally (a width:100% .para would otherwise fill the frame). */
 .shape-text.anchor-ctr .para { width: auto; max-width: 100%; }
