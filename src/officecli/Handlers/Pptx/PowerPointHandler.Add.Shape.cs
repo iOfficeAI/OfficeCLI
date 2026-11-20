@@ -557,7 +557,19 @@ public partial class PowerPointHandler
                 // Position and size (in EMU, 1cm = 360000 EMU; or parse as cm/in)
                 {
                     long xEmu = 0, yEmu = 0;
-                    long cxEmu = 3600000, cyEmu = 1800000; // default: 10cm x 5cm (avoid full-slide overlap when width unspecified)
+                    // Default: 10cm x 5cm (avoid full-slide overlap when width
+                    // unspecified), authored for a 13.33in x 7.5in slide — scaled
+                    // by the deck's slide size so the default frame stays inside a
+                    // small deck such as the 7.5in x 1in banner preset (#460 class —
+                    // the same rule the chart, equation, table and placeholder
+                    // defaults follow). A deck at the default size keeps both
+                    // numbers exactly as they were; the offset stays 0, and an
+                    // explicit x/y/width/height is user input and is never scaled.
+                    var (spSlideW, spSlideH) = GetSlideSize();
+                    double spFx = spSlideW / (double)SlideSizeDefaults.Widescreen16x9Cx;
+                    double spFy = spSlideH / (double)SlideSizeDefaults.Widescreen16x9Cy;
+                    static long ScaleEmu(long emu, double f) => f == 1.0 ? emu : (long)Math.Round(emu * f / 12700.0) * 12700L;
+                    long cxEmu = ScaleEmu(3600000, spFx), cyEmu = ScaleEmu(1800000, spFy);
                     // Unified bounds check: PowerPoint truncates EMU coordinates
                     // past INT32_MAX (cx/cy schema-typed as int32 in practice).
                     // Error prefix "Invalid" so OutputFormatter routes the
