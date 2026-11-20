@@ -675,6 +675,13 @@ internal static partial class PivotTableHelper
                 };
                 var sda = ParseShowDataAs(showAs);
                 if (sda.HasValue) dataField.ShowDataAs = sda.Value;
+                if (sda == ShowDataAsValues.RunTotal)
+                {
+                    var previous = pivotDef.DataFields?.Elements<DataField>()
+                        .FirstOrDefault(f => f.Field?.Value == (uint)idx && f.Name?.Value == displayName);
+                    dataField.BaseField = ResolveRunningTotalBaseField(
+                        rowFieldIndices, colFieldIndices, previous?.BaseField?.Value);
+                }
                 if (sourceColumnNumFmtIds != null && idx >= 0 && idx < sourceColumnNumFmtIds.Length
                     && sourceColumnNumFmtIds[idx] is uint nfid)
                 {
@@ -764,7 +771,7 @@ internal static partial class PivotTableHelper
                 RenderPivotIntoSheet(
                     hostSheet, anchorRefForGeometry, cacheHeaders, cacheColumnData,
                     rowFieldIndices, colFieldIndices, valueFields, filterFieldIndices,
-                    sourceColumnStyleIds);
+                    sourceColumnStyleIds, pivotDef.DataFields);
 
                 // Collapse any duplicate <row r="N"> elements produced by the
                 // re-render interacting with other pivots in the same sheet.
