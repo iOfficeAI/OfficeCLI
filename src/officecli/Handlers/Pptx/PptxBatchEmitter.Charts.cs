@@ -381,6 +381,39 @@ public static partial class PptxBatchEmitter
             });
         }
 
+        // A classic chart's embedded data workbook and the <c:externalData
+        // r:id> that points at it. The semantic rebuild above creates a FRESH
+        // ChartPart with no rels, so both the part and the reference
+        // PowerPoint's "Edit Data" follows were dropped — silently, because
+        // the aux-parts scan allowlists /ppt/embeddings/ on the strength of
+        // this very emit path. Carry the workbook (base64) with its pinned rId
+        // via add-part chartembed: the replay side re-attaches the part and
+        // re-wires externalData into the rebuilt chartSpace. Sibling of the
+        // chartstyle / chartimage carriers above; its reference side mirrors
+        // the package branch of WordHandler.AttachChartSidecars.
+        if (slideOrdM.Success)
+        {
+            IReadOnlyList<(string RelId, string ContentType, string Base64Data)> embeddedParts;
+            try { embeddedParts = ppt.GetChartEmbeddedParts(int.Parse(slideOrdM.Groups[1].Value), chartOrdinal); }
+            catch { embeddedParts = Array.Empty<(string, string, string)>(); }
+            foreach (var ep in embeddedParts)
+            {
+                items.Add(new BatchItem
+                {
+                    Command = "add-part",
+                    Parent = parentSlidePath,
+                    Type = "chartembed",
+                    Props = new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["chart"] = chartOrdinal.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        ["rid"] = ep.RelId,
+                        ["content-type"] = ep.ContentType,
+                        ["data"] = ep.Base64Data,
+                    },
+                });
+            }
+        }
+
         // Axis-role round-trip. EmitChart's add row covers chart-level axis
         // shortcuts (axismin/axismax/axistitle) that only target the primary
         // value axis — for any per-role override (especially role=value2 on a
