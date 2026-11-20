@@ -921,7 +921,9 @@ public partial class PowerPointHandler
     /// <summary>
     /// Resolve the text vertical anchor (<a:bodyPr anchor="…">) for a placeholder
     /// shape whose own bodyPr declares no anchor, walking the layout then master
-    /// matching placeholder (same ph type/idx matching as ResolveInheritedPosition).
+    /// matching placeholder — the slide→layout edge by idx, the layout→master
+    /// edge by type (MatchesMasterSlot: the master numbers its placeholders
+    /// independently of the layout).
     /// Returns the first ancestor bodyPr that carries an anchor attribute
     /// ("t" | "ctr" | "b"), or null if none specify one.
     /// </summary>
@@ -937,7 +939,7 @@ public partial class PowerPointHandler
         var layoutShapeTree = slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.ShapeTree;
         var masterShapeTree = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.ShapeTree;
 
-        foreach (var tree in new[] { layoutShapeTree, masterShapeTree })
+        foreach (var (tree, toMaster) in new[] { (layoutShapeTree, false), (masterShapeTree, true) })
         {
             if (tree == null) continue;
             foreach (var candidate in tree.Elements<Shape>())
@@ -945,7 +947,10 @@ public partial class PowerPointHandler
                 var candidatePh = candidate.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
                     ?.GetFirstChild<PlaceholderShape>();
                 if (candidatePh == null) continue;
-                if (!SlideComposition.PlaceholderMatches(ph, candidatePh)) continue;
+                if (!(toMaster
+                        ? SlideComposition.MatchesMasterSlot(ph, candidatePh)
+                        : SlideComposition.PlaceholderMatches(ph, candidatePh)))
+                    continue;
 
                 var candBodyPr = candidate.TextBody?.Elements<Drawing.BodyProperties>().FirstOrDefault();
                 if (candBodyPr?.Anchor?.HasValue == true)
@@ -1081,7 +1086,7 @@ public partial class PowerPointHandler
             var layoutTree = slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.ShapeTree;
             var masterTree = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.ShapeTree;
 
-            foreach (var tree in new[] { layoutTree, masterTree })
+            foreach (var (tree, toMaster) in new[] { (layoutTree, false), (masterTree, true) })
             {
                 if (tree == null) continue;
                 foreach (var candidate in tree.Elements<Shape>())
@@ -1089,7 +1094,10 @@ public partial class PowerPointHandler
                     var cPh = candidate.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
                         ?.GetFirstChild<PlaceholderShape>();
                     if (cPh == null) continue;
-                    if (!SlideComposition.PlaceholderMatches(ph, cPh)) continue;
+                    if (!(toMaster
+                            ? SlideComposition.MatchesMasterSlot(ph, cPh)
+                            : SlideComposition.PlaceholderMatches(ph, cPh)))
+                        continue;
 
                     // Check candidate's list style at the correct level
                     var cLstStyle = candidate.TextBody?.GetFirstChild<Drawing.ListStyle>();
@@ -1201,7 +1209,7 @@ public partial class PowerPointHandler
         {
             var layoutTree = slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData?.ShapeTree;
             var masterTree = slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData?.ShapeTree;
-            foreach (var tree in new[] { layoutTree, masterTree })
+            foreach (var (tree, toMaster) in new[] { (layoutTree, false), (masterTree, true) })
             {
                 if (tree == null) continue;
                 foreach (var candidate in tree.Elements<Shape>())
@@ -1209,7 +1217,10 @@ public partial class PowerPointHandler
                     var cPh = candidate.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties
                         ?.GetFirstChild<PlaceholderShape>();
                     if (cPh == null) continue;
-                    if (!SlideComposition.PlaceholderMatches(ph, cPh)) continue;
+                    if (!(toMaster
+                            ? SlideComposition.MatchesMasterSlot(ph, cPh)
+                            : SlideComposition.PlaceholderMatches(ph, cPh)))
+                        continue;
                     var cLstStyle = candidate.TextBody?.GetFirstChild<Drawing.ListStyle>();
                     if (GetLevelPpr(cLstStyle, level) is { } cppr && match(cppr)) return cppr;
                 }
