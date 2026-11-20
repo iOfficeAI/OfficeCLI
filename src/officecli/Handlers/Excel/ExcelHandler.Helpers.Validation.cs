@@ -365,6 +365,26 @@ public partial class ExcelHandler
                 $"Cross-workbook references like '{formula}' require an externalLinks part which officecli doesn't expose; use raw-set for this case");
     }
 
+    // A `type=list` source is either an inline CSV or a reference. A reference
+    // is recognised by the shape of the whole value: an optional sheet
+    // qualifier, then a cell, a cell range, a whole column/row range, or a
+    // sheet-qualified defined name. A reference never contains a comma, which
+    // is what separates it from the CSV form.
+    private static readonly System.Text.RegularExpressions.Regex ValidationListReferencePattern =
+        new(@"^(?:(?:'(?:[^']|'')+'|[A-Za-z_][A-Za-z0-9_.]*)!)?" +
+            @"(?:\$?[A-Za-z]{1,3}\$?[0-9]{1,7}(?::\$?[A-Za-z]{1,3}\$?[0-9]{1,7})?" +
+            @"|\$?[A-Za-z]{1,3}:\$?[A-Za-z]{1,3}" +
+            @"|\$?[0-9]{1,7}:\$?[0-9]{1,7})$",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex ValidationListQualifiedNamePattern =
+        new(@"^(?:'(?:[^']|'')+'|[A-Za-z_][A-Za-z0-9_.]*)![A-Za-z_\\][A-Za-z0-9_.]*$",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static bool IsValidationListReference(string value)
+        => ValidationListReferencePattern.IsMatch(value)
+        || ValidationListQualifiedNamePattern.IsMatch(value);
+
     // Normalize user-supplied data-validation formula values so Excel accepts
     // them. `type=list` auto-quotes bare lists. `type=time` accepts HH:MM /
     // HH:MM:SS and converts to the Excel time serial fraction. `type=date`
@@ -383,7 +403,14 @@ public partial class ExcelHandler
             // pass through without quoting.
             if (value.StartsWith("="))
                 return value.Substring(1);
-            if (value.StartsWith("\"") || value.Contains("!") || value.Contains(":"))
+            if (value.StartsWith("\""))
+                return value;
+            // A reference and an inline CSV are told apart by the whole value's
+            // shape, not by scanning for a character. A literal entry is allowed
+            // to contain `!` or `:` (e.g. `Ziel:Nord,Ziel,Sued`,
+            // `x!y,WEBSERVICE(A1)`); quoting it is what stops Excel from reading
+            // the entry as a reference or a formula.
+            if (IsValidationListReference(value))
                 return value;
             if (value.Contains(','))
                 return $"\"{value}\"";
