@@ -102,6 +102,14 @@ internal class BatchItemConverter : JsonConverter<BatchItem>
                 case "mode": item.Mode = reader.GetString(); break;
                 case "compact": item.Compact = reader.TokenType == JsonTokenType.Null ? null : reader.GetBoolean(); break;
                 case "fields": item.Fields = reader.GetString(); break;
+                // The CLI spells it --max-lines; accept the unhyphenated
+                // spelling too, the way "op" and "command" are both accepted.
+                case "max-lines":
+                case "maxlines": item.MaxLines = reader.TokenType == JsonTokenType.Null ? null : reader.GetInt32(); break;
+                case "start": item.Start = reader.TokenType == JsonTokenType.Null ? null : reader.GetInt32(); break;
+                case "end": item.End = reader.TokenType == JsonTokenType.Null ? null : reader.GetInt32(); break;
+                case "cols": item.Cols = reader.GetString(); break;
+                case "range": item.Range = reader.GetString(); break;
                 case "depth": item.Depth = reader.TokenType == JsonTokenType.Null ? null : reader.GetInt32(); break;
                 case "part": item.Part = reader.GetString(); break;
                 case "xpath": item.Xpath = reader.GetString(); break;
@@ -133,6 +141,11 @@ internal class BatchItemConverter : JsonConverter<BatchItem>
         if (value.Mode != null) writer.WriteString("mode", value.Mode);
         if (value.Compact.HasValue) writer.WriteBoolean("compact", value.Compact.Value);
         if (value.Fields != null) writer.WriteString("fields", value.Fields);
+        if (value.Start.HasValue) writer.WriteNumber("start", value.Start.Value);
+        if (value.End.HasValue) writer.WriteNumber("end", value.End.Value);
+        if (value.MaxLines.HasValue) writer.WriteNumber("max-lines", value.MaxLines.Value);
+        if (value.Cols != null) writer.WriteString("cols", value.Cols);
+        if (value.Range != null) writer.WriteString("range", value.Range);
         if (value.Depth.HasValue) writer.WriteNumber("depth", value.Depth.Value);
         if (value.Part != null) writer.WriteString("part", value.Part);
         if (value.Xpath != null) writer.WriteString("xpath", value.Xpath);
@@ -180,6 +193,19 @@ public class BatchItem
     // PR #286 (an `options` object) for the shape that discussion is heading.
     public bool? Compact { get; set; }
     public string? Fields { get; set; }
+    // The `view` half of the same rule, mirroring `view text --start/--end/
+    // --max-lines/--cols/--range` — the options that keep a large document's
+    // text output small ("saving context on large sheets"). The standalone
+    // command and the resident both already take all five and hand them to the
+    // same handler method (`ViewAsText` / `ViewAsAnnotated`); only the batch
+    // item had no way to pass them, so a batch-only caller was stuck with the
+    // unbounded view. They are `view` options, not general read options:
+    // `query` takes `compact`/`fields` above, `get` takes `path`/`depth` only.
+    public int? Start { get; set; }
+    public int? End { get; set; }
+    public int? MaxLines { get; set; }
+    public string? Cols { get; set; }
+    public string? Range { get; set; }
     public int? Depth { get; set; }
     public string? Part { get; set; }
     public string? Xpath { get; set; }
@@ -198,7 +224,8 @@ public class BatchItem
     internal static readonly HashSet<string> KnownFields = new(StringComparer.OrdinalIgnoreCase)
     {
         "command", "op", "path", "parent", "type", "from", "index", "after", "before", "to", "path2",
-        "props", "selector", "text", "mode", "compact", "fields", "depth", "part", "xpath", "action", "xml", "dumpversion"
+        "props", "selector", "text", "mode", "compact", "fields", "depth", "part", "xpath", "action", "xml", "dumpversion",
+        "start", "end", "max-lines", "maxlines", "cols", "range"
     };
 
     public ResidentRequest ToResidentRequest()
@@ -219,6 +246,15 @@ public class BatchItem
         if (Mode != null) req.Args["mode"] = Mode;
         if (Compact == true) req.Args["compact"] = "true";
         if (Fields != null) req.Args["fields"] = Fields;
+        // The resident already reads all five (GetIntArg "start"/"end"/
+        // "max-lines", GetCols "cols", GetArgOrNull "range") for the standalone
+        // command, so routing them through the request is what makes the batch
+        // item and the single command answer the same way on both paths.
+        if (Start.HasValue) req.Args["start"] = Start.Value.ToString();
+        if (End.HasValue) req.Args["end"] = End.Value.ToString();
+        if (MaxLines.HasValue) req.Args["max-lines"] = MaxLines.Value.ToString();
+        if (Cols != null) req.Args["cols"] = Cols;
+        if (Range != null) req.Args["range"] = Range;
         if (Depth.HasValue) req.Args["depth"] = Depth.Value.ToString();
         if (Part != null) req.Args["part"] = Part;
         if (Xpath != null) req.Args["xpath"] = Xpath;
