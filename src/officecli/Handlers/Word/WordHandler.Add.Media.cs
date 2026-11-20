@@ -59,6 +59,8 @@ public partial class WordHandler
         // Extended chart types (cx:chart) — funnel, treemap, sunburst, boxWhisker, histogram
         if (Core.ChartExBuilder.IsExtendedChartType(chartType))
         {
+            if (Core.SchemaKeyNormalizer.Normalize(chartType) == "pareto")
+                (categories, seriesData) = Core.ChartExBuilder.PreparePareto(categories, seriesData);
             var cxChartSpace = Core.ChartExBuilder.BuildExtendedChartSpace(
                 chartType, chartTitle, categories, seriesData, properties);
             var extChartPart = chartMainPart.AddNewPart<ExtendedChartPart>();
