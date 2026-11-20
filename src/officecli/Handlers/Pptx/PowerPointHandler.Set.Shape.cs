@@ -243,17 +243,8 @@ public partial class PowerPointHandler
                 .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
         }
 
-        // Order keys so `text` is processed BEFORE run-style props (size /
-        // color / font.* / bold / italic / ...). The text branch in
-        // SetRunOrShapeProperties rebuilds the shape's paragraphs from
-        // scratch whenever the original run count was 0 (empty placeholder)
-        // or the new text contains newlines / tabs — every Drawing.Run
-        // already mutated by an earlier key in the iteration order is then
-        // detached from the tree, and the styling silently disappears. The
-        // post-text refresh below repairs the case where text comes first or
-        // is interleaved with later keys; reordering up-front guarantees the
-        // common dump→replay pattern ("set paragraph text=X, size=48pt,
-        // color=#FFFFFF") lands the styling on the new runs.
+        // `text` goes first: it replaces the paragraph's runs, and styling keys
+        // (size / color / bold / ...) must land on the new ones.
         var orderedKeys = properties.Keys
             .OrderBy(k => k.Equals("text", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
             .ToList();
@@ -432,34 +423,18 @@ public partial class PowerPointHandler
                     ApplyParagraphBreakProp(pProps, key, value);
                     break;
                 }
+                case "text":
+                {
+                    SetParagraphText(shape, para, value);
+                    paraRuns = para.Elements<Drawing.Run>().ToList();
+                    break;
+                }
                 default:
                     // Apply run-level properties to all runs in this paragraph
                     var runUnsup = SetRunOrShapeProperties(
                         new Dictionary<string, string> { { key, value } }, paraRuns, shape, slidePart, runContext: true,
                         unsupportedContextHint: ParagraphPropsHint);
                     unsupported.AddRange(runUnsup);
-                    // The `text` case in SetRunOrShapeProperties rebuilds the
-                    // shape's paragraphs from scratch when the original run
-                    // count was 0 (empty placeholder) or when the new text
-                    // spans multiple lines / contains tabs — in either case
-                    // every Drawing.Run captured in paraRuns is detached from
-                    // the tree and any subsequent property write lands on
-                    // orphaned XML. Refresh paraRuns against the live shape
-                    // so the very next key (size / color / font.latin / ...)
-                    // hits the new run instances. Re-resolve via paraIdx so
-                    // dump→replay of an empty title placeholder ("set para
-                    // text=X, size=48pt, color=#FFF") keeps the rPr on the
-                    // run instead of dropping every styling key after text.
-                    if (key.Equals("text", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var refreshed = shape.TextBody?.Elements<Drawing.Paragraph>().ToList()
-                            ?? new List<Drawing.Paragraph>();
-                        if (paraIdx >= 1 && paraIdx <= refreshed.Count)
-                        {
-                            para = refreshed[PathIndex.ToArrayIndex(paraIdx)];
-                            paraRuns = para.Elements<Drawing.Run>().ToList();
-                        }
-                    }
                     break;
             }
         }
@@ -469,6 +444,42 @@ public partial class PowerPointHandler
     }
 
 
+
+    // Replaces only this paragraph; the shape-level rebuild in
+    // SetRunOrShapeProperties would drop its siblings.
+    private static void SetParagraphText(Shape shape, Drawing.Paragraph para, string value)
+    {
+        XmlTextValidator.ValidateOrThrow(value, "text", allowSoftBreakChar: true);
+        var lines = value.Split('\n');
+        var runs = para.Elements<Drawing.Run>().ToList();
+        if (runs.Count == 1 && lines.Length == 1 && !lines[0].Contains('\t'))
+        {
+            runs[0].Text = MakePreservingText(lines[0]);
+            return;
+        }
+
+        var runProps = (runs.FirstOrDefault() ?? shape.TextBody?.Descendants<Drawing.Run>().FirstOrDefault())?.RunProperties;
+        Drawing.Run MakeRun(string seg) => new Drawing.Run
+        {
+            RunProperties = runProps?.CloneNode(true) as Drawing.RunProperties,
+            Text = MakePreservingText(seg),
+        };
+
+        // endParaRPr must stay the last child.
+        var endRPr = para.GetFirstChild<Drawing.EndParagraphRunProperties>();
+        foreach (var child in para.ChildElements.Where(c => c is not Drawing.ParagraphProperties).ToList())
+            child.Remove();
+        AppendLineWithTabs(para, lines[0], MakeRun);
+        if (endRPr != null) para.Append(endRPr);
+
+        OpenXmlElement anchor = para;
+        foreach (var line in lines.Skip(1))
+        {
+            var extra = new Drawing.Paragraph { ParagraphProperties = para.ParagraphProperties?.CloneNode(true) as Drawing.ParagraphProperties };
+            AppendLineWithTabs(extra, line, MakeRun);
+            anchor = anchor.InsertAfterSelf(extra);
+        }
+    }
 
     private List<string> SetPlaceholderByPath(Match phMatch, Dictionary<string, string> properties)
     {
