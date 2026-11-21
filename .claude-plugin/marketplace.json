@@ -1,0 +1,15 @@
+{
+  "name": "officecli",
+  "owner": {
+    "name": "iOfficeAI",
+    "url": "https://github.com/iOfficeAI"
+  },
+  "description": "OfficeCLI agent skills for Word, Excel, and PowerPoint",
+  "plugins": [
+    {
+      "name": "officecli",
+      "source": "./",
+      "description": "Give any AI agent full control over Word, Excel, and PowerPoint — create, analyze, and modify .docx, .xlsx, and .pptx with a single OfficeCLI binary."
+    }
+  ]
+}

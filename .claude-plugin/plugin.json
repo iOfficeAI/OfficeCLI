@@ -1,0 +1,25 @@
+{
+  "name": "officecli",
+  "version": "1.0.163",
+  "description": "Give any AI agent full control over Word, Excel, and PowerPoint — create, analyze, and modify .docx, .xlsx, and .pptx with a single OfficeCLI binary.",
+  "author": {
+    "name": "iOfficeAI",
+    "url": "https://github.com/iOfficeAI"
+  },
+  "homepage": "https://officecli.ai",
+  "repository": "https://github.com/iOfficeAI/OfficeCLI",
+  "license": "Apache-2.0",
+  "keywords": [
+    "office",
+    "docx",
+    "xlsx",
+    "pptx",
+    "word",
+    "excel",
+    "powerpoint",
+    "ooxml",
+    "cli",
+    "agent-skills"
+  ],
+  "skills": "./skills/"
+}
