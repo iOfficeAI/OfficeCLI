@@ -72,6 +72,22 @@ curl -fsSL https://officecli.ai/SKILL.md
 
 That's it. The skill file teaches the agent how to install the binary and use all commands.
 
+### Install as an agent plugin
+
+This repo ships an agent-agnostic marketplace at [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json) that exposes the skills under `skills/`.
+
+```bash
+# Codex
+codex plugin marketplace add iOfficeAI/OfficeCLI
+codex plugin add officecli@officecli
+
+# Claude Code
+/plugin marketplace add iOfficeAI/OfficeCLI
+/plugin install officecli@officecli
+```
+
+Local checkout: `codex plugin marketplace add /path/to/OfficeCLI`.
+
 ## For Humans
 
 **Option A — GUI:** Install [**AionUi**](https://github.com/iOfficeAI/AionUi) — a desktop app that lets you create and edit Office documents through natural language, powered by OfficeCLI under the hood. Just describe what you want, and AionUi handles the rest.
