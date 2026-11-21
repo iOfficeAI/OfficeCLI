@@ -623,7 +623,15 @@ public partial class PowerPointHandler
                 var dashArr = DashTypeToSvgDasharray(dt, bw);
                 var dashAttr = !string.IsNullOrEmpty(dashArr) ? $" stroke-dasharray=\"{dashArr}\"" : "";
                 var linecap = CapToSvgLinecap(cap);
-                sb.Append($"<path d=\"{custGeomSvgStrokeD}\" fill=\"none\" stroke=\"{CssSanitizeColor(bc)}\" stroke-width=\"{bw:0.##}pt\" vector-effect=\"non-scaling-stroke\" stroke-linecap=\"{linecap}\" stroke-linejoin=\"{join}\"{dashAttr}/>");
+                // #637: a stroke-only custGeom path — what an SVG-to-PPTX exporter writes for
+                // a straight arrow — carries <a:headEnd>/<a:tailEnd> in its <a:ln>, exactly as
+                // a connector does. This overlay emitted fill and stroke and stopped there, so
+                // the arrowhead never appeared. Route the ends through the same marker builder
+                // the connector renderer uses, keeping ids unique across both.
+                var markerDefs = BuildArrowMarkers(outline, CssSanitizeColor(bc), out var markerStartAttr, out var markerEndAttr);
+                if (!string.IsNullOrEmpty(markerDefs))
+                    sb.Append(markerDefs);
+                sb.Append($"<path d=\"{custGeomSvgStrokeD}\" fill=\"none\" stroke=\"{CssSanitizeColor(bc)}\" stroke-width=\"{bw:0.##}pt\" vector-effect=\"non-scaling-stroke\" stroke-linecap=\"{linecap}\" stroke-linejoin=\"{join}\"{dashAttr}{markerStartAttr}{markerEndAttr}/>");
             }
             sb.Append("</svg>");
         }
@@ -1965,75 +1973,11 @@ public partial class PowerPointHandler
             }
         }
 
-        // Arrow markers
-        var headEnd = outline?.GetFirstChild<Drawing.HeadEnd>();
-        var tailEnd = outline?.GetFirstChild<Drawing.TailEnd>();
-        var hasHead = headEnd?.Type?.HasValue == true && headEnd.Type.InnerText != "none";
-        var hasTail = tailEnd?.Type?.HasValue == true && tailEnd.Type.InnerText != "none";
-        var markerDefs = "";
-        var markerStartAttr = "";
-        var markerEndAttr = "";
+        // Arrow markers — built by the shared helper so the stroke-only custGeom overlay
+        // in RenderShape draws its head/tail the same way a connector does (#637).
+        // safeColor stays declared here: the stroke paint below reuses it.
         var safeColor = CssSanitizeColor(lineColor);
-
-        if (hasHead || hasTail)
-        {
-            // R37-A: marker dimensions are in strokeWidth units (SVG default
-            // markerUnits="strokeWidth"), so the rendered arrowhead size is
-            // markerWidth × strokeWidth. The base must therefore be a SMALL CONSTANT
-            // (NOT multiplied by lineWidth) — otherwise the effective size grows as
-            // O(lineWidth²). A "med" triangle in PowerPoint is ~3-4.5× the stroke width,
-            // so base ≈ 4 gives the right proportion and scales LINEARLY with the line.
-            var baseArrowSize = 4.0;
-            // R4-5: scale the marker by the head/tail @w / @len size enum
-            // (sm/med/lg) so a large arrowhead renders visibly bigger than the
-            // default; previously arrowSize was uniform and ignored @w/@len.
-            // ST_LineEndWidth/Length default is "med" → ×1.0.
-            static double TokenScale(string? s) => s switch { "sm" => 0.6, "lg" => 1.6, _ => 1.0 };
-            // @w (ST_LineEndWidth) = arrowhead width PERPENDICULAR to the line;
-            // @len (ST_LineEndLength) = arrowhead length ALONG the line. They are
-            // independent — a "w=lg len=sm" head is wide but short. Return both
-            // scales so the marker can be a rectangle, not a Math.Max square.
-            static (double lenScale, double wScale) ArrowSizeScales(OpenXmlElement? end)
-            {
-                if (end == null) return (1.0, 1.0);
-                var attrs = end.GetAttributes();
-                var w = attrs.FirstOrDefault(a => a.LocalName == "w").Value;
-                var l = attrs.FirstOrDefault(a => a.LocalName == "len").Value;
-                return (TokenScale(l), TokenScale(w));
-            }
-            var (headLenScale, headWScale) = ArrowSizeScales(headEnd);
-            var (tailLenScale, tailWScale) = ArrowSizeScales(tailEnd);
-            var headLen = baseArrowSize * headLenScale;
-            var headW = baseArrowSize * headWScale;
-            var tailLen = baseArrowSize * tailLenScale;
-            var tailW = baseArrowSize * tailWScale;
-            var defs = new StringBuilder();
-            defs.Append("<defs>");
-            // BUG1(marker-id-collision): marker ids are document-global in HTML even when each
-            // marker sits in its own <svg>. A fixed id ("ah"/"at") makes every line's
-            // marker-end="url(#at)" resolve to the FIRST line's marker, so all arrowheads
-            // inherit the first line's color. Use a per-render counter to make each marker id
-            // unique so each line references its own correctly-colored marker.
-            var markerSeq = _markerCounter++;
-            // BUG2(marker-shape): emit the correct geometry per head/tail type (triangle,
-            // diamond/rhombus, oval/circle, stealth/notched) instead of always a triangle.
-            // For marker-start we use orient="auto-start-reverse" so SVG flips the right-pointing
-            // geometry to point outward (leftward) at the line's start.
-            if (hasHead)
-            {
-                var hid = $"ah{markerSeq}";
-                defs.Append($"<marker id=\"{hid}\" markerWidth=\"{headLen:0.#}\" markerHeight=\"{headW:0.#}\" refX=\"{headLen:0.#}\" refY=\"{headW / 2:0.#}\" orient=\"auto-start-reverse\">{ArrowMarkerGeometry(headEnd!.Type!.InnerText ?? "triangle", headLen, headW, safeColor)}</marker>");
-                markerStartAttr = $" marker-start=\"url(#{hid})\"";
-            }
-            if (hasTail)
-            {
-                var tid = $"at{markerSeq}";
-                defs.Append($"<marker id=\"{tid}\" markerWidth=\"{tailLen:0.#}\" markerHeight=\"{tailW:0.#}\" refX=\"{tailLen:0.#}\" refY=\"{tailW / 2:0.#}\" orient=\"auto\">{ArrowMarkerGeometry(tailEnd!.Type!.InnerText ?? "triangle", tailLen, tailW, safeColor)}</marker>");
-                markerEndAttr = $" marker-end=\"url(#{tid})\"";
-            }
-            defs.Append("</defs>");
-            markerDefs = defs.ToString();
-        }
+        var markerDefs = BuildArrowMarkers(outline, safeColor, out var markerStartAttr, out var markerEndAttr);
 
         // Branch on preset geometry: straightConnectorN -> line; bentConnectorN -> polyline;
         // curvedConnectorN -> cubic bezier path. Falls back to straight line for unknown presets.
@@ -2687,6 +2631,80 @@ public partial class PowerPointHandler
     // Per-render counter ensuring each line's arrowhead marker gets a globally-unique
     // HTML id (markers share the document id-space across separate <svg> elements).
     private static int _markerCounter;
+
+    // Build the <defs> marker block for a line's <a:headEnd>/<a:tailEnd> plus the two
+    // attributes that reference them. Shared by the connector renderer and the
+    // stroke-only custGeom overlay in RenderShape: both read the same <a:ln> children,
+    // so both must draw the arrowhead the same way (#637). Returns "" and empty
+    // attributes when the line carries no head/tail end.
+    private static string BuildArrowMarkers(OpenXmlElement? outline, string markerColor,
+        out string markerStartAttr, out string markerEndAttr)
+    {
+        markerStartAttr = "";
+        markerEndAttr = "";
+        var headEnd = outline?.GetFirstChild<Drawing.HeadEnd>();
+        var tailEnd = outline?.GetFirstChild<Drawing.TailEnd>();
+        var hasHead = headEnd?.Type?.HasValue == true && headEnd.Type.InnerText != "none";
+        var hasTail = tailEnd?.Type?.HasValue == true && tailEnd.Type.InnerText != "none";
+        if (!hasHead && !hasTail) return "";
+
+        // R37-A: marker dimensions are in strokeWidth units (SVG default
+        // markerUnits="strokeWidth"), so the rendered arrowhead size is
+        // markerWidth × strokeWidth. The base must therefore be a SMALL CONSTANT
+        // (NOT multiplied by lineWidth) — otherwise the effective size grows as
+        // O(lineWidth²). A "med" triangle in PowerPoint is ~3-4.5× the stroke width,
+        // so base ≈ 4 gives the right proportion and scales LINEARLY with the line.
+        var baseArrowSize = 4.0;
+        // R4-5: scale the marker by the head/tail @w / @len size enum
+        // (sm/med/lg) so a large arrowhead renders visibly bigger than the
+        // default; previously arrowSize was uniform and ignored @w/@len.
+        // ST_LineEndWidth/Length default is "med" → ×1.0.
+        static double TokenScale(string? s) => s switch { "sm" => 0.6, "lg" => 1.6, _ => 1.0 };
+        // @w (ST_LineEndWidth) = arrowhead width PERPENDICULAR to the line;
+        // @len (ST_LineEndLength) = arrowhead length ALONG the line. They are
+        // independent — a "w=lg len=sm" head is wide but short. Return both
+        // scales so the marker can be a rectangle, not a Math.Max square.
+        static (double lenScale, double wScale) ArrowSizeScales(OpenXmlElement? end)
+        {
+            if (end == null) return (1.0, 1.0);
+            var attrs = end.GetAttributes();
+            var w = attrs.FirstOrDefault(a => a.LocalName == "w").Value;
+            var l = attrs.FirstOrDefault(a => a.LocalName == "len").Value;
+            return (TokenScale(l), TokenScale(w));
+        }
+        var (headLenScale, headWScale) = ArrowSizeScales(headEnd);
+        var (tailLenScale, tailWScale) = ArrowSizeScales(tailEnd);
+        var headLen = baseArrowSize * headLenScale;
+        var headW = baseArrowSize * headWScale;
+        var tailLen = baseArrowSize * tailLenScale;
+        var tailW = baseArrowSize * tailWScale;
+        var defs = new StringBuilder();
+        defs.Append("<defs>");
+        // BUG1(marker-id-collision): marker ids are document-global in HTML even when each
+        // marker sits in its own <svg>. A fixed id ("ah"/"at") makes every line's
+        // marker-end="url(#at)" resolve to the FIRST line's marker, so all arrowheads
+        // inherit the first line's color. Use a per-render counter to make each marker id
+        // unique so each line references its own correctly-colored marker.
+        var markerSeq = _markerCounter++;
+        // BUG2(marker-shape): emit the correct geometry per head/tail type (triangle,
+        // diamond/rhombus, oval/circle, stealth/notched) instead of always a triangle.
+        // For marker-start we use orient="auto-start-reverse" so SVG flips the right-pointing
+        // geometry to point outward (leftward) at the line's start.
+        if (hasHead)
+        {
+            var hid = $"ah{markerSeq}";
+            defs.Append($"<marker id=\"{hid}\" markerWidth=\"{headLen:0.#}\" markerHeight=\"{headW:0.#}\" refX=\"{headLen:0.#}\" refY=\"{headW / 2:0.#}\" orient=\"auto-start-reverse\">{ArrowMarkerGeometry(headEnd!.Type!.InnerText ?? "triangle", headLen, headW, markerColor)}</marker>");
+            markerStartAttr = $" marker-start=\"url(#{hid})\"";
+        }
+        if (hasTail)
+        {
+            var tid = $"at{markerSeq}";
+            defs.Append($"<marker id=\"{tid}\" markerWidth=\"{tailLen:0.#}\" markerHeight=\"{tailW:0.#}\" refX=\"{tailLen:0.#}\" refY=\"{tailW / 2:0.#}\" orient=\"auto\">{ArrowMarkerGeometry(tailEnd!.Type!.InnerText ?? "triangle", tailLen, tailW, markerColor)}</marker>");
+            markerEndAttr = $" marker-end=\"url(#{tid})\"";
+        }
+        defs.Append("</defs>");
+        return defs.ToString();
+    }
 
     // Build the SVG geometry for an arrowhead marker of the given OOXML end type.
     // Coordinate space: 0..len along the line (x), 0..width perpendicular (y); line
