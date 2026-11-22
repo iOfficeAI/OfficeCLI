@@ -50,6 +50,26 @@ public static class DumpReaderInvoker
         // round-trip dumps from `officecli dump` do exactly that.
         BlankDocCreator.Create(tmpOut, locale: null, minimal: true);
 
+        // §5.1: `--media-dir` is the one place a dump-reader is allowed to put
+        // transient files — extracted images, typically — that its streamed
+        // commands reference by path. Create it and pass it, so the option the
+        // protocol documents is actually delivered. The option stays optional:
+        // when the directory cannot be created the flag is left off and the
+        // plugin falls back to §10.2's "temp files the plugin owns".
+        // Cleanup is deferred to the finally below rather than to the end of
+        // the plugin process, because main replays the streamed commands only
+        // after the plugin has exited — the images must outlive it.
+        string? mediaDir = null;
+        try
+        {
+            mediaDir = Path.Combine(Path.GetTempPath(), $"officecli-dumpread-media-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(mediaDir);
+        }
+        catch
+        {
+            mediaDir = null;
+        }
+
         int itemIndex = 0;
         Exception? replayError = null;
 
@@ -99,7 +119,9 @@ public static class DumpReaderInvoker
             var result = PluginProcess.Run(new PluginProcess.RunOptions
             {
                 ExecutablePath = plugin.ExecutablePath,
-                Arguments = new[] { "dump", sourceFullPath },
+                Arguments = mediaDir is null
+                    ? new[] { "dump", sourceFullPath }
+                    : new[] { "dump", sourceFullPath, "--media-dir", mediaDir },
                 IdleTimeoutSeconds = idle,
                 OnStdoutLine = OnLine,
             });
@@ -197,6 +219,12 @@ public static class DumpReaderInvoker
         }
         finally
         {
+            // Replay is over, so nothing can reference the plugin's transient
+            // files any more: remove them rather than leaving them to OS tmp
+            // cleanup. Placed first so the no-output throw below cannot skip it.
+            if (mediaDir is not null)
+                try { Directory.Delete(mediaDir, recursive: true); } catch { }
+
             // If we threw, the tmp file is already cleaned up above. If we
             // succeeded, the caller takes ownership. Either way, leave nothing
             // dangling on disk.
