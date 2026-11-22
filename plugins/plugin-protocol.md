@@ -313,7 +313,9 @@ Beyond `--info`, each kind has its own subcommand surface.
 
 - `<source-file>`: absolute path to the file to read
 - `--media-dir`: optional scratch directory the plugin may use for transient
-  files (e.g. extracted images referenced by command paths)
+  files (e.g. extracted images referenced by command paths). Main creates one
+  and passes it when it can; the directory is removed once main has finished
+  replaying the plugin's commands, so a plugin must not expect it to persist.
 
 Main sets the `OFFICECLI_BIN` environment variable to the path of the running
 officecli binary, so plugins that produce an intermediate `.docx` (e.g. via an
