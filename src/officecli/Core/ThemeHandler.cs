@@ -141,6 +141,25 @@ internal static class ThemeHandler
 
     // ==================== Color Slot Helpers ====================
 
+    /// <summary>
+    /// Read a color-scheme slot (accent1…accent6, dk1/lt1…) as raw hex.
+    /// Used by handlers that derive styling from the workbook theme (xlsx
+    /// stylepreset accents) — the read half of TrySetTheme's write half.
+    /// Returns null when the part/slot is missing or the slot carries no
+    /// resolvable RGB.
+    /// </summary>
+    public static string? TryReadColorSlot(DocumentFormat.OpenXml.Packaging.ThemePart? themePart, string slotName)
+    {
+        var colorScheme = themePart?.Theme?.ThemeElements?.ColorScheme;
+        if (colorScheme == null) return null;
+        foreach (var (key, getter, _) in ColorSlots)
+        {
+            if (!key.Equals(slotName, StringComparison.OrdinalIgnoreCase)) continue;
+            return ReadColorSlot(getter(colorScheme));
+        }
+        return null;
+    }
+
     private static string? ReadColorSlot(A.Color2Type? slot)
     {
         if (slot == null) return null;
