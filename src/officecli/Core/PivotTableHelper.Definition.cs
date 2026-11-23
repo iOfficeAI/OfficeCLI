@@ -1342,7 +1342,7 @@ internal static partial class PivotTableHelper
             Field = (uint)filterFieldIdx,
             Type = filterType,
             EvaluationOrder = -1,
-            Id = 1U,
+            Id = filters.Elements<PivotFilter>().Select(f => f.Id?.Value ?? 0U).DefaultIfEmpty(0U).Max() + 1U,
             StringValue1 = needle
         };
         var autoFilter = new AutoFilter { Reference = "A1" };
@@ -1421,7 +1421,7 @@ internal static partial class PivotTableHelper
             Field = (uint)outerFieldIdx,
             Type = PivotFilterValues.Count,
             EvaluationOrder = -1,
-            Id = 1U,
+            Id = filters.Elements<PivotFilter>().Select(f => f.Id?.Value ?? 0U).DefaultIfEmpty(0U).Max() + 1U,
             MeasureField = 0
         };
         var autoFilter = new AutoFilter { Reference = "A1" };
