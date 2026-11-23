@@ -200,6 +200,21 @@ officecli add deck.pptx / --type slide --prop title="Q4 Report"
 
 单一自包含可执行文件，.NET 运行时已内嵌 -- 无需安装任何依赖，无需管理运行时。
 
+**Linux 上仍需由系统提供 ICU。** .NET 通过 ICU 处理文化、日期与数字格式化，精简容器镜像可能不带它 --
+此时进程会在运行任何命令之前退出，报 `Couldn't find a valid ICU package installed on the system`。
+装上该包后，二进制照常运行：
+
+```bash
+# Alpine / musl 镜像 —— 对应 officecli-linux-alpine-x64 / -arm64
+apk add --no-cache icu-libs
+
+# Debian / Ubuntu 精简镜像 —— 对应 officecli-linux-x64 / -arm64
+apt-get update && apt-get install -y libicu72   # 包名随发行版而变：apt-cache search libicu
+```
+
+不想装 ICU 时可以设置 `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`：officecli 将以 .NET 的不变文化
+（invariant）模式启动，此时只有不变文化可用（[影响范围](https://aka.ms/GlobalizationInvariantMode)）。
+
 **一键安装：**
 
 ```bash
