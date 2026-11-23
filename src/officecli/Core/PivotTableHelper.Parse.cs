@@ -555,27 +555,22 @@ internal static partial class PivotTableHelper
     }
 
     /// <summary>
-    /// Aggregate a bag of numeric values using the given subtotal function.
-    /// Matches the ScDPAggData semantics:
-    ///   sum / product / min / max / count : trivial
-    ///   countNums : count of numeric entries (identical to count here because
-    ///     the caller only places parsed numerics into the bag)
-    ///   average : arithmetic mean
-    ///   stdDev  : sample std-dev  (sqrt(Σ(x-μ)²/(n-1))), requires n≥2
-    ///   stdDevp : population std-dev (sqrt(Σ(x-μ)²/n)), requires n≥1
-    ///   var     : sample variance (Σ(x-μ)²/(n-1)), requires n≥2
-    ///   varp    : population variance (Σ(x-μ)²/n), requires n≥1
-    /// Returns 0 for empty input and for stdDev/var when n&lt;2, matching the
-    /// existing 0-on-empty convention that the rest of the renderer assumes.
+    /// Count non-empty source values for count; use numeric values for other functions.
     /// </summary>
-    private static double ReducePivotValues(IEnumerable<double> values, string func)
+    private static double ReducePivotValues(IEnumerable<string> values, string func)
     {
-        var arr = values as double[] ?? values.ToArray();
+        var raw = values as string[] ?? values.ToArray();
+        if (func.Equals("count", StringComparison.OrdinalIgnoreCase))
+            return raw.Count(v => !string.IsNullOrEmpty(v));
+        var numbers = new List<double>();
+        foreach (var value in raw)
+            if (NumericText.TryParse(value, out var number))
+                numbers.Add(number);
+        var arr = numbers.ToArray();
         if (arr.Length == 0) return 0;
         switch (func.ToLowerInvariant())
         {
             case "sum": return arr.Sum();
-            case "count": return arr.Length;
             case "countnums":
             case "countnum": return arr.Length;
             case "average":
