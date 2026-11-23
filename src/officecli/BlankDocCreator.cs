@@ -130,6 +130,7 @@ public static class BlankDocCreator
         stylesPart.Stylesheet.Save();
 
         OfficeCliMetadata.StampOnCreate(doc);
+        UseRelativePackageTargets(doc);
     }
 
     private static void CreateWord(string path, string? locale = null, bool minimal = false)
@@ -436,6 +437,28 @@ public static class BlankDocCreator
         mainPart.Document.Save();
 
         OfficeCliMetadata.StampOnCreate(doc);
+        UseRelativePackageTargets(doc);
+    }
+
+    /// <summary>
+    /// The Open XML SDK writes each package relationship target as an absolute
+    /// part name ("/word/document.xml"). Word, Excel and PowerPoint write it
+    /// relative to the package root ("word/document.xml"), and macOS TextEdit
+    /// and textutil cannot open a .docx whose main document target is absolute
+    /// ("The file isn't in the correct format"). Write the form Office writes.
+    /// </summary>
+    private static void UseRelativePackageTargets(OpenXmlPackage doc)
+    {
+#pragma warning disable OOXML0001
+        var relationships = DocumentFormat.OpenXml.Experimental.PackageExtensions.GetPackage(doc).Relationships;
+#pragma warning restore OOXML0001
+        foreach (var rel in relationships.ToList())
+        {
+            var target = rel.TargetUri.OriginalString;
+            if (rel.TargetMode != System.IO.Packaging.TargetMode.Internal || !target.StartsWith('/')) continue;
+            relationships.Remove(rel.Id);
+            relationships.Create(new Uri(target.TrimStart('/'), UriKind.Relative), rel.TargetMode, rel.RelationshipType, rel.Id);
+        }
     }
 
     /// <summary>
@@ -711,6 +734,7 @@ public static class BlankDocCreator
         presentationPart.Presentation.Save();
 
         OfficeCliMetadata.StampOnCreate(doc);
+        UseRelativePackageTargets(doc);
     }
 
     private static Shape CreateLayoutPlaceholder(uint id, string name, PlaceholderValues phType,
