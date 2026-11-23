@@ -11,6 +11,17 @@ namespace OfficeCli.Core;
 /// </summary>
 public static class WordPageDefaults
 {
+    internal static DocumentFormat.OpenXml.Wordprocessing.PageMargin CreatePageMargin() => new()
+    {
+        Top = 1440,
+        Bottom = 1440,
+        Left = 1800U,
+        Right = 1800U,
+        Header = 720U,
+        Footer = 720U,
+        Gutter = 0U
+    };
+
     // A4: 210mm × 297mm at 1440 twips/inch (= 567 twips/cm).
     public const uint A4WidthTwips = 11906;
     public const uint A4HeightTwips = 16838;

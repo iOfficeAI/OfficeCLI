@@ -1164,7 +1164,7 @@ public partial class WordHandler
         var margin = sectPr.GetFirstChild<PageMargin>();
         if (margin == null)
         {
-            margin = new PageMargin { Top = 1440, Bottom = 1440, Left = 1800, Right = 1800 };
+            margin = WordPageDefaults.CreatePageMargin();
             InsertSectPrChildInOrder(sectPr, margin);
         }
         return margin;

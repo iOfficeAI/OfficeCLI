@@ -63,7 +63,7 @@ public partial class WordHandler
         var existing = sectPr.GetFirstChild<PageMargin>();
         if (existing != null) return existing;
 
-        var pm = new PageMargin();
+        var pm = WordPageDefaults.CreatePageMargin();
         InsertSectPrChildInOrder(sectPr, pm);
         return pm;
     }

@@ -139,7 +139,7 @@ public partial class WordHandler
         if (bodySectPr != null && bodySectPr.GetFirstChild<PageSize>() == null)
             InsertSectPrChildInOrder(bodySectPr, new PageSize { Width = WordPageDefaults.A4WidthTwips, Height = WordPageDefaults.A4HeightTwips });
         if (bodySectPr != null && bodySectPr.GetFirstChild<PageMargin>() == null)
-            InsertSectPrChildInOrder(bodySectPr, new PageMargin { Top = 1440, Right = 1800U, Bottom = 1440, Left = 1800U });
+            InsertSectPrChildInOrder(bodySectPr, WordPageDefaults.CreatePageMargin());
 
         // BUG-DUMP-R31-1: a bare round-tripped section carries no page geometry.
         // The source's childless sectPr had neither pgSz nor pgMar, so stamping
