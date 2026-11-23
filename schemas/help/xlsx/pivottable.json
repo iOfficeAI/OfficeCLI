@@ -132,7 +132,7 @@
     },
     "labelFilter": {
       "type": "string",
-      "description": "row-level pre-cache label filter as 'field:type:value' (e.g. 'Region:beginsWith:N'). Type one of equals, notEquals, beginsWith, endsWith, contains, notContains, greaterThan, greaterThanEqual, lessThan, lessThanEqual, between, notBetween. Add-time only — Set ignores this key.",
+      "description": "label filter as 'field:type:value' (e.g. 'Region:beginsWith:N'). Type one of equals, notEquals, beginsWith, endsWith, contains, doesNotContain. Add-time only — Set ignores this key.",
       "aliases": ["labelfilter"],
       "add": true, "set": false, "get": false,
       "examples": ["--prop labelFilter=Region:beginsWith:N"],
