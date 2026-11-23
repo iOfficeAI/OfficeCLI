@@ -203,6 +203,23 @@ officecli add deck.pptx / --type slide --prop title="Q4 Report"
 
 Ships as a single self-contained binary. The .NET runtime is embedded -- nothing to install, no runtime to manage.
 
+**On Linux the system still supplies ICU.** .NET resolves culture, date and number formatting
+through ICU, and a minimal container image may not ship it -- the process then exits before
+running any command, with `Couldn't find a valid ICU package installed on the system`. Install it
+and the binary runs as usual:
+
+```bash
+# Alpine / musl images -- the officecli-linux-alpine-x64 / -arm64 binaries
+apk add --no-cache icu-libs
+
+# Debian / Ubuntu slim images -- the officecli-linux-x64 / -arm64 binaries
+apt-get update && apt-get install -y libicu72   # the name follows the release: apt-cache search libicu
+```
+
+To run without ICU instead, set `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`: officecli then starts in
+.NET's invariant-culture mode, where only the invariant culture is available
+([what that changes](https://aka.ms/GlobalizationInvariantMode)).
+
 **One-line install:**
 
 ```bash

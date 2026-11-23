@@ -200,6 +200,23 @@ officecli add deck.pptx / --type slide --prop title="Q4 Report"
 
 단일 자체 완결형 바이너리로 제공. .NET 런타임 내장 -- 설치할 것도, 관리할 런타임도 없습니다.
 
+**Linux에서는 ICU를 시스템이 제공해야 합니다.** .NET은 문화권, 날짜, 숫자 서식을 ICU로 처리하므로
+최소 구성 컨테이너 이미지에는 포함되어 있지 않을 수 있습니다. 이 경우 프로세스는 어떤 명령도 실행하기
+전에 종료되며 `Couldn't find a valid ICU package installed on the system` 오류를 출력합니다.
+다음 패키지를 설치하면 바이너리는 그대로 동작합니다:
+
+```bash
+# Alpine / musl 이미지 — officecli-linux-alpine-x64 / -arm64
+apk add --no-cache icu-libs
+
+# Debian / Ubuntu 슬림 이미지 — officecli-linux-x64 / -arm64
+apt-get update && apt-get install -y libicu72   # 이름은 릴리스마다 다릅니다: apt-cache search libicu
+```
+
+ICU를 설치하지 않으려면 `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`을 설정하세요. officecli는 .NET의
+고정 문화권(invariant) 모드로 실행되며, 이 모드에서는 고정 문화권만 사용할 수 있습니다
+([자세히](https://aka.ms/GlobalizationInvariantMode)).
+
 **원라인 설치:**
 
 ```bash

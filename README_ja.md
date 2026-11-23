@@ -200,6 +200,23 @@ officecli add deck.pptx / --type slide --prop title="Q4 Report"
 
 単一の自己完結型バイナリとして配布。.NET ランタイムは内蔵 -- インストール不要、ランタイム管理不要。
 
+**Linux では ICU をシステム側で用意する必要があります。** .NET はカルチャ、日付、数値の書式を ICU
+経由で解決するため、最小構成のコンテナイメージには含まれていないことがあります。その場合プロセスは
+コマンドを実行する前に終了し、`Couldn't find a valid ICU package installed on the system` を出力します。
+次のパッケージを入れると、バイナリはそのまま動作します：
+
+```bash
+# Alpine / musl イメージ — officecli-linux-alpine-x64 / -arm64 に対応
+apk add --no-cache icu-libs
+
+# Debian / Ubuntu のスリムイメージ — officecli-linux-x64 / -arm64 に対応
+apt-get update && apt-get install -y libicu72   # 名前はリリースにより異なります: apt-cache search libicu
+```
+
+ICU を入れたくない場合は `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` を設定してください。officecli は
+.NET のインバリアントカルチャモードで起動し、利用できるのはインバリアントカルチャのみになります
+（[詳細](https://aka.ms/GlobalizationInvariantMode)）。
+
 **ワンライナーインストール：**
 
 ```bash
