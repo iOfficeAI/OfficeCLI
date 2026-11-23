@@ -23,7 +23,9 @@ namespace OfficeCli.Core.Diagram;
 ///   <item><b>Chrome-family</b> browser the user already has (via
 ///   <see cref="HtmlScreenshot"/>): render mermaid.js in a page and screenshot it.
 ///   Only mermaid.min.js (~3.5 MB) is fetched to a local cache on first use
-///   (mirror → CDN); if that fails the page loads mermaid from the CDN live.</item>
+///   (mirror → CDN); if that fails the page loads mermaid from the CDN live.
+///   <c>OFFICECLI_MERMAID_JS</c> points at a local mermaid.min.js and skips the
+///   network entirely, for offline / sandboxed hosts.</item>
 ///   <item>otherwise the caller falls back to the native synthesizer
 ///   (<see cref="DiagramCompiler"/>) — zero dependencies, fully editable shapes.</item>
 /// </list>
@@ -180,6 +182,18 @@ public static class MermaidImageRenderer
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".officecli", "cache");
     private static string CachedJsPath => Path.Combine(CacheDir, $"mermaid-{MermaidVersion}.min.js");
 
+    /// <summary>Explicit local mermaid.min.js override for offline / sandboxed hosts
+    /// that cannot reach the mirror or the CDN. Wins over the cache and skips the
+    /// download + refresh path entirely.</summary>
+    private static string? MermaidJsOverride
+    {
+        get
+        {
+            var p = Environment.GetEnvironmentVariable("OFFICECLI_MERMAID_JS");
+            return !string.IsNullOrWhiteSpace(p) && File.Exists(p) ? p : null;
+        }
+    }
+
     /// <summary>True when any image backend is available: mmdc, or a chrome-family browser.</summary>
     public static bool IsAvailable() => TryLocateMmdc(out _) || HtmlScreenshot.HasChromeFamily();
 
@@ -195,6 +209,7 @@ public static class MermaidImageRenderer
     {
         try
         {
+            if (MermaidJsOverride != null) return; // explicit local asset — never touch the network
             if (!File.Exists(CachedJsPath)) return; // refresh only what the user actually uses
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
             using var req = new HttpRequestMessage(HttpMethod.Get, MirrorUrl);
@@ -396,6 +411,9 @@ public static class MermaidImageRenderer
     /// &lt;script src&gt; (a <c>file://</c> for a cached/downloaded copy, else the CDN).</summary>
     private static string ResolveMermaidJsRef()
     {
+        if (MermaidJsOverride is { } overridePath)
+            return new Uri(Path.GetFullPath(overridePath)).AbsoluteUri;
+
         try
         {
             if (File.Exists(CachedJsPath) && new FileInfo(CachedJsPath).Length > 500_000)
