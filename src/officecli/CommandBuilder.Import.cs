@@ -20,7 +20,7 @@ static partial class CommandBuilder
         var importFormatOpt = new Option<string?>("--format") { Description = "Data format: csv or tsv (default: inferred from file extension, or csv)" };
         var importDelimiterOpt = new Option<string?>("--delimiter") { Description = "Field separator, one character — overrides --format and the file extension. For a CSV that is not comma-separated, e.g. the ';' files Excel exports in de-DE / ru-RU and other non-US locales. Takes a literal character (';', '|') or the escape '\\t' / 'tab'. A quote or newline is refused: the CSV reader gives those its own meaning." };
         var importDecimalOpt = new Option<string?>("--decimal") { Description = "Decimal mark the SOURCE file uses: '.' (default) or ','. Declaring ',' also makes '.' the thousands group, so \"1.234,5\" imports as 1234.5 and \"1,5\" as 1.5. Without it a decimal comma is left as text rather than guessed at — \"1,234\" is 1234 under one convention and 1.234 under the other. Usually paired with --delimiter ';', since a locale that writes 1,5 needs a non-comma separator." };
-        var importHeaderOpt = new Option<bool>("--header") { Description = "First row is header: set AutoFilter and freeze pane" };
+        var importHeaderOpt = new Option<bool>("--header") { Description = "First row is header: set AutoFilter, freeze pane, and repeat it on every printed page (print titles; an existing print-titles setting is kept)" };
         var importStartCellOpt = new Option<string>("--start-cell") { Description = "Starting cell (default: A1)" };
         importStartCellOpt.DefaultValueFactory = _ => "A1";
 
