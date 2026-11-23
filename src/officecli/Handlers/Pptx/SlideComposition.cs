@@ -68,17 +68,15 @@ internal static class SlideComposition
 
     /// <summary>
     /// Whether the master's own shapes show on this slide. <c>showMasterSp</c>
-    /// on the slide wins, else the layout's, else shown. A layout authored with
-    /// <c>showMasterSp="0"</c> hides the master decoration on every slide that
-    /// uses it; the master's placeholders and the layout's shapes are unaffected.
+    /// on either the slide or the layout can hide the master decoration.
+    /// The master's placeholders and the layout's shapes are unaffected.
     /// </summary>
     public static bool ShowMasterShapes(SlidePart slidePart)
     {
         var slideFlag = slidePart.Slide?.ShowMasterShapes;
-        if (slideFlag?.HasValue == true) return slideFlag.Value;
+        if (slideFlag?.HasValue == true && !slideFlag.Value) return false;
         var layoutFlag = slidePart.SlideLayoutPart?.SlideLayout?.ShowMasterShapes;
-        if (layoutFlag?.HasValue == true) return layoutFlag.Value;
-        return true;
+        return layoutFlag?.HasValue != true || layoutFlag.Value;
     }
 
     // ==================== Header/Footer Gates ====================
