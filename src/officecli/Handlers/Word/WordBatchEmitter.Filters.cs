@@ -142,7 +142,7 @@ public static partial class WordBatchEmitter
         // CONSISTENCY(border-fold): Get emits `pbdr.bottom: single`,
         // `pbdr.bottom.sz: 6`, `pbdr.bottom.color: #FF0000`, `pbdr.bottom.space: 1`
         // as separate keys (mirrors `border.*` on Excel). Set accepts a single
-        // colon-encoded value `pbdr.bottom=single:6:#FF0000:1`. Without folding,
+        // semicolon-encoded value `pbdr.bottom=single;6;#FF0000;1`. Without folding,
         // the 2-segment key applies an empty-style border and the 3-segment
         // subkeys hit unsupported (BUG BT-6: Title/Intense Quote lose bottom
         // border on round-trip). Fold the 4 keys into one before validation.
@@ -181,7 +181,7 @@ public static partial class WordBatchEmitter
 
         // BUG-X7-04: same fold for table `border.*` keys. Get emits
         // `border.top: single`, `border.top.sz: 12`, `border.top.color: #000000`
-        // separately; Set accepts only the colon-encoded form
+        // separately; Set accepts only the semicolon-encoded form
         // `border.top=single;12;#000000;1`. Without folding, dump strips the
         // 3-segment subkeys (see the explicit "drop them here" comment below)
         // and round-trip silently downgrades real borders to default thin
@@ -375,7 +375,7 @@ public static partial class WordBatchEmitter
                 continue;
             }
 
-            // pbdr fold: skip subkeys, rewrite the bare side key into colon form.
+            // pbdr fold: skip subkeys, rewrite the bare side key into semicolon form.
             if (key.StartsWith("pbdr.", StringComparison.OrdinalIgnoreCase))
             {
                 var parts = key.Split('.');
@@ -390,7 +390,7 @@ public static partial class WordBatchEmitter
 
             // BUG-X7-04: fold border.* like pbdr.*. Skip the 3-segment subkeys
             // (folded into the 2-segment side key below) and rewrite the bare
-            // side key into the colon-encoded form Set's ParseBorderValue
+            // side key into the semicolon-encoded form Set's ParseBorderValue
             // expects.
             if (key.StartsWith("border.", StringComparison.OrdinalIgnoreCase))
             {
