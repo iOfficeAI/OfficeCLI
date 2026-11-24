@@ -2546,7 +2546,7 @@ public partial class WordHandler
         // BUG-DUMP22-08: <w:bdr/> (character border) is multi-attribute
         // (val + sz + color + space) so the long-tail FillUnknownChildProps
         // skipped it (attrCount > 1), leaving only the surface bare key
-        // with no sub-attrs. Emit the colon-encoded compound form that
+        // with no sub-attrs. Emit the semicolon-encoded compound form that
         // ApplyRunFormatting consumes on replay so dump round-trips
         // preserve size and color.
         var rBdr = run.RunProperties?.GetFirstChild<Border>();
@@ -4718,7 +4718,7 @@ public partial class WordHandler
                 && int.TryParse(mgPos, System.Globalization.NumberStyles.Integer,
                     System.Globalization.CultureInfo.InvariantCulture, out var mgPosHp))
                 Emit("position", $"{mgPosHp / 2.0:0.##}pt");
-            // Character border — same colon-encoded compound form as the run
+            // Character border — same semicolon-encoded compound form as the run
             // reader (STYLE;SIZE;COLOR;SPACE[;SHADOW[;FRAME]]).
             var mgBdr = src.GetFirstChild<Border>();
             if (mgBdr?.Val?.HasValue == true)
@@ -7020,7 +7020,7 @@ public partial class WordHandler
         "outline", "shadow", "emboss", "imprint", "noProof", "rtl",
         "vertAlign", "spacing", "shd",
         // BUG-DUMP22-08: <w:bdr/> is multi-attribute (val+sz+color+space).
-        // Curated reader emits the colon-encoded compound form; suppress
+        // Curated reader emits the semicolon-encoded compound form; suppress
         // the long-tail fallback so the bare `bdr=single` name doesn't
         // co-emit alongside the canonical encoded value.
         "bdr",

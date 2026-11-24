@@ -1139,7 +1139,8 @@ public partial class WordHandler
                 $"Invalid border style '{style.ToString()}'. " +
                 "Valid styles include: single, double, dashed, dotted, thick, thin, " +
                 "wave, doubleWave, dashSmallGap, dotDash, dotDotDash, triple, outset, " +
-                "inset, dashDotStroked, threeDEmboss, threeDEngrave, none, nil.", ex);
+                "inset, dashDotStroked, threeDEmboss, threeDEngrave, none, nil. " +
+                "Format: STYLE[;SIZE[;COLOR[;SPACE]]]", ex);
         }
         if (!(style == BorderValues.Nil && size == 0)) b.Size = size;
         if (space.HasValue) b.Space = space.Value;

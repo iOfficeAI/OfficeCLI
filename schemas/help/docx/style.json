@@ -882,7 +882,7 @@
     },
     "pbdr": {
       "type": "string",
-      "description": "paragraph border. Sub-keys: pbdr.top / pbdr.bottom / pbdr.left / pbdr.right / pbdr.between / pbdr.bar / pbdr.all. Value form: 'style:size:color' (e.g. 'single:6:#FF0000'). Set-only — Get does not surface paragraph borders on the style today.",
+      "description": "paragraph border. Sub-keys: pbdr.top / pbdr.bottom / pbdr.left / pbdr.right / pbdr.between / pbdr.bar / pbdr.all. Value form: 'style;size;color' (e.g. 'single;6;#FF0000'). Set-only — Get does not surface paragraph borders on the style today.",
       "aliases": [
         "border"
       ],
@@ -890,8 +890,8 @@
       "set": true,
       "get": false,
       "examples": [
-        "--prop pbdr.bottom=single:6:#FF0000",
-        "--prop pbdr.all=single:4:auto"
+        "--prop pbdr.bottom=\"single;6;#FF0000\"",
+        "--prop pbdr.all=\"single;4;auto\""
       ],
       "readback": "n/a",
       "enforcement": "report"

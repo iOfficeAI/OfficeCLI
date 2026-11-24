@@ -1066,7 +1066,7 @@ public partial class WordHandler
             case "bdr":
                 // BUG-R7-06: character border <w:bdr/> — round-trip captured
                 // it from real docs but Add/Set rejected it as UNSUPPORTED.
-                // Accept the same colon-encoded form as paragraph borders
+                // Accept the same semicolon-encoded form as paragraph borders
                 // (STYLE[;SIZE[;COLOR[;SPACE]]]). Empty/none/false clears.
                 props.RemoveAllChildren<Border>();
                 if (!string.IsNullOrEmpty(value)
