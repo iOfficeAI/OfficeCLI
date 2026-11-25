@@ -772,12 +772,23 @@ public partial class WordHandler
                 return true;
             case "bold":
             case "font.bold":
+            // Element-name alias: bare `b` is the OOXML name of <w:b/>, and a
+            // caller that spells the toggle by its element name must land on
+            // this curated case. Without it the key fell through to
+            // GenericXmlQuery.TryCreateTypedChild, which writes the value into
+            // w:val verbatim — `b=garbage` produced <w:b w:val="garbage"/>
+            // (schema-invalid) on a command that exited 0. Same family as the
+            // R15 sweep in WordHandler.Set.cs (paragraph CT_OnOff toggles):
+            // curate the toggle so an unrecognized value throws instead.
+            case "b":
                 props.RemoveAllChildren<Bold>();
                 if (IsExplicitFalseAddOverride(value))
                     InsertRunPropInSchemaOrder(props, new Bold { Val = OnOffValue.FromBoolean(false) });
                 else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Bold());
                 return true;
-            case "bold.cs" or "font.bold.cs" or "boldcs":
+            // "bcs" is the lowercased element name of <w:bCs/> — the same
+            // toggle as bold.cs, reachable by the XML name.
+            case "bold.cs" or "font.bold.cs" or "boldcs" or "bcs":
                 props.RemoveAllChildren<BoldComplexScript>();
                 if (IsExplicitFalseAddOverride(value))
                     InsertRunPropInSchemaOrder(props, new BoldComplexScript { Val = OnOffValue.FromBoolean(false) });
@@ -785,16 +796,34 @@ public partial class WordHandler
                 return true;
             case "italic":
             case "font.italic":
+            // Element-name alias: bare `i` is the OOXML name of <w:i/>. Same
+            // reason as `b` above — the generic typed-child fallback wrote an
+            // unvalidated value straight into w:val.
+            case "i":
                 props.RemoveAllChildren<Italic>();
                 if (IsExplicitFalseAddOverride(value))
                     InsertRunPropInSchemaOrder(props, new Italic { Val = OnOffValue.FromBoolean(false) });
                 else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new Italic());
                 return true;
-            case "italic.cs" or "font.italic.cs" or "italiccs":
+            // "ics" is the lowercased element name of <w:iCs/> — the same
+            // toggle as italic.cs, reachable by the XML name.
+            case "italic.cs" or "font.italic.cs" or "italiccs" or "ics":
                 props.RemoveAllChildren<ItalicComplexScript>();
                 if (IsExplicitFalseAddOverride(value))
                     InsertRunPropInSchemaOrder(props, new ItalicComplexScript { Val = OnOffValue.FromBoolean(false) });
                 else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new ItalicComplexScript());
+                return true;
+            case "cs":
+                // Bare `cs` is the run's complex-script toggle (<w:cs/>, a
+                // CT_OnOff) — NOT the complex-script typeface, which is the
+                // `font.cs` attribute case above. Get emits this toggle as
+                // `cs=true`, so round-trip needs the case, and without it an
+                // invalid value reached the generic typed-child fallback and
+                // landed verbatim in w:val.
+                props.RemoveAllChildren<ComplexScript>();
+                if (IsExplicitFalseAddOverride(value))
+                    InsertRunPropInSchemaOrder(props, new ComplexScript { Val = OnOffValue.FromBoolean(false) });
+                else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new ComplexScript());
                 return true;
             case "size.cs" or "font.size.cs" or "sizecs":
                 // Complex-script font size (<w:szCs/>, half-points). When set,
@@ -1178,6 +1207,17 @@ public partial class WordHandler
                     lang.Remove();
                 return true;
             }
+            case "webhidden":
+                // <w:webHidden> is a CT_OnOff run toggle with no other consumer
+                // (hidden-from-web-view only). It had no curated case, so it
+                // reached the generic typed-child fallback and `webHidden=…`
+                // with an unrecognized value wrote <w:webHidden w:val="…"/>
+                // verbatim on a command that exited 0.
+                props.RemoveAllChildren<WebHidden>();
+                if (IsExplicitFalseAddOverride(value))
+                    InsertRunPropInSchemaOrder(props, new WebHidden { Val = OnOffValue.FromBoolean(false) });
+                else if (IsTruthy(value)) InsertRunPropInSchemaOrder(props, new WebHidden());
+                return true;
             case "snaptogrid":
                 // <w:snapToGrid> run/¶-mark toggle (CT_OnOff). On a doc with a
                 // <w:docGrid>, snapToGrid="0" tells Word NOT to snap this run (or
