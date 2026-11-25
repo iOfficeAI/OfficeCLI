@@ -1819,15 +1819,26 @@ public partial class WordHandler
 
         bool applied = false;
         foreach (var run in runs)
-            if (GenericXmlQuery.TryCreateTypedChild(EnsureRunProperties(run), key, value))
+        {
+            var runProps = EnsureRunProperties(run);
+            // Curated first, exactly as a direct run Set does (SetElementRun):
+            // ApplyRunFormatting owns the run vocabulary that needs validation
+            // (the CT_OnOff toggles reject an unrecognized value), and the
+            // generic typed-child fallback is what runs after it. Calling the
+            // fallback alone let `set /body/p[1] b=bogus` write
+            // <w:b w:val="bogus"/> into every run of the paragraph and exit 0.
+            if (ApplyRunFormatting(runProps, key, value)
+                || GenericXmlQuery.TryCreateTypedChild(runProps, key, value))
                 applied = true;
+        }
 
         // Mirror the curated branch: write to the ¶ mark when there are no runs
         // or the source already carried a markRPr.
         if (runs.Count == 0 || markRPrPreExisted)
         {
             var markRPr = EnsureMarkRunProperties(pProps);
-            if (GenericXmlQuery.TryCreateTypedChild(markRPr, key, value))
+            if (ApplyRunFormatting(markRPr, key, value)
+                || GenericXmlQuery.TryCreateTypedChild(markRPr, key, value))
                 applied = true;
             else if (markRPr.ChildElements.Count == 0)
                 markRPr.Remove();
