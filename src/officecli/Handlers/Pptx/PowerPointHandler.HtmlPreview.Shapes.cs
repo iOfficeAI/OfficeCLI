@@ -1884,34 +1884,40 @@ public partial class PowerPointHandler
             }
         }
 
-        // Ensure minimum dimensions so the line is visible
-        // For horizontal lines (cy=0), the container needs height for stroke width
-        // For vertical lines (cx=0), the container needs width for stroke width
-        var minDimEmu = (long)(lineWidth * EmuConverter.EmuPerPoint + 12700); // lineWidth + 1pt padding
-        var renderCx = Math.Max(cx, cx == 0 ? minDimEmu : 1);
-        var renderCy = Math.Max(cy, cy == 0 ? minDimEmu : 1);
+        // Ensure minimum dimensions so the line is visible. An axis whose extent
+        // cannot hold the stroke is as degenerate as a zero-extent one: exporters
+        // write a horizontal line as cy="1" rather than cy="0", and a 0pt-tall
+        // container then draws nothing while PowerPoint draws the line. The test
+        // is against the stroke width itself, so an extent that does fit the
+        // stroke keeps its own geometry and only a collapsed axis is padded.
+        var strokeEmu = (long)(lineWidth * EmuConverter.EmuPerPoint);
+        var minDimEmu = strokeEmu + 12700; // lineWidth + 1pt padding
+        var collapsedX = cx < strokeEmu;
+        var collapsedY = cy < strokeEmu;
+        var renderCx = Math.Max(cx, collapsedX ? minDimEmu : 1);
+        var renderCy = Math.Max(cy, collapsedY ? minDimEmu : 1);
         var widthPt = Units.EmuToPt(renderCx);
         var heightPt = Units.EmuToPt(renderCy);
 
-        // Adjust y position upward by half the added height for zero-height lines
-        var renderY = cy == 0 ? y - minDimEmu / 2 : y;
-        var renderX = cx == 0 ? x - minDimEmu / 2 : x;
+        // Adjust the position by half the added size for collapsed lines
+        var renderY = collapsedY ? y - minDimEmu / 2 : y;
+        var renderX = collapsedX ? x - minDimEmu / 2 : x;
 
         var x1 = flipH ? "100%" : "0";
         var y1 = flipV ? "100%" : "0";
         var x2 = flipH ? "0" : "100%";
         var y2 = flipV ? "0" : "100%";
 
-        // For straight lines (one dimension is 0), draw from center
+        // For straight lines (one dimension is collapsed), draw from center
         string svgY1, svgY2, svgX1, svgX2;
-        if (cy == 0)
+        if (collapsedY)
         {
             // Horizontal line: draw at vertical center
             svgX1 = flipH ? "100%" : "0";
             svgX2 = flipH ? "0" : "100%";
             svgY1 = svgY2 = "50%";
         }
-        else if (cx == 0)
+        else if (collapsedX)
         {
             // Vertical line: draw at horizontal center
             svgX1 = svgX2 = "50%";
@@ -2041,13 +2047,13 @@ public partial class PowerPointHandler
         var preset = prstGeom?.Preset?.HasValue == true ? (prstGeom.Preset.InnerText ?? "straightConnector1") : "straightConnector1";
 
         // Bent/curved connectors need both axes to draw their perpendicular segment.
-        // When one axis is 0 (degenerate — typical when from=/to= shapes are aligned
+        // When one axis is collapsed (degenerate — typical when from=/to= shapes are aligned
         // horizontally or vertically), the polyline/bezier collapses into a 1-2pt strip
         // and any arrow marker covers the whole thing, producing a "dot". Degrade to a
         // straight line in that case so the rendered output stays meaningful.
         // PowerPoint would route the elbow above/below using connection points, but we
         // don't compute those — straight is the honest fallback.
-        if ((cx == 0 || cy == 0)
+        if ((collapsedX || collapsedY)
             && (preset.StartsWith("bentConnector", StringComparison.Ordinal)
                 || preset.StartsWith("curvedConnector", StringComparison.Ordinal)))
         {
