@@ -188,6 +188,31 @@ public partial class PowerPointHandler
                             $"Connector '{key}={reference}' references a different slide; a connector can "
                             + $"only attach to shapes on its own slide (slide {cxnSlideNum}).");
                 }
+                // The attach keys below are only read inside the from/to blocks, so a
+                // caller that passes one without its endpoint leaves it unobserved and
+                // is answered with CommandBuilder's "unknown property" message — for a
+                // key the help documents as [add/set]. Name the missing endpoint
+                // instead, the way 'opacity' names the fill carrier it needs.
+                void RequireAttachEndpoint(bool hasEndpoint, string endpoint, string endpointAlias, params string[] keys)
+                {
+                    if (hasEndpoint) return;
+                    foreach (var k in keys)
+                    {
+                        if (!properties.ContainsKey(k)) continue;
+                        throw new ArgumentException(
+                            $"Connector '{k}' requires '{endpoint}' in the same add call — it selects "
+                            + $"which connection site on that shape the line attaches to, so there is "
+                            + $"nothing to attach it to without an endpoint. Pass '{endpoint}' (or "
+                            + $"'{endpointAlias}') together with it.");
+                    }
+                }
+                RequireAttachEndpoint(hasFrom, "from", "startShape",
+                    "fromIdx", "fromidx", "startIdx", "startidx",
+                    "fromSide", "fromside", "startSide", "startside");
+                RequireAttachEndpoint(hasTo, "to", "endShape",
+                    "toIdx", "toidx", "endIdx", "endidx",
+                    "toSide", "toside", "endSide", "endside");
+
                 if (properties.TryGetValue("startshape", out var startId) || properties.TryGetValue("startShape", out startId)
                     || properties.TryGetValue("from", out startId))
                 {
